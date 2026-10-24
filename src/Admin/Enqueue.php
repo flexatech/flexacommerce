@@ -11,15 +11,16 @@ use Flexa\Commerce\Support\Settings;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Reads the Vite manifest and enqueues the built admin app on our screens
- * only. In dev mode (FLEXACOMMERCE_DEV, or a `client/.dev` marker file) it
- * loads from the Vite dev server with HMR.
+ * Reads the Vite manifest and enqueues a built entry on our screens only:
+ * the admin app on the menu pages, the product editor on product screens.
+ * In dev mode (FLEXACOMMERCE_DEV, or a `client/.dev` marker file) it loads
+ * from the Vite dev server with HMR.
  */
 final class Enqueue {
 	use HasInstance;
 
-	private const HANDLE = 'flexacommerce-admin';
-	private const ENTRY  = 'admin/main.tsx';
+	public const HANDLE = 'flexacommerce-admin';
+	public const ENTRY  = 'admin/main.tsx';
 
 	public function register(): void {
 		add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_admin' ] );
@@ -27,25 +28,32 @@ final class Enqueue {
 
 	public function enqueue_admin( string $hook_suffix ): void {
 		$page = Menu::instance()->page_for( $hook_suffix );
-		if ( $page === '' ) {
-			return;
+		if ( $page !== '' ) {
+			$this->enqueue_entry( self::HANDLE, self::ENTRY, $page );
 		}
+	}
 
+	/**
+	 * Enqueues one Vite entry and localizes `flexaCommerce` for it.
+	 *
+	 * @param array<string,mixed> $extra merged into the localized data
+	 */
+	public function enqueue_entry( string $handle, string $entry, string $page, array $extra = [] ): bool {
 		$dev_server = __DIR__ . '/dev-server.php';
 		if ( $this->is_dev_mode() && is_readable( $dev_server ) ) {
 			require_once $dev_server;
-			\Flexa\Commerce\Admin\flexacommerce_enqueue_dev_server( self::HANDLE, self::ENTRY );
-		} elseif ( ! $this->enqueue_prod() ) {
-			return;
+			\Flexa\Commerce\Admin\flexacommerce_enqueue_dev_server( $handle, $entry );
+		} elseif ( ! $this->enqueue_prod( $handle, $entry ) ) {
+			return false;
 		}
 
-		wp_set_script_translations( self::HANDLE, FLEXACOMMERCE_TEXT_DOMAIN, FLEXACOMMERCE_PATH . 'i18n/languages' );
+		wp_set_script_translations( $handle, FLEXACOMMERCE_TEXT_DOMAIN, FLEXACOMMERCE_PATH . 'i18n/languages' );
 
 		$currency = Settings::string( 'currency' );
 		wp_localize_script(
-			self::HANDLE,
+			$handle,
 			'flexaCommerce',
-			[
+			$extra + [
 				'restUrl'   => esc_url_raw( rest_url( FLEXACOMMERCE_REST_NAMESPACE . '/' ) ),
 				'restNonce' => wp_create_nonce( 'wp_rest' ),
 				'version'   => FLEXACOMMERCE_VERSION,
@@ -62,8 +70,13 @@ final class Enqueue {
 					'decimalSeparator'  => Settings::string( 'decimal_separator' ),
 					'thousandSeparator' => Settings::string( 'thousand_separator' ),
 				],
+				'units'     => [
+					'weight'    => Settings::string( 'weight_unit' ),
+					'dimension' => Settings::string( 'dimension_unit' ),
+				],
 			]
 		);
+		return true;
 	}
 
 	private function detect_admin_theme(): string {
@@ -78,26 +91,26 @@ final class Enqueue {
 		return file_exists( FLEXACOMMERCE_PATH . 'client/.dev' );
 	}
 
-	private function enqueue_prod(): bool {
+	private function enqueue_prod( string $handle, string $entry ): bool {
 		$manifest_path = FLEXACOMMERCE_PATH . 'assets/dist/.vite/manifest.json';
 		if ( ! is_readable( $manifest_path ) ) {
 			return false;
 		}
 		$raw      = file_get_contents( $manifest_path ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- local file.
 		$manifest = $raw === false ? null : json_decode( $raw, true );
-		if ( ! is_array( $manifest ) || ! isset( $manifest[ self::ENTRY ]['file'] ) ) {
+		if ( ! is_array( $manifest ) || ! isset( $manifest[ $entry ]['file'] ) ) {
 			return false;
 		}
 
 		$dist_url = FLEXACOMMERCE_URL . 'assets/dist/';
-		foreach ( $this->collect_css( $manifest, self::ENTRY ) as $i => $css ) {
-			wp_enqueue_style( self::HANDLE . '-css-' . $i, $dist_url . $css, [], FLEXACOMMERCE_VERSION );
+		foreach ( $this->collect_css( $manifest, $entry ) as $i => $css ) {
+			wp_enqueue_style( $handle . '-css-' . $i, $dist_url . $css, [], FLEXACOMMERCE_VERSION );
 		}
 
-		wp_enqueue_script( self::HANDLE, $dist_url . (string) $manifest[ self::ENTRY ]['file'], [ 'wp-i18n' ], FLEXACOMMERCE_VERSION, true );
+		wp_enqueue_script( $handle, $dist_url . (string) $manifest[ $entry ]['file'], [ 'wp-i18n' ], FLEXACOMMERCE_VERSION, true );
 		add_filter(
 			'script_loader_tag',
-			static fn ( string $tag, string $handle ): string => $handle === self::HANDLE
+			static fn ( string $tag, string $h ): string => $h === $handle
 				? str_replace( '<script ', '<script type="module" ', $tag )
 				: $tag,
 			10,

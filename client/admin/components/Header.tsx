@@ -1,4 +1,4 @@
-import { Activity, Settings, Store } from "lucide-react";
+import { Activity, Settings, Store, Tags } from "lucide-react";
 
 import { cn } from "@/shared/lib/cn";
 import { __ } from "@/shared/lib/i18n";
@@ -6,6 +6,7 @@ import { getPluginGlobal } from "@/shared/lib/api";
 import type { AdminPage } from "@/shared/types/global";
 
 const NAV: { page: AdminPage; label: string; icon: typeof Activity }[] = [
+    { page: "flexacommerce-attributes", label: __("Attributes"), icon: Tags },
     { page: "flexacommerce", label: __("Status"), icon: Activity },
     { page: "flexacommerce-settings", label: __("Settings"), icon: Settings },
 ];

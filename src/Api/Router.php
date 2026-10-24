@@ -23,6 +23,8 @@ final class Router {
 		( new Admin\SettingsEndpoint() )->register_routes();
 		( new Admin\StatusEndpoint() )->register_routes();
 		( new Admin\LogsEndpoint() )->register_routes();
+		( new Admin\ProductsEndpoint() )->register_routes();
+		( new Admin\AttributesEndpoint() )->register_routes();
 
 		do_action( 'flexacommerce.rest.register_routes' );
 	}

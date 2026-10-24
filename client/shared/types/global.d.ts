@@ -5,7 +5,7 @@
 
 export type AppTheme = "light" | "dark";
 
-export type AdminPage = "flexacommerce" | "flexacommerce-settings";
+export type AdminPage = "flexacommerce" | "flexacommerce-settings" | "flexacommerce-attributes" | "product-editor";
 
 export type CurrencyPosition = "left" | "right" | "left_space" | "right_space";
 
@@ -28,6 +28,14 @@ export interface FlexaCommerceGlobal {
     locale: string;
     theme: AppTheme;
     currency: FlexaCommerceCurrency;
+    units: {
+        weight: "kg" | "g" | "lb" | "oz";
+        dimension: "cm" | "mm" | "m" | "in" | "yd";
+    };
+    /** Product editor screen only. */
+    productId?: number;
+    canManageTerms?: boolean;
+    attributesAdminUrl?: string;
 }
 
 declare global {

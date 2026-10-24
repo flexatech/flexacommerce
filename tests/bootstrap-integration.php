@@ -20,10 +20,14 @@ tests_add_filter(
 	}
 );
 
-// Install as an activation would, once the test site exists.
+// Install as an activation would, once the test site exists. The WordPress
+// installer recreates only core tables (post ids restart at 1), so plugin
+// tables are dropped first: rows left by an aborted run would otherwise
+// match the new post ids.
 tests_add_filter(
 	'setup_theme',
 	static function (): void {
+		\Flexa\Commerce\Database\Schema::drop_all();
 		\Flexa\Commerce\Setup\Activator::activate_site();
 	}
 );

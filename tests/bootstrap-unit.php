@@ -139,4 +139,10 @@ function wp_salt( string $scheme = 'auth' ): string {
 	return 'test-salt-' . $scheme;
 }
 
+function sanitize_title( string $title ): string {
+	$title = strtolower( trim( strip_tags( $title ) ) );
+	$title = (string) preg_replace( '/[^a-z0-9_\-]+/', '-', $title );
+	return trim( (string) preg_replace( '/-+/', '-', $title ), '-' );
+}
+
 $GLOBALS['wpdb'] = new wpdb();

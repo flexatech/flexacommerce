@@ -1,6 +1,6 @@
 # 07. Implementation Roadmap
 
-Status: **Approved 2026-10-24**, phase 1 complete (exit criteria verified locally; CI workflow added, first remote run pending). Effort figures are rough estimates for one experienced WordPress/PHP developer with part-time frontend help, given only to compare phases; they are not commitments.
+Status: **Approved 2026-10-24**, phase 1 complete (exit criteria verified locally; CI workflow added, first remote run pending), phase 2 complete except a manual browser pass over the product editor. Effort figures are rough estimates for one experienced WordPress/PHP developer with part-time frontend help, given only to compare phases; they are not commitments.
 
 Priorities: **P0** blocks the milestone, **P1** expected in the milestone, **P2** may slip to the next milestone, **P3** nice to have.
 
@@ -59,6 +59,16 @@ Implementation notes (phase 1, 2026-10-24):
 | P3 | Product duplicate action |
 
 Exit criteria: unit tests for matcher and normalization; integration tests for SKU rules; product with 100 variants saves in < 2 s in admin (target); spike report written into doc 03 if anything changed.
+
+Implementation notes (phase 2, 2026-10-24):
+
+- **Exit criteria.** `VariantMatcher` and `Combination` unit tests; SKU integration tests (`SkuRulesTest`: case-insensitive duplicates within a save and across products, 1062 mapped to `DuplicateSku`); a 100-variant save takes 0.034 s locally against the 2 s target; spike report in doc 03 §3.9.
+- **Spike outcome.** No schema change. Code change: `AttributeRepository::create_attribute()` / `create_value()` take an optional slug so an importer can keep two attributes with the same label. Doc 05 conflict rules changed for duplicate combinations, unoffered values and invalid sale prices. The spike is kept as `WooCommerceMappingSpikeTest` with its fixture, so phase 6 starts from known cases.
+- **Stale variations.** Removing an attribute value, a whole axis or a store attribute turns the affected variations stale instead of failing the save: deleted when they hold no stock, disabled otherwise (doc 03 §3.2). The editor only sends a variation's combination when the merchant changed it, so an explicit combination that uses a removed value is still an error.
+- **Editor saves with the post.** The product data metabox (`client/admin/product-editor.tsx`, own Vite entry and scoped CSS under `.flexacommerce-product-ui` with no global preflight, so the block editor keeps its styles) saves through `admin/products/{id}` when the post is saved: in the block editor on a non-autosave save, in the classic editor by holding the form submit until the request finishes. It also has its own "Save product data" button. Variation generation saves pending edits first.
+- **Attribute usage** on the Attributes screen counts products, not value assignments.
+- **Test bootstrap drops plugin tables.** The WordPress test installer recreates core tables, so post ids restart at 1 and stale `fxc_variants` rows from an earlier run matched new posts (an intermittent failure). `tests/bootstrap-integration.php` now calls `Schema::drop_all()` before activation.
+- **Not done yet:** the product editor and the Attributes screen pass type-check and build but have not been clicked through in a browser (block editor and classic editor). That pass is the first task of phase 3.
 
 ## Phase 3: Pricing, stock, cart, minimal storefront
 

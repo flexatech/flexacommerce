@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Flexa\Commerce\Setup;
 
+use Flexa\Commerce\Catalog\PostTypes;
 use Flexa\Commerce\Database\Schema;
 use Flexa\Commerce\Maintenance\Cron;
 use Flexa\Commerce\Support\Settings;
@@ -38,6 +39,7 @@ final class Activator {
 		Roles::install();
 		Cron::schedule();
 		Requirements::store();
+		PostTypes::request_flush();
 
 		do_action( 'flexacommerce.activated' );
 	}
@@ -52,6 +54,11 @@ final class Activator {
 			return;
 		}
 		Schema::maybe_upgrade();
+		if ( (int) get_option( Roles::VERSION_OPTION, 0 ) < Roles::VERSION ) {
+			Roles::install();
+			Cron::schedule();
+			PostTypes::request_flush();
+		}
 	}
 
 	/** New site on a network where the plugin is network-active. */

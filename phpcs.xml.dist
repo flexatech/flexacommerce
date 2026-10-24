@@ -62,9 +62,11 @@
         <exclude-pattern>*/src/Database/Integrity.php</exclude-pattern>
         <exclude-pattern>*/src/Database/Sequence.php</exclude-pattern>
         <exclude-pattern>*/src/Support/LogRepository.php</exclude-pattern>
+        <exclude-pattern>*/src/Catalog/VariantRepository.php</exclude-pattern>
     </rule>
     <rule ref="WordPress.DB.PreparedSQLPlaceholders">
         <exclude-pattern>*/src/Support/LogRepository.php</exclude-pattern>
+        <exclude-pattern>*/src/Catalog/VariantRepository.php</exclude-pattern>
     </rule>
 
     <!-- Exception messages are escaped where they are displayed. -->

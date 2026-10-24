@@ -16,7 +16,8 @@ final class Settings {
 
 	/**
 	 * Flat key => [type, default]. Types: bool | string | currency |
-	 * separator (up to 3 characters, spaces kept) | enum:a|b|c | int:min:max.
+	 * separator (up to 3 characters, spaces kept) | slug (sanitize_title, may
+	 * be empty) | enum:a|b|c | int:min:max.
 	 *
 	 * @var array<string,array{0:string,1:mixed}>
 	 */
@@ -34,6 +35,12 @@ final class Settings {
 		'log_level'                => [ 'enum:debug|info|notice|warning|error|critical', 'info' ],
 		'log_retention_days'       => [ 'int:1:365', 30 ],
 		'remove_data_on_uninstall' => [ 'bool', false ],
+		'weight_unit'              => [ 'enum:kg|g|lb|oz', 'kg' ],
+		'dimension_unit'           => [ 'enum:cm|mm|m|in|yd', 'cm' ],
+		'product_base'             => [ 'slug', '' ],
+		'shop_base'                => [ 'slug', '' ],
+		'category_base'            => [ 'slug', '' ],
+		'tag_base'                 => [ 'slug', '' ],
 	];
 
 	/** @return array<string,mixed> */
@@ -121,6 +128,9 @@ final class Settings {
 		}
 		if ( $type === 'string' ) {
 			return is_scalar( $value ) ? sanitize_text_field( (string) $value ) : $default;
+		}
+		if ( $type === 'slug' ) {
+			return is_scalar( $value ) ? sanitize_title( (string) $value ) : $default;
 		}
 		if ( $type === 'separator' ) {
 			if ( ! is_scalar( $value ) ) {

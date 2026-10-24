@@ -237,7 +237,7 @@ draft ──preflight ok──► ready ──start──► running ⇄ paused
 | WooCommerce | FlexaCommerce |
 |---|---|
 | `wc_get_attribute_taxonomies()` row (`attribute_id`, `attribute_label`, `attribute_name`, `attribute_orderby`) | top-level `fxc_attribute` term (name = label, slug = `attribute_name`, term meta `_fxc_orderby`) |
-| `pa_{name}` terms (with hierarchy flattened, order meta) | child terms of that attribute term, slug preserved, `order` meta preserved |
+| `pa_{name}` terms (with hierarchy flattened, order meta) | child terms of that attribute term, slug preserved when no other attribute uses it (all values share one taxonomy, so WordPress suffixes a taken slug), `order` meta preserved |
 | `product_cat` / `product_tag` terms | `fxc_product_cat` / `fxc_product_tag`: name, slug, description, parent, `thumbnail_id` term meta, display order |
 
 Slug collisions inside a target taxonomy are impossible for a fresh store; on re-run the id map is used, not the slug.
@@ -253,7 +253,7 @@ Slug collisions inside a target taxonomy are impossible for a fresh store; on re
 | `get_attributes()` (`WC_Product_Attribute`: id, name, options, visible, variation, position) | `_fxc_attributes` definitions + global value terms set on the post |
 | simple: SKU, prices, sale dates, stock fields, weight, dimensions, tax class | base variant row |
 | variable: parent SKU, parent stock fields, weight/dimensions | base variant row (not purchasable) |
-| `WC_Product_Variation`: `get_attributes()` (empty value → `*`), status `publish`/`private` → `enabled`, prices, `get_manage_stock()` (`'parent'` → `stock_from_base = 1`), stock, image, description, menu_order | variation rows |
+| `WC_Product_Variation`: `get_attributes()` (empty value → `*`), status `publish`/`private` → `enabled`, prices, `get_manage_stock()` (`'parent'` → `stock_from_base = 1`), stock, image, description, menu_order | variation rows; sale end + 1 s (WooCommerce's end is inclusive), position after sorting by `menu_order` then id written as `menu_order` (doc 03 §3.9) |
 | weight/dimension units (`woocommerce_weight_unit`, `woocommerce_dimension_unit`) | converted to g / mm with string arithmetic, 3 decimals |
 | `get_reviews_allowed()`, reviews (comments) | comments stay attached to the **WooCommerce** post id (Q14), comment_status copied |
 | unknown postmeta (not `_` WooCommerce-core keys listed in the adapter's allow list) | `_fxc_import` bucket |
@@ -335,7 +335,9 @@ Reverse mapping is the inverse. FXC → WC never produces custom statuses.
 | Referenced product missing (order item for deleted product) | line imported with NULL product/variant, snapshot intact | none |
 | Price with more decimals than currency exponent | round half up, warning with original string | none |
 | Fractional quantity, negative total on product line, unknown currency | entity rejected, error | none |
-| Variation combination duplicates another (exact same values) | second variation imported disabled, with a distinct combination hash suffix and a warning | `skip` |
+| Variation combination duplicates another (exact same values) | second variation skipped, warning with its source id, SKU and stock (doc 03 §3.9) | none |
+| Variation uses an attribute value the product no longer offers | variation skipped, warning | none |
+| Sale price not below the regular price, or a sale price without a regular price | sale dropped, warning with the original values | none |
 | Totals mismatch | import, source totals kept, warning | none |
 
 Errors reject one entity, never the batch. A job ends `completed_with_warnings` if any warnings or rejected entities exist.

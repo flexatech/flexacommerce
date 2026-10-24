@@ -4,26 +4,41 @@ declare(strict_types=1);
 
 namespace Flexa\Commerce\Admin;
 
+use Flexa\Commerce\Catalog\PostTypes;
 use Flexa\Commerce\Concerns\HasInstance;
 use Flexa\Commerce\Support\Capabilities;
 
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Top-level FlexaCommerce menu. Every screen renders the same React root;
- * the app reads `flexaCommerce.page` to pick the screen.
+ * Top-level FlexaCommerce menu. The React pages render the same root; the
+ * app reads `flexaCommerce.page` to pick the screen. Products, categories
+ * and tags are core screens listed under the same menu.
  */
 final class Menu {
 	use HasInstance;
 
 	public const SLUG = 'flexacommerce';
 
+	/** Submenu order; core adds the product list itself (show_in_menu). */
+	private const ORDER = [
+		'edit.php?post_type=' . PostTypes::PRODUCT,
+		'edit-tags.php?taxonomy=' . PostTypes::CATEGORY . '&post_type=' . PostTypes::PRODUCT,
+		'edit-tags.php?taxonomy=' . PostTypes::TAG . '&post_type=' . PostTypes::PRODUCT,
+		self::SLUG . '-attributes',
+		self::SLUG . '-settings',
+		self::SLUG,
+	];
+
 	/** @var array<string,string> page slug => hook suffix */
 	private array $pages = [];
 
 	public function register(): void {
 		add_action( 'admin_menu', [ $this, 'register_menu' ] );
+		add_action( 'admin_menu', [ $this, 'order_menu' ], 999 );
 		add_filter( 'admin_body_class', [ $this, 'admin_body_class' ] );
+		add_filter( 'parent_file', [ $this, 'parent_file' ] );
+		add_filter( 'submenu_file', [ $this, 'submenu_file' ] );
 	}
 
 	public function register_menu(): void {
@@ -50,6 +65,29 @@ final class Menu {
 				[ $this, 'render_page' ]
 			)
 		);
+		foreach ( [
+			PostTypes::CATEGORY => __( 'Categories', 'flexacommerce' ),
+			PostTypes::TAG      => __( 'Tags', 'flexacommerce' ),
+		] as $taxonomy => $label ) {
+			add_submenu_page(
+				self::SLUG,
+				$label,
+				$label,
+				Capabilities::MANAGE_PRODUCT_TERMS,
+				'edit-tags.php?taxonomy=' . $taxonomy . '&post_type=' . PostTypes::PRODUCT
+			);
+		}
+		$this->add(
+			self::SLUG . '-attributes',
+			(string) add_submenu_page(
+				self::SLUG,
+				__( 'Attributes', 'flexacommerce' ),
+				__( 'Attributes', 'flexacommerce' ),
+				Capabilities::MANAGE_PRODUCT_TERMS,
+				self::SLUG . '-attributes',
+				[ $this, 'render_page' ]
+			)
+		);
 		$this->add(
 			self::SLUG . '-settings',
 			(string) add_submenu_page(
@@ -61,6 +99,36 @@ final class Menu {
 				[ $this, 'render_page' ]
 			)
 		);
+	}
+
+	/** Products first: the top-level item links to the first submenu entry. */
+	public function order_menu(): void {
+		global $submenu;
+		if ( ! isset( $submenu[ self::SLUG ] ) || ! is_array( $submenu[ self::SLUG ] ) ) {
+			return;
+		}
+		$rank = array_flip( self::ORDER );
+		usort(
+			$submenu[ self::SLUG ],
+			static fn ( array $a, array $b ): int => ( $rank[ $a[2] ] ?? 100 ) <=> ( $rank[ $b[2] ] ?? 100 )
+		);
+	}
+
+	/** Keeps the menu open on product and term screens. */
+	public function parent_file( string $parent_file ): string {
+		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+		return $screen !== null && $screen->post_type === PostTypes::PRODUCT ? self::SLUG : $parent_file;
+	}
+
+	public function submenu_file( ?string $submenu_file ): ?string {
+		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+		if ( $screen === null || $screen->post_type !== PostTypes::PRODUCT ) {
+			return $submenu_file;
+		}
+		if ( $screen->base === 'edit-tags' || $screen->base === 'term' ) {
+			return 'edit-tags.php?taxonomy=' . $screen->taxonomy . '&post_type=' . PostTypes::PRODUCT;
+		}
+		return 'edit.php?post_type=' . PostTypes::PRODUCT;
 	}
 
 	/** @return array<string,string> page slug => hook suffix */

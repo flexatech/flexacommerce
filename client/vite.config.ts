@@ -33,6 +33,7 @@ export default defineConfig({
         rollupOptions: {
             input: {
                 admin: resolve(root, "admin/main.tsx"),
+                "product-editor": resolve(root, "admin/product-editor.tsx"),
             },
         },
     },

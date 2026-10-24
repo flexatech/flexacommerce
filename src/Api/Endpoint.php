@@ -4,6 +4,12 @@ declare(strict_types=1);
 
 namespace Flexa\Commerce\Api;
 
+use Flexa\Commerce\Catalog\PostTypes;
+use Flexa\Commerce\Contracts\CommerceException;
+use Flexa\Commerce\Contracts\Exceptions\DuplicateSku;
+use Flexa\Commerce\Contracts\Exceptions\InvalidAttribute;
+use Flexa\Commerce\Contracts\Exceptions\InvalidProduct;
+use Flexa\Commerce\Contracts\Exceptions\ProductNotFound;
 use Flexa\Commerce\Support\Capabilities;
 use WP_Error;
 use WP_REST_Request;
@@ -41,6 +47,54 @@ abstract class Endpoint {
 	public function refund_orders_permission( WP_REST_Request $request ): bool|WP_Error {
 		unset( $request );
 		return Capabilities::can_refund_orders() ? true : self::forbidden();
+	}
+
+	/**
+	 * Per-product check on routes with an `{id}`; 404 for ids that are not
+	 * products, so the route does not reveal other post types.
+	 *
+	 * @param WP_REST_Request<array<string,mixed>> $request
+	 */
+	public function edit_product_permission( WP_REST_Request $request ): bool|WP_Error {
+		if ( ! Capabilities::can_edit_products() ) {
+			return self::forbidden();
+		}
+		$id = (int) $request->get_param( 'id' );
+		if ( get_post_type( $id ) !== PostTypes::PRODUCT ) {
+			return self::error( new ProductNotFound( $id ) );
+		}
+		return Capabilities::can_edit_product( $id ) ? true : self::forbidden();
+	}
+
+	/** @param WP_REST_Request<array<string,mixed>> $request */
+	public function edit_products_permission( WP_REST_Request $request ): bool|WP_Error {
+		unset( $request );
+		return Capabilities::can_edit_products() ? true : self::forbidden();
+	}
+
+	/** @param WP_REST_Request<array<string,mixed>> $request */
+	public function manage_product_terms_permission( WP_REST_Request $request ): bool|WP_Error {
+		unset( $request );
+		return Capabilities::can_manage_product_terms() ? true : self::forbidden();
+	}
+
+	/** Maps a domain exception to a REST error with a stable code. */
+	protected static function error( CommerceException $e ): WP_Error {
+		$data = match ( true ) {
+			$e instanceof DuplicateSku     => [
+				'status'     => 409,
+				'sku'        => $e->sku,
+				'product_id' => $e->product_id,
+			],
+			$e instanceof InvalidProduct   => [
+				'status' => 400,
+				'field'  => $e->field,
+			],
+			$e instanceof ProductNotFound  => [ 'status' => 404 ],
+			$e instanceof InvalidAttribute => [ 'status' => 400 ],
+			default                        => [ 'status' => 500 ],
+		};
+		return new WP_Error( 'flexacommerce_' . $e->code(), $e->getMessage(), $data );
 	}
 
 	protected static function forbidden(): WP_Error {

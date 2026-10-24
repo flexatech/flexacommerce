@@ -104,7 +104,8 @@ fxc_product (post)
 - Wildcard ("any value"): `*`.
 - **Canonical combination string:** keys sorted by byte order, `key=value` pairs joined with `&`, e.g. `g:12=31&l:fabric=linen`. Base row: empty string.
 - `combination_hash = sha1( canonical string )`, `UNIQUE( product_id, combination_hash )`. Two variations with the same exact combination cannot exist. Overlapping wildcard rows (`g:12=*` and `g:12=31`) are allowed, as in WooCommerce, and resolved by `VariantMatcher`: exact match beats wildcard, fewer wildcards win, then `menu_order`, then id. The admin editor shows an "overlapping variations" warning.
-- Only attributes flagged `variation: true` may appear in combinations. Saving a product removes variations that reference removed attributes or values (after a confirmation in the UI, and only if they have no stock; otherwise they are disabled).
+- Only attributes flagged `variation: true` may appear in combinations. When a save removes an attribute or a value, stored variations that used it become stale: deleted when they hold no stock, otherwise disabled. Dropping a whole axis can make two stored rows identical; the later one is treated as stale the same way. A row whose combination is sent explicitly in the save must only use offered values, or the save fails with `InvalidProduct`, so a merchant's own edit is never silently dropped. The editor sends a variation's combination only when the merchant changed it.
+- A store attribute or value deleted from the Attributes screen is dropped from every product the next time the product is read, so later saves do not fail on a missing term.
 
 ### 3.3 Price resolution
 
@@ -167,6 +168,38 @@ Global attribute value terms used by the product are also assigned to the post (
 | D. Simple products in postmeta, variations in table (initial proposal) | Simple products look "normal" in postmeta. | Two stock code paths, SKU uniqueness split across two stores, cart must handle two kinds of purchasable. | Rejected in favour of A. |
 
 Testing the decision: unit tests for `VariantMatcher` and combination normalization; integration tests asserting SKU duplicate rejection across simple/variable/variation rows; query-count test asserting 1 variant query per archive page; concurrency test on stock (doc 06 §5.4).
+
+### 3.9 WooCommerce mapping spike (phase 2)
+
+Done 2026-10-24. Ten WooCommerce product shapes were mapped by a throwaway hand-written mapper to `ProductInput` and saved through `ProductService` (`tests/Integration/Catalog/WooCommerceMappingSpikeTest.php`, fixture `tests/fixtures/woocommerce-products.php`). Six records were exported read-only from a local WooCommerce 11.0.1 store (units kg and cm, USD, two decimals). That store had no wildcard-with-parent-stock, scheduled sale, weight or broken-data examples, so four more records were written by hand in the same postmeta format.
+
+| # | Source | Shape | Result |
+|---|---|---|---|
+| 1 | real 60 | variable, local attribute `Size: Small \| Large`, variation meta holds the display text (`Small`) | `l:size=small`; `sanitize_title` also accepts the older slug form |
+| 2 | real 703 | variable, 4 global attributes, variations set only Color (3 axes empty) | empty value → `*`; `VariantMatcher` picks the right row for a full selection |
+| 3 | real 1412 | variable, 3 global attributes, full 4 × 2 × 3 grid (24 rows), all `menu_order` 0, featured, parent SKU | 24 rows, `_fxc_price_min/max` 3800/12700, featured kept, parent SKU on the base row |
+| 4 | real 1403 | simple, sale price without dates | sale with open schedule |
+| 5 | real 1406 | simple, managed stock 2 | base row stock 2 |
+| 6 | real 203 | simple, draft, no SKU, `48.99` | SKU NULL, 4899 |
+| 7 | synthetic 9001 | variable, parent manages stock 12, one variation unmanaged, one with own stock and backorders, kg/cm with decimals, empty variation weight | `stock_from_base = 1` for the unmanaged row, owner = base row; 0.35 kg → 350 g, 10.5 cm → 105 mm; empty weight stays NULL (falls back to base, §3.6) |
+| 8 | synthetic 9010 | simple, scheduled sale, stock 0 with backorders, low stock 3, excluded from search | dates converted, `onbackorder`, visibility `catalog` |
+| 9 | synthetic 9020 | simple, no price, SKU with spaces, `_stock = "5.000000"`, excluded from catalog and search | not purchasable, SKU trimmed, stock 5, visibility `hidden` |
+| 10 | synthetic 9030 | variable with data WooCommerce accepts and we reject: sale = regular, two rows with the same values, a private row, a row using a value the product no longer offers | 2 rows kept (private one disabled), 3 warnings |
+
+Outcome: **the model in §3.1 to §3.8 holds; no schema change.** Every shape fits one base row plus variation rows, and no WooCommerce field needed a column we do not have. The spike changed one piece of code and several migration rules:
+
+- **Two global attributes can share a label.** The store has `pa_size` and `pa_print-size`, both labelled "Size". The Attributes screen rejects a duplicate name, so `AttributeRepository::create_attribute()` and `create_value()` now take an optional slug: with a slug (the importer keeps `attribute_name`) the name check is skipped and WordPress keeps the two terms apart by slug. Shoppers keep seeing "Size" on both products.
+- **Value slugs cannot always be preserved.** All values live in one `fxc_attribute` taxonomy, so the same slug under two attributes (`large` in Size and in another attribute) is made unique by WordPress with a suffix. Combinations use term ids, so nothing breaks; only filter URLs differ. Doc 05 §5.1 now says "preserved when free".
+- **"Manage stock at parent level" is not stored.** A variation's `_manage_stock` is `no` and `get_manage_stock()` returns `'parent'` only because the parent's is `yes`. Rule: variation unmanaged and parent managed → `stock_from_base = 1`.
+- **Sale end date is inclusive in WooCommerce** (`_sale_price_dates_to` is 23:59:59 of the last day), ours is exclusive (§3.3), so the importer adds one second. Start dates map as they are. Both are UTC timestamps.
+- **WooCommerce accepts a sale price equal to or above the regular price, or a sale without a regular price.** We reject both on save. The importer drops the sale and warns.
+- **A variation using a value its parent no longer offers** is kept by WooCommerce and shown as unavailable. An explicit combination with an unoffered value fails our save, so the importer skips the row and warns (new conflict row in doc 05 §6).
+- **Exact duplicate combinations** cannot be stored at all (`UNIQUE (product_id, combination_hash)`, and a hash suffix would break the canonical hash in §3.2). Doc 05 §6 said "imported disabled with a hash suffix"; it now says skipped with a warning that names the source id, SKU and stock, so the merchant can fix it by hand.
+- **Ties in `menu_order`** (WooCommerce sorts by `menu_order`, then id) are common; the importer writes the resulting position as an explicit `menu_order`.
+- **Stock strings** can be `"5.000000"`; whole values import as integers, a real fraction rejects the product (same rule as order quantities in doc 05 §6).
+- Weight and dimension conversion for kg/g and cm/mm/m is a decimal point shift. lb, oz, in and yd need real string arithmetic with rounding to 3 decimals; that stays in the phase 6 adapter (doc 05 §5.2).
+
+Not covered by the spike (no real data to test against): attachments and gallery ids (same site, ids kept), tax classes, product types other than simple and variable (skipped and reported per doc 05 §7), and plugin meta in the `_fxc_import` bucket.
 
 ## 4. Tables
 

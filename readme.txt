@@ -57,5 +57,10 @@ Run `wp flexacommerce doctor`. It prints the same checks as the Status screen an
 
 == Changelog ==
 
+= Unreleased =
+* Products: simple and variable products with global and custom attributes, variation generation and bulk editing, prices with sale schedules, stock (per variation or shared with the product), weight and dimensions.
+* New Attributes screen for store-wide attributes and their values.
+* Product duplicate action.
+
 = 0.1.0 =
 * First development release: database schema, Status and Settings screens, plugin log, roles and capabilities, WP-CLI tools.

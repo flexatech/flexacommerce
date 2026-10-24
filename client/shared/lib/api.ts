@@ -2,6 +2,8 @@ import type { FlexaCommerceGlobal } from "@/shared/types/global";
 
 type Json = Record<string, unknown> | unknown[] | string | number | boolean | null;
 
+type ErrorBody = { code?: unknown; message?: unknown; data?: unknown };
+
 type Query = Record<string, string | number | undefined>;
 
 export class ApiError extends Error {
@@ -9,6 +11,8 @@ export class ApiError extends Error {
         message: string,
         public readonly status: number,
         public readonly code?: string,
+        /** Extra `data` of a WP_Error, e.g. `field` or `product_id`. */
+        public readonly data: Record<string, unknown> = {},
     ) {
         super(message);
         this.name = "ApiError";
@@ -53,14 +57,15 @@ async function request<T>(
         return undefined as T;
     }
 
-    const data = (await response.json().catch(() => null)) as { code?: unknown; message?: unknown } | T | null;
+    const data = (await response.json().catch(() => null)) as ErrorBody | T | null;
 
     if (!response.ok) {
-        const error = data !== null && typeof data === "object" ? (data as { code?: unknown; message?: unknown }) : {};
+        const error = data !== null && typeof data === "object" ? (data as ErrorBody) : {};
         throw new ApiError(
             typeof error.message === "string" ? error.message : response.statusText,
             response.status,
             typeof error.code === "string" ? error.code : undefined,
+            error.data !== null && typeof error.data === "object" ? (error.data as Record<string, unknown>) : {},
         );
     }
 

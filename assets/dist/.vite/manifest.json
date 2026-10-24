@@ -1,11 +1,30 @@
 {
+  "_label-DUwlbNvD.js": {
+    "file": "assets/label-DUwlbNvD.js",
+    "name": "label"
+  },
   "admin/main.tsx": {
-    "file": "assets/admin-DK7xYyO5.js",
+    "file": "assets/admin-DabcBVYV.js",
     "name": "admin",
     "src": "admin/main.tsx",
     "isEntry": true,
+    "imports": [
+      "_label-DUwlbNvD.js"
+    ],
     "css": [
-      "assets/admin-B9txoaxn.css"
+      "assets/admin-DrqMeAsm.css"
+    ]
+  },
+  "admin/product-editor.tsx": {
+    "file": "assets/product-editor-DsZcrXUn.js",
+    "name": "product-editor",
+    "src": "admin/product-editor.tsx",
+    "isEntry": true,
+    "imports": [
+      "_label-DUwlbNvD.js"
+    ],
+    "css": [
+      "assets/product-editor-UCIWJPMY.css"
     ]
   }
 }

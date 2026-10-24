@@ -1,0 +1,95 @@
+/*
+ * Styles for the product data metabox inside the post editor. Unlike the
+ * admin app this file has no global preflight: everything is scoped under
+ * .flexacommerce-product-ui so the block editor around it keeps its own look.
+ */
+@layer theme, base, components, utilities;
+
+@custom-variant dark (&:is(.dark *));
+
+@import 'tailwindcss/theme.css' layer(theme) prefix(fxc);
+@import './theme.css';
+
+@layer base {
+    /* The parts of Tailwind's preflight that the utilities rely on, kept inside the metabox. */
+    .flexacommerce-product-ui,
+    .flexacommerce-product-ui *,
+    .flexacommerce-product-ui ::before,
+    .flexacommerce-product-ui ::after {
+        box-sizing: border-box;
+        border: 0 solid var(--border);
+    }
+
+    .flexacommerce-product-ui {
+        color: var(--foreground);
+        font-size: 0.875rem;
+        line-height: 1.25rem;
+    }
+
+    .flexacommerce-product-ui button {
+        font: inherit;
+        color: inherit;
+        padding: 0;
+    }
+
+    .flexacommerce-product-ui ul {
+        list-style: none;
+    }
+
+    .flexacommerce-product-ui img {
+        display: block;
+        max-width: 100%;
+    }
+}
+
+.flexacommerce-product-ui {
+    @import 'tailwindcss/utilities.css';
+
+    :where(button, h2, h3, input, ul, ol, li, p, textarea, select) {
+        margin: 0;
+    }
+
+    input::-webkit-outer-spin-button,
+    input::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+}
+
+/* Form chrome from forms.css (gray border, 3px radius, blue focus ring). */
+.flexacommerce-product-ui .flexacommerce-control {
+    border: 1px solid var(--input-accent) !important;
+    border-radius: calc(var(--radius) - 2px) !important;
+    background-color: var(--background) !important;
+    color: var(--foreground) !important;
+    box-shadow: var(--shadow-sm) !important;
+    min-height: 0 !important;
+    line-height: 1.25rem !important;
+    padding-inline: 0.75rem !important;
+}
+
+.flexacommerce-product-ui select.flexacommerce-control {
+    padding-right: 2rem !important;
+}
+
+.flexacommerce-product-ui .flexacommerce-control:focus,
+.flexacommerce-product-ui .flexacommerce-control:focus-visible {
+    outline: none !important;
+    box-shadow: none !important;
+    border-color: var(--brand-600) !important;
+}
+
+.flexacommerce-product-ui .flexacommerce-control[aria-invalid='true'] {
+    border-color: var(--destructive) !important;
+}
+
+.flexacommerce-product-ui .flexacommerce-check:focus,
+.flexacommerce-product-ui .flexacommerce-check:focus-visible {
+    outline: none;
+    box-shadow: none;
+}
+
+/* The block editor styles buttons inside metaboxes; let the utilities decide. */
+.flexacommerce-product-ui .fxc\:text-primary-foreground {
+    color: #fff !important;
+}

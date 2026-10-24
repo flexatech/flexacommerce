@@ -43,6 +43,40 @@ final class RoutesHavePermissionsTest extends \WP_UnitTestCase {
 		}
 	}
 
+	public function test_catalog_routes_reject_anonymous_and_subscribers(): void {
+		$product = self::factory()->post->create( [ 'post_type' => 'fxc_product' ] );
+		foreach ( [ '/admin/products/' . $product, '/admin/products/' . $product . '/variants', '/admin/attributes' ] as $path ) {
+			wp_set_current_user( 0 );
+			$response = $this->server->dispatch( new \WP_REST_Request( 'GET', '/flexacommerce/v1' . $path ) );
+			self::assertSame( 401, $response->get_status(), $path );
+
+			wp_set_current_user( self::factory()->user->create( [ 'role' => 'subscriber' ] ) );
+			$response = $this->server->dispatch( new \WP_REST_Request( 'GET', '/flexacommerce/v1' . $path ) );
+			self::assertSame( 403, $response->get_status(), $path );
+		}
+		wp_delete_post( $product, true );
+	}
+
+	public function test_product_route_hides_other_post_types(): void {
+		wp_set_current_user( self::factory()->user->create( [ 'role' => 'administrator' ] ) );
+		$page     = self::factory()->post->create( [ 'post_type' => 'page' ] );
+		$response = $this->server->dispatch( new \WP_REST_Request( 'GET', '/flexacommerce/v1/admin/products/' . $page ) );
+		self::assertSame( 404, $response->get_status() );
+	}
+
+	public function test_store_manager_can_edit_products_but_not_settings(): void {
+		wp_set_current_user( self::factory()->user->create( [ 'role' => 'fxc_store_manager' ] ) );
+		$product = self::factory()->post->create( [ 'post_type' => 'fxc_product' ] );
+
+		$response = $this->server->dispatch( new \WP_REST_Request( 'GET', '/flexacommerce/v1/admin/products/' . $product ) );
+		self::assertSame( 200, $response->get_status() );
+		self::assertSame( 'simple', $response->get_data()['type'] );
+
+		$response = $this->server->dispatch( new \WP_REST_Request( 'GET', '/flexacommerce/v1/admin/settings' ) );
+		self::assertSame( 403, $response->get_status() );
+		wp_delete_post( $product, true );
+	}
+
 	public function test_admin_can_read_status_and_settings(): void {
 		wp_set_current_user( self::factory()->user->create( [ 'role' => 'administrator' ] ) );
 
