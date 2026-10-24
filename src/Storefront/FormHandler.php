@@ -56,7 +56,7 @@ final class FormHandler {
 		try {
 			if ( $operation === 'add' ) {
 				$attributes = [];
-				$raw        = isset( $_POST['attributes'] ) && is_array( $_POST['attributes'] ) ? wp_unslash( $_POST['attributes'] ) : [];
+				$raw        = isset( $_POST['attributes'] ) && is_array( $_POST['attributes'] ) ? wp_unslash( $_POST['attributes'] ) : []; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- each key and value is sanitized in the loop below.
 				foreach ( $raw as $key => $value ) {
 					if ( is_scalar( $value ) ) {
 						$attributes[ sanitize_text_field( (string) $key ) ] = sanitize_text_field( (string) $value );
@@ -77,7 +77,7 @@ final class FormHandler {
 					$service->remove( $user, $remove );
 					self::redirect( $back, 'removed' );
 				}
-				$quantities = isset( $_POST['quantities'] ) && is_array( $_POST['quantities'] ) ? wp_unslash( $_POST['quantities'] ) : [];
+				$quantities = isset( $_POST['quantities'] ) && is_array( $_POST['quantities'] ) ? wp_unslash( $_POST['quantities'] ) : []; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- each key and value is sanitized in the loop below.
 				$current    = $service->state( $user )->cart;
 				foreach ( $quantities as $key => $quantity ) {
 					$key  = sanitize_key( (string) $key );

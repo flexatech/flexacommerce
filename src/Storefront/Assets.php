@@ -56,21 +56,21 @@ final class Assets {
 	public static function config(): array {
 		$cart = Plugin::instance()->cart();
 		return [
-			'api'        => esc_url_raw( rest_url( FLEXACOMMERCE_REST_NAMESPACE . '/store/' ) ),
-			'nonce'      => $cart->nonce()->create( get_current_user_id(), wp_get_session_token(), $cart->sessions()->token() ),
-			'loggedIn'   => is_user_logged_in(),
-			'cartUrl'    => self::cart_url(),
-			'countName'  => CookieTokenStore::COUNT_COOKIE,
-			'i18n'       => [
-				'added'        => __( 'Added to your cart.', 'flexacommerce' ),
-				'failed'       => __( 'Could not update the cart. Please try again.', 'flexacommerce' ),
-				'choose'       => __( 'Choose product options before adding to the cart.', 'flexacommerce' ),
-				'unavailable'  => __( 'This combination is not available.', 'flexacommerce' ),
-				'inStock'      => __( 'In stock', 'flexacommerce' ),
-				'outOfStock'   => __( 'Out of stock', 'flexacommerce' ),
+			'api'       => esc_url_raw( rest_url( FLEXACOMMERCE_REST_NAMESPACE . '/store/' ) ),
+			'nonce'     => $cart->nonce()->create( get_current_user_id(), wp_get_session_token(), $cart->sessions()->token() ),
+			'loggedIn'  => is_user_logged_in(),
+			'cartUrl'   => self::cart_url(),
+			'countName' => CookieTokenStore::COUNT_COOKIE,
+			'i18n'      => [
+				'added'       => __( 'Added to your cart.', 'flexacommerce' ),
+				'failed'      => __( 'Could not update the cart. Please try again.', 'flexacommerce' ),
+				'choose'      => __( 'Choose product options before adding to the cart.', 'flexacommerce' ),
+				'unavailable' => __( 'This combination is not available.', 'flexacommerce' ),
+				'inStock'     => __( 'In stock', 'flexacommerce' ),
+				'outOfStock'  => __( 'Out of stock', 'flexacommerce' ),
 				/* translators: %d: quantity in stock */
-				'left'         => __( '%d in stock', 'flexacommerce' ),
-				'updated'      => __( 'Cart updated.', 'flexacommerce' ),
+				'left'        => __( '%d in stock', 'flexacommerce' ),
+				'updated'     => __( 'Cart updated.', 'flexacommerce' ),
 			],
 		];
 	}

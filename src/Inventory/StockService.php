@@ -106,7 +106,7 @@ final class StockService {
 			if ( ! $owner->manage_stock || $owner->id <= 0 ) {
 				continue;
 			}
-			$wanted[ $owner->id ] ??= [
+			$wanted[ $owner->id ]            ??= [
 				'product_id' => $line->product->id,
 				'quantity'   => 0,
 				'variant_id' => $line->variant->id,
@@ -217,14 +217,14 @@ final class StockService {
 			? sprintf( __( 'Out of stock: %s', 'flexacommerce' ), $title )
 			/* translators: %s: product name. */
 			: sprintf( __( 'Low stock: %s', 'flexacommerce' ), $title );
-		$body    = sprintf(
+		$body = sprintf(
 			/* translators: 1: product name, 2: variant id, 3: quantity left. */
 			__( '%1$s (variant #%2$d) has %3$d left in stock.', 'flexacommerce' ),
 			$title,
 			$change->variant_id,
 			max( 0, $change->new_quantity )
 		);
-		$edit    = get_edit_post_link( $change->product_id, 'raw' );
+		$edit = get_edit_post_link( $change->product_id, 'raw' );
 		if ( is_string( $edit ) && $edit !== '' ) {
 			$body .= "\n\n" . $edit;
 		}

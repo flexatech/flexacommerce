@@ -155,7 +155,7 @@ final class ProductsEndpoint extends Endpoint {
 			'order'          => strtoupper( (string) $request->get_param( 'order' ) ),
 			'no_found_rows'  => false,
 		];
-		$search = (string) $request->get_param( 'search' );
+		$search   = (string) $request->get_param( 'search' );
 		if ( $search !== '' ) {
 			$args['s'] = $search;
 		}
@@ -169,7 +169,10 @@ final class ProductsEndpoint extends Endpoint {
 			];
 		}
 		$tax = [];
-		foreach ( [ 'category' => PostTypes::CATEGORY, 'tag' => PostTypes::TAG ] as $param => $taxonomy ) {
+		foreach ( [
+			'category' => PostTypes::CATEGORY,
+			'tag'      => PostTypes::TAG,
+		] as $param => $taxonomy ) {
 			$term = (int) $request->get_param( $param );
 			if ( $term > 0 ) {
 				$tax[] = [
@@ -355,9 +358,9 @@ final class ProductsEndpoint extends Endpoint {
 	/** @return array<string,mixed> */
 	private function product_data( Product $product ): array {
 		$data = [
-			'id'           => $product->id,
-			'type'         => $product->type,
-			'status'       => $product->status,
+			'id'     => $product->id,
+			'type'   => $product->type,
+			'status' => $product->status,
 		] + self::post_data( $product->id ) + [
 			'attributes'   => array_map( [ $this, 'attribute_data' ], $product->attributes ),
 			'base'         => $this->variant_data( $product->base ),
@@ -421,9 +424,9 @@ final class ProductsEndpoint extends Endpoint {
 	 */
 	private function summary_data( Product $product ): array {
 		$data = [
-			'id'              => $product->id,
-			'type'            => $product->type,
-			'status'          => $product->status,
+			'id'     => $product->id,
+			'type'   => $product->type,
+			'status' => $product->status,
 		] + self::post_data( $product->id ) + [
 			'sku'             => $product->base->sku,
 			'variation_count' => count( $product->variations ),
@@ -480,7 +483,10 @@ final class ProductsEndpoint extends Endpoint {
 			&& ! current_user_can( $type->cap->publish_posts ) ) {
 			return self::forbidden();
 		}
-		foreach ( [ PostTypes::CATEGORY => $post->categories, PostTypes::TAG => $post->tags ] as $taxonomy => $terms ) {
+		foreach ( [
+			PostTypes::CATEGORY => $post->categories,
+			PostTypes::TAG      => $post->tags,
+		] as $taxonomy => $terms ) {
 			$object = get_taxonomy( $taxonomy );
 			if ( $terms !== null && ( ! $object instanceof \WP_Taxonomy || ! current_user_can( $object->cap->assign_terms ) ) ) {
 				return self::forbidden();
@@ -552,29 +558,62 @@ final class ProductsEndpoint extends Endpoint {
 	 * @return array<string,mixed>
 	 */
 	public function schema(): array {
-		$money = [ 'type' => [ 'integer', 'null' ], 'minimum' => 0 ];
+		$money = [
+			'type'    => [ 'integer', 'null' ],
+			'minimum' => 0,
+		];
 		$row   = [
 			'type'       => 'object',
 			'properties' => [
-				'id'                  => [ 'type' => 'integer', 'readonly' => true ],
-				'attributes'          => [ 'type' => 'object', 'description' => __( 'Attribute key => value key, or "*" for any value.', 'flexacommerce' ) ],
+				'id'                  => [
+					'type'     => 'integer',
+					'readonly' => true,
+				],
+				'attributes'          => [
+					'type'        => 'object',
+					'description' => __( 'Attribute key => value key, or "*" for any value.', 'flexacommerce' ),
+				],
 				'enabled'             => [ 'type' => 'boolean' ],
 				'menu_order'          => [ 'type' => 'integer' ],
-				'sku'                 => [ 'type' => [ 'string', 'null' ], 'maxLength' => ProductInput::MAX_SKU_LENGTH ],
+				'sku'                 => [
+					'type'      => [ 'string', 'null' ],
+					'maxLength' => ProductInput::MAX_SKU_LENGTH,
+				],
 				'regular_price'       => $money,
 				'sale_price'          => $money,
-				'sale_from'           => [ 'type' => [ 'string', 'null' ], 'description' => __( 'UTC, Y-m-d H:i:s.', 'flexacommerce' ) ],
-				'sale_to'             => [ 'type' => [ 'string', 'null' ], 'description' => __( 'UTC, Y-m-d H:i:s.', 'flexacommerce' ) ],
+				'sale_from'           => [
+					'type'        => [ 'string', 'null' ],
+					'description' => __( 'UTC, Y-m-d H:i:s.', 'flexacommerce' ),
+				],
+				'sale_to'             => [
+					'type'        => [ 'string', 'null' ],
+					'description' => __( 'UTC, Y-m-d H:i:s.', 'flexacommerce' ),
+				],
 				'manage_stock'        => [ 'type' => 'boolean' ],
 				'stock_from_base'     => [ 'type' => 'boolean' ],
 				'stock_quantity'      => [ 'type' => [ 'integer', 'null' ] ],
-				'backorders'          => [ 'type' => 'string', 'enum' => [ 'no', 'notify', 'yes' ] ],
+				'backorders'          => [
+					'type' => 'string',
+					'enum' => [ 'no', 'notify', 'yes' ],
+				],
 				'low_stock_threshold' => [ 'type' => [ 'integer', 'null' ] ],
 				'stock_status'        => [ 'type' => 'string' ],
-				'weight'              => [ 'type' => [ 'string', 'null' ], 'description' => __( 'Grams.', 'flexacommerce' ) ],
-				'length'              => [ 'type' => [ 'string', 'null' ], 'description' => __( 'Millimetres.', 'flexacommerce' ) ],
-				'width'               => [ 'type' => [ 'string', 'null' ], 'description' => __( 'Millimetres.', 'flexacommerce' ) ],
-				'height'              => [ 'type' => [ 'string', 'null' ], 'description' => __( 'Millimetres.', 'flexacommerce' ) ],
+				'weight'              => [
+					'type'        => [ 'string', 'null' ],
+					'description' => __( 'Grams.', 'flexacommerce' ),
+				],
+				'length'              => [
+					'type'        => [ 'string', 'null' ],
+					'description' => __( 'Millimetres.', 'flexacommerce' ),
+				],
+				'width'               => [
+					'type'        => [ 'string', 'null' ],
+					'description' => __( 'Millimetres.', 'flexacommerce' ),
+				],
+				'height'              => [
+					'type'        => [ 'string', 'null' ],
+					'description' => __( 'Millimetres.', 'flexacommerce' ),
+				],
 				'image_id'            => [ 'type' => [ 'integer', 'null' ] ],
 				'tax_class'           => [ 'type' => [ 'string', 'null' ] ],
 				'description'         => [ 'type' => [ 'string', 'null' ] ],
@@ -590,20 +629,45 @@ final class ProductsEndpoint extends Endpoint {
 			'title'      => 'flexacommerce-product',
 			'type'       => 'object',
 			'properties' => [
-				'id'             => [ 'type' => 'integer', 'readonly' => true ],
-				'type'           => [ 'type' => 'string', 'enum' => [ 'simple', 'variable' ] ],
-				'status'         => [ 'type' => 'string', 'enum' => ProductPostInput::STATUSES ],
+				'id'             => [
+					'type'     => 'integer',
+					'readonly' => true,
+				],
+				'type'           => [
+					'type' => 'string',
+					'enum' => [ 'simple', 'variable' ],
+				],
+				'status'         => [
+					'type' => 'string',
+					'enum' => ProductPostInput::STATUSES,
+				],
 				'title'          => [ 'type' => 'string' ],
 				'slug'           => [ 'type' => 'string' ],
-				'content'        => [ 'type' => 'string', 'description' => __( 'Raw post content (block markup).', 'flexacommerce' ) ],
+				'content'        => [
+					'type'        => 'string',
+					'description' => __( 'Raw post content (block markup).', 'flexacommerce' ),
+				],
 				'excerpt'        => [ 'type' => 'string' ],
-				'date'           => [ 'type' => 'string', 'description' => __( 'Site time, Y-m-d H:i:s.', 'flexacommerce' ) ],
-				'modified'       => [ 'type' => 'string', 'readonly' => true ],
+				'date'           => [
+					'type'        => 'string',
+					'description' => __( 'Site time, Y-m-d H:i:s.', 'flexacommerce' ),
+				],
+				'modified'       => [
+					'type'     => 'string',
+					'readonly' => true,
+				],
 				'menu_order'     => [ 'type' => 'integer' ],
 				'categories'     => $ids,
 				'tags'           => $ids,
-				'featured_image' => [ 'type' => 'integer', 'description' => __( 'Attachment ID, 0 for none.', 'flexacommerce' ) ],
-				'permalink'      => [ 'type' => 'string', 'format' => 'uri', 'readonly' => true ],
+				'featured_image' => [
+					'type'        => 'integer',
+					'description' => __( 'Attachment ID, 0 for none.', 'flexacommerce' ),
+				],
+				'permalink'      => [
+					'type'     => 'string',
+					'format'   => 'uri',
+					'readonly' => true,
+				],
 				'attributes'     => [
 					'type'  => 'array',
 					'items' => [ 'type' => 'object' ],
@@ -614,11 +678,23 @@ final class ProductsEndpoint extends Endpoint {
 					'items' => $row,
 				],
 				'gallery_ids'    => $ids,
-				'visibility'     => [ 'type' => 'string', 'enum' => Product::VISIBILITIES ],
+				'visibility'     => [
+					'type' => 'string',
+					'enum' => Product::VISIBILITIES,
+				],
 				'featured'       => [ 'type' => 'boolean' ],
-				'price_min'      => [ 'type' => [ 'integer', 'null' ], 'readonly' => true ],
-				'price_max'      => [ 'type' => [ 'integer', 'null' ], 'readonly' => true ],
-				'stock_status'   => [ 'type' => 'string', 'readonly' => true ],
+				'price_min'      => [
+					'type'     => [ 'integer', 'null' ],
+					'readonly' => true,
+				],
+				'price_max'      => [
+					'type'     => [ 'integer', 'null' ],
+					'readonly' => true,
+				],
+				'stock_status'   => [
+					'type'     => 'string',
+					'readonly' => true,
+				],
 			],
 		];
 	}

@@ -80,10 +80,11 @@ final class SessionStore {
 		if ( $session !== null ) {
 			$this->maybe_touch( $session );
 		}
-		return $this->loaded[ $user_id ] = [
+		$this->loaded[ $user_id ] = [
 			'session' => $session,
 			'guest'   => $guest,
 		];
+		return $this->loaded[ $user_id ];
 	}
 
 	/**
@@ -132,7 +133,7 @@ final class SessionStore {
 			$this->repository->set_token_hash( $session->id, $token_hash );
 		}
 		$stored = new Session( $session->id, $token_hash ?? $session->token_hash, $session->user_id, $data, $session->version + 1, $expires, $session->created_at, $now );
-		$token = $this->tokens->get();
+		$token  = $this->tokens->get();
 		if ( $token !== null && self::hash( $token ) === $stored->token_hash ) {
 			$this->tokens->set( $token, $this->clock_ts( $expires ) );
 		}
@@ -191,6 +192,6 @@ final class SessionStore {
 
 	/** 32 random bytes, base64url without padding: 43 characters. */
 	private static function new_token(): string {
-		return rtrim( strtr( base64_encode( random_bytes( 32 ) ), '+/', '-_' ), '=' );
+		return rtrim( strtr( base64_encode( random_bytes( 32 ) ), '+/', '-_' ), '=' ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- encodes a random session token.
 	}
 }

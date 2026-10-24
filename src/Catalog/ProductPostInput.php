@@ -119,10 +119,13 @@ final class ProductPostInput {
 		// wp_insert_post() unslashes its input, as the core REST controller expects.
 		$fields = wp_slash( $this->post_fields() );
 		if ( $post_id === 0 ) {
-			$result = wp_insert_post( $fields + [
-				'post_type'   => PostTypes::PRODUCT,
-				'post_status' => 'draft',
-			], true );
+			$result = wp_insert_post(
+				$fields + [
+					'post_type'   => PostTypes::PRODUCT,
+					'post_status' => 'draft',
+				],
+				true
+			);
 		} elseif ( $fields !== [] ) {
 			$result = wp_update_post( $fields + [ 'ID' => $post_id ], true );
 		} else {

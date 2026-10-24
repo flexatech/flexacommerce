@@ -17,7 +17,15 @@ final class ValidationResult {
 	public function __construct( public readonly array $errors = [] ) {}
 
 	public function with_error( string $code, string $message ): self {
-		return new self( [ ...$this->errors, [ 'code' => sanitize_key( $code ), 'message' => $message ] ] );
+		return new self(
+			[
+				...$this->errors,
+				[
+					'code'    => sanitize_key( $code ),
+					'message' => $message,
+				],
+			]
+		);
 	}
 
 	public function is_valid(): bool {

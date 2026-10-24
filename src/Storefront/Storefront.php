@@ -67,12 +67,12 @@ final class Storefront {
 			return;
 		}
 		$templates = [
-			'single-' . PostTypes::PRODUCT   => [ __( 'Single product', 'flexacommerce' ), __( 'Shows one product with its price and add-to-cart form.', 'flexacommerce' ), Templates::single() ],
-			'archive-' . PostTypes::PRODUCT  => [ __( 'Shop', 'flexacommerce' ), __( 'Lists products.', 'flexacommerce' ), Templates::archive() ],
+			'single-' . PostTypes::PRODUCT    => [ __( 'Single product', 'flexacommerce' ), __( 'Shows one product with its price and add-to-cart form.', 'flexacommerce' ), Templates::single() ],
+			'archive-' . PostTypes::PRODUCT   => [ __( 'Shop', 'flexacommerce' ), __( 'Lists products.', 'flexacommerce' ), Templates::archive() ],
 			'taxonomy-' . PostTypes::CATEGORY => [ __( 'Product category', 'flexacommerce' ), __( 'Lists the products in a category.', 'flexacommerce' ), Templates::archive() ],
-			'taxonomy-' . PostTypes::TAG     => [ __( 'Product tag', 'flexacommerce' ), __( 'Lists the products with a tag.', 'flexacommerce' ), Templates::archive() ],
+			'taxonomy-' . PostTypes::TAG      => [ __( 'Product tag', 'flexacommerce' ), __( 'Lists the products with a tag.', 'flexacommerce' ), Templates::archive() ],
 		];
-		$registry = \WP_Block_Templates_Registry::get_instance();
+		$registry  = \WP_Block_Templates_Registry::get_instance();
 		foreach ( $templates as $slug => [ $title, $description, $content ] ) {
 			$name = 'flexacommerce//' . $slug;
 			if ( $registry->is_registered( $name ) ) {
@@ -178,7 +178,7 @@ final class Storefront {
 	}
 
 	private function price(): ProductPrice {
-		$cart = Plugin::instance()->cart();
+		$cart                 = Plugin::instance()->cart();
 		return $this->price ??= new ProductPrice( $cart->pricing(), $cart->cart() );
 	}
 
@@ -187,7 +187,7 @@ final class Storefront {
 	}
 
 	private function table(): CartTable {
-		$cart = Plugin::instance()->cart();
+		$cart                 = Plugin::instance()->cart();
 		return $this->table ??= new CartTable( $cart->presenter(), $cart->cart(), $cart->pricing() );
 	}
 

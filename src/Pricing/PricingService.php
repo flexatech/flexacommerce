@@ -40,7 +40,8 @@ final class PricingService {
 			return $this->memo[ $key ];
 		}
 
-		return $this->memo[ $key ] = $this->resolve( $product, $variant, $quantity, $user_id, $at );
+		$this->memo[ $key ] = $this->resolve( $product, $variant, $quantity, $user_id, $at );
+		return $this->memo[ $key ];
 	}
 
 	public function line_total( PriceResolution $unit, int $quantity ): Money {
