@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Flexa\Commerce;
 
+use Flexa\Commerce\Cart\CartServices;
 use Flexa\Commerce\Catalog\CatalogServices;
 use Flexa\Commerce\Concerns\HasInstance;
 use Flexa\Commerce\Contracts\Exceptions\IncompatibleApi;
@@ -24,6 +25,10 @@ final class Plugin {
 
 	private ?CatalogServices $catalog = null;
 
+	private ?CartServices $cart = null;
+
+	private bool $blocks = false;
+
 	public function boot(): void {
 		if ( $this->booted ) {
 			return;
@@ -42,10 +47,24 @@ final class Plugin {
 		Api\Router::instance()->register();
 		Setup\Requirements::instance()->register();
 
+		// Storefront (doc 02 §6.3): every callback below is a cheap gate that
+		// loads the Storefront module only when the request needs it (P1).
+		add_action( 'rest_api_init', [ $this, 'on_rest_api_init' ] );
+		add_action( 'wp_logout', [ $this, 'on_logout' ] );
+		add_shortcode( 'flexacommerce_cart', [ $this, 'shortcode_cart' ] );
+		add_shortcode( 'flexacommerce_add_to_cart', [ $this, 'shortcode_add_to_cart' ] );
+
 		if ( is_admin() ) {
+			add_action( 'init', [ $this, 'register_blocks' ] );
+			add_action( 'admin_post_' . Storefront\FormHandler::ACTION, [ Storefront\FormHandler::class, 'handle' ] );
+			add_action( 'admin_post_nopriv_' . Storefront\FormHandler::ACTION, [ Storefront\FormHandler::class, 'handle' ] );
 			Admin\Menu::instance()->register();
 			Admin\Enqueue::instance()->register();
 			Admin\ProductEditor::instance()->register();
+		} else {
+			add_filter( 'pre_render_block', [ $this, 'on_pre_render_block' ], 10, 3 );
+			add_filter( 'the_posts', [ $this, 'on_the_posts' ] );
+			add_action( 'template_redirect', [ $this, 'on_template_redirect' ] );
 		}
 
 		if ( defined( 'WP_CLI' ) && constant( 'WP_CLI' ) ) {
@@ -89,6 +108,11 @@ final class Plugin {
 		return $this->catalog ??= new CatalogServices( $this->services() );
 	}
 
+	/** @internal Pricing, stock, sessions and the cart. */
+	public function cart(): CartServices {
+		return $this->cart ??= new CartServices( $this->services(), $this->catalog() );
+	}
+
 	/** Every product gets its base row as soon as the post exists (doc 03 §3). */
 	public function on_product_saved( int $post_id ): void {
 		if ( wp_is_post_revision( $post_id ) !== false || wp_is_post_autosave( $post_id ) !== false ) {
@@ -101,6 +125,102 @@ final class Plugin {
 		if ( $post->post_type === Catalog\PostTypes::PRODUCT ) {
 			$this->catalog()->product_service()->on_post_deleted( $post_id, $post );
 		}
+	}
+
+	public function register_blocks(): void {
+		if ( $this->blocks ) {
+			return;
+		}
+		$this->blocks = true;
+		remove_filter( 'pre_render_block', [ $this, 'on_pre_render_block' ] );
+		Storefront\Storefront::instance()->register_blocks();
+	}
+
+	/**
+	 * The editor needs the block types over REST (block renderer, templates).
+	 * Our own routes never render a block, and registering the editor script
+	 * builds WP_Scripts, which costs two queries on every cart request (P4q).
+	 */
+	public function on_rest_api_init(): void {
+		$route = isset( $GLOBALS['wp'] ) && $GLOBALS['wp'] instanceof \WP ? (string) ( $GLOBALS['wp']->query_vars['rest_route'] ?? '' ) : '';
+		if ( str_starts_with( $route, '/' . FLEXACOMMERCE_REST_NAMESPACE . '/' ) ) {
+			return;
+		}
+		$this->register_blocks();
+	}
+
+	/**
+	 * Registers the blocks the first time a top-level block whose tree holds
+	 * one of ours is rendered. It has to be the top-level block: core builds
+	 * an inner block, and looks up its type, before the filter runs for it.
+	 * Template parts and synced patterns render their content as top-level
+	 * blocks again, so a mini-cart in a header part is found too.
+	 *
+	 * @param array<string,mixed> $parsed
+	 */
+	public function on_pre_render_block( ?string $pre, array $parsed, ?\WP_Block $parent = null ): ?string {
+		if ( $parent === null && self::has_own_block( $parsed ) ) {
+			$this->register_blocks();
+		}
+		return $pre;
+	}
+
+	/** @param array<string,mixed> $parsed */
+	private static function has_own_block( array $parsed ): bool {
+		if ( is_string( $parsed['blockName'] ?? null ) && str_starts_with( $parsed['blockName'], 'flexacommerce/' ) ) {
+			return true;
+		}
+		foreach ( is_array( $parsed['innerBlocks'] ?? null ) ? $parsed['innerBlocks'] : [] as $inner ) {
+			if ( is_array( $inner ) && self::has_own_block( $inner ) ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Loads the variants of every product in a front-end query result with
+	 * one query (doc 02 §7.1, O5), so a product list costs no query per item.
+	 *
+	 * @param array<mixed> $posts
+	 * @return array<mixed>
+	 */
+	public function on_the_posts( array $posts ): array {
+		$ids = [];
+		foreach ( $posts as $post ) {
+			if ( $post instanceof \WP_Post && $post->post_type === Catalog\PostTypes::PRODUCT ) {
+				$ids[] = $post->ID;
+			}
+		}
+		if ( $ids !== [] ) {
+			$this->catalog()->products()->prime( $ids );
+		}
+		return $posts;
+	}
+
+	public function on_template_redirect(): void {
+		if (
+			is_singular( Catalog\PostTypes::PRODUCT )
+			|| is_post_type_archive( Catalog\PostTypes::PRODUCT )
+			|| is_tax( [ Catalog\PostTypes::CATEGORY, Catalog\PostTypes::TAG ] )
+		) {
+			Storefront\Storefront::instance()->on_template_redirect();
+		}
+	}
+
+	/** The count cookie belongs to the user's cart; a guest starts at zero. */
+	public function on_logout(): void {
+		( new Cart\CookieTokenStore() )->clear();
+	}
+
+	/** @param array<string,string>|string $atts */
+	public function shortcode_cart( array|string $atts = [] ): string {
+		return Storefront\Storefront::instance()->shortcode_cart( $atts );
+	}
+
+	/** @param array<string,string>|string $atts */
+	public function shortcode_add_to_cart( array|string $atts = [] ): string {
+		return Storefront\Storefront::instance()->shortcode_add_to_cart( $atts );
 	}
 
 	public function extensions(): Extensions {

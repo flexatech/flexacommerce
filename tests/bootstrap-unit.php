@@ -114,6 +114,22 @@ function apply_filters( string $hook, mixed $value, mixed ...$args ): mixed {
 	return $value;
 }
 
+function has_filter( string $hook ): bool {
+	return ( WP_Test_State::$filters[ $hook ] ?? [] ) !== [];
+}
+
+function wp_parse_url( string $url, int $component = -1 ): mixed {
+	return parse_url( $url, $component );
+}
+
+function home_url( string $path = '' ): string {
+	return 'https://shop.example.test' . $path;
+}
+
+function site_url( string $path = '' ): string {
+	return 'https://shop.example.test' . $path;
+}
+
 function do_action( string $hook, mixed ...$args ): void {
 	WP_Test_State::$actions[] = [ $hook, $args ];
 }

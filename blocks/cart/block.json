@@ -1,0 +1,24 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "flexacommerce/cart",
+	"version": "0.1.0",
+	"title": "Cart",
+	"category": "widgets",
+	"icon": "cart",
+	"description": "The shopper's cart with quantities and totals.",
+	"textdomain": "flexacommerce",
+	"attributes": {},
+	"supports": {
+		"html": false,
+		"multiple": false,
+		"align": [
+			"wide",
+			"full"
+		],
+		"interactivity": true
+	},
+	"editorScript": "flexacommerce-blocks-editor",
+	"style": "flexacommerce-storefront",
+	"render": "file:./render.php"
+}

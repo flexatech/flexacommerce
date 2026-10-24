@@ -11,7 +11,8 @@ use Flexa\Commerce\Support\Settings;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * WP-Cron jobs: the daily log purge and the hourly sale schedule refresh.
+ * WP-Cron jobs: the daily log and session purges and the hourly sale
+ * schedule refresh.
  * Pending-order expiry joins in phase 4.
  */
 final class Cron {
@@ -51,8 +52,9 @@ final class Cron {
 		$services = Plugin::instance()->services();
 		$cutoff   = $services->clock()->db_ago( Settings::int( 'log_retention_days' ) * DAY_IN_SECONDS );
 		$deleted  = $services->log_repository()->purge_older_than( $cutoff );
+		$sessions = Plugin::instance()->cart()->sessions()->purge_expired();
 
-		do_action( 'flexacommerce.cron.daily_done', $deleted );
+		do_action( 'flexacommerce.cron.daily_done', $deleted, $sessions );
 	}
 
 	/** Sale prices that started or ended since the last run (doc 03 §3.3). */

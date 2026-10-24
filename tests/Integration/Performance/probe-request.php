@@ -3,24 +3,30 @@
  * One front-end request in a fresh PHP process (doc 10 §5.2). Run by
  * Probe::run(), never directly by PHPUnit.
  *
- *   php probe-request.php <uri> <on|off> <result-file>
+ *   php probe-request.php <uri> <on|off> <result-file> [<options-json>]
  *
  * Loads WordPress from the test-suite config, with FlexaCommerce loaded as
  * the bootstrap does (or not at all), no other plugin, and writes the
  * counters as JSON to <result-file> at shutdown.
+ *
+ * Options: `method`, `body` (raw request body), `headers` (name => value),
+ * `cookies`, `per_page` (posts_per_page), and `bare_types`: in "off" mode,
+ * register a plain public `fxc_product` post type, so a catalog URL is
+ * compared with a core archive or single post of the same posts.
  */
 
 declare(strict_types=1);
 
 // phpcs:disable -- test tooling, runs outside WordPress until wp-settings.php.
 
-[ , $fxc_uri, $fxc_mode, $fxc_out ] = $argv + [ '', '/', 'off', '' ];
+[ , $fxc_uri, $fxc_mode, $fxc_out, $fxc_json ] = $argv + [ '', '/', 'off', '', '{}' ];
+$fxc_options = (array) json_decode( $fxc_json, true );
 
 $_SERVER['REQUEST_URI']     = $fxc_uri;
 $_SERVER['HTTP_HOST']       = 'example.org';
 $_SERVER['SERVER_NAME']     = 'example.org';
 $_SERVER['SERVER_PORT']     = '80';
-$_SERVER['REQUEST_METHOD']  = 'GET';
+$_SERVER['REQUEST_METHOD']  = (string) ( $fxc_options['method'] ?? 'GET' );
 $_SERVER['SCRIPT_NAME']     = '/index.php';
 $_SERVER['PHP_SELF']        = '/index.php';
 $_SERVER['REMOTE_ADDR']     = '127.0.0.1';
@@ -28,6 +34,16 @@ $_SERVER['HTTP_USER_AGENT'] = 'flexacommerce-probe';
 $_GET                       = [];
 parse_str( (string) parse_url( $fxc_uri, PHP_URL_QUERY ), $_GET );
 $_REQUEST = $_GET;
+$_COOKIE  = (array) ( $fxc_options['cookies'] ?? [] );
+foreach ( (array) ( $fxc_options['headers'] ?? [] ) as $fxc_name => $fxc_value ) {
+	$fxc_key             = strtoupper( str_replace( '-', '_', (string) $fxc_name ) );
+	$fxc_key             = in_array( $fxc_key, [ 'CONTENT_TYPE', 'CONTENT_LENGTH' ], true ) ? $fxc_key : 'HTTP_' . $fxc_key;
+	$_SERVER[ $fxc_key ] = (string) $fxc_value;
+}
+if ( isset( $fxc_options['body'] ) ) {
+	// WP_REST_Server::get_raw_data() reads this before php://input, which is empty in the CLI.
+	$GLOBALS['HTTP_RAW_POST_DATA'] = (string) $fxc_options['body'];
+}
 
 define( 'WP_USE_THEMES', true );
 define( 'SAVEQUERIES', true );
@@ -59,6 +75,27 @@ if ( $fxc_themes !== [] ) {
 	$fxc_add( 'pre_option_template', static fn (): string => $fxc_theme );
 	$fxc_add( 'pre_option_stylesheet', static fn (): string => $fxc_theme );
 }
+if ( isset( $fxc_options['per_page'] ) ) {
+	$fxc_per_page = (int) $fxc_options['per_page'];
+	$fxc_add( 'pre_option_posts_per_page', static fn (): int => $fxc_per_page );
+}
+// Catalog pages set no cookie and no no-cache header (P11). The CLI keeps
+// no response headers, so record what goes through WordPress instead.
+$fxc_nocache = false;
+$fxc_headers = [];
+$fxc_add( 'nocache_headers', static function ( $headers ) use ( &$fxc_nocache ) {
+	$fxc_nocache = true;
+	return $headers;
+} );
+$fxc_add( 'wp_headers', static function ( $headers ) use ( &$fxc_headers ) {
+	$fxc_headers = (array) $headers;
+	return $headers;
+}, PHP_INT_MAX );
+if ( $fxc_mode === 'off' && ! empty( $fxc_options['bare_types'] ) ) {
+	$fxc_add( 'init', static function (): void {
+		register_post_type( 'fxc_product', [ 'public' => true, 'has_archive' => true, 'rewrite' => false, 'query_var' => 'fxc_product' ] );
+	} );
+}
 if ( $fxc_mode === 'on' ) {
 	$fxc_add( 'muplugins_loaded', static function () use ( $fxc_plugin ): void {
 		require $fxc_plugin;
@@ -66,7 +103,7 @@ if ( $fxc_mode === 'on' ) {
 }
 
 register_shutdown_function(
-	static function () use ( $fxc_start, $fxc_out, $fxc_classes ): void {
+	static function () use ( $fxc_start, $fxc_out, $fxc_classes, &$fxc_nocache, &$fxc_headers ): void {
 		$html = '';
 		while ( ob_get_level() > 0 ) {
 			$html .= (string) ob_get_clean();
@@ -118,6 +155,15 @@ register_shutdown_function(
 			}
 		}
 
+		// Inlined variant state of the add-to-cart forms (P3b).
+		$state = function_exists( 'wp_interactivity_state' ) ? wp_interactivity_state( 'flexacommerce/cart' ) : [];
+
+		// The REST response, for routes that answer one.
+		$rest = null;
+		if ( str_contains( $html, '"' ) && ( $html[0] ?? '' ) === '{' ) {
+			$rest = json_decode( $html, true );
+		}
+
 		file_put_contents(
 			$fxc_out,
 			(string) json_encode(
@@ -132,6 +178,10 @@ register_shutdown_function(
 					'autoload'  => $autoload,
 					'html'      => strlen( $html ),
 					'status'    => http_response_code(),
+					'state'     => $state === [] ? 0 : strlen( (string) wp_json_encode( $state ) ),
+					'nocache'   => $fxc_nocache,
+					'headers'   => $fxc_headers,
+					'rest'      => $rest,
 				]
 			)
 		);

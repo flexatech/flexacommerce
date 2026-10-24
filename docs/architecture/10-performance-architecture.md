@@ -1,6 +1,6 @@
 # 10. Performance Architecture
 
-Status: **Approved 2026-10-24.** Phase 2.5 (§8) is implemented: O1, O2, O3, O4 and O6 are done, the T1 harness is part of the CI integration job (first remote run pending until the next push), and the first T3 baseline is in `docs/benchmarks/2026-10-24.md` (§7.1). §1 keeps the audit as it was measured before those changes. It refines doc 06 §3 (targets) and §4 (benchmark protocol); where the two differ, this document wins and doc 06 points here.
+Status: **Approved 2026-10-24.** Phase 2.5 (§8) is implemented: O1, O2, O3, O4 and O6 are done, the T1 harness is part of the CI integration job, and the first T3 baseline is in `docs/benchmarks/2026-10-24.md` (§7.1). Phase 3 (2026-10-25): O5 and O8 done, T1 budgets P2, P3, P4q, P5q and P11 binding, first commerce T3 run in `docs/benchmarks/2026-10-25.md` (§7.2). §1 keeps the audit as it was measured before those changes. It refines doc 06 §3 (targets) and §4 (benchmark protocol); where the two differ, this document wins and doc 06 points here.
 
 Rule for every number below: it is either **measured** (with the command, environment and date that produced it) or a **budget** (a limit a named test enforces). A budget that no test enforces yet is marked *provisional*, and it becomes binding when its first measurement is recorded. No performance claim reaches the readme or marketing unless a published benchmark report backs it (doc 01 §2).
 
@@ -155,7 +155,7 @@ The rule is "never slower without a persistent cache, faster with one": caching 
 - Catalog pages never read or create a session (doc 02 §7.3.1). Assertion: with no `fxc_session` cookie, the session table is not queried and no `Set-Cookie` header is sent (P11, T1).
 - With a cookie: one primary-key read of the session row by hashed token per request that needs the cart.
 - Cart read: session row + one prime of products + one prime of variants. Constant in the number of lines.
-- Mini-cart count: doc 02 fetches it via REST so catalog pages stay cacheable. That costs one extra HTTP request on each page view for visitors with a cart. Alternative to evaluate in phase 3: a non-sensitive count cookie written with the session cookie and read by the block script, which removes the request but can be stale across tabs. Decide by measurement (Q19), not by preference.
+- Mini-cart count: doc 02 fetched it via REST so catalog pages stay cacheable. That costs one extra HTTP request on each page view for visitors with a cart. Phase 3 uses the alternative instead (Q19): a non-sensitive `fxc_cart_count` cookie, written with the session cookie and read by the block script. The server markup is the same for every visitor, so catalog pages stay cacheable and add no request. The script asks `store/cart` only for a logged-in shopper whose browser has no count yet (a cart merged at login). A count can be stale across tabs until the next cart action; the cart page and every cart response correct it.
 - Checkout: queries = fixed part + 1 conditional stock `UPDATE` per line; emails after commit; optional deferral (doc 02 §6.6).
 
 ### 3.8 Assets
@@ -179,25 +179,25 @@ Columns: **Budget** is the limit. **Tier** says which test enforces it (§5.1). 
 | Id | Scenario | Metric | Budget | Tier | Now |
 |---|---|---|---|---|---|
 | P1 | Blog post, no FlexaCommerce content | extra queries | 0 | T1 | +0 (was +1, F1, fixed by O1) |
-| P1 | | extra peak memory | ≤ 256 KB | T1 | +82 KB on PHP 8.2, +111 to 135 KB on 8.5 (CLI, macOS); +63 KB under PHP-FPM 8.2 (T3) |
+| P1 | | extra peak memory | ≤ 256 KB | T1 | +70 KB on PHP 8.5 with a warm OPcache file cache (CLI, macOS, phase 3; §5.2); +63 KB under PHP-FPM 8.2 (T3) |
 | P1 | | FlexaCommerce classes loaded | allowlist only (≤ 10 after O2) | T1 | 9 (8 classes, 1 trait; was 13) |
 | P1 | | callbacks added | ≤ 30 | T1 | +24 |
 | P1 | | FlexaCommerce asset bytes | 0 | T1 | 0 |
 | P1t | | added server time, p50 at 1 VU | ≤ 2 ms | T3 | not resolved yet: run p50s moved up to 9 ms on the first T3 run (§7.1) |
 | P1h | Home page with a product collection (12 products) | extra queries | ≤ 3, same for 12 and 48 products | T1 | n/a |
-| P2 | Archive, 12 and 48 products per page | extra queries vs core archive of 12/48 posts | ≤ 2, identical for both sizes | T1 | n/a |
-| P2 | | extra peak memory | ≤ 1.5 MB *provisional* | T1 | n/a |
-| P3a | Simple product | extra queries vs core single post | ≤ 3 | T1 | n/a |
-| P3b | Variable product, 6 and 250 variants | extra queries | ≤ 3, identical for both | T1 | n/a |
-| P3b | | inlined variant state | ≤ 60 KB HTML at 250 variants *provisional* | T1 | n/a |
-| P3 | Simple and variable product | extra peak memory | ≤ 1.5 MB *provisional* | T1 | n/a |
-| P4q | `GET store/cart`, 1 and 10 lines | queries | ≤ 4, identical for both | T1 | n/a |
-| P5q | `POST store/cart/items` | queries | ≤ 8 *provisional* | T1 | n/a |
+| P2 | Archive, 12 and 48 products per page | extra queries vs core archive of 12/48 posts | ≤ 2, identical for both sizes | T1 | 2 at 12 and 48 (1 own: the variant prime) |
+| P2 | | extra peak memory | ≤ 1,411,292 B (measured 1,282,992 B at 48 per page + 10 %) | T1 | 1,154,768 B at 12, 1,282,992 B at 48 (macOS, PHP 8.5) |
+| P3a | Simple product | extra queries vs core single post | ≤ 3 | T1 | −2 against core's post template; 1 own query (variant prime) |
+| P3b | Variable product, 6 and 250 variants | extra queries | ≤ 3, identical for both | T1 | −2 at 6 and 250; 1 own query |
+| P3b | | inlined variant state | ≤ 40,933 B at 250 variants (measured 37,211 B + 10 %) | T1 | 794 B at 6, 37,211 B at 250 |
+| P3 | Simple and variable product | extra peak memory | ≤ 1,153,733 B (measured 1,048,848 B at 250 variants + 10 %) | T1 | 215,136 B simple; 234,648 B at 6 variants, 1,048,848 B at 250 (macOS, PHP 8.5) |
+| P4q | `GET store/cart`, 1 and 10 lines | queries | ≤ 4, identical for both | T1 | 4 at 1 and 10 lines |
+| P5q | `POST store/cart/items` | queries | ≤ 7 (measured 6 + 10 %, rounded up) | T1 | 6 |
 | P6q | Checkout (COD), 1 and 10 lines | queries | fixed part ≤ 30 *provisional*, plus exactly 1 per line | T1 | n/a |
 | P6m | Checkout | extra peak memory | ≤ 3 MB *provisional* | T1 | n/a |
 | R-REST | REST request for another plugin's route | FlexaCommerce endpoint objects built | 0 | T1 | 0 (was 5, F6, fixed by O6) |
 | P10 | Any request | autoloaded options owned | 1, ≤ 10 KB | T1 | 1, 575 B (plus `flexacommerce_rewrite_guard`, which exists only while another plugin claims the shop URL, §3.4) |
-| P11 | Catalog pages | `Set-Cookie` or `no-cache` from FlexaCommerce | none | T1 | holds (no cart yet) |
+| P11 | Catalog pages | `Set-Cookie` or `no-cache` from FlexaCommerce | none | T1 | holds on archive, simple and variable product: no sessions query, no `nocache_headers`, no `Set-Cookie` in `wp_headers` (§5.2) |
 | P8 | Product page | JS / CSS gzip | ≤ 15 KB / ≤ 10 KB | T1 (build) | n/a |
 | P9 | Migration batch | peak memory | < 128 MB | T2 | n/a |
 
@@ -240,6 +240,9 @@ Catalog latency is budgeted relative to core on the same machine, because the ab
 - On failure the test prints the extra queries with their callers and the unexpected classes, so the cause shows up directly in the CI log. This was checked by putting a `get_option()` back into `maybe_flush()`: the test failed with the SQL and the caller chain.
 - Memory counters use `memory_get_peak_usage()` (not `true`), which is stable to about ±1 % between runs of the same code; budgets leave a 5 % band for PHP patch versions. The memory assertion is skipped when the CLI has no OPcache, because without it compiled code counts toward peak memory. The harness skips on multisite; the single-site run covers the boot path.
 - The plugin never loads `vendor/autoload.php` (F8), so a dev checkout measures the same as the release zip.
+- **OPcache file cache (phase 3).** Each probe is a new process, so without a file cache every file was compiled again and the compiler's memory counted as request memory: adding any one line to `Plugin.php` moved P1 by the same 13.5 KB. The probe now runs with `opcache.file_cache` in the temp directory, and the warm-up run fills it, as a warm OPcache would be in production. P1 dropped from about 138 KB to 66 to 72 KB on PHP 8.5 (macOS) and `baseline.json` was recorded again for `Darwin-8.5`. The other keys were recorded before this change and are looser than the current measurement; record them again with `FXC_PERF_RECORD=1` on each platform.
+- **Headers in the CLI.** PHP's CLI keeps no sent headers (`headers_list()` is empty), so P11 checks the causes instead: no query on the sessions table, `nocache_headers` not called, no `no-` in the final `Cache-Control`, and no `Set-Cookie` in the `wp_headers` filter result. T3 and the browser pass check the real headers.
+- **Storefront fixtures** (`StorefrontBudgetTest`): 48 simple products, a simple product with managed stock, variable products with 6 and 250 variants, and guest carts with 1 and 10 lines. Query budgets compare plugin on against off, and also count the plugin's own queries, because the theme's template for a bare post type runs more queries than the product template (P3a and P3b read −2).
 
 ### 5.3 T3 load tests
 
@@ -299,7 +302,7 @@ Per scenario and configuration: p50/p95/p99 server time, throughput, error rate,
 
 ## 7. Optimization priorities
 
-Ordered by evidence and cost. Status as of 2026-10-24: O1, O2, O3, O4 and O6 done in phase 2.5; the rest are open.
+Ordered by evidence and cost. Status as of 2026-10-25: O1, O2, O3, O4 and O6 done in phase 2.5, O5 and O8 in phase 3; the rest are open.
 
 | # | Item | Evidence | Expected effect (verified by) |
 |---|---|---|---|
@@ -307,10 +310,10 @@ Ordered by evidence and cost. Status as of 2026-10-24: O1, O2, O3, O4 and O6 don
 | O2 | Build the extension facade only when `flexacommerce.loaded` has listeners | F2 | 3 fewer classes on non-commerce requests (T1 allowlist) |
 | O3 | Replace the in-process P1 test with the fresh-process T1 harness, and record baselines | F3 | Boot costs become visible in CI |
 | O4 | Dataset seeder (S/M) and WooCommerce loader with parity check | F7 | T3 can run |
-| O5 | Batch loaders and prime calls designed into the phase 3 renderers from the start | doc 02 §7.1 | P2/P3 query counts flat at N and 4N (T1) |
+| O5 | Batch loaders and prime calls designed into the phase 3 renderers from the start | doc 02 §7.1 | P2/P3 query counts flat at N and 4N (T1). Done in phase 3: one variant prime per page at 12 and 48 products, 6 and 250 variants |
 | O6 | Build REST endpoint objects only for our namespace or the route index | F6 | R-REST 5 → 0 (T1) |
 | O7 | Gateway and shipping descriptors with lazy classes | §3.2 | Gateway classes absent from catalog requests (T1 allowlist) |
-| O8 | Mini-cart count: REST call or count cookie | §3.7 | Decided by T3 numbers (Q19) |
+| O8 | Mini-cart count: REST call or count cookie | §3.7 | Decided by T3 numbers (Q19). Done in phase 3: count cookie `fxc_cart_count`, because the REST read costs about 14 queries and 10 ms of server time per page view (§7.2) |
 | O9 | Static classmap for the release build instead of path-computing autoload | files and autoload calls per request | Measured with T2 before adopting; dropped if the gain is under 1 % of request time |
 
 ### 7.1 Phase 2.5 results (2026-10-24)
@@ -319,19 +322,34 @@ Ordered by evidence and cost. Status as of 2026-10-24: O1, O2, O3, O4 and O6 don
 |---|---|---|
 | O1 | P1 extra queries 1 → 0. Rewrite self-healing covered by `RewriteRulesTest` (rule present: no flush; rule missing: one flush; conflict: one flush, then the guard) | T1 `FrontendBudgetTest`, `RewriteRulesTest` |
 | O2 | Loaded FlexaCommerce symbols on a blog post 13 → 9 (`Services`, `Clock`, `ExtensionsFacade`, `Extensions` no longer load) | T1 allowlist |
-| O3 | Fresh-process harness in `tests/Integration/Performance/` replaces `FrontendQueryBudgetTest` (§5.2); memory baselines recorded for macOS PHP 8.2 and 8.5, Linux pending the first CI run | T1 |
+| O3 | Fresh-process harness in `tests/Integration/Performance/` replaces `FrontendQueryBudgetTest` (§5.2); memory baselines recorded for macOS and Linux, PHP 8.2 and 8.5 | T1 |
 | O4 | `tools/bench/`: dataset spec generator (S and M, identical output on PHP 8.2 and 8.5), FlexaCommerce and WooCommerce loaders, parity export and compare | parity OK for both stores on S (1,000 products, 1,824 variants) and M (10,000 products, 36,828 variants). Load time on the bench stack: S 10 s FlexaCommerce, 72 s WooCommerce; M 117 s and 1,380 s |
 | O6 | R-REST 5 → 0: endpoint objects are built only for our namespace or the route index | T1 REST tests |
 | T3 | Stack, mu-plugin, k6 script, driver and summarizer in `tools/bench/`. First baseline: `docs/benchmarks/2026-10-24.md` | report |
 
 The first T3 run confirms P1 under PHP-FPM: 0 extra queries, 0 extra rows read, +63 KB peak memory and +320 KB worker RSS on the blog post. Its latency is not valid (run p95 spread 22 to 69 %, limit 10 %) because it ran on a busy developer laptop. That is the open item for this phase: a quiet reference machine (Q18) and a rerun there, at dataset M, before latency budgets are used in phase 3.
 
+### 7.2 Phase 3 results (2026-10-25)
+
+| Item | Result | Verified by |
+|---|---|---|
+| O5 | One variant prime per page: archive queries equal at 12 and 48 products (+2 against core, 1 own), product page queries equal at 6 and 250 variants (−2 against core's post template, 1 own) | T1 `StorefrontBudgetTest` |
+| Memory budgets | Provisional values replaced by measured + 10 % (macOS, PHP 8.5, warm OPcache file cache): P2 1,411,292 B, P3 1,153,733 B, P3b inlined state 40,933 B | T1 |
+| P4q, P5q | `GET store/cart` 4 queries at 1 and 10 lines; `POST store/cart/items` 6 queries for a new guest (budget 7) | T1 |
+| P11 | Archive, simple and variable product pages: no sessions query, no `nocache_headers()`, no `Set-Cookie` | T1, and a browser pass on the bench stack |
+| O8 | Count cookie chosen (Q19). The mini-cart reads `fxc_cart_count`, which the store API and the no-JS form handler set with the session cookie | browser pass |
+| T3 | Scenarios shop, simple, variable, cart-add, cart-view on dataset M (`tools/bench/k6/cart.js` for the cart). Report: `docs/benchmarks/2026-10-25.md` | report |
+
+The T3 counters, FlexaCommerce against WooCommerce 11.2.1 default: cart-add 16 against 69 queries, cart-view 14 against 74, product pages 21 to 22 against 111 to 125, worker RSS about 47 MB against 82 MB. Latency is indicative: P4 p95 15 ms and P5 p95 16 ms (budgets 150 and 100 ms), but 11 of 13 rows fail the 10 % spread rule on the developer laptop. P4 and P5 stay reported, not gated, until the reference machine run (Q18). The shop rows are not like for like: the FlexaCommerce archive shows 10 products per page (theme `posts_per_page`) and WooCommerce 16.
+
+Open items: memory baselines for P2 and P3 come from macOS only, and the first CI run on Linux may need them recorded there; the P1 baselines for Linux and for macOS PHP 8.2 must be re-recorded with `FXC_PERF_RECORD=1` because the probe now uses an OPcache file cache (§5.2).
+
 ## 8. Roadmap integration
 
 Doc 07 carries the tasks. Summary of what this document adds:
 
 - **Phase 2.5 (before phase 3 feature work, done 2026-10-24 except the reference-machine rerun, §7.1):** O1, O2, O3, O4 (S and M), the T3 Docker stack and k6 scripts for the scenarios that exist (blog post, home), first `docs/benchmarks/` report as a baseline.
-- **Phase 3:** O5; T1 budgets P2, P3a, P3b, P4q, P5q, P11 become binding; T3 cart scenarios P4 and P5; first FXC versus WooCommerce run for listing and product pages, marked indicative because the storefront is minimal.
+- **Phase 3 (done 2026-10-25 except the reference-machine rerun, §7.2):** O5; T1 budgets P2, P3a, P3b, P4q, P5q, P11 become binding; T3 cart scenarios P4 and P5; first FXC versus WooCommerce run for listing and product pages, marked indicative because the storefront is minimal.
 - **Phase 4:** O6, O7; P6q, P6m binding; T3 checkout P6 and concurrency C1; worker RSS (C2) reported.
 - **Phase 5:** P1h, P8 binding; full scenario set in §6.4 at dataset M, both WooCommerce configurations.
 - **Phase 6:** P9 nightly; migration-based dataset cross-check (§6.2).

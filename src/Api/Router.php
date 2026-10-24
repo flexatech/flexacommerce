@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Flexa\Commerce\Api;
 
 use Flexa\Commerce\Concerns\HasInstance;
+use Flexa\Commerce\Support\SameSite;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -26,6 +27,9 @@ final class Router {
 			( new Admin\LogsEndpoint() )->register_routes();
 			( new Admin\ProductsEndpoint() )->register_routes();
 			( new Admin\AttributesEndpoint() )->register_routes();
+			( new Store\CartEndpoint() )->register_routes();
+			( new Store\ProductsEndpoint() )->register_routes();
+			add_filter( 'rest_authentication_errors', [ $this, 'keep_cookie_user_on_store' ], 50 );
 		}
 
 		// Extension routes live in their own namespaces (doc 04), so this always runs.
@@ -49,5 +53,25 @@ final class Router {
 		}
 		$namespace = '/' . FLEXACOMMERCE_REST_NAMESPACE;
 		return $route === $namespace || str_starts_with( $route, $namespace . '/' );
+	}
+
+	/**
+	 * Store routes are protected by `X-FXC-Nonce` instead of `X-WP-Nonce`
+	 * (doc 06 §2). Without this, core's cookie check (priority 100) would
+	 * treat a logged-in shopper as a guest on every store request, since the
+	 * storefront script sends no core REST nonce. Only same-site requests
+	 * keep the user: core echoes any Origin in its CORS headers, so a
+	 * cross-site GET would otherwise be able to read a shopper's cart.
+	 */
+	public function keep_cookie_user_on_store( mixed $result ): mixed {
+		if ( $result !== null ) {
+			return $result;
+		}
+		$route = $GLOBALS['wp']->query_vars['rest_route'] ?? '';
+		$route = '/' . ltrim( is_string( $route ) ? $route : '', '/' );
+		if ( ! str_starts_with( $route, '/' . FLEXACOMMERCE_REST_NAMESPACE . '/store/' ) ) {
+			return $result;
+		}
+		return SameSite::current() ? true : $result;
 	}
 }

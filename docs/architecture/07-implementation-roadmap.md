@@ -1,6 +1,6 @@
 # 07. Implementation Roadmap
 
-Status: **Approved 2026-10-24**, phase 1 complete (exit criteria verified locally; CI workflow added, first remote run pending), phase 2 complete except a manual browser pass over the product editor, phase 2.5 complete except the latency rerun on a reference machine. Effort figures are rough estimates for one experienced WordPress/PHP developer with part-time frontend help, given only to compare phases; they are not commitments.
+Status: **Approved 2026-10-24**, phase 1 complete (exit criteria verified locally and in CI), phase 2 complete (its browser pass was done in phase 3), phase 2.5 and phase 3 complete except the latency rerun on a reference machine. Effort figures are rough estimates for one experienced WordPress/PHP developer with part-time frontend help, given only to compare phases; they are not commitments.
 
 Priorities: **P0** blocks the milestone, **P1** expected in the milestone, **P2** may slip to the next milestone, **P3** nice to have.
 
@@ -69,7 +69,7 @@ Implementation notes (phase 2, 2026-10-24):
 - **Editor saves with the post.** The product data metabox (`client/admin/product-editor.tsx`, own Vite entry and scoped CSS under `.flexacommerce-product-ui` with no global preflight, so the block editor keeps its styles) saves through `admin/products/{id}` when the post is saved: in the block editor on a non-autosave save, in the classic editor by holding the form submit until the request finishes. It also has its own "Save product data" button. Variation generation saves pending edits first.
 - **Attribute usage** on the Attributes screen counts products, not value assignments.
 - **Test bootstrap drops plugin tables.** The WordPress test installer recreates core tables, so post ids restart at 1 and stale `fxc_variants` rows from an earlier run matched new posts (an intermittent failure). `tests/bootstrap-integration.php` now calls `Schema::drop_all()` before activation.
-- **Not done yet:** the product editor and the Attributes screen pass type-check and build but have not been clicked through in a browser (block editor and classic editor). That pass is the first task of phase 3.
+- **Browser pass (done in phase 3, 2026-10-25).** The product editor metabox in the block editor (loads, saves through "Save product data" with a 200) and the Attributes screen were checked in Chromium on the bench stack. The classic editor path was not clicked through.
 
 ## Phase 2.5: Performance harness and baseline
 
@@ -89,13 +89,14 @@ Exit criteria: T1 runs in CI on every push and fails on any budget breach; P1 pa
 
 Implementation notes (phase 2.5, 2026-10-24):
 
-- **Exit criteria.** The harness is in the integration suite that CI runs on every push (single site, PHP 8.2 and 8.5); the first remote run is pending until the next push, and it will print the Linux memory baselines to record. P1 passes in a fresh process: 0 extra queries, +82 KB on PHP 8.2 and +111 to 135 KB on 8.5 (macOS), 9 allowlisted symbols, +24 callbacks, no assets. The baseline report is `docs/benchmarks/2026-10-24.md` with raw data and spread.
+- **Exit criteria.** The harness is in the integration suite that CI runs on every push (single site, PHP 8.2 and 8.5); the Linux memory baselines from the first CI run are recorded in `baseline.json`. P1 passes in a fresh process: 0 extra queries, +82 KB on PHP 8.2 and +111 to 135 KB on 8.5 (macOS), 9 allowlisted symbols, +24 callbacks, no assets. The baseline report is `docs/benchmarks/2026-10-24.md` with raw data and spread.
 - **Open item.** The report's latency is invalid by the doc 10 spread rule (22 to 69 %, limit 10 %) because it ran on a busy developer laptop. Its counters are valid. A rerun on a quiet reference machine (Q18) at dataset M is needed before phase 3 uses latency budgets.
 - **Seeder shape changed.** The plan said `wp flexacommerce dev seed`. The seeder is a plain spec generator plus one loader per store under `tools/bench/` instead, so the plugin carries no dev command and the WooCommerce loader reads the same file. Customers and orders in the spec stay empty until phase 4.
 - **O1 shape changed.** No flag and no settings-save flush: the front end checks the shop rule in the autoloaded `rewrite_rules` and flushes once when it is missing (doc 10 §3.4).
 - **Vendor autoload removed** from the bootstrap and `uninstall.php` (doc 10 F8): a dev checkout loaded Composer's dev files on every request.
 - **Datasets loaded on the bench stack** (Apple M2 laptop): S in 10 s (FlexaCommerce) and 72 s (WooCommerce 11.2.1), M in 117 s and 1,380 s. Parity OK for both stores at both sizes. Loader times are tooling cost, not a product comparison.
 
+## Phase 3: Pricing, stock, cart, minimal storefront
 
 | Pri | Task |
 |---|---|
@@ -111,6 +112,20 @@ Implementation notes (phase 2.5, 2026-10-24):
 Exit criteria: last-unit concurrency test green; cart survives login merge; catalog pages set no cookie (P11); P2 and P3 query assertions pass.
 
 Performance exit (doc 10 §4, §8): T1 budgets P2, P3a, P3b, P4q, P5q and P11 binding, each list budget asserted at two sizes with identical query counts; provisional memory budgets replaced by measured value + 10 %; T3 P4 and P5 measured on the reference stack; first FlexaCommerce versus WooCommerce run for listing and product pages, published as indicative.
+
+Implementation notes (phase 3, 2026-10-25):
+
+- **Exit criteria.** Last unit: `StockServiceTest::test_the_last_unit_is_sold_once` and `ConcurrencyTest` (8 separate PHP processes released at one start time; with 1 and 3 units in stock exactly that many buyers win and the rest get `InsufficientStock`; 8 parallel adds to one cart lose no update). Login merge: `CartServiceTest` (guest cart survives login and merges once, becomes the user cart when the user has none, quantities capped by stock). P11 and the P2/P3 query assertions pass in `StorefrontBudgetTest`.
+- **Performance exit.** T1 binding (doc 10 §7.2): P2 +2 queries at 12 and 48 products; P3a and P3b −2 against core's post template, equal at 6 and 250 variants; P4q 4 queries at 1 and 10 lines; P5q 6 (budget 7); P11 holds. Memory budgets are measured + 10 %: P2 1,411,292 B, P3 1,153,733 B, P3b inlined state 40,933 B. The T3 run (`docs/benchmarks/2026-10-25.md`, dataset M) is indicative: P4 p95 15 ms and P5 p95 16 ms against 150 and 100 ms, but most rows fail the 10 % spread rule on the laptop, so "measured on the reference stack" is still open (Q18). FlexaCommerce against WooCommerce 11.2.1: cart-add 16 against 69 queries, product pages 21 to 22 against 111 to 125.
+- **Probe memory.** The T1 probe now runs with an OPcache file cache. Without it, compiling the plugin on a cold OPcache counted as request memory. The P1 baseline was re-recorded for macOS PHP 8.5 only; Linux (CI) and macOS PHP 8.2 need `FXC_PERF_RECORD=1`. The P2 and P3 budgets also come from macOS and may need a Linux check on the first CI run.
+- **Test salts.** `tests/wp-tests-config.php` defines distinct salts. With the default duplicates, `wp_salt()` falls back to salts stored as options, which adds a query the budgets would count and a real site does not have.
+- **Mini-cart uses the count cookie** (Q19 changed, doc 10 O8). The REST read would cost about 14 queries and 10 ms per page view. `fxc_cart_count` is written by the same token store as `fxc_session`, so the store API and the no-JS form both keep it current. The block renders a bare link; placed in post content it does not follow the content width (fine in a header). Wrapping it with `get_block_wrapper_attributes()` is a phase 5 item.
+- **Block registration** happens on the first top-level block whose tree holds one of ours (`pre_render_block`), in admin, and on REST requests outside our namespace. Our own REST routes skip it, because registering the editor script builds `WP_Scripts` and cost two queries on every cart request.
+- **No page installer yet.** There is no Cart page created on activation. `cart_page_id` empty means cart links point to the shop; the merchant places the cart block or `[flexacommerce_cart]` on a page and sets it. Page setup comes with checkout in phase 4.
+- **Road for a standalone React product editor** (asked for in this phase, ADR-019): `admin/products` has list (search, status, type, terms, `X-WP-Total`), create, read, update and delete, and its payload carries the post fields too. The editor is split into `useProductDraft`, a mount-agnostic `ProductDataPanel` and the metabox host. `flexacommerce.admin.product_editor` returns `post` (default) or `app`; `app` removes the metabox and its script.
+- **Low stock notifications.** `StockService` fires `flexacommerce.stock.low` and the out-of-stock event and mails the site admin email when `notify_low_stock` is on (the default); `flexacommerce.stock.notify` can stop a mail per variant.
+- **Browser pass** (Chromium on the bench stack, 27 checks): catalog pages send no cookie and no `no-cache`; JS add sets an httpOnly `fxc_session` and `fxc_cart_count`; a variable product shows the variant price after a full selection; quantity update and remove on the cart page; mini-cart count after add and after reload; the no-JS add redirects back with a notice. It found two client issues, both fixed: typing a quantity and then removing that line raced a PUT against the DELETE and showed "This item is no longer in your cart." (`assets/frontend/cart.js` now ignores `unknown_line` for a line being removed), and the theme's paragraph margin pushed the unit price down in the cart table.
+- **Open items.** Latency rerun on a reference machine (Q18) for P1t, P4 and P5; P1 baselines for Linux and macOS PHP 8.2; classic editor pass of the product editor; products per page on the shop archive (10 from the theme against WooCommerce's 16, phase 5).
 
 ## Phase 4: Checkout, orders, shipping, payments, emails
 

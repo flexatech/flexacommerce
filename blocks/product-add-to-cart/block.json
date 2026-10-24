@@ -1,0 +1,29 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "flexacommerce/product-add-to-cart",
+	"version": "0.1.0",
+	"title": "Add to cart",
+	"category": "widgets",
+	"icon": "cart",
+	"description": "Option selectors, quantity and the add-to-cart button for the current product.",
+	"textdomain": "flexacommerce",
+	"usesContext": [
+		"postId",
+		"postType",
+		"queryId"
+	],
+	"attributes": {
+		"productId": {
+			"type": "integer",
+			"default": 0
+		}
+	},
+	"supports": {
+		"html": false,
+		"interactivity": true
+	},
+	"editorScript": "flexacommerce-blocks-editor",
+	"style": "flexacommerce-storefront",
+	"render": "file:./render.php"
+}

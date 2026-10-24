@@ -214,6 +214,18 @@ Status of every ADR: **Accepted** (plan approved 2026-10-24). Format: context, d
 
 **Alternatives.** Core `wp_rest` nonce: identical for all guests and embedded in HTML that page caches share.
 
-**Consequences.** One extra request (`GET store/cart`) before the first mutation on cached pages; the first add-to-cart relies on content type and Origin only.
+**Consequences.** Cached catalog pages print the guest nonce, which is the same for every visitor without a cart session; a guest who has a session still passes with it, so a cached page works without a retry. For guests the real defence is the JSON content type, the same-site Origin check and the SameSite=Lax cookie; for users the nonce is bound to the login session. A stale nonce is answered with 403 and a fresh nonce in `X-FXC-Nonce`, and the script retries once.
 
 **Revisit when.** WordPress core adds session-bound nonces for guests.
+
+---
+
+## ADR-019: Product editor stays in the post editor, built to move out
+
+**Decision.** In MVP, product data is a React metabox in the block editor. The editor is split into a draft hook (`useProductDraft`), a mount-agnostic panel (`ProductDataPanel`) and a metabox host (`ProductEditor`). The admin REST API takes the whole product, post fields included (`admin/products` list, create, read, update, delete). `flexacommerce.admin.product_editor` (`post` or `app`) turns the metabox off for a future standalone editor.
+
+**Alternatives.** A standalone React editor now: more work before the storefront exists, and it would have to rebuild title, content and media editing that the block editor already gives. Keeping the editor as one metabox component: a later app would need a rewrite of the save and error logic.
+
+**Consequences.** A standalone editor needs no new endpoint and no change to the panel; it adds a screen, post field inputs and a host that saves the whole payload in one request. Until then the `app` value only removes the metabox, so nothing ships that is switched off. There is no setting until the screen exists.
+
+**Revisit when.** The standalone editor ships: then decide whether `app` becomes the default and whether the post editor redirects to it.

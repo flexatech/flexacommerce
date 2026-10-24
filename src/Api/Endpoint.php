@@ -7,9 +7,13 @@ namespace Flexa\Commerce\Api;
 use Flexa\Commerce\Catalog\PostTypes;
 use Flexa\Commerce\Contracts\CommerceException;
 use Flexa\Commerce\Contracts\Exceptions\DuplicateSku;
+use Flexa\Commerce\Contracts\Exceptions\InsufficientStock;
 use Flexa\Commerce\Contracts\Exceptions\InvalidAttribute;
+use Flexa\Commerce\Contracts\Exceptions\InvalidCartRequest;
 use Flexa\Commerce\Contracts\Exceptions\InvalidProduct;
+use Flexa\Commerce\Contracts\Exceptions\NotPurchasable;
 use Flexa\Commerce\Contracts\Exceptions\ProductNotFound;
+use Flexa\Commerce\Contracts\Exceptions\RateLimited;
 use Flexa\Commerce\Support\Capabilities;
 use WP_Error;
 use WP_REST_Request;
@@ -92,6 +96,24 @@ abstract class Endpoint {
 			],
 			$e instanceof ProductNotFound  => [ 'status' => 404 ],
 			$e instanceof InvalidAttribute => [ 'status' => 400 ],
+			$e instanceof InsufficientStock => [
+				'status'     => 409,
+				'variant_id' => $e->variant_id,
+				'available'  => $e->available,
+			],
+			$e instanceof NotPurchasable   => [
+				'status'     => 400,
+				'variant_id' => $e->variant_id,
+			],
+			$e instanceof InvalidCartRequest => [
+				'status' => $e->reason === 'conflict' ? 409 : 400,
+				'field'  => $e->field,
+				'reason' => $e->reason,
+			],
+			$e instanceof RateLimited      => [
+				'status'      => 429,
+				'retry_after' => $e->retry_after,
+			],
 			default                        => [ 'status' => 500 ],
 		};
 		return new WP_Error( 'flexacommerce_' . $e->code(), $e->getMessage(), $data );

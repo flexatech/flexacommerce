@@ -233,8 +233,8 @@ final class VariantRepository {
 	 * backorders are off. The stock status is recalculated in the same
 	 * statement.
 	 */
-	public function decrement_stock( int $variant_id, int $qty ): bool {
-		$product_id = $this->product_of( $variant_id );
+	public function decrement_stock( int $variant_id, int $qty, int $product_id = 0 ): bool {
+		$product_id = $product_id > 0 ? $product_id : $this->product_of( $variant_id );
 		$affected   = $this->wpdb->query(
 			$this->wpdb->prepare(
 				'UPDATE %i SET stock_quantity = stock_quantity - %d,
@@ -263,8 +263,9 @@ final class VariantRepository {
 		return (int) $affected === 1;
 	}
 
-	public function increment_stock( int $variant_id, int $qty ): void {
-		$product_id = $this->product_of( $variant_id );
+	/** Unconditional change; a negative `$qty` lowers the stock (admin adjustments). */
+	public function increment_stock( int $variant_id, int $qty, int $product_id = 0 ): void {
+		$product_id = $product_id > 0 ? $product_id : $this->product_of( $variant_id );
 		$affected   = $this->wpdb->query(
 			$this->wpdb->prepare(
 				'UPDATE %i SET stock_quantity = stock_quantity + %d,
@@ -288,6 +289,48 @@ final class VariantRepository {
 			throw QueryFailed::from_wpdb( $this->wpdb );
 		}
 		$this->flush( $product_id );
+	}
+
+	/**
+	 * Fresh stock columns, bypassing the cache. With `$lock` the rows are
+	 * locked FOR UPDATE in id order, so two writers that lock overlapping sets
+	 * cannot deadlock (doc 02 §7.4). Only meaningful inside a transaction.
+	 *
+	 * @param list<int> $variant_ids
+	 * @return array<int,array{product_id:int,manage_stock:bool,stock_quantity:?int,backorders:string,stock_status:string,low_stock_threshold:?int}>
+	 */
+	public function stock_rows( array $variant_ids, bool $lock = false ): array {
+		$variant_ids = array_values( array_unique( array_filter( array_map( 'intval', $variant_ids ), static fn ( int $id ): bool => $id > 0 ) ) );
+		if ( $variant_ids === [] ) {
+			return [];
+		}
+		sort( $variant_ids );
+		$placeholders = implode( ',', array_fill( 0, count( $variant_ids ), '%d' ) );
+		$suffix       = $lock ? ' FOR UPDATE' : '';
+		$found        = $this->wpdb->get_results(
+			$this->wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- placeholders and a fixed suffix only.
+				"SELECT id, product_id, manage_stock, stock_quantity, backorders, stock_status, low_stock_threshold FROM %i WHERE id IN ({$placeholders}) ORDER BY id{$suffix}",
+				Schema::table( 'variants' ),
+				...$variant_ids
+			),
+			ARRAY_A
+		);
+		if ( ! is_array( $found ) || $this->wpdb->last_error !== '' ) {
+			throw QueryFailed::from_wpdb( $this->wpdb );
+		}
+		$out = [];
+		foreach ( $found as $row ) {
+			$out[ (int) $row['id'] ] = [
+				'product_id'          => (int) $row['product_id'],
+				'manage_stock'        => (bool) (int) $row['manage_stock'],
+				'stock_quantity'      => $row['stock_quantity'] === null ? null : (int) $row['stock_quantity'],
+				'backorders'          => (string) $row['backorders'],
+				'stock_status'        => (string) $row['stock_status'],
+				'low_stock_threshold' => $row['low_stock_threshold'] === null ? null : (int) $row['low_stock_threshold'],
+			];
+		}
+		return $out;
 	}
 
 	public function flush( int $product_id ): void {

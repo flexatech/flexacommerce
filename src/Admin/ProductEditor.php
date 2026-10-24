@@ -15,6 +15,12 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Product data metabox (a React root inside the block editor) and the
  * duplicate row action on the product list.
+ *
+ * `flexacommerce.admin.product_editor` picks who edits products: "post"
+ * (default) is this metabox in the WordPress post editor; "app" turns the
+ * metabox off for a standalone editor that saves the whole product through
+ * `admin/products` (doc 08 ADR-019). The filter is read when the screen is
+ * built, so it can depend on the current user.
  */
 final class ProductEditor {
 	use HasInstance;
@@ -31,7 +37,16 @@ final class ProductEditor {
 		add_action( 'admin_post_' . self::DUPLICATE_ACTION, [ $this, 'handle_duplicate' ] );
 	}
 
+	/** @return 'post'|'app' */
+	public static function mode(): string {
+		$mode = apply_filters( 'flexacommerce.admin.product_editor', 'post' );
+		return $mode === 'app' ? 'app' : 'post';
+	}
+
 	public function add_meta_box(): void {
+		if ( self::mode() !== 'post' ) {
+			return;
+		}
 		add_meta_box(
 			'flexacommerce-product-data',
 			__( 'Product data', 'flexacommerce' ),
@@ -56,7 +71,7 @@ final class ProductEditor {
 			return;
 		}
 		$screen = get_current_screen();
-		if ( $screen === null || $screen->post_type !== PostTypes::PRODUCT ) {
+		if ( $screen === null || $screen->post_type !== PostTypes::PRODUCT || self::mode() !== 'post' ) {
 			return;
 		}
 		$post = get_post();

@@ -26,11 +26,13 @@ define( 'WP_PHP_BINARY', 'php' );
 define( 'WPLANG', '' );
 define( 'WP_DEBUG', true );
 
-define( 'AUTH_KEY', 'test' );
-define( 'SECURE_AUTH_KEY', 'test' );
-define( 'LOGGED_IN_KEY', 'test' );
-define( 'NONCE_KEY', 'test' );
-define( 'AUTH_SALT', 'test' );
-define( 'SECURE_AUTH_SALT', 'test' );
-define( 'LOGGED_IN_SALT', 'test' );
-define( 'NONCE_SALT', 'test' );
+// Distinct values, as on a real site: with duplicates wp_salt() falls back
+// to salts stored as options, which adds a query the budgets would count.
+define( 'AUTH_KEY', 'fxc-test-auth-key' );
+define( 'SECURE_AUTH_KEY', 'fxc-test-secure-auth-key' );
+define( 'LOGGED_IN_KEY', 'fxc-test-logged-in-key' );
+define( 'NONCE_KEY', 'fxc-test-nonce-key' );
+define( 'AUTH_SALT', 'fxc-test-auth-salt' );
+define( 'SECURE_AUTH_SALT', 'fxc-test-secure-auth-salt' );
+define( 'LOGGED_IN_SALT', 'fxc-test-logged-in-salt' );
+define( 'NONCE_SALT', 'fxc-test-nonce-salt' );

@@ -82,6 +82,19 @@ export interface ProductData {
     price_min: number | null;
     price_max: number | null;
     stock_status: string;
+    // Post fields, owned by WordPress. The metabox never sends them (the
+    // block editor saves the post); a standalone editor app can.
+    title?: string;
+    slug?: string;
+    content?: string;
+    excerpt?: string;
+    date?: string;
+    modified?: string;
+    menu_order?: number;
+    categories?: number[];
+    tags?: number[];
+    featured_image?: number;
+    permalink?: string;
 }
 
 export interface GenerateResult {

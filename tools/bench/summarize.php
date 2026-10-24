@@ -81,7 +81,8 @@ foreach ( glob( $dir . '/*.*.*', GLOB_ONLYDIR ) ?: [] as $run_dir ) {
 			continue;
 		}
 		++$requests;
-		if ( (int) $row['status'] !== 200 ) {
+		// 201 is the success status of an add-to-cart request.
+		if ( (int) $row['status'] < 200 || (int) $row['status'] > 201 ) {
 			++$errors;
 		}
 		$upstream[] = (float) $row['upstream'] * 1000;

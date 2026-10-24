@@ -1,0 +1,473 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Flexa\Commerce\Cart;
+
+use Flexa\Commerce\Catalog\Combination;
+use Flexa\Commerce\Catalog\Product;
+use Flexa\Commerce\Catalog\ProductRepository;
+use Flexa\Commerce\Catalog\Variant;
+use Flexa\Commerce\Catalog\VariantMatcher;
+use Flexa\Commerce\Contracts\Exceptions\InsufficientStock;
+use Flexa\Commerce\Contracts\Exceptions\InvalidCartRequest;
+use Flexa\Commerce\Contracts\Exceptions\NotPurchasable;
+use Flexa\Commerce\Contracts\Exceptions\RateLimited;
+use Flexa\Commerce\Contracts\Money;
+use Flexa\Commerce\Contracts\ValidationResult;
+use Flexa\Commerce\Inventory\StockService;
+use Flexa\Commerce\Pricing\PricingService;
+use Flexa\Commerce\Support\Clock;
+use Flexa\Commerce\Support\Settings;
+
+defined( 'ABSPATH' ) || exit;
+
+/**
+ * Cart reads and writes (doc 02 §7.3). Reads write nothing, except the one
+ * write that merges a guest cart into the user's cart on the first touch
+ * after login. Writes are versioned: on a conflict the change is applied
+ * once more to the fresh row, then the request fails.
+ */
+final class CartService {
+	public const WRITES_PER_MINUTE = 60;
+
+	public function __construct(
+		private readonly SessionStore $sessions,
+		private readonly ProductRepository $products,
+		private readonly VariantMatcher $matcher,
+		private readonly PricingService $pricing,
+		private readonly StockService $stock,
+		private readonly Clock $clock,
+	) {}
+
+	/** The cart without a session lookup when no cookie is present (P11). */
+	public function state( int $user_id ): CartState {
+		if ( $user_id <= 0 && ! $this->sessions->has_token() ) {
+			return $this->resolve( new Cart(), $user_id, false );
+		}
+		$loaded = $this->sessions->load( $user_id );
+		if ( $loaded['guest'] !== null ) {
+			return $this->mutate( $user_id, static fn ( Cart $cart ): Cart => $cart, false );
+		}
+		$cart = $loaded['session'] !== null ? Cart::from_data( $loaded['session']->data ) : new Cart();
+		// A logged-in shopper on a new browser has no count cookie yet.
+		$this->sessions->publish_count( $cart->item_count(), $user_id );
+		return $this->resolve( $cart, $user_id, $loaded['session'] !== null );
+	}
+
+	/**
+	 * @param array<string,string> $attributes selection, attribute key => value key
+	 * @throws InvalidCartRequest|NotPurchasable|InsufficientStock|RateLimited
+	 */
+	public function add( int $user_id, int $product_id, int $variant_id, int $quantity, array $attributes = [] ): CartState {
+		$product = $this->products->find( $product_id );
+		if ( $product === null ) {
+			throw new NotPurchasable( $variant_id, __( 'This product does not exist.', 'flexacommerce' ) );
+		}
+		[ $variant, $selection ] = $this->select( $product, $variant_id, $attributes );
+		$this->assert_purchasable( $product, $variant );
+		$max = $this->line_max( $product, $variant );
+		if ( $quantity < 1 || $quantity > $max ) {
+			throw new InvalidCartRequest(
+				/* translators: %d: maximum quantity. */
+				sprintf( __( 'Choose a quantity between 1 and %d.', 'flexacommerce' ), $max ),
+				'quantity'
+			);
+		}
+		$labels = $this->labels( $product, $selection );
+
+		return $this->mutate(
+			$user_id,
+			function ( Cart $cart ) use ( $product, $variant, $selection, $quantity, $labels, $max, $user_id ): Cart {
+				$line     = new CartLine(
+					key: CartLine::key_for( $variant->id, $selection ),
+					product_id: $product->id,
+					variant_id: $variant->id,
+					quantity: $quantity,
+					attributes: $selection,
+					labels: $labels,
+					added_at: $this->clock->db_now(),
+				);
+				$existing = $cart->line( $line->key );
+				if ( $existing === null && count( $cart->lines ) >= Cart::MAX_LINES ) {
+					throw new InvalidCartRequest( __( 'Your cart is full.', 'flexacommerce' ), 'product_id' );
+				}
+				if ( $existing !== null && $existing->quantity + $quantity > $max ) {
+					throw new InvalidCartRequest(
+						/* translators: %d: maximum quantity. */
+						sprintf( __( 'You can add at most %d of this item.', 'flexacommerce' ), $max ),
+						'quantity'
+					);
+				}
+				$this->assert_stock( $cart, $product, $variant, $quantity );
+				$this->validate_add( $cart, $product, $variant, $quantity, $user_id );
+				return $cart->with_added( $line );
+			}
+		);
+	}
+
+	/** @throws InvalidCartRequest|InsufficientStock|RateLimited */
+	public function set_quantity( int $user_id, string $key, int $quantity ): CartState {
+		return $this->mutate(
+			$user_id,
+			function ( Cart $cart ) use ( $key, $quantity ): Cart {
+				$line = $cart->line( $key );
+				if ( $line === null ) {
+					throw new InvalidCartRequest( __( 'This item is no longer in your cart.', 'flexacommerce' ), 'key', 'unknown_line' );
+				}
+				if ( $quantity <= 0 ) {
+					return $cart->without( $key );
+				}
+				$product = $this->products->find( $line->product_id );
+				$variant = $product?->sellable( $line->variant_id );
+				if ( $product === null || $variant === null ) {
+					throw new NotPurchasable( $line->variant_id );
+				}
+				$max = $this->line_max( $product, $variant );
+				if ( $quantity > $max ) {
+					throw new InvalidCartRequest(
+						/* translators: %d: maximum quantity. */
+						sprintf( __( 'Choose a quantity between 1 and %d.', 'flexacommerce' ), $max ),
+						'quantity'
+					);
+				}
+				if ( $quantity > $line->quantity ) {
+					$this->assert_stock( $cart->without( $key ), $product, $variant, $quantity );
+				}
+				return $cart->with_quantity( $key, $quantity );
+			}
+		);
+	}
+
+	/** @throws InvalidCartRequest|RateLimited */
+	public function remove( int $user_id, string $key ): CartState {
+		return $this->mutate(
+			$user_id,
+			static function ( Cart $cart ) use ( $key ): Cart {
+				if ( $cart->line( $key ) === null ) {
+					throw new InvalidCartRequest( __( 'This item is no longer in your cart.', 'flexacommerce' ), 'key', 'unknown_line' );
+				}
+				return $cart->without( $key );
+			}
+		);
+	}
+
+	public function clear( int $user_id ): CartState {
+		if ( $user_id <= 0 && ! $this->sessions->has_token() ) {
+			return $this->resolve( new Cart(), $user_id, false );
+		}
+		return $this->mutate( $user_id, static fn ( Cart $cart ): Cart => $cart->emptied() );
+	}
+
+	/** Lines of a resolved cart a renderer can show, with display prices. */
+	public function format( Money $money ): string {
+		return $this->pricing->format( $money );
+	}
+
+	public function line_max_quantity( Product $product, Variant $variant ): int {
+		return $this->line_max( $product, $variant );
+	}
+
+	/**
+	 * @param callable(Cart):Cart $change
+	 */
+	private function mutate( int $user_id, callable $change, bool $count = true ): CartState {
+		for ( $attempt = 0; $attempt < 2; $attempt++ ) {
+			$loaded = $this->sessions->load( $user_id );
+			$cart   = $loaded['session'] !== null ? Cart::from_data( $loaded['session']->data ) : new Cart();
+			if ( $loaded['guest'] !== null ) {
+				$cart = $this->merge( $cart, Cart::from_data( $loaded['guest']->data ) );
+			} else {
+				$cart = $cart->with_notices( [] );
+			}
+			if ( $count ) {
+				$cart = $this->count_write( $cart );
+			}
+			$next   = $change( $cart );
+			$stored = $this->sessions->save( $loaded['session'], $next->to_data(), $user_id, $loaded['guest'] );
+			if ( $stored !== null ) {
+				$this->sessions->publish_count( $next->item_count(), $user_id );
+				return $this->resolve( $next, $user_id, true );
+			}
+			$this->sessions->forget();
+		}
+		throw new InvalidCartRequest( __( 'Your cart was changed in another window. Please try again.', 'flexacommerce' ), '', 'conflict' );
+	}
+
+	/** Guest lines into the user cart: quantities summed, capped by stock and the line maximum. */
+	private function merge( Cart $user_cart, Cart $guest ): Cart {
+		$ids = array_values( array_unique( array_map( static fn ( CartLine $l ): int => $l->product_id, [ ...$user_cart->lines, ...$guest->lines ] ) ) );
+		$this->load_products( $ids );
+
+		$cart    = $user_cart;
+		$notices = [];
+		foreach ( $guest->lines as $line ) {
+			$cart = $cart->with_added( $line );
+		}
+		foreach ( $cart->lines as $line ) {
+			$product = $this->products->find( $line->product_id );
+			$variant = $product?->sellable( $line->variant_id );
+			if ( $product === null || $variant === null ) {
+				continue;
+			}
+			$cap = $this->line_max( $product, $variant );
+			$max = $this->stock->availability( $product, $variant )->max_quantity();
+			if ( $max !== null ) {
+				$cap = min( $cap, max( 1, $max ) );
+			}
+			if ( $line->quantity > $cap ) {
+				$cart      = $cart->with_quantity( $line->key, $cap );
+				$notices[] = [
+					'code'    => 'quantity_reduced',
+					'message' => sprintf(
+						/* translators: 1: product name, 2: quantity. */
+						__( 'The quantity of %1$s was reduced to %2$d.', 'flexacommerce' ),
+						$product->title,
+						$cap
+					),
+				];
+			}
+		}
+		return $cart->with_notices( $notices );
+	}
+
+	private function count_write( Cart $cart ): Cart {
+		$window = intdiv( $this->clock->now()->getTimestamp(), 60 );
+		$count  = $cart->rate['window'] === $window ? $cart->rate['count'] : 0;
+		$limit  = (int) apply_filters( 'flexacommerce.cart.writes_per_minute', self::WRITES_PER_MINUTE );
+		if ( $limit > 0 && $count >= $limit ) {
+			throw new RateLimited( 60 - $this->clock->now()->getTimestamp() % 60 );
+		}
+		return $cart->with_rate(
+			[
+				'window' => $window,
+				'count'  => $count + 1,
+			]
+		);
+	}
+
+	private function resolve( Cart $cart, int $user_id, bool $has_session ): CartState {
+		$this->load_products( array_map( static fn ( CartLine $l ): int => $l->product_id, $cart->lines ) );
+
+		$items   = [];
+		$totals  = [];
+		$notices = $cart->notices;
+		foreach ( $cart->lines as $line ) {
+			$product = $this->products->find( $line->product_id );
+			$variant = $product?->sellable( $line->variant_id );
+			if ( $product === null || $variant === null || ! $this->is_purchasable( $product, $variant ) ) {
+				$items[]   = new CartItem( $line, $product, $variant, null, null, null, CartItem::UNAVAILABLE );
+				$notices[] = [
+					'code'    => CartItem::UNAVAILABLE,
+					'message' => sprintf(
+						/* translators: %s: product name. */
+						__( '%s is no longer available. Remove it to continue.', 'flexacommerce' ),
+						$product !== null ? $product->title : __( 'An item', 'flexacommerce' )
+					),
+				];
+				continue;
+			}
+			$availability = $this->stock->availability( $product, $variant );
+			$owner_total  = $this->owner_quantity( $cart, $product, $variant );
+			$status       = $availability->allows( $owner_total ) ? CartItem::OK : CartItem::INSUFFICIENT_STOCK;
+			$unit         = $this->pricing->unit_price( $product, $variant, $line->quantity, $user_id );
+			$total        = $unit !== null ? $this->pricing->line_total( $unit, $line->quantity ) : null;
+			if ( $total !== null ) {
+				$totals[] = $total;
+			}
+			if ( $status === CartItem::INSUFFICIENT_STOCK ) {
+				$left      = (int) $availability->max_quantity();
+				$notices[] = [
+					'code'    => CartItem::INSUFFICIENT_STOCK,
+					'message' => $left > 0
+						? sprintf(
+							/* translators: 1: product name, 2: quantity in stock. */
+							_n( 'Only %2$d of %1$s is in stock. Lower the quantity to continue.', 'Only %2$d of %1$s are in stock. Lower the quantity to continue.', $left, 'flexacommerce' ),
+							$product->title,
+							$left
+						)
+						: sprintf(
+							/* translators: %s: product name. */
+							__( '%s is out of stock. Remove it to continue.', 'flexacommerce' ),
+							$product->title
+						),
+				];
+			}
+			$items[] = new CartItem( $line, $product, $variant, $unit, $total, $availability, $status );
+		}
+
+		return new CartState( $cart, $items, $this->pricing->sum( $totals ), $notices, $has_session );
+	}
+
+	/**
+	 * Posts and meta in one query each, then all variant rows in one query.
+	 * Term caches are not primed: labels are stored on the line.
+	 *
+	 * @param list<int> $product_ids
+	 */
+	private function load_products( array $product_ids ): void {
+		$product_ids = array_values( array_unique( array_filter( $product_ids ) ) );
+		if ( $product_ids === [] ) {
+			return;
+		}
+		_prime_post_caches( $product_ids, false, true );
+		$this->products->prime( $product_ids );
+	}
+
+	/**
+	 * @param array<string,string> $attributes
+	 * @return array{0:Variant,1:array<string,string>} the row and the stored selection
+	 */
+	private function select( Product $product, int $variant_id, array $attributes ): array {
+		if ( ! $product->is_variable() ) {
+			return [ $product->base, [] ];
+		}
+		$selection = [];
+		foreach ( $product->variation_attributes() as $definition ) {
+			$value = $attributes[ $definition->key ] ?? '';
+			if ( $value !== '' && ! $definition->allows( $value ) ) {
+				throw new InvalidCartRequest( __( 'Choose a valid option.', 'flexacommerce' ), 'attributes', 'invalid_attribute' );
+			}
+			if ( $value !== '' ) {
+				$selection[ $definition->key ] = $value;
+			}
+		}
+
+		$variant = $variant_id > 0 ? $product->sellable( $variant_id ) : null;
+		if ( $variant_id > 0 && $variant === null ) {
+			throw new NotPurchasable( $variant_id );
+		}
+		if ( $variant === null ) {
+			$variant = $this->matcher->match( $product->variations, $selection );
+			if ( $variant === null ) {
+				throw new InvalidCartRequest( __( 'Choose product options before adding to the cart.', 'flexacommerce' ), 'attributes', 'incomplete_selection' );
+			}
+		}
+
+		// Fixed values come from the row; wildcard values must be chosen.
+		$stored = [];
+		foreach ( $variant->combination->to_array() as $key => $value ) {
+			if ( $value === Combination::WILDCARD ) {
+				if ( ! isset( $selection[ $key ] ) ) {
+					throw new InvalidCartRequest( __( 'Choose product options before adding to the cart.', 'flexacommerce' ), 'attributes', 'incomplete_selection' );
+				}
+				$stored[ $key ] = $selection[ $key ];
+			} else {
+				if ( isset( $selection[ $key ] ) && $selection[ $key ] !== $value ) {
+					throw new InvalidCartRequest( __( 'The selected options do not match this variation.', 'flexacommerce' ), 'attributes', 'invalid_attribute' );
+				}
+				$stored[ $key ] = $value;
+			}
+		}
+		ksort( $stored, SORT_STRING );
+		return [ $variant, $stored ];
+	}
+
+	/** Published, enabled, priced, the right kind of row; `flexacommerce.product.is_purchasable` may only forbid. */
+	public function is_purchasable( Product $product, Variant $variant ): bool {
+		$ok = $product->status === 'publish'
+			&& $variant->id > 0
+			&& $variant->enabled
+			&& $variant->regular_price !== null
+			&& $variant->is_base === ! $product->is_variable();
+		if ( ! $ok || ! has_filter( 'flexacommerce.product.is_purchasable' ) ) {
+			return $ok;
+		}
+		// The filter can only forbid.
+		return apply_filters( 'flexacommerce.product.is_purchasable', true, $product->view_of( $variant ) ) === true;
+	}
+
+	private function assert_purchasable( Product $product, Variant $variant ): void {
+		if ( ! $this->is_purchasable( $product, $variant ) ) {
+			throw new NotPurchasable( $variant->id );
+		}
+	}
+
+	private function assert_stock( Cart $cart, Product $product, Variant $variant, int $adding ): void {
+		$wanted = $this->owner_quantity( $cart, $product, $variant ) + $adding;
+		$fresh  = $this->stock->available( $product, $variant );
+		if ( ! $fresh->allows( $wanted ) ) {
+			$left = $fresh->max_quantity();
+			throw new InsufficientStock( $variant->id, $left === null ? null : max( 0, $left - ( $wanted - $adding ) ) );
+		}
+	}
+
+	/** Units in the cart that draw on the same stock row as `$variant`. */
+	private function owner_quantity( Cart $cart, Product $product, Variant $variant ): int {
+		$owner = $product->stock_owner( $variant )->id;
+		$total = 0;
+		foreach ( $cart->lines as $line ) {
+			if ( $line->product_id !== $product->id ) {
+				continue;
+			}
+			$row = $product->sellable( $line->variant_id );
+			if ( $row !== null && $product->stock_owner( $row )->id === $owner ) {
+				$total += $line->quantity;
+			}
+		}
+		return $total;
+	}
+
+	private function line_max( Product $product, Variant $variant ): int {
+		$max = max( 1, Settings::int( 'max_line_quantity' ) );
+		if ( has_filter( 'flexacommerce.cart.line_max_quantity' ) ) {
+			$filtered = apply_filters( 'flexacommerce.cart.line_max_quantity', $max, $product->view_of( $variant ) );
+			$max      = is_int( $filtered ) && $filtered > 0 ? $filtered : $max;
+		}
+		return $max;
+	}
+
+	private function validate_add( Cart $cart, Product $product, Variant $variant, int $quantity, int $user_id ): void {
+		if ( ! has_filter( 'flexacommerce.cart.validate_add' ) ) {
+			return;
+		}
+		$state  = $this->resolve( $cart, $user_id, true );
+		$result = apply_filters( 'flexacommerce.cart.validate_add', new ValidationResult(), $product->view_of( $variant ), $quantity, $state->view() );
+		if ( $result instanceof ValidationResult && ! $result->is_valid() ) {
+			throw new InvalidCartRequest( $result->first_message(), 'product_id', 'rejected' );
+		}
+	}
+
+	/**
+	 * Display names of the chosen options, stored with the line.
+	 *
+	 * @param array<string,string> $selection
+	 * @return list<array{name:string,value:string}>
+	 */
+	private function labels( Product $product, array $selection ): array {
+		if ( $selection === [] ) {
+			return [];
+		}
+		$term_ids = [];
+		foreach ( $product->variation_attributes() as $definition ) {
+			if ( $definition->is_global() && isset( $selection[ $definition->key ] ) ) {
+				$term_ids[] = $definition->attribute_term_id;
+				$term_ids[] = (int) $selection[ $definition->key ];
+			}
+		}
+		if ( $term_ids !== [] ) {
+			_prime_term_caches( array_values( array_unique( $term_ids ) ), false );
+		}
+		$labels = [];
+		foreach ( $product->variation_attributes() as $definition ) {
+			$value = $selection[ $definition->key ] ?? null;
+			if ( $value === null ) {
+				continue;
+			}
+			if ( $definition->is_global() ) {
+				$name_term  = get_term( $definition->attribute_term_id );
+				$value_term = get_term( (int) $value );
+				$labels[]   = [
+					'name'  => $name_term instanceof \WP_Term ? $name_term->name : '',
+					'value' => $value_term instanceof \WP_Term ? $value_term->name : $value,
+				];
+			} else {
+				$labels[] = [
+					'name'  => $definition->name,
+					'value' => $definition->local_label( $value ) ?? $value,
+				];
+			}
+		}
+		return $labels;
+	}
+}

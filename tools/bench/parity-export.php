@@ -141,6 +141,14 @@ $first = static function ( string $type ) use ( $spec, $products ): string {
 	}
 	return '';
 };
+// Cart load tests: the IDs of the first three simple products of the spec.
+$cart_ids = [];
+foreach ( $spec['products'] as $product ) {
+	if ( $product['type'] === 'simple' && count( $cart_ids ) < 3 ) {
+		$found      = get_page_by_path( (string) $product['slug'], OBJECT, $woo ? 'product' : PostTypes::PRODUCT );
+		$cart_ids[] = $found ? (int) $found->ID : 0;
+	}
+}
 $post = get_page_by_path( 'benchmark-post', OBJECT, 'post' );
 
 file_put_contents(
@@ -153,11 +161,13 @@ file_put_contents(
 				'variants' => array_sum( array_map( static fn ( array $p ): int => count( $p['variants'] ?? [] ), $products ) ),
 			],
 			'products' => $products,
+			'cart_ids' => $cart_ids,
 			'urls'     => [
 				'blog-post' => $post ? (string) wp_parse_url( (string) get_permalink( $post ), PHP_URL_PATH ) : '',
 				'home'      => '/',
 				'simple'    => $first( 'simple' ),
 				'variable'  => $first( 'variable' ),
+				'shop'      => (string) wp_parse_url( (string) get_post_type_archive_link( $woo ? 'product' : PostTypes::PRODUCT ), PHP_URL_PATH ),
 			],
 		],
 		JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT

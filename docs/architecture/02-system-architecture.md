@@ -206,7 +206,10 @@ Full method signatures are in §8. Responsibilities:
 
 ### 6.2 Admin
 
-- Products are edited in the normal WordPress post editor (block editor for the description). A **Product data** metabox mounts a React app (Flexa UI system, `client/product-editor`) that edits type, prices, attributes, variants, stock and shipping data through `admin/products/{id}` endpoints. Saving the post and saving product data are separate requests. The metabox shows unsaved-changes state.
+- Products are edited in the normal WordPress post editor (block editor for the description). A **Product data** metabox mounts a React app (Flexa UI system, `client/admin/features/product`) that edits type, prices, attributes, variants, stock and shipping data through `admin/products/{id}` endpoints. Saving the post and saving product data are separate requests. The metabox shows unsaved-changes state.
+- [Decision] The editor is split so it can move out of the metabox later (ADR-019). `useProductDraft` holds the draft, save, field errors and tab routing; `ProductDataPanel` renders it and knows nothing about where it is mounted; `ProductEditor` is the metabox host that saves with the post and reports errors as block editor notices. A standalone editor app reuses the first two.
+- The admin product API already covers a full editor: `GET/POST admin/products` (list with search, status, type, term filters and `X-WP-Total`; create), `GET/POST/DELETE admin/products/{id}`. The same payload carries the post fields (title, status, slug, content, excerpt, date, menu order, categories, tags, featured image; `Catalog\ProductPostInput`) and the commerce fields. The metabox sends only commerce fields, because the block editor owns the post.
+- `flexacommerce.admin.product_editor` returns `post` (default, metabox) or `app` (no metabox, no metabox script; for a standalone editor screen). There is no setting for it until such a screen ships.
 - Orders, customers (read-only list derived from orders + users), settings, shipping zones, payments, and migration are React screens under one top-level **FlexaCommerce** menu (`client/admin`).
 - Admin order list is backed by `OrderRepository::search()` (indexed columns only, doc 03 §5).
 
@@ -283,7 +286,7 @@ Loaded only for administrators in wp-admin or WP-CLI when WooCommerce is active.
 - The cookie is set **only** on the first cart write. Browsing the catalog never creates a session or a cookie, so page caches can serve catalog pages to everyone.
 - Logged-in users: on login the guest session is merged into the user's session (quantities summed, capped by stock) and the cart is keyed by user id.
 - Lifetime: 48 hours sliding for guests, 14 days for users, configurable. Expired rows are purged by the daily cron.
-- Page caching guidance (docs + readme): exclude cart, checkout and account pages, and bypass cache when `fxc_session` is present on those pages only. Catalog pages stay cacheable because the mini-cart count is fetched via REST.
+- Page caching guidance (docs + readme): exclude cart, checkout and account pages, and bypass cache when `fxc_session` is present on those pages only. Catalog pages stay cacheable because the mini-cart markup is the same for every visitor: the block script reads the count from the `fxc_cart_count` cookie (doc 10 §3.7, Q19).
 
 ### 7.4 Stock: when, how, idempotency
 

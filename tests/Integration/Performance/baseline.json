@@ -4,7 +4,15 @@
         "home": 84128
     },
     "Darwin-8.5": {
-        "blog-post": 137968,
-        "home": 113424
+        "blog-post": 71640,
+        "home": 71640
+    },
+    "Linux-8.2": {
+        "blog-post": 83680,
+        "home": 72928
+    },
+    "Linux-8.5": {
+        "blog-post": 136992,
+        "home": 112672
     }
 }

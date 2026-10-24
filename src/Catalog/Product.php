@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Flexa\Commerce\Catalog;
 
+use Flexa\Commerce\Contracts\Catalog\VariantView;
+
 defined( 'ABSPATH' ) || exit;
 
 /**
@@ -66,5 +68,34 @@ final class Product {
 	/** @return list<Variant> base row first */
 	public function rows(): array {
 		return [ $this->base, ...$this->variations ];
+	}
+
+	/** Sellable row by id, or null when the id is not a row a customer can buy. */
+	public function sellable( int $variant_id ): ?Variant {
+		foreach ( $this->sellable_rows() as $row ) {
+			if ( $row->id === $variant_id ) {
+				return $row;
+			}
+		}
+		return null;
+	}
+
+	/** Public read-only view of a row for extension hooks. */
+	public function view_of( Variant $variant ): VariantView {
+		$owner = $this->stock_owner( $variant );
+		return new VariantView(
+			id: $variant->id,
+			product_id: $this->id,
+			product_type: $this->type,
+			is_base: $variant->is_base,
+			sku: $variant->sku,
+			attributes: $variant->combination->to_array(),
+			regular_price: $variant->regular_price,
+			sale_price: $variant->sale_price,
+			manage_stock: $owner->manage_stock,
+			stock_quantity: $owner->manage_stock ? $owner->stock_quantity : null,
+			stock_status: $owner->computed_stock_status(),
+			tax_class: $variant->tax_class,
+		);
 	}
 }
