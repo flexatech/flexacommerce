@@ -23,7 +23,9 @@ Status: **Answered 2026-10-24.** The owner accepted every recommended default be
 | Q15 | Are gapless invoice numbers a legal requirement for target markets? | Order numbers are unique but not gapless (doc 03 §2.7). | Not in MVP; a post-MVP invoice module issues gapless invoice numbers separately. | Post-MVP |
 | Q16 | Default `hold_minutes` for unpaid online orders: 60? | Trade-off between abandoned orders holding stock and slow payers. | 60, setting exposed. | Phase 4 |
 | Q17 | Naming and trademark: may the readme and admin UI say "Migrate from WooCommerce"? | WordPress.org guideline 17 and trademark policies on third-party names. | Allowed as a descriptive reference ("Migrate from WooCommerce"), never in the plugin name or slug. Legal check before 1.0. | Phase 7 |
-| Q18 | Benchmark hardware: who provides a stable machine? | Results must be reproducible. | A dedicated VPS with fixed specs, documented in the report. | Phase 7 |
+| Q18 | Benchmark hardware: who provides a stable machine? | Results must be reproducible. | A dedicated VPS with fixed specs, documented in the report. Needed from phase 2.5 (doc 10 §6.1), not only phase 7. | Phase 2.5 |
+| Q19 | Mini-cart count: REST call per page view, or a non-sensitive count cookie? | The REST call costs one HTTP request per page view for visitors with a cart; the cookie can be stale across tabs (doc 10 §3.7). | Keep REST (doc 02 §7.3.1) unless the phase 3 T3 run shows the extra request is significant. | Phase 3 |
+| Q20 | Which WooCommerce features does the "tuned" benchmark configuration turn off? | Too few makes the comparison flattering to us, too many makes it unrepresentative (doc 10 §6.3). | Only features with no FlexaCommerce equivalent at that milestone, list published with each run, reviewed by someone outside the project. | Phase 3 |
 
 Bold questions were the ones to answer before implementation started. Decisions taken: Q1 keep `flexacommerce`; Q2 no tax engine in M1, target markets decided before phase 4; Q4 Stripe as a first-party add-on; Q9 Astra plus Twenty Twenty-One; Q3, Q5 to Q8 and Q10 to Q18 as recommended.
 

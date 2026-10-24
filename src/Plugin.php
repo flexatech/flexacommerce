@@ -57,8 +57,14 @@ final class Plugin {
 		add_action( 'plugins_loaded', [ $this, 'announce' ], 20 );
 	}
 
-	/** Extensions hook `flexacommerce.loaded` and receive the narrow facade. */
+	/**
+	 * Extensions hook `flexacommerce.loaded` and receive the narrow facade.
+	 * Without a listener the facade and the container are not built (doc 10 F2).
+	 */
 	public function announce(): void {
+		if ( ! has_action( 'flexacommerce.loaded' ) ) {
+			return;
+		}
 		try {
 			do_action( 'flexacommerce.loaded', $this->extensions() );
 		} catch ( IncompatibleApi $e ) {

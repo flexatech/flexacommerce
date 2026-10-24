@@ -12,8 +12,9 @@ defined( 'ABSPATH' ) || exit;
 
 /**
  * Registers the product post type and its taxonomies on every request
- * (doc 02 §9). Rewrite rules are flushed once, on the first `init` after
- * activation or after a permalink base changes.
+ * (doc 02 §9). Rewrite rules are flushed when the stored rules lack the
+ * product archive rule: after activation, after a permalink base changes,
+ * or on a site created while the plugin was off.
  */
 final class PostTypes {
 	use HasInstance;
@@ -23,37 +24,41 @@ final class PostTypes {
 	public const TAG       = 'fxc_product_tag';
 	public const ATTRIBUTE = 'fxc_attribute';
 
-	public const FLUSH_OPTION = 'flexacommerce_flush_rewrite';
-
-	private const BASE_SETTINGS = [ 'product_base', 'shop_base', 'category_base', 'tag_base' ];
+	/** Exists only on a site where another plugin owns our archive URL; see maybe_flush(). */
+	public const REWRITE_GUARD_OPTION = 'flexacommerce_rewrite_guard';
 
 	public function register(): void {
 		add_action( 'init', [ $this, 'register_types' ], 5 );
 		add_action( 'init', [ $this, 'maybe_flush' ], 99 );
-		add_action( 'flexacommerce.settings.updated', [ $this, 'on_settings_updated' ], 10, 2 );
-	}
-
-	public static function request_flush(): void {
-		update_option( self::FLUSH_OPTION, 1, false );
-	}
-
-	public function maybe_flush(): void {
-		if ( get_option( self::FLUSH_OPTION ) ) {
-			delete_option( self::FLUSH_OPTION );
-			flush_rewrite_rules( false );
-		}
 	}
 
 	/**
-	 * @param array<string,mixed> $new
-	 * @param array<string,mixed> $old
+	 * Core reads `rewrite_rules` on every front-end request, so checking it
+	 * here adds no query (doc 10 F1). Admin, cron and CLI requests skip the
+	 * check: they do not route URLs, and the next front-end request flushes.
 	 */
-	public function on_settings_updated( array $new, array $old ): void {
-		foreach ( self::BASE_SETTINGS as $key ) {
-			if ( ( $new[ $key ] ?? '' ) !== ( $old[ $key ] ?? '' ) ) {
-				self::request_flush();
-				return;
-			}
+	public function maybe_flush(): void {
+		global $wp_rewrite;
+		if ( is_admin() || wp_doing_cron() || ! $wp_rewrite->using_permalinks() ) {
+			return;
+		}
+		$rules = get_option( 'rewrite_rules' );
+		if ( ! is_array( $rules ) ) {
+			return; // Core rebuilds missing rules itself.
+		}
+		$key = $wp_rewrite->root . self::bases()['shop'] . '/?$';
+		if ( ( $rules[ $key ] ?? null ) === 'index.php?post_type=' . self::PRODUCT ) {
+			return;
+		}
+		// When another plugin claims the same URL a flush cannot fix it, so
+		// flush once per base instead of on every request.
+		if ( get_option( self::REWRITE_GUARD_OPTION ) === $key ) {
+			return;
+		}
+		flush_rewrite_rules( false );
+		$rules = get_option( 'rewrite_rules' );
+		if ( ! is_array( $rules ) || ( $rules[ $key ] ?? null ) !== 'index.php?post_type=' . self::PRODUCT ) {
+			update_option( self::REWRITE_GUARD_OPTION, $key, true );
 		}
 	}
 

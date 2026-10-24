@@ -1,6 +1,6 @@
 # 07. Implementation Roadmap
 
-Status: **Approved 2026-10-24**, phase 1 complete (exit criteria verified locally; CI workflow added, first remote run pending), phase 2 complete except a manual browser pass over the product editor. Effort figures are rough estimates for one experienced WordPress/PHP developer with part-time frontend help, given only to compare phases; they are not commitments.
+Status: **Approved 2026-10-24**, phase 1 complete (exit criteria verified locally; CI workflow added, first remote run pending), phase 2 complete except a manual browser pass over the product editor, phase 2.5 complete except the latency rerun on a reference machine. Effort figures are rough estimates for one experienced WordPress/PHP developer with part-time frontend help, given only to compare phases; they are not commitments.
 
 Priorities: **P0** blocks the milestone, **P1** expected in the milestone, **P2** may slip to the next milestone, **P3** nice to have.
 
@@ -11,7 +11,8 @@ Priorities: **P0** blocks the milestone, **P1** expected in the milestone, **P2*
 | 0 | Repository audit and planning (this document set) | | | done on approval |
 | 1 | Foundation and schema | 0 | M1 | 2 to 3 weeks |
 | 2 | Catalog and variants (+ mapping spike) | 1 | M1 | 3 to 4 weeks |
-| 3 | Pricing, stock, cart, minimal storefront | 2 | M1 | 3 to 4 weeks |
+| 2.5 | Performance harness and baseline (doc 10) | 2 | M1 | 1 to 1.5 weeks |
+| 3 | Pricing, stock, cart, minimal storefront | 2.5 | M1 | 3 to 4 weeks |
 | 4 | Checkout, orders, shipping, COD/bank, emails | 3 | M1 | 4 to 5 weeks |
 | 5 | Full storefront (blocks, templates, account) | 3 (parallel with 4 after cart API is stable) | M1 | 3 to 4 weeks |
 | 6 | Migration (WC→FXC, then FXC→WC) | 2, 4 | M2 | 5 to 7 weeks |
@@ -70,7 +71,31 @@ Implementation notes (phase 2, 2026-10-24):
 - **Test bootstrap drops plugin tables.** The WordPress test installer recreates core tables, so post ids restart at 1 and stale `fxc_variants` rows from an earlier run matched new posts (an intermittent failure). `tests/bootstrap-integration.php` now calls `Schema::drop_all()` before activation.
 - **Not done yet:** the product editor and the Attributes screen pass type-check and build but have not been clicked through in a browser (block editor and classic editor). That pass is the first task of phase 3.
 
-## Phase 3: Pricing, stock, cart, minimal storefront
+## Phase 2.5: Performance harness and baseline
+
+Added 2026-10-24 after the performance audit (doc 10 §1). It comes before phase 3 so that every phase 3 renderer and route is written against budgets that already run in CI.
+
+| Pri | Task |
+|---|---|
+| P0 | Remove the per-request `flexacommerce_flush_rewrite` read (doc 10 F1, O1) |
+| P0 | Build the extension facade only when `flexacommerce.loaded` has listeners (F2, O2) |
+| P0 | T1 harness `tests/Integration/Performance/`: fresh-process probes, plugin on vs core only, `budgets.php`, `baseline.json`, class allowlist; replaces the in-process `FrontendQueryBudgetTest` (F3, O3) |
+| P0 | Dataset seeder: `tools/bench/generate-dataset.php --size=S\|M --seed=42` writes a neutral spec, `tools/bench/load-flexacommerce.php` loads it (dev-only, excluded from the zip) |
+| P1 | WooCommerce loader for the same spec and the parity script (doc 10 §6.2) |
+| P1 | T3 stack: Docker Compose (nginx, PHP-FPM, MySQL 8.0), measurement mu-plugin, k6 scripts for blog post and home; first report in `docs/benchmarks/` |
+| P2 | Build REST endpoint objects only for our namespace or the route index (F6, O6) |
+
+Exit criteria: T1 runs in CI on every push and fails on any budget breach; P1 passes in a fresh process (0 extra queries, ≤ 256 KB, allowlisted classes only); baseline report published with environment, raw data and spread.
+
+Implementation notes (phase 2.5, 2026-10-24):
+
+- **Exit criteria.** The harness is in the integration suite that CI runs on every push (single site, PHP 8.2 and 8.5); the first remote run is pending until the next push, and it will print the Linux memory baselines to record. P1 passes in a fresh process: 0 extra queries, +82 KB on PHP 8.2 and +111 to 135 KB on 8.5 (macOS), 9 allowlisted symbols, +24 callbacks, no assets. The baseline report is `docs/benchmarks/2026-10-24.md` with raw data and spread.
+- **Open item.** The report's latency is invalid by the doc 10 spread rule (22 to 69 %, limit 10 %) because it ran on a busy developer laptop. Its counters are valid. A rerun on a quiet reference machine (Q18) at dataset M is needed before phase 3 uses latency budgets.
+- **Seeder shape changed.** The plan said `wp flexacommerce dev seed`. The seeder is a plain spec generator plus one loader per store under `tools/bench/` instead, so the plugin carries no dev command and the WooCommerce loader reads the same file. Customers and orders in the spec stay empty until phase 4.
+- **O1 shape changed.** No flag and no settings-save flush: the front end checks the shop rule in the autoloaded `rewrite_rules` and flushes once when it is missing (doc 10 §3.4).
+- **Vendor autoload removed** from the bootstrap and `uninstall.php` (doc 10 F8): a dev checkout loaded Composer's dev files on every request.
+- **Datasets loaded on the bench stack** (Apple M2 laptop): S in 10 s (FlexaCommerce) and 72 s (WooCommerce 11.2.1), M in 117 s and 1,380 s. Parity OK for both stores at both sizes. Loader times are tooling cost, not a product comparison.
+
 
 | Pri | Task |
 |---|---|
@@ -84,6 +109,8 @@ Implementation notes (phase 2, 2026-10-24):
 | P2 | Low stock notifications |
 
 Exit criteria: last-unit concurrency test green; cart survives login merge; catalog pages set no cookie (P11); P2 and P3 query assertions pass.
+
+Performance exit (doc 10 §4, §8): T1 budgets P2, P3a, P3b, P4q, P5q and P11 binding, each list budget asserted at two sizes with identical query counts; provisional memory budgets replaced by measured value + 10 %; T3 P4 and P5 measured on the reference stack; first FlexaCommerce versus WooCommerce run for listing and product pages, published as indicative.
 
 ## Phase 4: Checkout, orders, shipping, payments, emails
 
@@ -106,6 +133,8 @@ Exit criteria: last-unit concurrency test green; cart survives login merge; cata
 
 Exit criteria: full concurrency suite green; state machine transition table fully covered; security review gate (doc 06 §2.12) passes for checkout, store and admin order routes.
 
+Performance exit: P6q (fixed part + exactly 1 query per line, checked at 1 and 10 lines) and P6m binding; gateway and shipping classes absent from catalog requests (T1 allowlist, O7); T3 P6 and C1 within budget with 0 oversells; worker RSS (C2) reported.
+
 ## Phase 5: Full storefront
 
 | Pri | Task |
@@ -120,7 +149,7 @@ Exit criteria: full concurrency suite green; state machine transition table full
 | P2 | Product search improvements (SKU search) |
 | P3 | Related products block |
 
-Exit criteria: E2E journeys green on Twenty Twenty-Five and the chosen classic theme (Q9); axe clean; P8 asset budget met. **M1 reached** when phases 1 to 5 exit criteria and the M1 release gates (doc 06 §7) pass.
+Exit criteria: E2E journeys green on Twenty Twenty-Five and the chosen classic theme (Q9); axe clean; P8 asset budget met; P1h binding; full doc 10 §6.4 scenario set at dataset M against WooCommerce default and tuned configurations, with parity notes. **M1 reached** when phases 1 to 5 exit criteria and the M1 release gates (doc 06 §7) pass.
 
 ## Phase 6: Migration
 
@@ -138,13 +167,14 @@ Exit criteria: E2E journeys green on Twenty Twenty-Five and the chosen classic t
 | P2 | Shipping zones migration |
 | P3 | JSONL file transport (cross-site) |
 
-Exit criteria: all migration tests green in all storage modes; 100,000-order synthetic job completes within the memory target, throughput recorded.
+Exit criteria: all migration tests green in all storage modes; 100,000-order synthetic job completes within the memory target, throughput recorded; P9 runs nightly; benchmark dataset also imported through migration and compared with the native load (doc 10 §6.2).
 
 ## Phase 7: Hardening and release
 
 | Pri | Task |
 |---|---|
-| P0 | Full benchmark (doc 06 §4), published report, fixes for missed targets or documented exceptions |
+| P0 | Full benchmark (doc 10 §6, dataset L), published report, fixes for missed targets or documented exceptions; regression thresholds (doc 10 §5.4) in force for release candidates |
+| P1 | Invite a third party to rerun the published benchmark before 1.0 |
 | P0 | Extension API docs (`docs/extending/`), API version constant, stability tags |
 | P0 | PHPCS reconciliation, Plugin Check, `.pot`, readme.txt, screenshots |
 | P0 | Release gates (doc 06 §7) |
@@ -167,6 +197,7 @@ Exit: **1.0 (M2)**.
 | Risk | Impact | Mitigation |
 |---|---|---|
 | Tax decision (Q2) lands late | Checkout and emails rework | Decide before phase 4 starts. Schema already carries tax columns. |
+| Performance budgets found late | Rework of renderers and routes after they ship | Phase 2.5 puts the T1 gate in CI before phase 3 code exists (doc 10) |
 | Variant admin UI larger than estimated | Phase 2 slips | Ship bulk edit as P1, generation and per-row edit as P0 |
 | WooCommerce data diversity (plugins writing odd meta) | Migration rejects or warnings explode | Spike in phase 2, beta stores in phase 7, preserve-unknown policy |
 | HPOS behavior changes in a WooCommerce release | Migration breakage | CRUD-only access, nightly test against latest WooCommerce |

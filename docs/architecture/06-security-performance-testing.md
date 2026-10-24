@@ -105,9 +105,11 @@ Before M1 and before 1.0: a checklist review (OWASP ASVS L1 subset relevant to W
 
 ## 3. Performance targets
 
+Doc 10 (performance architecture) refines these targets: per-scenario budgets, the test tier that enforces each one, and regression thresholds. Where the two differ, doc 10 §4 wins. The 2026-10-24 audit (doc 10 §1) found P1 failing by one query.
+
 | Id | Target | Measured how (§4) |
 |---|---|---|
-| P1 | Non-commerce front-end request (blog post, no FlexaCommerce block): **0** extra DB queries, ≤ **2 ms** added PHP time, ≤ **0.5 MB** added memory, **0** bytes of FlexaCommerce CSS/JS | plugin active vs inactive, same request |
+| P1 | Non-commerce front-end request (blog post, no FlexaCommerce block): **0** extra DB queries, ≤ **2 ms** added PHP time, ≤ **0.5 MB** added memory, **0** bytes of FlexaCommerce CSS/JS | plugin active vs inactive, same request, each in a fresh PHP process (doc 10 §5.2; an in-process test cannot see boot cost) |
 | P2 | Shop archive (24 products): ≤ **2** queries beyond core's `WP_Query` and term queries, independent of product count on the page (variant prime = 1 query) | `SAVEQUERIES` count, two page sizes |
 | P3 | Single product page (30 variants): ≤ **3** extra queries | `SAVEQUERIES` |
 | P4 | `POST store/cart/items` p95 ≤ **150 ms** server time | load test, dataset M |
@@ -123,8 +125,10 @@ A target missed at release is either fixed or documented as a known limitation w
 
 ## 4. Benchmark protocol
 
+The full methodology (test tiers, stack, dataset parity, WooCommerce configurations, scenarios, reported metrics) is in doc 10 §5 and §6. This section keeps the summary.
+
 - **Environment:** document CPU, RAM, OS, PHP version with OPcache enabled, MySQL/MariaDB version and `innodb_buffer_pool_size`, web server. Primary runs with **no persistent object cache**; a second run with a persistent object cache drop-in is reported separately (test environment only, not a dependency).
-- **Datasets** (deterministic seeding with `wp flexacommerce dev seed --size=S|M|L --seed=42`, dev-only command excluded from the release zip):
+- **Datasets**, deterministic: `tools/bench/generate-dataset.php --size=S|M --seed=42` writes a neutral spec, and one loader per store writes it natively (doc 10 §6.2). Dev tooling, excluded from the release zip. Size L is added in phase 7.
 
 | Size | Products | Variants per variable product | Orders | Customers |
 |---|---|---|---|---|
@@ -132,7 +136,7 @@ A target missed at release is either fixed or documented as a known limitation w
 | M | 10,000 | 12 | 100,000 | 20,000 |
 | L | 50,000 | 12 | 1,000,000 | 200,000 |
 
-- **Comparison baseline:** WooCommerce (latest stable) with the same dataset imported through our own migration, same theme (Twenty Twenty-Five), same server, only one commerce plugin active per run.
+- **Comparison baseline:** WooCommerce (latest stable) with the same dataset, loaded natively from a neutral dataset spec and checked for parity until migration exists, then also imported through our own migration (doc 10 §6.2), same theme (Twenty Twenty-Five), same server, only one commerce plugin active per run.
 - **Method:** 50 warm-up requests, then 500 measured requests per scenario, 3 runs, report median of runs for p50/p95/p99, plus query count and peak memory from a measurement mu-plugin (`SAVEQUERIES`, `timer_stop()`, `memory_get_peak_usage()`). Load tests with k6 (developer tool, not shipped) at 1, 10 and 25 virtual users.
 - **Scenarios:** P1 to P7 above, plus "browse 5 pages, add 2 items, checkout" journey.
 - **Publication:** raw results, scripts, environment description in `docs/benchmarks/{date}.md`. Marketing statements only quote published results (doc 01 §2).

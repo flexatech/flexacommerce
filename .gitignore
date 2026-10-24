@@ -7,6 +7,9 @@ node_modules/
 
 # assets/dist/ stays tracked so a fresh checkout runs without a build step.
 
+# Benchmark output: datasets are regenerated from the seed, runs land in docs/benchmarks/
+/tools/bench/out/
+
 # Local dev
 /client/.dev
 .phpunit.result.cache

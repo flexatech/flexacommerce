@@ -36,23 +36,23 @@ define( 'FLEXACOMMERCE_BASENAME', plugin_basename( __FILE__ ) );
 define( 'FLEXACOMMERCE_REST_NAMESPACE', 'flexacommerce/v1' );
 define( 'FLEXACOMMERCE_TEXT_DOMAIN', 'flexacommerce' );
 
-if ( file_exists( FLEXACOMMERCE_PATH . 'vendor/autoload.php' ) ) {
-	require_once FLEXACOMMERCE_PATH . 'vendor/autoload.php';
-} else {
-	spl_autoload_register(
-		static function ( string $class ): void {
-			$prefix = 'Flexa\Commerce\\';
-			if ( ! str_starts_with( $class, $prefix ) ) {
-				return;
-			}
-			$relative = substr( $class, strlen( $prefix ) );
-			$file     = FLEXACOMMERCE_PATH . 'src/' . str_replace( '\\', '/', $relative ) . '.php';
-			if ( is_readable( $file ) ) {
-				require $file;
-			}
+// There are no runtime Composer packages, so the plugin never loads
+// vendor/autoload.php: in a dev checkout it would pull the test toolchain
+// into every request and make measurements differ from the release zip
+// (doc 10 §1). Tests get their autoloader from PHPUnit.
+spl_autoload_register(
+	static function ( string $class ): void {
+		$prefix = 'Flexa\Commerce\\';
+		if ( ! str_starts_with( $class, $prefix ) ) {
+			return;
 		}
-	);
-}
+		$relative = substr( $class, strlen( $prefix ) );
+		$file     = FLEXACOMMERCE_PATH . 'src/' . str_replace( '\\', '/', $relative ) . '.php';
+		if ( is_readable( $file ) ) {
+			require $file;
+		}
+	}
+);
 
 register_activation_hook( __FILE__, [ \Flexa\Commerce\Setup\Activator::class, 'activate' ] );
 register_deactivation_hook( __FILE__, [ \Flexa\Commerce\Setup\Deactivator::class, 'deactivate' ] );
