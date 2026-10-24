@@ -1,0 +1,23 @@
+includes:
+    - vendor/szepeviktor/phpstan-wordpress/extension.neon
+
+parameters:
+    level: 6
+    # A range, so the PHP < 8.2 guard in flexacommerce.php is not folded to
+    # "always false" by the analyser.
+    phpVersion:
+        min: 80100
+        max: 80500
+    paths:
+        - src
+        - flexacommerce.php
+        - uninstall.php
+    excludePaths:
+        - vendor
+        - node_modules (?)
+        - assets/dist (?)
+    bootstrapFiles:
+        - vendor/php-stubs/wp-cli-stubs/wp-cli-stubs.php
+        - phpstan-bootstrap.php
+    scanFiles:
+        - vendor/php-stubs/woocommerce-stubs/woocommerce-stubs.php

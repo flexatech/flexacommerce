@@ -1,0 +1,11 @@
+{
+  "admin/main.tsx": {
+    "file": "assets/admin-DK7xYyO5.js",
+    "name": "admin",
+    "src": "admin/main.tsx",
+    "isEntry": true,
+    "css": [
+      "assets/admin-B9txoaxn.css"
+    ]
+  }
+}

@@ -1,0 +1,73 @@
+.flexacommerce-ui {
+    @apply fxc:text-foreground fxc:text-sm;
+
+    input::-webkit-outer-spin-button,
+    input::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+
+    input[type='number'] {
+        -moz-appearance: textfield;
+    }
+}
+
+* {
+    @apply fxc:border-border;
+}
+
+/* WP admin styles bare headings, paragraphs and form controls without a layer; reset them inside the app. */
+.flexacommerce-ui {
+    :where(button, code, form, h1, h2, h3, h4, h5, h6, input, ul, ol, li, nav, p, textarea, select, table, th, td) {
+        @apply fxc:m-0 fxc:p-0;
+    }
+}
+
+/* Form chrome from forms.css (gray border, 3px radius, blue focus ring). */
+.flexacommerce-control {
+    border: 1px solid var(--input-accent) !important;
+    border-radius: calc(var(--radius) - 2px) !important;
+    background-color: var(--background) !important;
+    color: var(--foreground) !important;
+    box-shadow: var(--shadow-sm) !important;
+    min-height: 0 !important;
+    line-height: 1.25rem !important;
+    padding-inline: 0.75rem !important;
+}
+
+/* WP draws the select chevron as a background image; keep room for it. */
+select.flexacommerce-control {
+    padding-right: 2rem !important;
+}
+
+.flexacommerce-control:focus,
+.flexacommerce-control:focus-visible {
+    outline: none !important;
+    box-shadow: none !important;
+    border-color: var(--brand-600) !important;
+}
+
+.dark .flexacommerce-control {
+    border-color: var(--border) !important;
+}
+
+/* Radix portals land on <body>, where `.wp-core-ui button` outranks text utilities. */
+.fxc\:text-white,
+.fxc\:text-primary-foreground,
+.fxc\:text-destructive-foreground {
+    color: #fff !important;
+}
+
+#wpcontent {
+    padding-left: 0 !important;
+}
+
+/*
+ * WP admin sets h1-h3 color and margins without a layer, which beats every
+ * utility. Roll those headings back so their own fxc: classes apply, also
+ * inside dialog portals.
+ */
+:is(h1, h2, h3, h4)[class*="fxc:"] {
+    margin: 0;
+    color: revert-layer;
+}

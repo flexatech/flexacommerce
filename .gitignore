@@ -1,0 +1,21 @@
+# Dependencies
+/vendor/
+node_modules/
+
+# Release output (release.sh)
+/build/
+
+# assets/dist/ stays tracked so a fresh checkout runs without a build step.
+
+# Local dev
+/client/.dev
+.phpunit.result.cache
+.phpunit.cache/
+*.log
+.env*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

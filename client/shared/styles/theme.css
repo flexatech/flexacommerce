@@ -1,0 +1,145 @@
+:root {
+    /* Flexa brand blue (shared Flexa palette, hue 250). */
+    --brand-50: oklch(0.97 0.02 250);
+    --brand-100: oklch(0.93 0.05 250);
+    --brand-500: oklch(0.65 0.18 250);
+    --brand-600: oklch(0.58 0.2 250);
+    --brand-700: oklch(0.5 0.2 250);
+
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.205 0 0);
+
+    --primary: var(--brand-600);
+    --primary-foreground: #ffffff;
+    --primary-accent: var(--brand-500);
+
+    --secondary: #222c39;
+    --secondary-foreground: #e0e6eb;
+    --secondary-accent: #3a4a5e;
+
+    --success: #00a32a;
+    --success-foreground: #ffffff;
+    --success-accent: #008a20;
+
+    --destructive: #d63638;
+    --destructive-foreground: #ffffff;
+    --destructive-accent: #b32d2e;
+
+    --warning: #dba617;
+    --warning-foreground: #1d2327;
+    --warning-accent: #c08c0a;
+
+    --muted: #f6f7f7;
+    --muted-foreground: #50575e;
+
+    --accent: var(--brand-600);
+    --accent-foreground: #ffffff;
+
+    --border: #e5e5e5;
+    --input: #e5e5e5;
+    --input-accent: #8c8f94;
+
+    --ring: var(--brand-600);
+    --ring-accent: var(--brand-500);
+
+    --card: #ffffff;
+    --card-foreground: #1d2327;
+    --popover: #ffffff;
+    --popover-foreground: #1d2327;
+
+    --radius: 0.625rem;
+    --default-transition-duration: 0.3s;
+
+    --sidebar: #1d2327;
+    --sidebar-foreground: #c3c4c7;
+    --sidebar-primary: var(--brand-600);
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-accent: #2c3338;
+    --sidebar-accent-foreground: #ffffff;
+    --sidebar-border: #2c3338;
+    --sidebar-ring: var(--brand-600);
+    --sidebar-muted: #8c8f94;
+
+    --shadow-sm: 0 1px 0 rgba(0, 0, 0, 0.04);
+    --shadow-md: 0 1px 2px rgba(0, 0, 0, 0.08);
+    --shadow-lg: 0 4px 8px rgba(0, 0, 0, 0.08);
+    --shadow-card: 0 1px 1px rgba(0, 0, 0, 0.05);
+}
+
+.dark {
+    --background: #0f1419;
+    --foreground: #e5e7eb;
+
+    --card: #1d2327;
+    --card-foreground: #e5e7eb;
+
+    --muted: #1d2327;
+    --muted-foreground: #9da5ae;
+
+    --border: #2c3338;
+    --input: #2c3338;
+}
+
+@theme inline {
+    --radius-*: initial;
+    --radius-sm: calc(var(--radius) - 4px);
+    --radius-md: calc(var(--radius) - 2px);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) + 4px);
+
+    --color-*: initial;
+    --color-black: #000;
+    --color-white: #fff;
+
+    --color-brand-50: var(--brand-50);
+    --color-brand-100: var(--brand-100);
+    --color-brand-500: var(--brand-500);
+    --color-brand-600: var(--brand-600);
+    --color-brand-700: var(--brand-700);
+
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+
+    --color-primary: var(--primary);
+    --color-primary-accent: var(--primary-accent);
+    --color-primary-foreground: var(--primary-foreground);
+
+    --color-secondary: var(--secondary);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-secondary-accent: var(--secondary-accent);
+
+    --color-success: var(--success);
+    --color-success-foreground: var(--success-foreground);
+    --color-success-accent: var(--success-accent);
+    --color-destructive: var(--destructive);
+    --color-destructive-foreground: var(--destructive-foreground);
+    --color-destructive-accent: var(--destructive-accent);
+    --color-warning: var(--warning);
+    --color-warning-foreground: var(--warning-foreground);
+    --color-warning-accent: var(--warning-accent);
+
+    --color-muted: var(--muted);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-accent: var(--accent);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-border: var(--border);
+    --color-input: var(--input);
+    --color-input-accent: var(--input-accent);
+    --color-ring: var(--ring);
+    --color-ring-accent: var(--ring-accent);
+
+    --color-card: var(--card);
+    --color-card-foreground: var(--card-foreground);
+    --color-popover: var(--popover);
+    --color-popover-foreground: var(--popover-foreground);
+
+    --color-sidebar: var(--sidebar);
+    --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar-primary: var(--sidebar-primary);
+    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    --color-sidebar-border: var(--sidebar-border);
+    --color-sidebar-ring: var(--sidebar-ring);
+    --color-sidebar-muted: var(--sidebar-muted);
+}

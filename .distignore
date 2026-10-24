@@ -1,0 +1,45 @@
+# Everything listed here stays out of the release zip (see release.sh).
+
+# Dependencies and toolchain
+vendor
+node_modules
+composer.json
+composer.lock
+client/package.json
+client/pnpm-lock.yaml
+client/tsconfig.json
+client/vite.config.ts
+client/.dev
+
+# Tests and static analysis
+tests
+phpunit.xml.dist
+phpcs.xml.dist
+phpstan.neon
+phpstan-bootstrap.php
+.phpunit.result.cache
+.phpunit.cache
+
+# Dev-only PHP: Vite dev server loader
+src/Admin/dev-server.php
+
+# Internal docs and notes; readme.txt is the only readme that ships
+docs
+*.md
+
+# Repo and build plumbing
+.git
+.github
+.gitignore
+.distignore
+.editorconfig
+release.sh
+build
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea
+.vscode
+*.log
+.env*

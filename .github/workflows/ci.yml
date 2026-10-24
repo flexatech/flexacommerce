@@ -1,0 +1,118 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static:
+    name: Lint and static analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          coverage: none
+          tools: composer:v2
+      - run: composer install --no-progress --prefer-dist
+      - name: PHP syntax
+        run: find src tests flexacommerce.php uninstall.php -name '*.php' -print0 | xargs -0 -n1 php -l > /dev/null
+      - run: composer lint
+      - run: composer analyse -- --no-progress
+
+  unit:
+    name: Unit (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.2', '8.5']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+          tools: composer:v2
+      - run: composer install --no-progress --prefer-dist
+      - run: composer test
+
+  integration:
+    name: Integration (PHP ${{ matrix.php }}, ${{ matrix.db }}${{ matrix.multisite && ', multisite' || '' }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.2', '8.5']
+        db: ['mysql:8.0', 'mariadb:10.6']
+        multisite: [false, true]
+    services:
+      database:
+        image: ${{ matrix.db }}
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: fxc_tests
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_DATABASE: fxc_tests
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      WP_CORE_DIR: /tmp/wordpress
+      WP_TESTS_DB_NAME: fxc_tests
+      WP_TESTS_DB_USER: root
+      WP_TESTS_DB_PASSWORD: root
+      WP_TESTS_DB_HOST: 127.0.0.1:3306
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+          extensions: mysqli
+          tools: composer:v2
+      - run: composer install --no-progress --prefer-dist
+      - name: Download WordPress matching wp-phpunit
+        run: |
+          WP_VERSION="$(composer show wp-phpunit/wp-phpunit --format=json | jq -r '.versions[0]')"
+          echo "WordPress ${WP_VERSION}"
+          mkdir -p "${WP_CORE_DIR}"
+          curl -sSfL "https://wordpress.org/wordpress-${WP_VERSION}.tar.gz" | tar -xz --strip-components=1 -C "${WP_CORE_DIR}"
+      - name: Single site
+        if: ${{ !matrix.multisite }}
+        run: vendor/bin/phpunit --testsuite integration
+      - name: Multisite
+        if: ${{ matrix.multisite }}
+        run: vendor/bin/phpunit -c tests/phpunit-multisite.xml.dist --testsuite integration
+
+  client:
+    name: Admin app build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+          cache-dependency-path: client/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Committed bundle matches the source
+        working-directory: .
+        run: git diff --exit-code -- assets/dist

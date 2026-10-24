@@ -1,0 +1,82 @@
+<?xml version="1.0"?>
+<ruleset name="FlexaCommerce">
+    <description>Coding standards for FlexaCommerce.</description>
+
+    <file>./src</file>
+    <file>./flexacommerce.php</file>
+    <file>./uninstall.php</file>
+
+    <exclude-pattern>*/vendor/*</exclude-pattern>
+    <exclude-pattern>*/node_modules/*</exclude-pattern>
+    <exclude-pattern>*/assets/dist/*</exclude-pattern>
+    <exclude-pattern>*/client/*</exclude-pattern>
+    <!-- Dev-only Vite HMR loader; never shipped (see .distignore). -->
+    <exclude-pattern>*/src/Admin/dev-server.php</exclude-pattern>
+
+    <arg value="sp"/>
+    <arg name="extensions" value="php"/>
+    <arg name="colors"/>
+
+    <config name="testVersion" value="8.2-"/>
+    <config name="minimum_supported_wp_version" value="6.9"/>
+
+    <rule ref="WordPress">
+        <exclude name="WordPress.Files.FileName"/>
+        <exclude name="Universal.Operators.DisallowShortTernary"/>
+
+        <!-- Flexa house style, deliberate (see the flexa-plugin-conventions notes). -->
+        <exclude name="Universal.Arrays.DisallowShortArraySyntax"/>
+        <!-- Hooks are dot-separated: flexacommerce.settings.updated. -->
+        <exclude name="WordPress.NamingConventions.ValidHookName"/>
+        <!-- Sparse docblocks; phpstan level 6 is the type gate. -->
+        <exclude name="Squiz.Commenting.FileComment"/>
+        <exclude name="Squiz.Commenting.ClassComment"/>
+        <exclude name="Squiz.Commenting.FunctionComment"/>
+        <exclude name="Squiz.Commenting.VariableComment"/>
+        <exclude name="Squiz.Commenting.FunctionCommentThrowTag"/>
+        <exclude name="Generic.Commenting.DocComment"/>
+        <!-- strict_types plus strict comparisons everywhere. -->
+        <exclude name="WordPress.PHP.YodaConditions"/>
+        <!-- $new/$old are the settings hook contract; $class is the autoloader convention. -->
+        <exclude name="Universal.NamingConventions.NoReservedKeywordParameterNames"/>
+    </rule>
+    <rule ref="PHPCompatibilityWP"/>
+
+    <!--
+        Direct queries are confined to the data-access layer (doc 02 §3.3).
+        Each class there carries its own phpcs:disable with the reason; this
+        keeps the sniff active everywhere else.
+    -->
+    <rule ref="WordPress.DB.DirectDatabaseQuery">
+        <exclude-pattern>*/src/Database/*</exclude-pattern>
+        <exclude-pattern>*/src/Support/LogRepository.php</exclude-pattern>
+    </rule>
+
+    <!--
+        The data-access classes hold wpdb as $this->wpdb so tests can pass a
+        fake. The PreparedSQL sniffs only recognise a variable named $wpdb and
+        report every prepared call on the property as unprepared. Every query
+        in these files goes through prepare() with %i/%s/%d placeholders.
+    -->
+    <rule ref="WordPress.DB.PreparedSQL">
+        <exclude-pattern>*/src/Database/Integrity.php</exclude-pattern>
+        <exclude-pattern>*/src/Database/Sequence.php</exclude-pattern>
+        <exclude-pattern>*/src/Support/LogRepository.php</exclude-pattern>
+    </rule>
+    <rule ref="WordPress.DB.PreparedSQLPlaceholders">
+        <exclude-pattern>*/src/Support/LogRepository.php</exclude-pattern>
+    </rule>
+
+    <!-- Exception messages are escaped where they are displayed. -->
+    <rule ref="WordPress.Security.EscapeOutput.ExceptionNotEscaped">
+        <exclude-pattern>*/src/*</exclude-pattern>
+    </rule>
+
+    <rule ref="WordPress.WP.I18n">
+        <properties>
+            <property name="text_domain" type="array">
+                <element value="flexacommerce"/>
+            </property>
+        </properties>
+    </rule>
+</ruleset>

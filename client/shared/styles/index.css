@@ -1,0 +1,14 @@
+@layer theme, base, components, utilities;
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+@import 'tailwindcss/theme.css' layer(theme) prefix(fxc);
+@import './theme.css';
+@import 'tailwindcss/preflight.css';
+@import './preflight.css';
+
+/* Utilities only match inside the scope class, which Admin\Menu puts on <body> and the mount div. */
+.flexacommerce-ui {
+    @import 'tailwindcss/utilities.css';
+}
