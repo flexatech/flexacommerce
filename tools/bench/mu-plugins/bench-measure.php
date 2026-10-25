@@ -39,6 +39,7 @@ register_shutdown_function(
 		$line = [
 			'id'        => (string) ( $_SERVER['HTTP_X_REQUEST_ID'] ?? '' ),
 			'run'       => (string) ( $_SERVER['HTTP_X_BENCH_RUN'] ?? '' ),
+			'journey'   => (string) ( $_SERVER['HTTP_X_BENCH_JOURNEY'] ?? '' ),
 			'ms'        => round( ( microtime( true ) - (float) $_SERVER['REQUEST_TIME_FLOAT'] ) * 1e3, 3 ),
 			'cpu_ms'    => round( $cpu( $now ) - $cpu( $bench_rusage ), 3 ),
 			'queries'   => isset( $GLOBALS['wpdb'] ) ? (int) $GLOBALS['wpdb']->num_queries : 0,

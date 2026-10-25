@@ -9,12 +9,15 @@ T3 load tests and the WooCommerce comparison from doc 10 §5.3 and §6. This fol
 | `generate-dataset.php` | Writes the neutral dataset spec (`--size=S\|M --seed=42`) to `out/`. Same seed, same file, on any PHP version. |
 | `load-flexacommerce.php` | Loads a spec through FlexaCommerce services (`wp eval-file`). |
 | `load-woocommerce.php` | Loads the same spec through WooCommerce CRUD classes. |
+| `prep-catalog.php` | Gives both stores the same catalog pages after the load: 12 products per shop page, and a page `/collection/` with each store's own product collection block (12 products, newest first, image, title, price, button). |
+| `tune-woocommerce.php` | The tuned WooCommerce configuration (doc 10 §6.3): turns off analytics, order attribution, remote logging, the site visibility badge and blueprint, plus tracking and marketplace suggestions. Writes what it changed to `out/wc-tuned.json`. |
 | `parity-export.php` | Exports a store in the normalized parity shape, plus the URLs and cart product IDs the load tests use. |
 | `parity-compare.php` | Compares exports with the spec. Any difference exits 1 and stops the benchmark. |
 | `mu-plugins/bench-measure.php` | Per-request queries, peak memory and CPU time, joined to the nginx log by request id. |
 | `k6/page.js` | One GET scenario, shared iterations, no redirects. |
-| `k6/cart.js` | Cart scenarios through each store's own REST API: `add` (a new guest per iteration adds one product) and `view` (one guest cart with three products, read on every iteration). |
+| `k6/cart.js` | Cart scenarios through each store's own REST API: `add` (a new guest per iteration adds one product), `view` (one guest cart with three products, read on every iteration) and `page` (the same cart, but the cart page is read). |
 | `k6/checkout.js` | Checkout with cash on delivery: a new guest per iteration reads the cart nonce, adds five products, (FlexaCommerce) reads the checkout token, then places the order. |
+| `k6/journey.js` | A shopper's visit: a new guest reads 5 pages, adds 2 products and checks out with cash on delivery. Every request of a visit carries `X-Bench-Journey: <vu>-<iteration>`, so the summary adds up one visit. |
 | `prep-checkout.php` | Sets up both stores for the checkout scenario (cash on delivery, one US flat rate, deferred emails, five products with stock of 1,000,000) and writes the IDs and rate to `out/checkout-<store>.json`. |
 | `e2e-prep.php` | Sets up `e2e.bench` for the browser tests in `tests/e2e`: cash on delivery, one US flat rate, a terms page, a page with the filter block, a customer `shopper`, and writes the URLs and products the journeys use to `out/e2e.json`. |
 | `mu-plugins/e2e.php` | On `e2e.bench` only: the theme comes from the `X-FXC-E2E-Theme` header (`twentytwentyfive`, `astra`, `twentytwentyone`), the mini cart block opens the body, and the per-IP order-page limit is off. |
@@ -29,7 +32,8 @@ T3 load tests and the WooCommerce comparison from doc 10 §5.3 and §6. This fol
 |---|---|---|
 | `core.bench` | `bench_fxc` | none (the mu-plugin empties `active_plugins`) |
 | `fxc.bench` | `bench_fxc` | FlexaCommerce, read-only mount of this checkout |
-| `wc.bench` | `bench_wc` | WooCommerce, latest at setup time (the version is recorded) |
+| `wc.bench` | `bench_wc` | WooCommerce, latest at setup time (the version is recorded), default configuration with HPOS on |
+| `wct.bench` | `bench_wct` | The same WooCommerce store, copied from the `bench_wc` dump and tuned with `tune-woocommerce.php` |
 | `tax.bench` | `bench_tax` | WooCommerce, used only by `tax-golden` (recreated on every run) |
 | `e2e.bench` | `bench_e2e` | FlexaCommerce with dataset S, used only by the browser tests; Astra and Twenty Twenty-One are installed for it |
 
@@ -37,12 +41,14 @@ T3 load tests and the WooCommerce comparison from doc 10 §5.3 and §6. This fol
 
 ```sh
 ./bench.sh up            # build and start
-./bench.sh setup S       # install WordPress 7.1.3, both stores, load dataset S, parity check, dumps
+./bench.sh setup S       # install WordPress 7.1.3, both stores, load dataset S, catalog pages, parity check, the tuned copy, dumps
 ./bench.sh export M      # export both stores again (parity, URLs, cart IDs) without reloading
 ./bench.sh run           # blog-post and home, 3 runs, stores rotated per run
 ./bench.sh run home shop simple variable cart-add cart-view
 ./bench.sh prep-checkout # once after setup: checkout dumps for both stores
 ./bench.sh run checkout
+./bench.sh run blog-post home collection shop shop-20 simple variable cart-add cart-view cart-page checkout journey
+STORES="fxc wc" ./bench.sh run shop   # only these stores
 ./bench.sh summary out/runs/<stamp>
 ./bench.sh tax-golden    # reprice the tax golden fixture with WooCommerce
 ./bench.sh e2e-setup     # once: the browser-test store, its dump in out/dumps/bench_e2e.sql.gz
@@ -51,7 +57,7 @@ T3 load tests and the WooCommerce comparison from doc 10 §5.3 and §6. This fol
 ./bench.sh down
 ```
 
-Settings come from the environment: `PHP_VERSION` (8.2), `FPM_WORKERS` (4), `VUS` (1), `N` (500), `WARMUP` (50), `RUNS` (3). `setup` drops and recreates the two bench databases.
+Settings come from the environment: `PHP_VERSION` (8.2), `FPM_WORKERS` (4), `VUS` (1), `N` (500), `WARMUP` (50), `RUNS` (3), `JOURNEY_N` (100 visits), `JOURNEY_WARMUP` (10 visits), `STORES` (`core fxc wc wct`). `setup` drops and recreates the bench databases. `FPM_WORKERS` only takes effect when the PHP container is recreated (`FPM_WORKERS=10 docker compose -f docker/compose.yml up -d php`).
 
 Each store block in a run starts with a PHP-FPM restart (empty OPcache), then the warm-up requests, then the measured requests. Logs, FPM worker RSS before and after, MySQL `Handler_read%` and `Innodb_rows_read`, and the rendered page land in `out/runs/<stamp>/<scenario>.<store>.<run>/`. A set is valid only when every store has a spread of 10 % or less and no errors. Copy a valid run into `docs/benchmarks/<date>/` to publish it.
 
@@ -61,9 +67,10 @@ Each store block in a run starts with a PHP-FPM restart (empty OPcache), then th
 - `wp eval-file` runs scripts through `eval()`, so the loaders and the export have no `declare(strict_types=1)`.
 - The Debian MySQL client in the PHP image is MariaDB's, which refuses MySQL 8's self-signed certificate; `bench.sh` passes `--skip-ssl`.
 - A new WooCommerce store starts in coming-soon mode, which serves a placeholder page to visitors. Setup turns it off, because a store in that mode is not serving its shop.
-- Scenarios: `blog-post`, `home`, `shop` (product archive, page 1), `simple`, `variable` and `cart-add`, `cart-view`, `checkout`. `core` has no catalog, so it runs `blog-post` and `home` only.
+- Scenarios: `blog-post`, `home`, `collection` (the `/collection/` page of `prep-catalog.php`), `shop` and `shop-20` (product archive, pages 1 and 20), `simple`, `variable` (the first 12-variant product), `cart-add`, `cart-view`, `cart-page`, `checkout` and `journey`. `core` has no catalog, so it runs `blog-post` and `home` only. The store order rotates on each run.
+- `journey` pages: `/collection/`, the shop, shop page 2, the simple and the variable product; then the cart read for the nonce, 2 adds (the first 2 checkout products), (FlexaCommerce) the checkout token, and the order. FlexaCommerce makes 10 requests per visit, WooCommerce 9. Latency, queries and CPU are the sums per visit, peak memory the highest request; req/s is visits per second.
 - GET scenarios do not change data, so runs restart PHP-FPM but do not restore the dumps. Each cart scenario restores the store's database from `out/dumps/` first (the size comes from `out/setup.txt`), because every `cart-add` iteration creates a session.
-- `prep-checkout` restores each store from its setup dump, turns on HPOS for WooCommerce (`wp wc hpos enable`, so orders land in `wp_wc_orders`), runs `prep-checkout.php` and writes `out/dumps/bench_<store>-<size>-checkout.sql.gz`. Every `checkout` run restores that dump first.
+- `setup` turns on HPOS for WooCommerce (`wp wc hpos enable`, so orders land in `wp_wc_orders`) before the dumps, so `wc` and `wct` both run with it. `prep-checkout` restores each store (`fxc`, `wc`, `wct`) from its setup dump, runs `prep-checkout.php` and writes `out/dumps/bench_<store>-<size>-checkout.sql.gz`. Every `checkout` and `journey` run restores that dump first.
 - A checkout run records the order count and the stock of the five products before and after (`checkout-before.txt`, `checkout-after.txt`). The summary flags a stock error when the stock drop differs from the number of new orders, or when stock goes below 0; a run with a stock error is not valid. Both stores defer order emails to a later request (WooCommerce through `woocommerce_defer_transactional_emails` to Action Scheduler, FlexaCommerce through its `defer_emails` setting). Every k6 request comes from one IP, so the mu-plugin turns off FlexaCommerce's per-IP checkout limit (`flexacommerce.rate_limit.checkout_ip`, 30 per 10 minutes); WooCommerce's Store API rate limiting is off by default. With the limit on, every request after the 30th answers 429.
 - Req/s comes from the nginx `$msec` timestamps of the counted requests: (count − 1) divided by the time from the first to the last. For checkout, the latency, queries, memory and CPU describe the order request alone. Rows/req and req/s cover the whole flow: MySQL counters include the prep requests, and the prep requests run between the counted ones, so req/s is the rate of whole checkouts.
 - In `cart.js` and `checkout.js`, the requests that only prepare a cart (the nonce read, the setup adds) carry `X-Bench-Run: <label>-prep`, so the summary counts only the request under test. FlexaCommerce sends `X-FXC-Nonce` and an `Origin` header; WooCommerce sends `Nonce` to its Store API. A successful add answers 201, which the summary counts as success.

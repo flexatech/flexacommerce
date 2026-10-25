@@ -77,6 +77,7 @@ foreach ( glob( $dir . '/*.*.*', GLOB_ONLYDIR ) ?: [] as $run_dir ) {
 	$errors   = 0;
 	$requests = 0;
 	$stamps   = [];
+	$visits   = [];
 	foreach ( jsonl( $run_dir . '/nginx.jsonl' ) as $row ) {
 		if ( $row['run'] !== $label ) {
 			continue;
@@ -96,7 +97,21 @@ foreach ( glob( $dir . '/*.*.*', GLOB_ONLYDIR ) ?: [] as $run_dir ) {
 			$queries[] = (int) $entry['queries'];
 			$peak[]    = (int) $entry['peak'];
 			$cpu[]     = (float) $entry['cpu_ms'];
+			if ( ( $entry['journey'] ?? '' ) !== '' ) {
+				$visit                      = $visits[ $entry['journey'] ] ?? [ 0.0, 0, 0, 0.0 ];
+				$visits[ $entry['journey'] ] = [ $visit[0] + (float) $row['upstream'] * 1000, $visit[1] + (int) $entry['queries'], max( $visit[2], (int) $entry['peak'] ), $visit[3] + (float) $entry['cpu_ms'] ];
+			}
 		}
+	}
+	$joined = count( $php_ms );
+	// Journey: one value per visit, the sum over its requests (peak memory: the highest).
+	$per_visit = $visits !== [];
+	if ( $per_visit ) {
+		$upstream = array_column( $visits, 0 );
+		$queries  = array_column( $visits, 1 );
+		$peak     = array_column( $visits, 2 );
+		$cpu      = array_column( $visits, 3 );
+		$php_ms   = [];
 	}
 
 	$before = status_file( $run_dir . '/mysql-before.txt' );
@@ -104,7 +119,11 @@ foreach ( glob( $dir . '/*.*.*', GLOB_ONLYDIR ) ?: [] as $run_dir ) {
 	$rows   = isset( $before['Innodb_rows_read'], $after['Innodb_rows_read'] ) ? $after['Innodb_rows_read'] - $before['Innodb_rows_read'] : null;
 	$rss    = rss_file( $run_dir . '/rss-after.txt' );
 	// Requests per second over the measured window (first to last response).
+	// For a journey, visits per second.
 	$rps = count( $stamps ) > 1 && max( $stamps ) > min( $stamps ) ? ( count( $stamps ) - 1 ) / ( max( $stamps ) - min( $stamps ) ) : null;
+	if ( $per_visit && $rps !== null ) {
+		$rps *= count( $visits ) / count( $stamps );
+	}
 
 	// Checkout: every order takes one unit of each product, so each stock
 	// drop must equal the orders placed, and no stock may go below zero.
@@ -124,7 +143,8 @@ foreach ( glob( $dir . '/*.*.*', GLOB_ONLYDIR ) ?: [] as $run_dir ) {
 
 	$runs[ $scenario ][ $store ][ (int) $run ] = [
 		'requests'      => $requests,
-		'joined'        => count( $php_ms ),
+		'visits'        => $per_visit ? count( $visits ) : null,
+		'joined'        => $joined,
 		'error_rate'    => $requests > 0 ? (float) $errors / $requests : 1.0,
 		'p50'           => pct( $upstream, 50 ),
 		'p95'           => pct( $upstream, 95 ),
@@ -134,7 +154,7 @@ foreach ( glob( $dir . '/*.*.*', GLOB_ONLYDIR ) ?: [] as $run_dir ) {
 		'queries'       => median( $queries ),
 		'peak_kb'       => median( $peak ) / 1024,
 		'cpu_ms'        => median( $cpu ),
-		'rows_per_req'  => $rows !== null && $requests > 0 ? $rows / $requests : null,
+		'rows_per_req'  => $rows !== null && $requests > 0 ? $rows / ( $per_visit ? count( $visits ) : $requests ) : null,
 		'rss_kb_median' => $rss !== [] ? median( $rss ) : null,
 		'rss_kb_max'    => $rss !== [] ? max( $rss ) : null,
 		'html_bytes'    => is_file( $run_dir . '/page.html' ) ? filesize( $run_dir . '/page.html' ) : null,
@@ -166,13 +186,22 @@ foreach ( $runs as $scenario => $stores ) {
 	}
 }
 
+// JSON has no NaN: a percentile of nothing (PHP time of a journey) becomes null.
+array_walk_recursive(
+	$summary,
+	static function ( &$value ): void {
+		if ( is_float( $value ) && is_nan( $value ) ) {
+			$value = null;
+		}
+	}
+);
 file_put_contents( $dir . '/summary.json', json_encode( $summary, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES ) . "\n" );
 
 $fmt = static fn ( $v, int $d = 1 ): string => $v === null || ( is_float( $v ) && is_nan( $v ) ) ? 'n/a' : number_format( (float) $v, $d, '.', '' );
 $md  = "| Scenario | Store | p50 ms | p95 ms | p99 ms | PHP p50 / p95 ms | Spread | Errors | Req/s | Queries | Peak KB | CPU ms | Rows/req | FPM RSS KB (median / max) | HTML bytes | Stock errors | Valid |\n";
 $md .= "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n";
 foreach ( $summary as $scenario => $stores ) {
-	foreach ( [ 'core', 'fxc', 'wc' ] as $store ) {
+	foreach ( [ 'core', 'fxc', 'wc', 'wct' ] as $store ) {
 		if ( ! isset( $stores[ $store ] ) ) {
 			continue;
 		}

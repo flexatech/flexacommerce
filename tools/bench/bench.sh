@@ -3,21 +3,26 @@
 # docker project "fxc-bench"; nothing here touches a real site.
 #
 #   ./bench.sh up                  build and start the stack
-#   ./bench.sh setup S|M           install core + both stores, load the dataset, check parity
+#   ./bench.sh setup S|M           install core + both stores, load the dataset, check parity,
+#                                  then copy the WooCommerce store as the tuned one (wct)
 #   ./bench.sh export S|M          export both stores again (parity check, URLs, cart IDs)
 #   ./bench.sh prep-checkout       COD, a US flat rate, deferred emails and stock for the checkout dumps
 #   ./bench.sh run [scenario...]   3 alternating runs per scenario (default: blog-post home)
 #
-# Scenarios: blog-post, home, shop, simple, variable (GET pages) and cart-add,
-# cart-view, checkout (store REST APIs; the store database is restored from
-# out/dumps before each of them). core runs blog-post and home only.
+# Scenarios: blog-post, home, collection, shop, shop-20, simple, variable (GET
+# pages), cart-add, cart-view, checkout (store REST APIs), cart-page (the cart
+# page with a filled cart) and journey (5 pages, 2 adds, checkout). The store
+# database is restored from out/dumps before the cart, checkout and journey
+# scenarios. core runs blog-post and home only. Stores: core fxc wc wct
+# (STORES overrides the list).
 #   ./bench.sh summary <dir>       summarize a run directory
 #   ./bench.sh tax-golden          price tests/fixtures/tax-golden.json with WooCommerce (doc 02 §7.12.9)
 #   ./bench.sh e2e-setup           store e2e.bench for the browser tests: dataset S, Astra and Twenty Twenty-One
 #   ./bench.sh e2e [args...]       restore e2e.bench and run the Playwright tests in tests/e2e (args go to playwright)
 #   ./bench.sh down                stop the stack (volumes are kept)
 #
-# Env: PHP_VERSION (8.2), FPM_WORKERS (4), VUS (1), N (500), WARMUP (50), RUNS (3).
+# Env: PHP_VERSION (8.2), FPM_WORKERS (4), VUS (1), N (500), WARMUP (50), RUNS (3),
+#      JOURNEY_N (100), JOURNEY_WARMUP (10), STORES ("core fxc wc wct").
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -26,6 +31,7 @@ WP_VERSION=7.1.3
 SEED=42
 export PHP_VERSION="${PHP_VERSION:-8.2}" FPM_WORKERS="${FPM_WORKERS:-4}"
 VUS="${VUS:-1}" N="${N:-500}" WARMUP="${WARMUP:-50}" RUNS="${RUNS:-3}"
+JOURNEY_N="${JOURNEY_N:-100}" JOURNEY_WARMUP="${JOURNEY_WARMUP:-10}"
 
 php_exec() { "${COMPOSE[@]}" exec -T php bash -c "$1"; }
 wp() { php_exec "php -d memory_limit=2G /usr/local/bin/wp --allow-root --path=/var/www/html $*"; }
@@ -63,6 +69,7 @@ cmd_setup() {
 	install_store fxc.bench bench_fxc
 	wp --url=http://fxc.bench plugin activate flexacommerce
 	wp --url=http://fxc.bench eval-file /bench/load-flexacommerce.php $spec
+	wp --url=http://fxc.bench eval-file /bench/prep-catalog.php
 
 	install_store wc.bench bench_wc
 	php_exec '[ -d /var/www/html/wp-content/plugins/woocommerce ] || php -d memory_limit=512M /usr/local/bin/wp --allow-root --path=/var/www/html plugin install woocommerce'
@@ -70,10 +77,14 @@ cmd_setup() {
 	# A new store starts in coming-soon mode, which hides the shop from visitors.
 	wp --url=http://wc.bench option update woocommerce_coming_soon no
 	wp --url=http://wc.bench eval-file /bench/load-woocommerce.php $spec
+	wp --url=http://wc.bench eval-file /bench/prep-catalog.php
+	# WooCommerce's default for a new store is HPOS on (doc 10 §6.3); a CLI install leaves it off.
+	wp --url=http://wc.bench wc hpos enable
 
 	cmd_export "$size"
 
 	php_exec "mkdir -p /bench/out/dumps && for db in bench_fxc bench_wc; do mysqldump -h db -uroot -pbench --skip-ssl --single-transaction \$db 2>/dev/null | gzip > /bench/out/dumps/\$db-$size.sql.gz; done"
+	setup_tuned "$size"
 	{
 		echo "size=$size seed=$SEED"
 		echo "wordpress=$(wp --url=http://fxc.bench core version)"
@@ -82,6 +93,17 @@ cmd_setup() {
 		echo "php=$(php_exec 'php -r "echo PHP_VERSION;"')"
 		echo "mysql=$(sql 'SELECT VERSION();')"
 	} | tee "$HERE/out/setup.txt"
+}
+
+# The tuned WooCommerce store (doc 10 §6.3) is a copy of the default one with
+# tune-woocommerce.php applied, served as wct.bench.
+setup_tuned() { # size
+	sql "DROP DATABASE IF EXISTS bench_wct; CREATE DATABASE bench_wct CHARACTER SET utf8mb4;"
+	# The URLs come from WP_HOME in wp-config.php, so the copy needs no search and replace.
+	php_exec "gunzip < /bench/out/dumps/bench_wc-$1.sql.gz | mysql -h db -uroot -pbench --skip-ssl bench_wct 2>/dev/null"
+	wp --url=http://wct.bench eval-file /bench/tune-woocommerce.php /bench/out/wc-tuned.json
+	php_exec "php -d memory_limit=2G /usr/local/bin/wp --allow-root --path=/var/www/html --url=http://wct.bench eval-file /bench/parity-export.php /bench/out/dataset-$1-$SEED.json /bench/out/parity-wct.json"
+	php_exec "mysqldump -h db -uroot -pbench --skip-ssl --single-transaction bench_wct 2>/dev/null | gzip > /bench/out/dumps/bench_wct-$1.sql.gz"
 }
 
 cmd_tax_golden() {
@@ -105,24 +127,22 @@ cmd_export() {
 cmd_prep_checkout() {
 	local size store db
 	size=$(sed -n 's/^size=\([SM]\).*/\1/p' "$HERE/out/setup.txt")
-	for store in fxc wc; do
+	for store in fxc wc wct; do
 		db=bench_$store
 		restore_db "$store"
-		# WooCommerce's default for a new store is HPOS on (doc 10 §6.3); a CLI install leaves it off.
-		[ "$store" != wc ] || wp --url=http://wc.bench wc hpos enable
 		php_exec "php -d memory_limit=2G /usr/local/bin/wp --allow-root --path=/var/www/html --url=http://$store.bench eval-file /bench/prep-checkout.php /bench/out/dataset-$size-$SEED.json /bench/out/checkout-$store.json"
 		php_exec "mysqldump -h db -uroot -pbench --skip-ssl --single-transaction $db 2>/dev/null | gzip > /bench/out/dumps/$db-$size-checkout.sql.gz"
 	done
 }
 
 # Orders placed and stock left on the checkout products, for the oversell check.
-checkout_state() { # store
+checkout_state() { # store [lines]
 	local ids
-	ids=$(php -r '$e = json_decode(file_get_contents($argv[1]), true); echo implode(",", $e["ids"]);' "$HERE/out/checkout-$1.json")
+	ids=$(php -r '$e = json_decode(file_get_contents($argv[1]), true); echo implode(",", array_slice($e["ids"], 0, (int) $argv[2]));' "$HERE/out/checkout-$1.json" "${2:-5}")
 	if [ "$1" = fxc ]; then
 		sql "USE bench_fxc; SELECT 'orders', COUNT(*) FROM wp_fxc_orders; SELECT CONCAT('stock_', product_id), stock_quantity FROM wp_fxc_variants WHERE product_id IN ($ids) ORDER BY product_id;"
 	else
-		sql "USE bench_wc; SELECT 'orders', COUNT(*) FROM wp_wc_orders WHERE type = 'shop_order'; SELECT CONCAT('stock_', post_id), CAST(meta_value AS SIGNED) FROM wp_postmeta WHERE meta_key = '_stock' AND post_id IN ($ids) ORDER BY post_id;"
+		sql "USE bench_$1; SELECT 'orders', COUNT(*) FROM wp_wc_orders WHERE type = 'shop_order'; SELECT CONCAT('stock_', post_id), CAST(meta_value AS SIGNED) FROM wp_postmeta WHERE meta_key = '_stock' AND post_id IN ($ids) ORDER BY post_id;"
 	fi
 }
 
@@ -134,7 +154,13 @@ mysql_status() {
 	sql "SHOW GLOBAL STATUS WHERE Variable_name LIKE 'Handler_read%' OR Variable_name = 'Innodb_rows_read';"
 }
 
-k6() { # host path run n [api mode products [rate]]
+k6() { # host path run n [api mode products [rate [pages]]]
+	if [ "${6:-}" = journey ]; then
+		"${COMPOSE[@]}" --profile tools run --rm -T \
+			-e HOST="$1" -e RUN="$3" -e N="$4" -e VUS="$VUS" -e API="$5" -e PRODUCTS="$7" -e RATE="$8" -e PAGES="$9" \
+			k6 run --quiet /scripts/journey.js >/dev/null
+		return
+	fi
 	if [ "${6:-}" = checkout ]; then
 		"${COMPOSE[@]}" --profile tools run --rm -T \
 			-e HOST="$1" -e RUN="$3" -e N="$4" -e VUS="$VUS" -e API="$5" -e PRODUCTS="$7" -e RATE="$8" \
@@ -143,7 +169,7 @@ k6() { # host path run n [api mode products [rate]]
 	fi
 	if [ $# -gt 4 ]; then
 		"${COMPOSE[@]}" --profile tools run --rm -T \
-			-e HOST="$1" -e RUN="$3" -e N="$4" -e VUS="$VUS" -e API="$5" -e MODE="$6" -e PRODUCTS="$7" \
+			-e HOST="$1" -e PATH_URI="$2" -e RUN="$3" -e N="$4" -e VUS="$VUS" -e API="$5" -e MODE="$6" -e PRODUCTS="$7" \
 			k6 run --quiet /scripts/cart.js >/dev/null
 		return
 	fi
@@ -153,14 +179,15 @@ k6() { # host path run n [api mode products [rate]]
 }
 
 export_get() { # store php-expression-on-$e
-	local export=$HERE/out/parity-fxc.json
-	[ "$1" = wc ] && export=$HERE/out/parity-wc.json
+	local export=$HERE/out/parity-$1.json
+	[ "$1" != core ] || export=$HERE/out/parity-fxc.json
 	php -r '$e = json_decode(file_get_contents($argv[1]), true); echo '"$2"';' "$export"
 }
 
 url_for() { # store scenario
 	case $2 in
-		cart-* | checkout) export_get "$1" '$e["urls"]["home"] ?? ""' ;;
+		cart-page) export_get "$1" '$e["urls"]["cart-page"] ?? ""' ;;
+		cart-* | checkout | journey) export_get "$1" '$e["urls"]["home"] ?? ""' ;;
 		*) export_get "$1" '$e["urls"]["'"$2"'"] ?? ""' ;;
 	esac
 }
@@ -176,7 +203,9 @@ restore_db() { # store [suffix]
 cmd_run() {
 	local scenarios=("$@")
 	[ ${#scenarios[@]} -gt 0 ] || scenarios=(blog-post home)
-	local stamp out stores=(core fxc wc)
+	local stamp out stores
+	read -r -a stores <<< "${STORES:-core fxc wc wct}"
+	local n=${#stores[@]}
 	stamp=$(date -u +%Y%m%dT%H%M%SZ)
 	out=$HERE/out/runs/$stamp
 	mkdir -p "$out"
@@ -190,21 +219,28 @@ cmd_run() {
 
 	for run in $(seq 1 "$RUNS"); do
 		# Rotate the store order each run so drift over time hits every store.
-		local order=("${stores[@]:$(( (run - 1) % 3 ))}" "${stores[@]:0:$(( (run - 1) % 3 ))}")
+		local order=("${stores[@]:$(( (run - 1) % n ))}" "${stores[@]:0:$(( (run - 1) % n ))}")
 		for store in "${order[@]}"; do
 			"${COMPOSE[@]}" restart php >/dev/null
 			php_exec 'chmod 777 /var/log/bench'
 			for scenario in "${scenarios[@]}"; do
-				local path label dir cart=()
+				local path label dir cart=() api=${store/wct/wc} warm=$WARMUP count=$N
 				# core has no catalog, so it only serves the pages without commerce content.
 				[ "$store" != core ] || [ "$scenario" = blog-post ] || [ "$scenario" = home ] || continue
 				if [[ $scenario == cart-* ]]; then
-					cart=("$store" "${scenario#cart-}" "$(export_get "$store" 'implode(",", $e["cart_ids"] ?? [])')")
+					cart=("$api" "${scenario#cart-}" "$(export_get "$store" 'implode(",", $e["cart_ids"] ?? [])')")
 					restore_db "$store"
 				elif [ "$scenario" = checkout ]; then
 					local ids rate
 					read -r ids rate <<< "$(php -r '$e = json_decode(file_get_contents($argv[1]), true); echo implode(",", $e["ids"]), " ", $e["rate"];' "$HERE/out/checkout-$store.json")"
-					cart=("$store" checkout "$ids" "$rate")
+					cart=("$api" checkout "$ids" "$rate")
+					restore_db "$store" -checkout
+				elif [ "$scenario" = journey ]; then
+					local ids rate pages
+					read -r ids rate <<< "$(php -r '$e = json_decode(file_get_contents($argv[1]), true); echo implode(",", array_slice($e["ids"], 0, 2)), " ", $e["rate"];' "$HERE/out/checkout-$store.json")"
+					pages=$(export_get "$store" 'implode(",", [$e["urls"]["collection"], $e["urls"]["shop"], $e["urls"]["shop"] . "page/2/", $e["urls"]["simple"], $e["urls"]["variable"]])')
+					cart=("$api" journey "$ids" "$rate" "$pages")
+					warm=$JOURNEY_WARMUP count=$JOURNEY_N
 					restore_db "$store" -checkout
 				fi
 				path=$(url_for "$store" "$scenario")
@@ -213,13 +249,16 @@ cmd_run() {
 				dir=$out/$label
 				mkdir -p "$dir"
 				echo "$label ${cart[*]:-$path}"
-				k6 "$store.bench" "$path" "$label-warm" "$WARMUP" ${cart[@]+"${cart[@]}"}
+				k6 "$store.bench" "$path" "$label-warm" "$warm" ${cart[@]+"${cart[@]}"}
 				php_exec ': > /var/log/bench/nginx.jsonl; : > /var/log/bench/php.jsonl'
 				fpm_rss > "$dir/rss-before.txt"
 				mysql_status > "$dir/mysql-before.txt"
-				[ "$scenario" != checkout ] || checkout_state "$store" > "$dir/checkout-before.txt"
-				k6 "$store.bench" "$path" "$label" "$N" ${cart[@]+"${cart[@]}"}
-				[ "$scenario" != checkout ] || checkout_state "$store" > "$dir/checkout-after.txt"
+				# A journey buys the first 2 of the checkout products, a checkout all 5.
+				local lines=5
+				[ "$scenario" != journey ] || lines=2
+				[ "$scenario" != checkout ] && [ "$scenario" != journey ] || checkout_state "$store" "$lines" > "$dir/checkout-before.txt"
+				k6 "$store.bench" "$path" "$label" "$count" ${cart[@]+"${cart[@]}"}
+				[ "$scenario" != checkout ] && [ "$scenario" != journey ] || checkout_state "$store" "$lines" > "$dir/checkout-after.txt"
 				mysql_status > "$dir/mysql-after.txt"
 				fpm_rss > "$dir/rss-after.txt"
 				[ ${#cart[@]} -gt 0 ] || curl -s -o "$dir/page.html" -H "Host: $store.bench" "http://127.0.0.1:8089$path"
@@ -267,5 +306,5 @@ case "${1:-}" in
 	e2e) shift; cmd_e2e "$@" ;;
 	summary) php "$HERE/summarize.php" "${2:?run dir}" ;;
 	down) "${COMPOSE[@]}" down ;;
-	*) sed -n '2,21p' "$0"; exit 2 ;;
+	*) sed -n '2,26p' "$0"; exit 2 ;;
 esac

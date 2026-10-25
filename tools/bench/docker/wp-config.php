@@ -3,6 +3,7 @@
  * Benchmark stack only (doc 10 §5.3). The host name picks the store:
  *   fxc.bench   FlexaCommerce store      (database bench_fxc)
  *   wc.bench    WooCommerce store        (database bench_wc)
+ *   wct.bench   WooCommerce store, tuned (bench_wct, a copy of bench_wc)
  *   core.bench  bench_fxc with every plugin off, the core baseline
  *   tax.bench   WooCommerce store that prices the tax golden cases (bench_tax)
  *   e2e.bench   FlexaCommerce store for the browser tests (bench_e2e)
@@ -13,6 +14,7 @@ $bench_store = [
 	'fxc.bench'  => 'bench_fxc',
 	'core.bench' => 'bench_fxc',
 	'wc.bench'   => 'bench_wc',
+	'wct.bench'  => 'bench_wct',
 	'tax.bench'  => 'bench_tax',
 	'e2e.bench'  => 'bench_e2e',
 ];

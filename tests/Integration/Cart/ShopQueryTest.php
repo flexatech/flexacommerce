@@ -144,8 +144,29 @@ final class ShopQueryTest extends CartTestCase {
 
 	public function test_query_loop_blocks_hide_hidden_products(): void {
 		$vars = ShopQuery::instance()->loop_vars( [ 'post_type' => PostTypes::PRODUCT ] );
-		self::assertSame( [ ShopQuery::visibility_clause( 'catalog' ) ], $vars['meta_query'] );
+		self::assertSame( 'catalog', $vars[ ShopQuery::VISIBILITY_VAR ] );
 		self::assertSame( [ 'post_type' => 'post' ], ShopQuery::instance()->loop_vars( [ 'post_type' => 'post' ] ) );
+
+		$ids = [];
+		foreach ( [ 'visible', 'catalog', 'search', 'hidden' ] as $visibility ) {
+			$ids[ $visibility ] = $this->simple();
+			$this->save( $ids[ $visibility ], [ 'visibility' => $visibility ] );
+		}
+		$query = new \WP_Query( $vars + [ 'post__in' => array_values( $ids ), 'fields' => 'ids' ] );
+		self::assertEqualsCanonicalizing( [ $ids['visible'], $ids['catalog'] ], array_map( 'intval', $query->posts ) );
+	}
+
+	/**
+	 * The visibility condition is one NOT EXISTS: no postmeta join and no
+	 * GROUP BY, so MySQL can stop at the page size (T3 2026-10-25).
+	 */
+	public function test_visibility_adds_no_join(): void {
+		$this->simple();
+		$query = new \WP_Query( ShopQuery::hide_in( [ 'post_type' => PostTypes::PRODUCT ], 'catalog' ) );
+		self::assertStringContainsString( 'NOT EXISTS', $query->request );
+		self::assertStringNotContainsString( 'JOIN', $query->request );
+		self::assertStringNotContainsString( 'GROUP BY', $query->request );
+		self::assertSame( '', ShopQuery::visibility_where( 'unknown' ) );
 	}
 
 	public function test_the_sort_form_keeps_the_filters(): void {

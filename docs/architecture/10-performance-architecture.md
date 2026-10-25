@@ -383,7 +383,21 @@ Open items: C1 and every latency budget need the reference machine (Q18); at 25 
 
 P3 memory was re-recorded once in phase 5, from 1,048,848 B to 1,316,960 B at 250 variants. The phase 4 template measures 1,295,800 B on the same code, so the new product blocks (gallery, SKU, stock, attributes, breadcrumbs, related products) add about 21 KB; the rest came in between phases 3 and 5 and is not attributed yet. The P3b inlined state grew from 37,211 B to 40,211 B at 250 variants, which leaves 1.8 % under the budget. The next field added to the variant state will need the budget re-recorded or the state trimmed.
 
-The Playwright pass with axe on Twenty Twenty-Five, Astra and Twenty Twenty-One is green (doc 07 phase 5 notes). Open items: the T3 run of the §6.4 scenarios at dataset M against WooCommerce default and tuned. The baseline open items of §7.2 still apply.
+The Playwright pass with axe on Twenty Twenty-Five, Astra and Twenty Twenty-One is green (doc 07 phase 5 notes).
+
+**T3 (2026-10-25).** The §6.4 set ran on dataset M at 1 and 10 VU against WooCommerce 11.2.1 default (HPOS on) and tuned (the list is in the report). Report: `docs/benchmarks/2026-10-25-phase5.md`.
+
+| Item | Result | Verified by |
+|---|---|---|
+| Counters | fxc against wc: catalog pages 23 to 32 against 104 to 123 queries, cart 14 to 24 against 67 to 127, order request 65 against 913 (tuned 830), journey visit 243 against 1,444; peak memory 5.2 to 7.3 MB against 11.0 to 13.9 MB; worker RSS 46 to 50 MB against 77 to 88 MB; PHP CPU 0.35 to 0.5 of WooCommerce's on pages and carts | T3, deterministic |
+| Visibility filter | The listing pages read about 150,700 rows per request: the `_fxc_visibility` `meta_query` made WP_Query join `wp_postmeta` twice and group and sort all 10,000 products. Now a `NOT EXISTS` subquery through `posts_where` (`ShopQuery::hide_in()`): about 20,700 rows, fxc shop p50 156 to 80 ms at 1 VU (wc 130 ms), journey 615 to 367 ms per visit (wc 869 ms); at 10 VU fxc serves 1.3 to 1.5 times WooCommerce's req/s on the listing pages, where it served 0.5 to 0.7 before (that rerun had a loaded host, so only the ratio counts) | T1 `ShopQueryTest`, T3 rerun |
+| L-simple, L-var | fxc p95 61 and 63 ms at 1 VU, 261 and 266 ms at 10 VU, within core blog post + 20 % and + 25 % | T3, indicative |
+| L-home, L-list | Not met after the fix: collection p95 111 ms, shop 146 ms at 1 VU against 49 and 52 ms budgets from core's blog home | T3, indicative |
+| P4, P5, P6 | p95 at 1 / 10 VU: add 25 / 135 ms, `GET store/cart` 21 / 183 ms (over 100 at 10 VU), checkout 61 / 156 ms; 0 stock errors | T3, indicative |
+
+Latency is indicative: 3 of 76 rows of the first run pass the spread rule on the developer laptop. P5 at 10 VU keeps the same counters as at 1 VU (14 queries, 189 rows), so the rise is waiting for a worker or CPU, as with C1 in §7.3. L-home and L-list compare a page of 12 products out of 10,000 with core's blog home of 10 posts; the remaining 20,700 rows (WooCommerce reads 11,900 to 14,400) are not broken down yet.
+
+Open items: L-home and L-list (the remaining rows on listing pages, and whether core's blog home is the right base page); P5 at 10 VU, C1 and every latency budget on the reference machine (Q18); the Redis set (§6.3) and the 25 VU column. The baseline open items of §7.2 still apply.
 
 ## 8. Roadmap integration
 
@@ -393,6 +407,6 @@ Doc 07 carries the tasks. Summary of what this document adds:
 - **Phase 3 (done 2026-10-25 except the reference-machine rerun, §7.2):** O5; T1 budgets P2, P3a, P3b, P4q, P5q, P11 become binding; T3 cart scenarios P4 and P5; first FXC versus WooCommerce run for listing and product pages, marked indicative because the storefront is minimal.
 - **Phase 4 (done 2026-10-25 except C1 and the reference-machine rerun, §7.3):** O6, O7; P6q, P6m binding; T3 checkout P6 and concurrency C1; worker RSS (C2) reported.
 - **Phase 4.5 (taxes, ADR-020):** PT-off, PT-cat, PT-opt, PT-cart, PT-q, PT-m, PT-rows binding; T3 P6t against WooCommerce with the same rates (bench `prep-tax`).
-- **Phase 5 (T1 and the browser pass done 2026-10-25, T3 open, §7.4):** P1h, P8 binding; full scenario set in §6.4 at dataset M, both WooCommerce configurations.
+- **Phase 5 (done 2026-10-25 except L-home, L-list and the reference-machine rerun, §7.4):** P1h, P8 binding; full scenario set in §6.4 at dataset M, both WooCommerce configurations, run at 1 and 10 VU.
 - **Phase 6:** P9 nightly; migration-based dataset cross-check (§6.2).
 - **Phase 7:** dataset L, final published report, third-party rerun invitation, release thresholds §5.4 in force.

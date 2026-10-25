@@ -149,7 +149,10 @@ foreach ( $spec['products'] as $product ) {
 		$cart_ids[] = $found ? (int) $found->ID : 0;
 	}
 }
-$post = get_page_by_path( 'benchmark-post', OBJECT, 'post' );
+$post       = get_page_by_path( 'benchmark-post', OBJECT, 'post' );
+$collection = get_page_by_path( 'collection' ); // prep-catalog.php
+$shop       = (string) wp_parse_url( (string) get_post_type_archive_link( $woo ? 'product' : PostTypes::PRODUCT ), PHP_URL_PATH );
+$cart_page  = (string) wp_parse_url( $woo ? wc_get_cart_url() : (string) get_permalink( \Flexa\Commerce\Support\Settings::int( 'cart_page_id' ) ), PHP_URL_PATH );
 
 file_put_contents(
 	$out_file,
@@ -163,11 +166,14 @@ file_put_contents(
 			'products' => $products,
 			'cart_ids' => $cart_ids,
 			'urls'     => [
-				'blog-post' => $post ? (string) wp_parse_url( (string) get_permalink( $post ), PHP_URL_PATH ) : '',
-				'home'      => '/',
-				'simple'    => $first( 'simple' ),
-				'variable'  => $first( 'variable' ),
-				'shop'      => (string) wp_parse_url( (string) get_post_type_archive_link( $woo ? 'product' : PostTypes::PRODUCT ), PHP_URL_PATH ),
+				'blog-post'  => $post ? (string) wp_parse_url( (string) get_permalink( $post ), PHP_URL_PATH ) : '',
+				'home'       => '/',
+				'simple'     => $first( 'simple' ),
+				'variable'   => $first( 'variable' ),
+				'shop'       => $shop,
+				'shop-20'    => $shop . 'page/20/',
+				'collection' => $collection ? (string) wp_parse_url( (string) get_permalink( $collection ), PHP_URL_PATH ) : '',
+				'cart-page'  => $cart_page,
 			],
 		],
 		JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT

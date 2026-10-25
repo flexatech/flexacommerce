@@ -1,7 +1,7 @@
 // Cart scenarios through each store's own REST API (doc 10 §6.4, P4 and P5).
 // bench.sh sets the env:
-//   API  fxc or wc, MODE  add or view, PRODUCTS  comma-separated simple product IDs,
-//   HOST, RUN, N, VUS  as in page.js.
+//   API  fxc or wc, MODE  add, view or page, PRODUCTS  comma-separated simple product IDs,
+//   PATH_URI  the cart page (MODE page), HOST, RUN, N, VUS  as in page.js.
 // Requests that only prepare a cart carry RUN=<label>-prep, so summarize.php
 // drops them; only the request under test carries RUN=<label>.
 //
@@ -9,6 +9,7 @@
 //         the first product. The measured request starts the session.
 //   view  setup() fills one guest cart with every product; each iteration
 //         reads that cart.
+//   page  the same filled cart; each iteration loads the cart page (HTML).
 import http from 'k6/http';
 import { check } from 'k6';
 
@@ -67,7 +68,7 @@ function add(jar, id, run, token) {
 }
 
 export function setup() {
-  if (__ENV.MODE !== 'view') {
+  if (__ENV.MODE !== 'view' && __ENV.MODE !== 'page') {
     return {};
   }
   const jar = new http.CookieJar();
@@ -83,6 +84,14 @@ export function setup() {
 }
 
 export default function (data) {
+  if (__ENV.MODE === 'page') {
+    const res = http.get(base + __ENV.PATH_URI, {
+      headers: headers(__ENV.RUN, { Cookie: data.cookie }),
+      jar: new http.CookieJar(),
+    });
+    check(res, { 'status 200': (r) => r.status === 200 });
+    return;
+  }
   if (__ENV.MODE === 'view') {
     const res = http.get(base + api.cart, {
       headers: headers(__ENV.RUN, { Cookie: data.cookie }),

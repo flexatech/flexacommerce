@@ -1,0 +1,8 @@
+Handler_read_first	479172
+Handler_read_key	311331873
+Handler_read_last	40
+Handler_read_next	1183575749
+Handler_read_prev	49966300
+Handler_read_rnd	32362476
+Handler_read_rnd_next	169831867
+Innodb_rows_read	1310922233

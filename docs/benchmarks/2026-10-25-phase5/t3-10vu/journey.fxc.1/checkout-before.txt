@@ -1,0 +1,3 @@
+orders	10
+stock_8	999990
+stock_9	999990

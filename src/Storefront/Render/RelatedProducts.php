@@ -100,23 +100,25 @@ final class RelatedProducts {
 		$ids = [];
 		if ( count( $tax ) > 1 ) {
 			$query = new \WP_Query(
-				[
-					'post_type'              => PostTypes::PRODUCT,
-					'post_status'            => 'publish',
-					'posts_per_page'         => $count,
-					'post__not_in'           => [ $product_id ], // phpcs:ignore WordPressVIPMinimum.Performance.WPQueryParams.PostNotIn_post__not_in -- one id, the current product.
-					'has_password'           => false,
-					'fields'                 => 'ids',
-					'no_found_rows'          => true,
-					'ignore_sticky_posts'    => true,
-					'update_post_term_cache' => false,
-					'orderby'                => [
-						'date' => 'DESC',
-						'ID'   => 'DESC',
+				ShopQuery::hide_in(
+					[
+						'post_type'              => PostTypes::PRODUCT,
+						'post_status'            => 'publish',
+						'posts_per_page'         => $count,
+						'post__not_in'           => [ $product_id ], // phpcs:ignore WordPressVIPMinimum.Performance.WPQueryParams.PostNotIn_post__not_in -- one id, the current product.
+						'has_password'           => false,
+						'fields'                 => 'ids',
+						'no_found_rows'          => true,
+						'ignore_sticky_posts'    => true,
+						'update_post_term_cache' => false,
+						'orderby'                => [
+							'date' => 'DESC',
+							'ID'   => 'DESC',
+						],
+						'tax_query'              => $tax, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_tax_query -- the relation itself.
 					],
-					'tax_query'              => $tax, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_tax_query -- the relation itself.
-					'meta_query'             => [ ShopQuery::visibility_clause( 'catalog' ) ], // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- visibility lives in postmeta (doc 03 §8).
-				]
+					'catalog'
+				)
 			);
 			$ids   = array_values( array_map( 'intval', $query->posts ) );
 		}

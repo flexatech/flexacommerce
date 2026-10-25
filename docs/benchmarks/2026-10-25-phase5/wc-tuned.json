@@ -1,0 +1,38 @@
+{
+    "features": {
+        "analytics": {
+            "was": true,
+            "now": false
+        },
+        "order_attribution": {
+            "was": true,
+            "now": false
+        },
+        "remote_logging": {
+            "was": true,
+            "now": false
+        },
+        "site_visibility_badge": {
+            "was": true,
+            "now": false
+        },
+        "blueprint": {
+            "was": true,
+            "now": false
+        }
+    },
+    "options": {
+        "woocommerce_allow_tracking": {
+            "was": "no",
+            "now": "no"
+        },
+        "woocommerce_show_marketplace_suggestions": {
+            "was": "yes",
+            "now": "no"
+        },
+        "woocommerce_coming_soon": {
+            "was": "no",
+            "now": "no"
+        }
+    }
+}

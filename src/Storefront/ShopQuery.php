@@ -31,6 +31,14 @@ final class ShopQuery {
 
 	public const FILTER_PREFIX = 'filter_';
 
+	/**
+	 * Query var naming the context (`catalog` or `search`) whose hidden
+	 * products a query leaves out. Set it with hide_in(), which also adds
+	 * the `posts_where` filter that reads it; a query with
+	 * `suppress_filters` ignores it.
+	 */
+	public const VISIBILITY_VAR = 'fxc_visibility';
+
 	/** Visibilities left out of the catalog and of search (doc 03 §3.3). */
 	private const HIDDEN_IN = [
 		'catalog' => [ 'hidden', 'search' ],
@@ -63,8 +71,32 @@ final class ShopQuery {
 		if ( ! in_array( PostTypes::PRODUCT, $types, true ) ) {
 			return $vars;
 		}
-		$vars['meta_query'] = array_merge( (array) ( $vars['meta_query'] ?? [] ), [ self::visibility_clause( 'catalog' ) ] ); // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- visibility lives in postmeta until the lookup table (doc 03 §8).
+		return self::hide_in( $vars, 'catalog' );
+	}
+
+	/**
+	 * WP_Query vars that leave out the products hidden in `$context`.
+	 *
+	 * @param array<string,mixed> $vars
+	 * @return array<string,mixed>
+	 */
+	public static function hide_in( array $vars, string $context ): array {
+		$vars[ self::VISIBILITY_VAR ] = $context;
+		self::watch();
 		return $vars;
+	}
+
+	/** Adds the `posts_where` filter once, on the first query that needs it (no extra callback on other pages, P1). */
+	private static function watch(): void {
+		if ( ! has_filter( 'posts_where', [ self::class, 'posts_where' ] ) ) {
+			add_filter( 'posts_where', [ self::class, 'posts_where' ], 10, 2 );
+		}
+	}
+
+	/** Leaves out hidden products in a query that names a visibility context. */
+	public static function posts_where( string $where, \WP_Query $query ): string {
+		$context = $query->get( self::VISIBILITY_VAR );
+		return is_string( $context ) && $context !== '' ? $where . self::visibility_where( $context ) : $where;
 	}
 
 	/**
@@ -133,30 +165,27 @@ final class ShopQuery {
 
 	/** Products whose visibility leaves them out of this context; posts have no such meta. */
 	private function hide( \WP_Query $query, string $context ): void {
-		$meta   = $query->get( 'meta_query' );
-		$meta   = is_array( $meta ) ? $meta : [];
-		$meta[] = self::visibility_clause( $context );
-		$query->set( 'meta_query', $meta ); // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- see loop_vars().
+		$query->set( self::VISIBILITY_VAR, $context );
+		self::watch();
 	}
 
 	/**
-	 * Leaves out what is hidden in `catalog` or `search`; posts have no such meta.
-	 *
-	 * @return array<string|int,mixed>
+	 * The WHERE condition that leaves out what is hidden in `catalog` or
+	 * `search`; posts and products without the meta pass. A correlated
+	 * NOT EXISTS, not a meta_query: the meta_query form (NOT EXISTS OR
+	 * NOT IN) joins postmeta twice and needs a GROUP BY, so MySQL sorted
+	 * every product before taking one page (150,000 rows read per shop page
+	 * at 10,000 products, T3 2026-10-25). This one walks the posts index
+	 * and stops at the page size.
 	 */
-	public static function visibility_clause( string $context ): array {
-		return [
-			'relation' => 'OR',
-			[
-				'key'     => ProductRepository::META_VISIBILITY,
-				'compare' => 'NOT EXISTS',
-			],
-			[
-				'key'     => ProductRepository::META_VISIBILITY,
-				'value'   => self::HIDDEN_IN[ $context ],
-				'compare' => 'NOT IN',
-			],
-		];
+	public static function visibility_where( string $context ): string {
+		global $wpdb;
+		if ( ! isset( self::HIDDEN_IN[ $context ] ) ) {
+			return '';
+		}
+		[ $first, $second ] = self::HIDDEN_IN[ $context ];
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table names only.
+		return (string) $wpdb->prepare( " AND NOT EXISTS ( SELECT 1 FROM {$wpdb->postmeta} AS fxc_visibility WHERE fxc_visibility.post_id = {$wpdb->posts}.ID AND fxc_visibility.meta_key = %s AND fxc_visibility.meta_value IN ( %s, %s ) )", ProductRepository::META_VISIBILITY, $first, $second );
 	}
 
 	private function sort( \WP_Query $query, string $sort ): void {
