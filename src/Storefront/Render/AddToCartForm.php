@@ -87,6 +87,7 @@ final class AddToCartForm {
 			'limit'     => $options['max_quantity'],
 			'price'     => '',
 			'regular'   => '',
+			'suffix'    => '',
 			'stock'     => '',
 			'ready'     => ! $variable,
 			'busy'      => false,
@@ -110,7 +111,7 @@ final class AddToCartForm {
 		if ( $variable ) {
 			$html .= self::selectors( $options['attributes'] );
 			$html .= '<div class="fxc-add-to-cart__variant" data-wp-bind--hidden="!context.ready" hidden>';
-			$html .= '<p class="fxc-price"><del data-wp-bind--hidden="!context.regular" data-wp-text="context.regular" hidden></del> <span class="fxc-price__amount" data-wp-text="context.price"></span></p>';
+			$html .= '<p class="fxc-price"><del data-wp-bind--hidden="!context.regular" data-wp-text="context.regular" hidden></del> <span class="fxc-price__amount" data-wp-text="context.price"></span> <small class="fxc-price__suffix" data-wp-bind--hidden="!context.suffix" data-wp-text="context.suffix" hidden></small></p>';
 			$html .= '<p class="fxc-stock" data-wp-text="context.stock"></p>';
 			$html .= '</div>';
 		}

@@ -149,7 +149,10 @@ final class ProductInput {
 			$out['stock_status'] = self::one_of( $data['stock_status'], Variant::STOCK_STATUSES, $path . '.stock_status' );
 		}
 		if ( array_key_exists( 'tax_class', $data ) ) {
-			$out['tax_class'] = is_scalar( $data['tax_class'] ) ? sanitize_key( (string) $data['tax_class'] ) : '';
+			$out['tax_class'] = is_scalar( $data['tax_class'] ) ? substr( sanitize_title( (string) $data['tax_class'] ), 0, 50 ) : '';
+		}
+		if ( array_key_exists( 'tax_status', $data ) ) {
+			$out['tax_status'] = self::one_of( $data['tax_status'], Variant::TAX_STATUSES, $path . '.tax_status' );
 		}
 		if ( array_key_exists( 'description', $data ) ) {
 			$text               = is_scalar( $data['description'] ) ? trim( wp_kses_post( (string) $data['description'] ) ) : '';

@@ -38,15 +38,17 @@ final class ProductPrice {
 			}
 			$unit = $this->pricing->unit_price( $product, $row, 1, $user_id );
 			if ( $unit !== null ) {
-				$prices[] = $unit;
+				$prices[] = [ $row, $unit, $this->pricing->for_display( $product, $row, $unit ) ];
 			}
 		}
 		if ( $prices === [] ) {
 			return '';
 		}
-		usort( $prices, static fn ( PriceResolution $a, PriceResolution $b ): int => $a->active->amount <=> $b->active->amount );
-		$low  = $prices[0];
-		$high = $prices[ count( $prices ) - 1 ];
+		// Ends of a range are picked by the shown price, which tax classes can reorder.
+		usort( $prices, static fn ( array $a, array $b ): int => $a[2]->active->amount <=> $b[2]->active->amount );
+		[ $row, $stored, $low ] = $prices[0];
+		$high                   = $prices[ count( $prices ) - 1 ][2];
+		$suffix                 = $this->pricing->display_suffix( $product, $row, $stored );
 
 		if ( $low->active->amount !== $high->active->amount ) {
 			$text = sprintf(
@@ -55,18 +57,19 @@ final class ProductPrice {
 				'<span class="fxc-price__amount">' . esc_html( $this->pricing->format( $low->active ) ) . '</span>',
 				'<span class="fxc-price__amount">' . esc_html( $this->pricing->format( $high->active ) ) . '</span>'
 			);
-			return '<p class="fxc-price fxc-price--range">' . $text . '</p>';
+			return '<p class="fxc-price fxc-price--range">' . $text . self::suffix( $suffix ) . '</p>';
 		}
-		return self::single( $this->pricing, $low );
+		return self::single( $this->pricing, $low, $suffix );
 	}
 
-	public static function single( PricingService $pricing, PriceResolution $unit ): string {
+	/** `$unit` is the price to show; `$suffix` is plain text. */
+	public static function single( PricingService $pricing, PriceResolution $unit, string $suffix = '' ): string {
 		$active = '<span class="fxc-price__amount">' . esc_html( $pricing->format( $unit->active ) ) . '</span>';
 		if ( ! $unit->is_reduced() ) {
-			return '<p class="fxc-price">' . $active . '</p>';
+			return '<p class="fxc-price">' . $active . self::suffix( $suffix ) . '</p>';
 		}
 		return sprintf(
-			'<p class="fxc-price fxc-price--sale"><del aria-hidden="true">%1$s</del> <span class="screen-reader-text">%2$s</span><ins aria-hidden="true">%3$s</ins></p>',
+			'<p class="fxc-price fxc-price--sale"><del aria-hidden="true">%1$s</del> <span class="screen-reader-text">%2$s</span><ins aria-hidden="true">%3$s</ins>%4$s</p>',
 			esc_html( $pricing->format( $unit->regular ) ),
 			esc_html(
 				sprintf(
@@ -76,7 +79,12 @@ final class ProductPrice {
 					$pricing->format( $unit->active )
 				)
 			),
-			$active
+			$active,
+			self::suffix( $suffix )
 		);
+	}
+
+	private static function suffix( string $suffix ): string {
+		return $suffix === '' ? '' : ' <small class="fxc-price__suffix">' . esc_html( $suffix ) . '</small>';
 	}
 }

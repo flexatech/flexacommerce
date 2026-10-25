@@ -42,7 +42,15 @@ final class ProductServiceTest extends CatalogTestCase {
 
 	public function test_sale_price_must_be_below_regular(): void {
 		try {
-			$this->save( $this->product(), [ 'base' => [ 'regular_price' => 1000, 'sale_price' => 1000 ] ] );
+			$this->save(
+				$this->product(),
+				[
+					'base' => [
+						'regular_price' => 1000,
+						'sale_price'    => 1000,
+					],
+				]
+			);
 			self::fail( 'Expected InvalidProduct' );
 		} catch ( InvalidProduct $e ) {
 			self::assertSame( 'base.sale_price', $e->field );
@@ -52,7 +60,16 @@ final class ProductServiceTest extends CatalogTestCase {
 	public function test_sale_schedule_sets_next_price_change_and_cron_refreshes(): void {
 		$id   = $this->product();
 		$soon = gmdate( 'Y-m-d H:i:s', time() + HOUR_IN_SECONDS );
-		$this->save( $id, [ 'base' => [ 'regular_price' => 1000, 'sale_price' => 800, 'sale_from' => $soon ] ] );
+		$this->save(
+			$id,
+			[
+				'base' => [
+					'regular_price' => 1000,
+					'sale_price'    => 800,
+					'sale_from'     => $soon,
+				],
+			]
+		);
 
 		self::assertSame( $soon, get_post_meta( $id, ProductRepository::META_NEXT_CHANGE, true ) );
 		self::assertSame( '1000', get_post_meta( $id, ProductRepository::META_PRICE_MIN, true ) );
@@ -145,7 +162,11 @@ final class ProductServiceTest extends CatalogTestCase {
 			[
 				'variations' => array_map(
 					static fn ( $v ): array => $v->id === $medium->id
-						? [ 'id' => $v->id, 'manage_stock' => true, 'stock_quantity' => 4 ]
+						? [
+							'id'             => $v->id,
+							'manage_stock'   => true,
+							'stock_quantity' => 4,
+						]
 						: [ 'id' => $v->id ],
 					$product->variations
 				),
@@ -321,16 +342,24 @@ final class ProductServiceTest extends CatalogTestCase {
 	}
 
 	public function test_variable_price_range_uses_in_stock_variations(): void {
-		$id      = $this->variable_product( [ 'S', 'M' ] );
-		$product = $this->service()->generate_variants( $id )->product;
+		$id        = $this->variable_product( [ 'S', 'M' ] );
+		$product   = $this->service()->generate_variants( $id )->product;
 		[ $a, $b ] = $product->variations;
 
 		$this->save(
 			$id,
 			[
 				'variations' => [
-					[ 'id' => $a->id, 'regular_price' => 1000 ],
-					[ 'id' => $b->id, 'regular_price' => 3000, 'manage_stock' => true, 'stock_quantity' => 0 ],
+					[
+						'id'            => $a->id,
+						'regular_price' => 1000,
+					],
+					[
+						'id'             => $b->id,
+						'regular_price'  => 3000,
+						'manage_stock'   => true,
+						'stock_quantity' => 0,
+					],
 				],
 			]
 		);

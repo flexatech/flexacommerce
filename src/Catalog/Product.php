@@ -95,7 +95,20 @@ final class Product {
 			manage_stock: $owner->manage_stock,
 			stock_quantity: $owner->manage_stock ? $owner->stock_quantity : null,
 			stock_status: $owner->computed_stock_status(),
-			tax_class: $variant->tax_class,
+			tax_class: $this->tax_class_of( $variant ),
+			tax_status: $this->tax_status_of( $variant ),
 		);
+	}
+
+	/** A variation with class `parent` takes the base row's class (doc 02 §7.12.2). */
+	public function tax_class_of( Variant $variant ): string {
+		$class = $variant->is_base || $variant->tax_class === Variant::PARENT_CLASS ? $this->base->tax_class : $variant->tax_class;
+		return $class === Variant::PARENT_CLASS ? '' : $class;
+	}
+
+	/** Read from the base row only, as WooCommerce does for variations. */
+	public function tax_status_of( Variant $variant ): string {
+		unset( $variant );
+		return $this->base->tax_status;
 	}
 }

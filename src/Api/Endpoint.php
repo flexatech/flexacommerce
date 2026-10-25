@@ -9,11 +9,18 @@ use Flexa\Commerce\Contracts\CommerceException;
 use Flexa\Commerce\Contracts\Exceptions\DuplicateSku;
 use Flexa\Commerce\Contracts\Exceptions\InsufficientStock;
 use Flexa\Commerce\Contracts\Exceptions\InvalidAttribute;
+use Flexa\Commerce\Contracts\Exceptions\CurrencyMismatch;
 use Flexa\Commerce\Contracts\Exceptions\InvalidCartRequest;
+use Flexa\Commerce\Contracts\Exceptions\InvalidCheckout;
+use Flexa\Commerce\Contracts\Exceptions\InvalidOrderRequest;
+use Flexa\Commerce\Contracts\Exceptions\InvalidRefund;
+use Flexa\Commerce\Contracts\Exceptions\InvalidTransition;
+use Flexa\Commerce\Contracts\Exceptions\OrderNotFound;
 use Flexa\Commerce\Contracts\Exceptions\InvalidProduct;
 use Flexa\Commerce\Contracts\Exceptions\NotPurchasable;
 use Flexa\Commerce\Contracts\Exceptions\ProductNotFound;
 use Flexa\Commerce\Contracts\Exceptions\RateLimited;
+use Flexa\Commerce\Contracts\Exceptions\TotalsChanged;
 use Flexa\Commerce\Support\Capabilities;
 use WP_Error;
 use WP_REST_Request;
@@ -114,6 +121,23 @@ abstract class Endpoint {
 				'status'      => 429,
 				'retry_after' => $e->retry_after,
 			],
+			$e instanceof OrderNotFound    => [ 'status' => 404 ],
+			$e instanceof InvalidOrderRequest => [
+				'status' => 400,
+				'field'  => $e->field,
+			],
+			$e instanceof InvalidTransition => [
+				'status' => 409,
+				'from'   => $e->from,
+				'to'     => $e->to,
+			],
+			$e instanceof InvalidRefund    => [ 'status' => 400 ],
+			$e instanceof InvalidCheckout  => [
+				'status' => 400,
+				'errors' => $e->errors,
+			],
+			$e instanceof TotalsChanged    => [ 'status' => 409 ],
+			$e instanceof CurrencyMismatch => [ 'status' => 400 ],
 			default                        => [ 'status' => 500 ],
 		};
 		return new WP_Error( 'flexacommerce_' . $e->code(), $e->getMessage(), $data );

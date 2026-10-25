@@ -59,7 +59,7 @@ abstract class CartTestCase extends CatalogTestCase {
 		$rows    = [];
 		$ids     = [];
 		foreach ( $product->variations as $variation ) {
-			$rows[]                                           = [
+			$rows[] = [
 				'id'             => $variation->id,
 				'regular_price'  => 2000,
 				'manage_stock'   => true,

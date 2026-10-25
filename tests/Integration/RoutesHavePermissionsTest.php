@@ -43,6 +43,35 @@ final class RoutesHavePermissionsTest extends \WP_UnitTestCase {
 		}
 	}
 
+	/**
+	 * Every admin route and method, orders and customers included. The
+	 * permission callback is called directly: a dispatch would answer 400
+	 * for a missing required argument before the permission check runs.
+	 */
+	public function test_every_admin_handler_refuses_anonymous_and_subscribers(): void {
+		$subscriber = self::factory()->user->create( [ 'role' => 'subscriber' ] );
+		$checked    = 0;
+		foreach ( $this->server->get_routes( 'flexacommerce/v1' ) as $route => $handlers ) {
+			if ( ! str_starts_with( $route, '/flexacommerce/v1/admin/' ) ) {
+				continue;
+			}
+			$path = (string) preg_replace( '/\(\?P<[^>]+>[^)]+\)/', '1', $route );
+			foreach ( $handlers as $handler ) {
+				foreach ( array_keys( $handler['methods'] ) as $method ) {
+					foreach ( [ 0, $subscriber ] as $user ) {
+						wp_set_current_user( $user );
+						$request = new \WP_REST_Request( $method, $path );
+						$request->set_url_params( [ 'id' => 1 ] );
+						$allowed = call_user_func( $handler['permission_callback'], $request );
+						self::assertNotTrue( $allowed, "{$method} {$route} as user {$user}" );
+					}
+					++$checked;
+				}
+			}
+		}
+		self::assertGreaterThan( 20, $checked );
+	}
+
 	public function test_catalog_routes_reject_anonymous_and_subscribers(): void {
 		$product = self::factory()->post->create( [ 'post_type' => 'fxc_product' ] );
 		foreach ( [ '/admin/products/' . $product, '/admin/products/' . $product . '/variants', '/admin/attributes' ] as $path ) {
@@ -82,7 +111,7 @@ final class RoutesHavePermissionsTest extends \WP_UnitTestCase {
 
 		$status = $this->server->dispatch( new \WP_REST_Request( 'GET', '/flexacommerce/v1/admin/status' ) );
 		self::assertSame( 200, $status->get_status() );
-		self::assertSame( 1, $status->get_data()['database']['installed_version'] );
+		self::assertSame( (int) \Flexa\Commerce\Database\Schema::DB_VERSION, $status->get_data()['database']['installed_version'] );
 
 		$settings = $this->server->dispatch( new \WP_REST_Request( 'GET', '/flexacommerce/v1/admin/settings' ) );
 		self::assertSame( 'USD', $settings->get_data()['settings']['currency'] );
@@ -96,7 +125,14 @@ final class RoutesHavePermissionsTest extends \WP_UnitTestCase {
 		$request->set_body( (string) wp_json_encode( [ 'remove_data_on_uninstall' => true ] ) );
 		self::assertSame( 400, $this->server->dispatch( $request )->get_status() );
 
-		$request->set_body( (string) wp_json_encode( [ 'remove_data_on_uninstall' => true, 'confirm' => 'DELETE' ] ) );
+		$request->set_body(
+			(string) wp_json_encode(
+				[
+					'remove_data_on_uninstall' => true,
+					'confirm'                  => 'DELETE',
+				]
+			)
+		);
 		$response = $this->server->dispatch( $request );
 		self::assertSame( 200, $response->get_status() );
 		self::assertTrue( $response->get_data()['settings']['remove_data_on_uninstall'] );

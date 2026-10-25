@@ -25,8 +25,8 @@ final class SessionNonceTest extends TestCase {
 	}
 
 	public function test_lives_for_two_ticks(): void {
-		$n     = $this->nonce();
-		$token = $n->create( 0, '', 'session-a' );
+		$n          = $this->nonce();
+		$token      = $n->create( 0, '', 'session-a' );
 		$this->now += 43200;
 		self::assertTrue( $n->verify( $token, 0, '', 'session-a' ) );
 		$this->now += 43200;

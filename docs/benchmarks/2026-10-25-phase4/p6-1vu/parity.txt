@@ -1,0 +1,2 @@
+flexacommerce: parity OK (10000 products, 36828 variants)
+woocommerce: parity OK (10000 products, 36828 variants)

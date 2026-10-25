@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace Flexa\Commerce\Support;
 
-use Flexa\Commerce\Contracts\Extensions;
 use Flexa\Commerce\Contracts\MoneyFactory;
 use Flexa\Commerce\Database\AfterCommit;
 use Flexa\Commerce\Database\Integrity;
 use Flexa\Commerce\Database\Sequence;
+use Flexa\Commerce\Database\TableCharset;
 use Flexa\Commerce\Database\Transaction;
 
 defined( 'ABSPATH' ) || exit;
@@ -24,8 +24,8 @@ final class Services {
 	private ?Redactor $redactor        = null;
 	private ?LogRepository $logs       = null;
 	private ?MoneyFactory $money       = null;
-	private ?Extensions $extensions    = null;
 	private ?Integrity $integrity      = null;
+	private ?RateLimiter $limiter      = null;
 
 	/** @var array<string,Logger> */
 	private array $loggers = [];
@@ -33,7 +33,9 @@ final class Services {
 	public function __construct(
 		private readonly \wpdb $wpdb,
 		private readonly Clock $clock = new Clock(),
-	) {}
+	) {
+		TableCharset::register();
+	}
 
 	public function wpdb(): \wpdb {
 		return $this->wpdb;
@@ -88,11 +90,11 @@ final class Services {
 		);
 	}
 
-	public function money(): MoneyFactory {
-		return $this->money ??= new StoreMoneyFactory();
+	public function limiter(): RateLimiter {
+		return $this->limiter ??= new RateLimiter( $this->clock );
 	}
 
-	public function extensions(): Extensions {
-		return $this->extensions ??= new ExtensionsFacade( $this );
+	public function money(): MoneyFactory {
+		return $this->money ??= new StoreMoneyFactory();
 	}
 }

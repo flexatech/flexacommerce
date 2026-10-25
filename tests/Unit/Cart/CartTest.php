@@ -14,7 +14,22 @@ final class CartTest extends TestCase {
 	}
 
 	public function test_line_key_ignores_attribute_order(): void {
-		self::assertSame( CartLine::key_for( 3, [ 'a' => 'x', 'b' => 'y' ] ), CartLine::key_for( 3, [ 'b' => 'y', 'a' => 'x' ] ) );
+		self::assertSame(
+			CartLine::key_for(
+				3,
+				[
+					'a' => 'x',
+					'b' => 'y',
+				]
+			),
+			CartLine::key_for(
+				3,
+				[
+					'b' => 'y',
+					'a' => 'x',
+				]
+			)
+		);
 		self::assertNotSame( CartLine::key_for( 3, [ 'a' => 'x' ] ), CartLine::key_for( 3, [ 'a' => 'z' ] ) );
 		self::assertNotSame( CartLine::key_for( 3, [] ), CartLine::key_for( 4, [] ) );
 	}
@@ -36,21 +51,128 @@ final class CartTest extends TestCase {
 	}
 
 	public function test_data_round_trip_drops_bad_lines(): void {
-		$cart = ( new Cart() )->with_added( new CartLine( CartLine::key_for( 3, [ 'size' => 's' ] ), 1, 3, 2, [ 'size' => 's' ], [ [ 'name' => 'Size', 'value' => 'S' ] ] ) )
-			->with_notices( [ [ 'code' => 'x', 'message' => 'Changed' ] ] );
+		$cart            = ( new Cart() )->with_added(
+			new CartLine(
+				CartLine::key_for( 3, [ 'size' => 's' ] ),
+				1,
+				3,
+				2,
+				[ 'size' => 's' ],
+				[
+					[
+						'name'  => 'Size',
+						'value' => 'S',
+					],
+				]
+			)
+		)
+			->with_notices(
+				[
+					[
+						'code'    => 'x',
+						'message' => 'Changed',
+					],
+				]
+			);
 		$data            = $cart->to_data();
-		$data['lines'][] = [ 'variant_id' => 0, 'qty' => 1 ];
-		$data['lines'][] = [ 'variant_id' => 9, 'qty' => -1 ];
+		$data['lines'][] = [
+			'variant_id' => 0,
+			'qty'        => 1,
+		];
+		$data['lines'][] = [
+			'variant_id' => 9,
+			'qty'        => -1,
+		];
 		$data['lines'][] = 'junk';
 		$back            = Cart::from_data( $data );
 		self::assertCount( 1, $back->lines );
 		self::assertSame( $cart->lines[0]->key, $back->lines[0]->key );
-		self::assertSame( [ [ 'name' => 'Size', 'value' => 'S' ] ], $back->lines[0]->labels );
+		self::assertSame(
+			[
+				[
+					'name'  => 'Size',
+					'value' => 'S',
+				],
+			],
+			$back->lines[0]->labels
+		);
 		self::assertSame( 'Changed', $back->notices[0]['message'] );
 	}
 
+	public function test_shipping_choice_and_checkout_token_survive_a_round_trip(): void {
+		$destination = [
+			'country'  => 'US',
+			'state'    => 'CA',
+			'postcode' => '95014',
+			'city'     => 'Cupertino',
+		];
+		$cart        = ( new Cart() )->with_added( $this->line( 3, 1 ) )->with_shipping( $destination, 'flat_rate:2' )->with_checkout_token( 'tok' );
+		$back        = Cart::from_data( $cart->to_data() );
+
+		self::assertSame( 'flat_rate:2', $back->shipping_rate );
+		self::assertSame( $destination, $back->destination );
+		self::assertSame( 'tok', $back->checkout_token );
+		self::assertSame( Cart::VERSION, $cart->to_data()['v'] );
+	}
+
+	public function test_bad_shipping_data_falls_back_to_empty(): void {
+		$cart = Cart::from_data(
+			[
+				'shipping_rate'  => 5,
+				'destination'    => [
+					'country' => [ 'US' ],
+					'state'   => 'CA',
+				],
+				'checkout_token' => null,
+			]
+		);
+		self::assertSame( '', $cart->shipping_rate );
+		self::assertSame(
+			[
+				'country'  => '',
+				'state'    => 'CA',
+				'postcode' => '',
+				'city'     => '',
+			],
+			$cart->destination
+		);
+		self::assertSame( '', $cart->checkout_token );
+	}
+
+	public function test_emptied_after_an_order_takes_a_new_token_and_keeps_the_destination(): void {
+		$destination = [
+			'country'  => 'VN',
+			'state'    => '',
+			'postcode' => '700000',
+			'city'     => '',
+		];
+		$cart        = ( new Cart() )->with_added( $this->line( 3, 1 ) )
+			->with_shipping( $destination, 'flat_rate:2' )
+			->with_notices(
+				[
+					[
+						'code'    => 'x',
+						'message' => 'y',
+					],
+				]
+			)
+			->with_checkout_token( 'old' )
+			->emptied( 'new' );
+
+		self::assertTrue( $cart->is_empty() );
+		self::assertSame( 'new', $cart->checkout_token );
+		self::assertSame( $destination, $cart->destination );
+		self::assertSame( '', $cart->shipping_rate, 'the rate is chosen again for the next cart' );
+		self::assertSame( [], $cart->notices );
+	}
+
 	public function test_emptied_keeps_the_rate_window(): void {
-		$cart = ( new Cart() )->with_added( $this->line( 3, 1 ) )->with_rate( [ 'window' => 10, 'count' => 4 ] )->emptied();
+		$cart = ( new Cart() )->with_added( $this->line( 3, 1 ) )->with_rate(
+			[
+				'window' => 10,
+				'count'  => 4,
+			]
+		)->emptied();
 		self::assertTrue( $cart->is_empty() );
 		self::assertSame( 4, $cart->rate['count'] );
 	}

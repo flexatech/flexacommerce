@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/shared/lib/api";
 import type { CurrencyPosition } from "@/shared/types/global";
 import type { LogLevel } from "../status/types";
+import type { TaxMarket } from "../taxes/useTaxes";
 
 export interface Settings {
     currency: string;
@@ -15,9 +16,23 @@ export interface Settings {
     max_line_quantity: number;
     store_customer_ip: boolean;
     checkout_paused: boolean;
+    defer_emails: boolean;
     log_level: LogLevel;
     log_retention_days: number;
     remove_data_on_uninstall: boolean;
+    tax_enabled: boolean;
+    prices_include_tax: boolean;
+    tax_based_on: "shipping" | "billing" | "base";
+    tax_default_location: "base" | "none";
+    /** A class slug, "" for Standard, or `inherit` (from the cart items). */
+    shipping_tax_class: string;
+    tax_round_at_subtotal: boolean;
+    tax_classes: { slug: string; name: string }[];
+    tax_display_shop: "excl" | "incl";
+    tax_display_cart: "excl" | "incl";
+    price_display_suffix: string;
+    tax_total_display: "itemized" | "single";
+    tax_markets: TaxMarket[];
 }
 
 export interface SettingsPayload {

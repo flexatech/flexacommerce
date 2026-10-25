@@ -13,6 +13,7 @@ use Flexa\Commerce\Contracts\Logger;
 use Flexa\Commerce\Database\AfterCommit;
 use Flexa\Commerce\Database\Transaction;
 use Flexa\Commerce\Support\Clock;
+use Flexa\Commerce\Support\Logger as BatchLogger;
 use Flexa\Commerce\Support\Settings;
 
 defined( 'ABSPATH' ) || exit;
@@ -58,7 +59,18 @@ final class StockService {
 	 * @return list<StockChange>
 	 */
 	public function deduct( array $lines, string $reason, int $order_id = 0 ): array {
-		return $this->move( $lines, -1, $reason, $order_id );
+		return $this->move( $this->units( $lines ), -1, $reason, $order_id );
+	}
+
+	/**
+	 * deduct() for callers that hold stock owner ids, not catalog objects.
+	 * Rows that do not manage stock are skipped.
+	 *
+	 * @param list<StockUnit> $units
+	 * @return list<StockChange>
+	 */
+	public function deduct_units( array $units, string $reason, int $order_id = 0 ): array {
+		return $this->move( $units, -1, $reason, $order_id );
 	}
 
 	/**
@@ -68,7 +80,15 @@ final class StockService {
 	 * @return list<StockChange>
 	 */
 	public function release( array $lines, string $reason, int $order_id = 0 ): array {
-		return $this->move( $lines, 1, $reason, $order_id );
+		return $this->move( $this->units( $lines ), 1, $reason, $order_id );
+	}
+
+	/**
+	 * @param list<StockUnit> $units
+	 * @return list<StockChange>
+	 */
+	public function release_units( array $units, string $reason, int $order_id = 0 ): array {
+		return $this->move( $units, 1, $reason, $order_id );
 	}
 
 	/** Manual correction by `$delta` units. Returns the new quantity, or null when stock is not managed. */
@@ -93,25 +113,39 @@ final class StockService {
 	}
 
 	/**
+	 * Lines whose owner does not manage stock are dropped here, without a
+	 * query.
+	 *
 	 * @param list<StockLine> $lines
+	 * @return list<StockUnit>
+	 */
+	private function units( array $lines ): array {
+		$units = [];
+		foreach ( $lines as $line ) {
+			$owner = $line->product->stock_owner( $line->variant );
+			if ( $owner->manage_stock && $owner->id > 0 ) {
+				$units[] = StockUnit::of( $line );
+			}
+		}
+		return $units;
+	}
+
+	/**
+	 * @param list<StockUnit> $units
 	 * @return list<StockChange>
 	 */
-	private function move( array $lines, int $sign, string $reason, int $order_id ): array {
+	private function move( array $units, int $sign, string $reason, int $order_id ): array {
 		$wanted = [];
-		foreach ( $lines as $line ) {
-			if ( $line->quantity <= 0 ) {
+		foreach ( $units as $unit ) {
+			if ( $unit->quantity <= 0 || $unit->stock_id <= 0 ) {
 				continue;
 			}
-			$owner = $line->product->stock_owner( $line->variant );
-			if ( ! $owner->manage_stock || $owner->id <= 0 ) {
-				continue;
-			}
-			$wanted[ $owner->id ]            ??= [
-				'product_id' => $line->product->id,
+			$wanted[ $unit->stock_id ]            ??= [
+				'product_id' => $unit->product_id,
 				'quantity'   => 0,
-				'variant_id' => $line->variant->id,
+				'variant_id' => $unit->variant_id,
 			];
-			$wanted[ $owner->id ]['quantity'] += $line->quantity;
+			$wanted[ $unit->stock_id ]['quantity'] += $unit->quantity;
 		}
 		if ( $wanted === [] ) {
 			return [];
@@ -122,6 +156,17 @@ final class StockService {
 			function () use ( $wanted, $sign, $reason, $order_id ): array {
 				$before  = $this->variants->stock_rows( array_keys( $wanted ), true );
 				$changes = [];
+				// Check every locked row before the first write: nested runs share
+				// one transaction (no savepoints), so a caller that catches
+				// InsufficientStock must find nothing half applied.
+				if ( $sign < 0 ) {
+					foreach ( $wanted as $owner_id => $want ) {
+						$row = $before[ $owner_id ] ?? null;
+						if ( $row !== null && $row['manage_stock'] && $row['backorders'] === 'no' && (int) $row['stock_quantity'] < $want['quantity'] ) {
+							throw new InsufficientStock( $want['variant_id'], max( 0, (int) $row['stock_quantity'] ) );
+						}
+					}
+				}
 				foreach ( $wanted as $owner_id => $want ) {
 					$row = $before[ $owner_id ] ?? null;
 					if ( $row === null || ! $row['manage_stock'] ) {
@@ -171,20 +216,27 @@ final class StockService {
 		}
 		$this->after_commit->defer(
 			function () use ( $changes, $actor_id ): void {
+				$entries = function () use ( $changes, $actor_id ): void {
+					foreach ( $changes as $change ) {
+						$this->ledger->info(
+							'Stock of variant {variant_id}: {old} to {new} ({reason})',
+							[
+								'variant_id' => $change->variant_id,
+								'product_id' => $change->product_id,
+								'old'        => $change->old_quantity,
+								'new'        => $change->new_quantity,
+								'reason'     => $change->reason,
+								'order_id'   => $change->order_id,
+								'actor_id'   => $actor_id,
+							]
+						);
+					}
+				};
+				// One insert for all lines of an order (P6q).
+				$this->ledger instanceof BatchLogger ? $this->ledger->batch( $entries ) : $entries();
+
 				$synced = [];
 				foreach ( $changes as $change ) {
-					$this->ledger->info(
-						'Stock of variant {variant_id}: {old} to {new} ({reason})',
-						[
-							'variant_id' => $change->variant_id,
-							'product_id' => $change->product_id,
-							'old'        => $change->old_quantity,
-							'new'        => $change->new_quantity,
-							'reason'     => $change->reason,
-							'order_id'   => $change->order_id,
-							'actor_id'   => $actor_id,
-						]
-					);
 					if ( $change->status_changed() && ! isset( $synced[ $change->product_id ] ) ) {
 						$synced[ $change->product_id ] = true;
 						$this->products->sync_denormalized( $change->product_id, $this->clock->db_now() );

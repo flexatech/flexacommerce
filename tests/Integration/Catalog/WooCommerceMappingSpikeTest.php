@@ -122,7 +122,7 @@ final class WooCommerceMappingSpikeTest extends CatalogTestCase {
 	}
 
 	public function test_parent_managed_stock_maps_to_stock_from_base(): void {
-		$product = $this->import( 9001 );
+		$product             = $this->import( 9001 );
 		[ $natural, $black ] = $product->variations;
 
 		$this->assertTrue( $product->base->manage_stock );
@@ -231,7 +231,7 @@ final class WooCommerceMappingSpikeTest extends CatalogTestCase {
 				foreach ( $source['terms'][ $name ] ?? [] as $slug ) {
 					$values[ $slug ] = $this->value_ids[ $name ][ $slug ];
 				}
-				$attributes[]               = [
+				$attributes[]                 = [
 					'type'              => 'global',
 					'attribute_term_id' => $this->attribute_ids[ $name ],
 					'value_term_ids'    => array_values( $values ),

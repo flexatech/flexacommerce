@@ -28,5 +28,6 @@ final class VariantView {
 		public readonly ?int $stock_quantity,
 		public readonly string $stock_status,
 		public readonly string $tax_class,
+		public readonly string $tax_status = 'taxable',
 	) {}
 }

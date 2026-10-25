@@ -58,6 +58,7 @@
 		'flexacommerce/product-add-to-cart',
 		'flexacommerce/cart',
 		'flexacommerce/mini-cart',
+		'flexacommerce/checkout',
 	].forEach( ( name ) => {
 		registerBlockType( name, {
 			edit: ( props ) => el( Edit, Object.assign( { name }, props ) ),

@@ -20,7 +20,7 @@ defined( 'ABSPATH' ) || exit;
  * returns the same shape. Term labels cost one query for the whole product.
  * `max` is null when stock is not limited.
  *
- * @phpstan-type VariantOption array{id:int,attributes:object,sku:?string,image_id:?int,in_stock:bool,max:?int,price:string,regular:string}
+ * @phpstan-type VariantOption array{id:int,attributes:object,sku:?string,image_id:?int,in_stock:bool,max:?int,price:string,regular:string,suffix:string}
  */
 final class PurchaseOptions {
 	public const INLINE_LIMIT = 250;
@@ -71,6 +71,8 @@ final class PurchaseOptions {
 		if ( $unit === null ) {
 			return null;
 		}
+		$suffix       = $this->pricing->display_suffix( $product, $row, $unit );
+		$unit         = $this->pricing->for_display( $product, $row, $unit );
 		$availability = $this->stock->availability( $product, $row );
 		$max          = $availability->max_quantity();
 		return [
@@ -82,6 +84,7 @@ final class PurchaseOptions {
 			'max'        => $max,
 			'price'      => $this->pricing->format( $unit->active ),
 			'regular'    => $unit->is_reduced() ? $this->pricing->format( $unit->regular ) : '',
+			'suffix'     => $suffix,
 		];
 	}
 

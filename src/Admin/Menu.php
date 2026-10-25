@@ -22,6 +22,8 @@ final class Menu {
 
 	/** Submenu order; core adds the product list itself (show_in_menu). */
 	private const ORDER = [
+		self::SLUG . '-orders',
+		self::SLUG . '-customers',
 		'edit.php?post_type=' . PostTypes::PRODUCT,
 		'edit-tags.php?taxonomy=' . PostTypes::CATEGORY . '&post_type=' . PostTypes::PRODUCT,
 		'edit-tags.php?taxonomy=' . PostTypes::TAG . '&post_type=' . PostTypes::PRODUCT,
@@ -65,6 +67,28 @@ final class Menu {
 				[ $this, 'render_page' ]
 			)
 		);
+		$this->add(
+			self::SLUG . '-orders',
+			(string) add_submenu_page(
+				self::SLUG,
+				__( 'Orders', 'flexacommerce' ),
+				__( 'Orders', 'flexacommerce' ),
+				Capabilities::VIEW_ORDERS,
+				self::SLUG . '-orders',
+				[ $this, 'render_page' ]
+			)
+		);
+		$this->add(
+			self::SLUG . '-customers',
+			(string) add_submenu_page(
+				self::SLUG,
+				__( 'Customers', 'flexacommerce' ),
+				__( 'Customers', 'flexacommerce' ),
+				Capabilities::VIEW_ORDERS,
+				self::SLUG . '-customers',
+				[ $this, 'render_page' ]
+			)
+		);
 		foreach ( [
 			PostTypes::CATEGORY => __( 'Categories', 'flexacommerce' ),
 			PostTypes::TAG      => __( 'Tags', 'flexacommerce' ),
@@ -101,7 +125,7 @@ final class Menu {
 		);
 	}
 
-	/** Products first: the top-level item links to the first submenu entry. */
+	/** Orders first: the top-level item links to the first submenu entry. */
 	public function order_menu(): void {
 		global $submenu;
 		if ( ! isset( $submenu[ self::SLUG ] ) || ! is_array( $submenu[ self::SLUG ] ) ) {

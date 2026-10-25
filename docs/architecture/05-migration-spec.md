@@ -251,7 +251,7 @@ Slug collisions inside a target taxonomy are impossible for a fresh store; on re
 | `get_image_id()`, `get_gallery_image_ids()` | `_thumbnail_id`, `_fxc_gallery_ids` (same attachment ids, same site) |
 | `get_catalog_visibility()`, `get_featured()` | `_fxc_visibility`, `_fxc_featured` |
 | `get_attributes()` (`WC_Product_Attribute`: id, name, options, visible, variation, position) | `_fxc_attributes` definitions + global value terms set on the post |
-| simple: SKU, prices, sale dates, stock fields, weight, dimensions, tax class | base variant row |
+| simple: SKU, prices, sale dates, stock fields, weight, dimensions, tax class, tax status | base variant row (`tax_status`, `tax_class`; doc 03 §4.1) |
 | variable: parent SKU, parent stock fields, weight/dimensions | base variant row (not purchasable) |
 | `WC_Product_Variation`: `get_attributes()` (empty value → `*`), status `publish`/`private` → `enabled`, prices, `get_manage_stock()` (`'parent'` → `stock_from_base = 1`), stock, image, description, menu_order | variation rows; sale end + 1 s (WooCommerce's end is inclusive), position after sorting by `menu_order` then id written as `menu_order` (doc 03 §3.9) |
 | weight/dimension units (`woocommerce_weight_unit`, `woocommerce_dimension_unit`) | converted to g / mm with string arithmetic, 3 decimals |
@@ -283,7 +283,8 @@ Same site, so customers are already WordPress users. The stage maps WooCommerce 
 | other item meta | item `meta` JSON (`extra`) |
 | shipping / fee items | `shipping` / `fee` lines |
 | coupon items | `discount` lines (`code`, `total` = discount amount). Informational: the amounts are already inside product lines. |
-| tax items | `tax` lines (rate label, amount). Informational breakdown: the order `tax_total` is the source of truth. |
+| tax items | `tax` lines, one per WooCommerce tax item: `code` = rate code, `name` = label, `total` = tax + shipping tax, `meta` = `{rate_id (mapped, or 0 if the rate no longer exists), rate, compound, items_tax, shipping_tax}`. The order `tax_total` stays the source of truth; per-line `meta.taxes` comes from the item's `taxes` array when present. |
+| tax classes (`wc_tax_rate_classes`), rates with locations (`woocommerce_tax_rates`, `woocommerce_tax_rate_locations`), tax options (doc 02 §7.12.1) | `flexacommerce_settings.tax_classes`, `fxc_tax_rates` and `fxc_tax_rate_locations` with `source = 'migration'`, tax settings; rate ids recorded in the id map. Rate percent strings are parsed with string arithmetic (`"7.2500"` → `72500`). FXC→WC writes the same tables through `WC_Tax::_insert_tax_rate()`. |
 | paid order (date paid set, or status processing/completed/refunded, total > 0) | one `payment` transaction: `method = import`, `succeeded`, gateway = `payment_method`, `gateway_reference` = `get_transaction_id()` or NULL, `idempotency_key = import:wc:{order_id}:payment` |
 | `get_refunds()` | `refund` transactions (`method = import`, `succeeded`), `refund_lines` from refund items, amounts, reason, date; `amount_refunded`, `payment_status` derived |
 | order notes (`wc_get_order_notes()`) | `fxc_order_history` rows, `type = note`, `customer_visible` from `is_customer_note`, `actor_type = migration`, original date and author name in `context` |
@@ -302,7 +303,9 @@ Same site, so customers are already WordPress users. The stage maps WooCommerce 
 | Custom order statuses | warning, mapping required |
 | Active WooCommerce webhooks (`wc_webhooks` with status active) and listeners on `woocommerce_new_order` (FXC→WC only) | warning: "these will receive imported orders, pause them" |
 | Sequential order number plugin detected (number ≠ id on a sample) | info |
-| Multi-currency or tax-inclusive orders present | warning (Q2) |
+| Multi-currency orders present | warning |
+| Tax-inclusive orders present while the target store has `prices_include_tax` off (or the reverse) | warning: historic orders keep their own flag, new orders follow the store setting |
+| Tax enabled in the source but not in the target | warning: rates are imported and taxes stay off until the admin enables them |
 | Estimated duration (entity counts × measured rate of a 20-entity sample) | info |
 | `DISABLE_WP_CRON`, max execution time, memory limit | info / warning |
 
@@ -351,7 +354,7 @@ Errors reject one entity, never the batch. A job ends `completed_with_warnings` 
 | Product reviews | stay on the WooCommerce post (Q14) |
 | Product add-on and SEO plugin meta | `_fxc_import` bucket on the product, round-tripped on FXC→WC |
 | Unknown order and item meta | `fxc_order_meta` (`wc:` prefix) and item `meta` JSON, round-tripped |
-| Coupons (definitions), tax rates, shipping zones and methods, payment gateway settings | not migrated in MVP. Shipping zones: report lists them for manual setup (POST: automatic) |
+| Coupons (definitions), shipping zones and methods, payment gateway settings | not migrated in MVP (tax rates and classes are, since ADR-020). Shipping zones: report lists them for manual setup (POST: automatic) |
 | Subscriptions, memberships, bookings | not migrated, warning if their plugins are active |
 | WooCommerce analytics tables, customer lookup, sessions, carts | not migrated (derived or transient data) |
 

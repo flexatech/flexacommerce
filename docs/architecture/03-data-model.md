@@ -16,6 +16,7 @@ Status: **Approved 2026-10-24**. All table names below are shown without `{$wpdb
 | Webhook dedupe | `fxc_webhook_events` | DB-level replay protection. |
 | Cart sessions | `fxc_sessions` | Server-side, lazily created (ADR-008). |
 | Order number allocation | `fxc_sequences` | Atomic counter. |
+| Tax rates | `fxc_tax_rates`, `fxc_tax_rate_locations` | Indexed matching by country, state, ZIP and city; the same shape as WooCommerce's tables (§4.13). |
 | Plugin log | `fxc_logs` | Filterable by channel and level, pruned by cron (§4.12). |
 | Migration | `fxc_id_map`, `fxc_migration_jobs`, `fxc_migration_log` | Idempotency and resumability (doc 05). |
 | Customers | `wp_users` + user meta `fxc_billing`, `fxc_shipping` (JSON) | No separate customer table (§7). |
@@ -30,7 +31,7 @@ Status: **Approved 2026-10-24**. All table names below are shown without `{$wpdb
 - **Exponent:** from a bundled ISO 4217 table in `Support\Currency` (USD 2, JPY 0, KWD 3, ...), filterable through `flexacommerce.currency.exponent` for non-standard needs. Orders snapshot `currency` and `currency_exponent` so history stays correct even if the store currency changes.
 - **No floats anywhere in money paths.** Decimal input (admin forms, WooCommerce strings like `"19.990"`) is parsed by `Money::from_decimal_string( string, currency, exponent )` using string arithmetic: split on the decimal separator, pad or round the fraction to the exponent. A value with more fractional digits than the exponent is rounded **half up (away from zero)** and, during migration, logged as a precision warning with the original string preserved.
 - **Exponent is a parameter, not object state (phase 1 decision):** `Money` holds only `amount` and `currency`. Methods that convert to or from decimals (`from_decimal_string()`, `to_decimal_string()`, `is_exact_decimal()`) take the exponent explicitly, and the `Contracts\MoneyFactory` service (implemented by `Support\StoreMoneyFactory`) supplies it from the currency table. This keeps `Contracts` free of any dependency on `Support` and keeps the value object cheap to construct from a database row.
-- **Calculation order:** `line subtotal = unit_price × qty` (exact integer). Discounts and taxes (when enabled) are calculated **per line** and rounded per line half-up. Order totals are sums of rounded line values, so totals always equal the sum of their lines. Ratios use `Money::allocate()` (largest-remainder method) when an amount must be split across lines, for example a partial refund across items.
+- **Calculation order:** `line subtotal = unit_price × qty` (exact integer). Discounts and taxes (when enabled) are calculated **per line** and rounded per line half-up. With the tax setting `tax_round_at_subtotal`, tax is rounded once per rate over the order and split back to the lines with `Money::allocate()`, so the rule that totals equal the sum of their lines still holds (doc 02 §7.12.4). Order totals are sums of rounded line values, so totals always equal the sum of their lines. Ratios use `Money::allocate()` (largest-remainder method) when an amount must be split across lines, for example a partial refund across items.
 - **Currency change:** allowed only while no product has a price and no order exists, or when the new currency has the same exponent (admin warning: prices are not converted). Converting a catalog to a different exponent is post-MVP.
 
 ### 2.2 Quantity
@@ -234,6 +235,7 @@ CREATE TABLE fxc_variants (
   width decimal(12,3) NULL,
   height decimal(12,3) NULL,
   image_id bigint(20) unsigned NULL,
+  tax_status varchar(10) NOT NULL DEFAULT 'taxable',
   tax_class varchar(50) NOT NULL DEFAULT '',
   description text NULL,
   meta longtext NULL,
@@ -252,6 +254,8 @@ CREATE TABLE fxc_variants (
 | `attributes` | JSON object of the canonical combination (`{}` for base rows). |
 | `backorders` | `no` \| `notify` \| `yes`. |
 | `stock_quantity` | NULL when `manage_stock = 0`. |
+| `tax_status` | `taxable` \| `shipping` \| `none`. Read from the base row only (doc 02 §7.12.2). Added in `DB_VERSION` 2. |
+| `tax_class` | Class slug, `''` = Standard. On variation rows `parent` takes the base row's class; the `DB_VERSION` 2 upgrade step sets every variation row to `parent` (no store had taxes before). |
 | `meta` | JSON, extension and import data for this variant. Not queryable. |
 
 Relationships: `product_id` → `wp_posts.ID` (`fxc_product`). Lifecycle: created/updated by `ProductService`, deleted with the product (`before_delete_post`). Trashing a product keeps variants (restorable) but makes them unpurchasable because the post is not published.
@@ -346,7 +350,8 @@ CREATE TABLE fxc_order_items (
 ) {charset_collate};
 ```
 
-- `type`: `product`, `shipping`, `fee`, `discount`, `tax`. Only `product` lines touch stock. `tax` lines are summary lines (rate label in `name`, amount in `total`) used for migrated WooCommerce tax lines and future tax engines.
+- `type`: `product`, `shipping`, `fee`, `discount`, `tax`. Only `product` lines touch stock. `tax` lines are summary lines, one per rate (rate label in `name`, rate code in `code`, items tax + shipping tax in `total`, `meta` = `{rate_id, rate, compound, items_tax, shipping_tax}`), written by the tax engine (doc 02 §7.12.10) and by migration.
+- Product, shipping and fee lines keep the per-rate split of their `tax_total` in `meta.taxes` (`{"<rate_id>": amount}`). Invariant: `orders.tax_total = Σ tax lines.total = Σ other lines.tax_total`.
 - `code`: shipping rate id (`flat_rate:3`), fee code, coupon code, tax rate code.
 - Amounts are **exclusive of tax**; `tax_total` holds the line's tax. `total = subtotal − discount_total` (ex-tax).
 - `attributes`: JSON snapshot `[{"label":"Color","value":"Red"}]` with display strings at purchase time.
@@ -501,7 +506,7 @@ CREATE TABLE fxc_sessions (
 ) {charset_collate};
 ```
 
-`data` JSON: `{ "v":1, "lines":[{ "key":"<sha1 of variant+attributes>", "variant_id":0, "qty":1, "attributes":{}, "added_at":"" }], "shipping_rate":"", "destination":{country,state,postcode}, "checkout_token":"", "notices":[] }`. No prices and no personal data besides the shipping destination needed for rate quotes. Checkout form drafts stay in the browser (`sessionStorage`). Purge: daily cron deletes `expires_at < now` in batches of 1,000.
+`data` JSON: `{ "v":1, "lines":[{ "key":"<sha1 of variant+attributes>", "variant_id":0, "qty":1, "attributes":{}, "added_at":"" }], "shipping_rate":"", "destination":{country,state,postcode,city}, "checkout_token":"", "notices":[] }`. No prices and no personal data besides the shipping destination needed for rate and tax quotes (the city matters for city tax rates). Checkout form drafts stay in the browser (`sessionStorage`). Purge: daily cron deletes `expires_at < now` in batches of 1,000.
 
 ### 4.10 `fxc_sequences`
 
@@ -597,6 +602,73 @@ CREATE TABLE fxc_logs (
 - Entries below `settings.log_level` are never written. The write waits until no transaction is open (`Transaction::when_idle()`), so a rollback cannot erase the entry that explains it. If the insert fails, the entry goes to the PHP error log instead.
 - The daily cron (`flexacommerce.cron.daily`) deletes rows older than `settings.log_retention_days` (default 30) using the `created_at` index.
 
+### 4.13 `fxc_tax_rates` and `fxc_tax_rate_locations`
+
+Added in phase 4.5 (ADR-020, doc 02 §7.12), `DB_VERSION` 2. Same shape as WooCommerce's `woocommerce_tax_rates` and `woocommerce_tax_rate_locations`, so CSV files and migration map one to one.
+
+```sql
+CREATE TABLE fxc_tax_rates (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  tax_class varchar(50) NOT NULL DEFAULT '',
+  country char(2) NOT NULL DEFAULT '',
+  state varchar(20) NOT NULL DEFAULT '',
+  rate int(10) unsigned NOT NULL,
+  name varchar(200) NOT NULL DEFAULT '',
+  priority smallint(5) unsigned NOT NULL DEFAULT 1,
+  compound tinyint(1) NOT NULL DEFAULT 0,
+  shipping tinyint(1) NOT NULL DEFAULT 1,
+  rate_order int(10) unsigned NOT NULL DEFAULT 0,
+  location_count int(10) unsigned NOT NULL DEFAULT 0,
+  source varchar(32) NOT NULL DEFAULT 'manual',
+  created_at datetime NOT NULL,
+  updated_at datetime NOT NULL,
+  PRIMARY KEY  (id),
+  KEY class_country_state (tax_class,country,state,location_count),
+  KEY class_order (tax_class,rate_order),
+  KEY source (source)
+) {charset_collate};
+
+CREATE TABLE fxc_tax_rate_locations (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  rate_id bigint(20) unsigned NOT NULL,
+  type varchar(10) NOT NULL,
+  code varchar(100) NOT NULL DEFAULT '',
+  range_from bigint(20) unsigned NULL,
+  range_to bigint(20) unsigned NULL,
+  PRIMARY KEY  (id),
+  KEY rate_type (rate_id,type),
+  KEY type_code (type,code),
+  KEY type_range (type,range_from)
+) {charset_collate};
+```
+
+| Column | Notes |
+|---|---|
+| `rate` | Millionths of a percent unit: 7.25 % = `72500`, 100 % = `1000000`. Four decimals, as WooCommerce stores (`"7.2500"`). Converted with string arithmetic, never a float. |
+| `country`, `state` | Upper-case; empty means every country or every state. |
+| `location_count` | Number of location rows, kept by `TaxRateRepository`. 0 means the rate applies to every postcode and city, which saves the join for country and state rates. |
+| `source` | `manual`, `import`, `migration`, `preset:{id}` (`preset:us`). Preset re-apply replaces only its own source. |
+| `type` | `postcode` or `city`. |
+| `code` | Normalized: postcode upper-case without spaces, exact (`90210`) or prefix with `*` (`902*`); city upper-case. Empty for a range row. |
+| `range_from`, `range_to` | Numeric postcode ranges (`90210...90299`), only when both ends are digits. Other ranges are expanded at save time if they cover ≤ 1,000 codes and rejected otherwise. |
+
+Matching query (one per distinct location and class set per request; result cached in the `fxc_tax` group under a version key that every rate write bumps):
+
+```sql
+SELECT r.*, l.type, l.code, l.range_from, l.range_to
+FROM fxc_tax_rates r
+LEFT JOIN fxc_tax_rate_locations l ON l.rate_id = r.id
+WHERE r.tax_class IN (%s, ...) AND r.country IN (%s, '') AND r.state IN (%s, '')
+  AND ( r.location_count = 0
+     OR (l.type = 'postcode' AND (l.code IN (%s, ...) OR (%d BETWEEN l.range_from AND l.range_to)))
+     OR (l.type = 'city' AND l.code = %s) )
+ORDER BY r.priority, r.rate_order
+```
+
+The `IN` list for postcodes holds the exact code and its prefixes with `*` (`90210`, `9021*`, `902*`, `90*`, `9*`, `*`). A rate with both postcode and city rows must match one of each; that last check runs in PHP over the few candidate rows. Rows read stay proportional to the rates of one country and state, not to the table: a US table with 40,000 ZIP rows reads only the rows for that ZIP and state (verified with `EXPLAIN` and a T1 rows-read check on a 50,000-row fixture in phase 4.5).
+
+Tax classes are not a table; they live in `flexacommerce_settings.tax_classes` (doc 02 §7.12.1). Lifecycle: written by the Taxes screen, CSV import, presets and migration through `TaxRateRepository`; never by checkout.
+
 ## 5. Query patterns and indexes
 
 | Query | Index used |
@@ -613,6 +685,7 @@ CREATE TABLE fxc_logs (
 | Webhook dedupe | `gateway_event` |
 | Transaction by gateway reference | `gateway_reference` |
 | Session lookup | `token_hash`, `user_id` |
+| Tax rate match for one address | `class_country_state`, then `rate_type` for the join; `type_code` and `type_range` for rates found by postcode (§4.13) |
 | Shop sort by price | `wp_postmeta` `meta_key/meta_value` on `_fxc_price_min` (core index on `meta_key`). See revisit condition below. |
 
 **Revisit condition (product lookup table):** if the benchmark (doc 06 §4) shows shop archive queries sorted or filtered by price above 50 ms at 20,000 products, add `fxc_product_lookup (product_id PK, price_min, price_max, stock_status, featured, visibility, total_sales)` maintained by `ProductService`, and switch archive queries to join it. Not built in MVP because postmeta sorting is adequate for the assumed catalog size (A1) and the table adds a sync burden.

@@ -125,7 +125,7 @@ interface ShippingMethod {
 ```
 
 - `ShippingPackage`: destination (`country`, `state`, `postcode`, `city`), lines (`variant_id`, `qty`, `weight_g`, `dimensions_mm`, `line_total` Money), `contents_total`, `currency`.
-- `ShippingRate`: `id` (`{type}:{instance_id}[:{suffix}]`), `label`, `cost` (Money), `meta` (array of display strings), `taxable` (bool, ignored until tax exists).
+- `ShippingRate`: `id` (`{type}:{instance_id}[:{suffix}]`), `label`, `cost` (Money), `meta` (array of display strings), `taxable` (bool, default `true`; `false` means the tax engine never taxes this rate, doc 02 §7.12.4).
 - `rates()` must be fast and side-effect free. It may be called on every cart read. Methods that call remote APIs must cache per package hash and time out (≤ 3 s). Core wraps the call: an exception or timeout removes that method's rates and logs it, so one failing carrier never breaks checkout.
 - Core methods: `flat_rate` (cost per order or per item), `free_shipping` (optional minimum contents total), `local_pickup` (no address required, configurable label).
 
@@ -178,9 +178,48 @@ Because these fire after commit, a listener that throws cannot roll back the ord
 | `flexacommerce.checkout.validate` | `ValidationResult $result, CheckoutView $checkout` | |
 | `flexacommerce.shipping.rates` | `list<ShippingRate> $rates, ShippingPackage $package` | Reorder, hide, rename. |
 | `flexacommerce.product.is_purchasable` | `bool, VariantView $variant` | May only forbid. |
-| `flexacommerce.tax.calculator` | `TaxCalculator $calc` | The tax seam (Q2). Interface published as **experimental** in 1.0 (§10). |
+| `flexacommerce.tax.calculator` | `?TaxCalculator $calc` (default `null`: the core engine) | Replace the whole tax calculation (§7.1). **Experimental** in 1.0 (§10). |
+| `flexacommerce.tax.rate_provider` | `TaxRateProvider $provider` (default: the rate table) | Rates from a service; core still calculates (§7.1). **Experimental** in 1.0. |
+| `flexacommerce.tax.rates` | `list<TaxRate> $rates, TaxLocation $location, string $tax_class` | Change or drop matched rates. Must be deterministic. |
+| `flexacommerce.tax.exempt` | `bool $exempt, TaxRequest $request` | Return `true` for an exempt customer (resale certificate, non-profit). Default `false`. |
+| `flexacommerce.tax.adjust_non_base_prices` | `bool $adjust` (default `true`) | Inclusive prices only: `false` keeps the gross price the same in every location (doc 02 §7.12.5). |
+| `flexacommerce.tax.presets` | `list<TaxPreset> $presets` | Add a market preset next to the core `us` preset. |
 
 Rule: filters that affect money run on the server only. The browser never receives a price it can send back.
+
+### 7.1 Tax contracts
+
+Published in `Contracts\Tax` in phase 4.5 (ADR-020, doc 02 §7.12). They replace the phase 3 seam `TaxCalculator::tax(): Money`, which was experimental and never released.
+
+```php
+namespace Flexa\Commerce\Contracts\Tax;
+
+final class TaxLocation {        // normalized (doc 02 §7.12.3)
+	public function __construct( public readonly string $country, public readonly string $state,
+		public readonly string $postcode, public readonly string $city ) {}
+}
+
+final class TaxRate {
+	public function __construct( public readonly int $id, public readonly string $code, public readonly string $label,
+		public readonly int $rate /* millionths: 7.25 % = 72500 */, public readonly int $priority,
+		public readonly bool $compound, public readonly bool $shipping ) {}
+}
+
+interface TaxRateProvider {
+	/** @return list<TaxRate> ordered as doc 02 §7.12.3 step 5 */
+	public function rates( TaxLocation $location, string $tax_class ): array;
+	public function fallback_allowed(): bool;     // false: checkout refuses when this provider fails
+}
+
+interface TaxCalculator {
+	public function calculate( TaxRequest $request ): TaxResult;
+}
+```
+
+- `TaxRequest`: `currency`, `prices_include_tax`, `location` (`?TaxLocation`, null before an address), `lines` (each: `key`, `type` product/shipping/fee, `amount` Money after discount, `quantity`, `tax_class`, `tax_status`, `variant_id`), `customer` (`user_id`, `email`), `context` (`cart`, `checkout`, `admin`).
+- `TaxResult`: per line key a list of `TaxAmount { rate: TaxRate, amount: Money }`; per rate the totals for items and shipping; `total`. Core rejects a result whose line keys, currency or sums do not match the request, and falls back as doc 02 §7.12.7 says.
+- Rate ids from a provider that are not table rows are negative or zero, and their `code` must be stable; the order's `tax` lines store the code and label, not a foreign key.
+- Both are called on cart reads and twice per checkout: they must be fast and side-effect free, and a remote provider must cache per location (core also caches the rate provider's answers, doc 02 §7.12.7).
 
 ## 8. Storefront extension
 
@@ -188,7 +227,7 @@ Rule: filters that affect money run on the server only. The browser never receiv
 - Render hooks inside shared renderers: `flexacommerce.render.{component}.before` / `.after` actions, and `flexacommerce.render.{component}.html` filter on the output. Components: `product_price`, `add_to_cart`, `gallery`, `cart_table`, `checkout_form`, `order_summary`, `account_nav`.
 - Blocks: core blocks are extendable with standard block APIs (block variations, block hooks, `render_block` filters). FlexaCommerce adds no custom JS extension registry in 1.0.
 - Interactivity: the store namespace `flexacommerce` state is documented read-only for extensions (`state.cart.count`, `state.cart.total`). Extensions add their own namespaced stores.
-- Emails: `flexacommerce.email.recipients`, `.subject`, `.heading`, `.content_html` filters per email id, and `flexacommerce.emails.register` to add custom emails (`Contracts\Email\Email` interface with `id()`, `trigger_hooks()`, `render()`).
+- Emails: `flexacommerce.email.recipients`, `.subject`, `.heading`, `.content_html` filters per email id, and `flexacommerce.emails.register` to add custom emails (`Contracts\Email\Email` interface with `id()`, `trigger_hooks()`, `render()`). With `defer_emails` on, these filters still run during the request that triggered the email, because the message is built there and only the sending waits for cron; a filter that needs the order's state at send time cannot rely on deferral.
 
 ## 9. REST extension
 

@@ -27,8 +27,16 @@ final class Router {
 			( new Admin\LogsEndpoint() )->register_routes();
 			( new Admin\ProductsEndpoint() )->register_routes();
 			( new Admin\AttributesEndpoint() )->register_routes();
+			( new Admin\OrdersEndpoint() )->register_routes();
+			( new Admin\CustomersEndpoint() )->register_routes();
+			( new Admin\GatewaysEndpoint() )->register_routes();
+			( new Admin\ShippingEndpoint() )->register_routes();
+			( new Admin\TaxesEndpoint() )->register_routes();
+			( new Admin\EmailsEndpoint() )->register_routes();
 			( new Store\CartEndpoint() )->register_routes();
+			( new Store\CheckoutEndpoint() )->register_routes();
 			( new Store\ProductsEndpoint() )->register_routes();
+			( new WebhooksEndpoint() )->register_routes();
 			add_filter( 'rest_authentication_errors', [ $this, 'keep_cookie_user_on_store' ], 50 );
 		}
 

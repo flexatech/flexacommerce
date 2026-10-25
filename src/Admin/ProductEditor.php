@@ -9,6 +9,7 @@ use Flexa\Commerce\Concerns\HasInstance;
 use Flexa\Commerce\Contracts\CommerceException;
 use Flexa\Commerce\Plugin;
 use Flexa\Commerce\Support\Capabilities;
+use Flexa\Commerce\Support\Settings;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -86,8 +87,27 @@ final class ProductEditor {
 				'productId'          => $post instanceof \WP_Post ? (int) $post->ID : 0,
 				'canManageTerms'     => Capabilities::can_manage_product_terms(),
 				'attributesAdminUrl' => esc_url_raw( admin_url( 'admin.php?page=' . Menu::SLUG . '-attributes' ) ),
+				'taxClasses'         => self::tax_classes(),
 			]
 		);
+	}
+
+	/** @return list<array{slug:string,name:string}> Standard first, then the store's classes. */
+	private static function tax_classes(): array {
+		$out    = [
+			[
+				'slug' => '',
+				'name' => __( 'Standard', 'flexacommerce' ),
+			],
+		];
+		$stored = Settings::get( 'tax_classes' );
+		foreach ( is_array( $stored ) ? $stored : [] as $class ) {
+			$out[] = [
+				'slug' => (string) $class['slug'],
+				'name' => (string) $class['name'],
+			];
+		}
+		return $out;
 	}
 
 	/**

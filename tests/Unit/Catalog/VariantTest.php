@@ -47,11 +47,19 @@ final class VariantTest extends TestCase {
 		self::assertSame( Variant::OUTOFSTOCK, $v->computed_stock_status() );
 		self::assertSame( Variant::ONBACKORDER, $v->with( [ 'backorders' => 'notify' ] )->computed_stock_status() );
 		self::assertSame( Variant::INSTOCK, $v->with( [ 'stock_quantity' => 3 ] )->computed_stock_status() );
-		self::assertSame( Variant::OUTOFSTOCK, $v->with( [ 'manage_stock' => false, 'stock_status' => Variant::OUTOFSTOCK ] )->computed_stock_status() );
+		self::assertSame(
+			Variant::OUTOFSTOCK,
+			$v->with(
+				[
+					'manage_stock' => false,
+					'stock_status' => Variant::OUTOFSTOCK,
+				]
+			)->computed_stock_status()
+		);
 	}
 
 	public function test_row_round_trip(): void {
-		$v   = Variant::base_for( 4 )->with(
+		$v    = Variant::base_for( 4 )->with(
 			[
 				'sku'           => 'ABC',
 				'regular_price' => 1999,
@@ -59,7 +67,7 @@ final class VariantTest extends TestCase {
 				'meta'          => [ 'x' => 1 ],
 			]
 		);
-		$row = $v->to_row() + [
+		$row  = $v->to_row() + [
 			'id'         => 9,
 			'created_at' => 'a',
 			'updated_at' => 'b',

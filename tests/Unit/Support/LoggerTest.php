@@ -25,19 +25,32 @@ final class LoggerTest extends TestCase {
 	public function test_interpolates_scalar_placeholders(): void {
 		self::assertSame(
 			'Order 42 failed: true {missing}',
-			Logger::interpolate( 'Order {id} failed: {flag} {missing}', [ 'id' => 42, 'flag' => true, 'arr' => [ 1 ] ] )
+			Logger::interpolate(
+				'Order {id} failed: {flag} {missing}',
+				[
+					'id'   => 42,
+					'flag' => true,
+					'arr'  => [ 1 ],
+				]
+			)
 		);
 	}
 
 	public function test_writes_redacted_entry_after_transaction_ends(): void {
-		$db   = new FakeWpdb();
-		$tx   = new Transaction( new FakeWpdb(), new AfterCommit() );
-		$log  = new Logger( 'payments', new LogRepository( $db ), new Redactor( 'salt' ), $tx, new Clock( new \DateTimeImmutable( '2026-10-24 10:00:00', new \DateTimeZone( 'UTC' ) ) ) );
+		$db  = new FakeWpdb();
+		$tx  = new Transaction( new FakeWpdb(), new AfterCommit() );
+		$log = new Logger( 'payments', new LogRepository( $db ), new Redactor( 'salt' ), $tx, new Clock( new \DateTimeImmutable( '2026-10-24 10:00:00', new \DateTimeZone( 'UTC' ) ) ) );
 
 		try {
 			$tx->run(
 				static function () use ( $log, $db ): void {
-					$log->error( 'Charge for {email} failed', [ 'email' => 'a@b.co', 'token' => 'tok_1' ] );
+					$log->error(
+						'Charge for {email} failed',
+						[
+							'email' => 'a@b.co',
+							'token' => 'tok_1',
+						]
+					);
 					self::assertSame( [], $db->inserted );
 					throw new \RuntimeException( 'rollback' );
 				}
@@ -59,8 +72,8 @@ final class LoggerTest extends TestCase {
 
 	public function test_skips_entries_below_configured_level(): void {
 		\WP_Test_State::$options[ Settings::OPTION ] = [ 'log_level' => 'warning' ];
-		$db   = new FakeWpdb();
-		$log  = new Logger( 'core', new LogRepository( $db ), new Redactor( 'salt' ), new Transaction( new FakeWpdb(), new AfterCommit() ), new Clock() );
+		$db  = new FakeWpdb();
+		$log = new Logger( 'core', new LogRepository( $db ), new Redactor( 'salt' ), new Transaction( new FakeWpdb(), new AfterCommit() ), new Clock() );
 
 		$log->info( 'quiet' );
 		$log->warning( 'loud' );

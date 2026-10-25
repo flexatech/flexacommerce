@@ -91,7 +91,15 @@ final class AdminProductsTest extends CatalogTestCase {
 		for ( $i = 0; $i < 3; $i++ ) {
 			$this->product( 'Listed ' . $this->run . ' ' . $i );
 		}
-		$response = $this->send( 'GET', '/admin/products', null, [ 'search' => 'Listed ' . $this->run, 'per_page' => 2 ] );
+		$response = $this->send(
+			'GET',
+			'/admin/products',
+			null,
+			[
+				'search'   => 'Listed ' . $this->run,
+				'per_page' => 2,
+			]
+		);
 		self::assertSame( 200, $response->get_status() );
 		self::assertCount( 2, $response->get_data() );
 		self::assertSame( '3', $response->get_headers()['X-WP-Total'] );
@@ -118,7 +126,17 @@ final class AdminProductsTest extends CatalogTestCase {
 		wp_set_current_user( self::factory()->user->create( [ 'role' => 'contributor' ] ) );
 		self::assertSame( 403, $this->send( 'PATCH', '/admin/products/' . $id, [ 'title' => 'x' ] )->get_status() );
 		self::assertSame( 403, $this->send( 'DELETE', '/admin/products/' . $id )->get_status() );
-		self::assertSame( 403, $this->send( 'POST', '/admin/products', [ 'title' => 'x', 'status' => 'publish' ] )->get_status() );
+		self::assertSame(
+			403,
+			$this->send(
+				'POST',
+				'/admin/products',
+				[
+					'title'  => 'x',
+					'status' => 'publish',
+				]
+			)->get_status()
+		);
 
 		wp_set_current_user( 0 );
 		self::assertSame( 401, $this->send( 'GET', '/admin/products' )->get_status() );

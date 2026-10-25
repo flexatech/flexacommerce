@@ -249,6 +249,7 @@ const { state, actions } = store( 'flexacommerce/cart', {
 			context.variantId = variant.in_stock ? variant.id : 0;
 			context.price = variant.price;
 			context.regular = variant.regular;
+			context.suffix = variant.suffix;
 			context.stock = stockText( variant );
 			context.max = variant.max !== null ? Math.min( variant.max, context.limit ) : context.limit;
 			context.quantity = Math.max( 1, Math.min( context.quantity, context.max ) );

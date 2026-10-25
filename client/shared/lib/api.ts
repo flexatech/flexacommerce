@@ -37,12 +37,12 @@ function buildUrl(path: string, query?: Query): string {
     return url.toString();
 }
 
-async function request<T>(
-    method: "GET" | "POST" | "PATCH" | "DELETE",
+async function send<T>(
+    method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE",
     path: string,
     body?: Json,
     query?: Query,
-): Promise<T> {
+): Promise<{ data: T; headers: Headers }> {
     const response = await fetch(buildUrl(path, query), {
         method,
         credentials: "same-origin",
@@ -54,7 +54,7 @@ async function request<T>(
     });
 
     if (response.status === 204) {
-        return undefined as T;
+        return { data: undefined as T, headers: response.headers };
     }
 
     const data = (await response.json().catch(() => null)) as ErrorBody | T | null;
@@ -69,12 +69,37 @@ async function request<T>(
         );
     }
 
-    return data as T;
+    return { data: data as T, headers: response.headers };
+}
+
+async function request<T>(
+    method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE",
+    path: string,
+    body?: Json,
+    query?: Query,
+): Promise<T> {
+    return (await send<T>(method, path, body, query)).data;
+}
+
+export interface Paged<T> {
+    items: T[];
+    total: number;
+    pages: number;
 }
 
 export const api = {
+    /** A collection route that reports its size in X-WP-Total / X-WP-TotalPages. */
+    list: async <T>(path: string, query?: Query): Promise<Paged<T>> => {
+        const { data, headers } = await send<T[]>("GET", path, undefined, query);
+        return {
+            items: data,
+            total: Number(headers.get("X-WP-Total") ?? data.length),
+            pages: Math.max(1, Number(headers.get("X-WP-TotalPages") ?? 1)),
+        };
+    },
     get: <T>(path: string, query?: Query) => request<T>("GET", path, undefined, query),
     post: <T>(path: string, body?: Json) => request<T>("POST", path, body),
     patch: <T>(path: string, body?: Json) => request<T>("PATCH", path, body),
+    put: <T>(path: string, body?: Json) => request<T>("PUT", path, body),
     delete: <T>(path: string, body?: Json) => request<T>("DELETE", path, body),
 };

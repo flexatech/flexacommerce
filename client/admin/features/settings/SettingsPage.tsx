@@ -6,6 +6,7 @@ import {
     Clock,
     Hash,
     History,
+    MailCheck,
     PauseCircle,
     ScrollText,
     Shield,
@@ -21,6 +22,11 @@ import { Switch } from "@/shared/components/ui/switch";
 import { __ } from "@/shared/lib/i18n";
 import { PageTitle } from "../../components/PageTitle";
 import { SettingRow } from "../../components/SettingRow";
+import { Tabs } from "../../components/Tabs";
+import { EmailsPanel } from "../emails/EmailsPanel";
+import { PaymentsPanel } from "../payments/PaymentsPanel";
+import { ShippingPanel } from "../shipping/ShippingPanel";
+import { TaxPanel } from "../taxes/TaxPanel";
 import { DataRemoval } from "./DataRemoval";
 import { useSaveSettings, useSettings, type Settings } from "./useSettings";
 
@@ -41,7 +47,65 @@ function toInt(value: string): number {
     return Number.isFinite(n) ? n : 0;
 }
 
+type Tab = "general" | "payments" | "shipping" | "tax" | "emails";
+
+function readTab(): Tab {
+    const tab = new URLSearchParams(window.location.search).get("tab");
+    return tab === "payments" || tab === "shipping" || tab === "tax" || tab === "emails" ? tab : "general";
+}
+
 export function SettingsPage() {
+    const [tab, setTab] = useState<Tab>(readTab);
+
+    useEffect(() => {
+        const onPop = () => setTab(readTab());
+        window.addEventListener("popstate", onPop);
+        return () => window.removeEventListener("popstate", onPop);
+    }, []);
+
+    const select = (next: Tab) => {
+        const url = new URL(window.location.href);
+        if (next === "general") {
+            url.searchParams.delete("tab");
+        } else {
+            url.searchParams.set("tab", next);
+        }
+        window.history.pushState(null, "", url.toString());
+        setTab(next);
+    };
+
+    return (
+        <div>
+            <PageTitle title={__("Settings")} description={__("Store-wide options. Changes apply to new carts and orders.")} />
+            <div className="fxc:mb-6">
+                <Tabs
+                    value={tab}
+                    onChange={select}
+                    items={[
+                        { value: "general", label: __("General") },
+                        { value: "payments", label: __("Payments") },
+                        { value: "shipping", label: __("Shipping") },
+                        { value: "tax", label: __("Tax") },
+                        { value: "emails", label: __("Emails") },
+                    ]}
+                />
+            </div>
+            {tab === "payments" ? (
+                <PaymentsPanel />
+            ) : tab === "shipping" ? (
+                <ShippingPanel />
+            ) : tab === "tax" ? (
+                <TaxPanel />
+            ) : tab === "emails" ? (
+                <EmailsPanel />
+            ) : (
+                <GeneralSettings />
+            )}
+        </div>
+    );
+}
+
+function GeneralSettings() {
     const query = useSettings();
     const save = useSaveSettings();
     const [draft, setDraft] = useState<Draft | null>(null);
@@ -76,18 +140,12 @@ export function SettingsPage() {
 
     return (
         <div className="fxc:space-y-6">
-            <PageTitle
-                title={__("Settings")}
-                description={__("Store-wide options. Changes apply to new carts and orders.")}
-                actions={
-                    <>
-                        {dirty && <span className="fxc:text-muted-foreground fxc:text-xs">{__("Unsaved changes")}</span>}
-                        <Button onClick={submit} disabled={!dirty || save.isPending}>
-                            {save.isPending ? __("Saving…") : __("Save changes")}
-                        </Button>
-                    </>
-                }
-            />
+            <div className="fxc:flex fxc:items-center fxc:justify-end fxc:gap-3">
+                {dirty && <span className="fxc:text-muted-foreground fxc:text-xs">{__("Unsaved changes")}</span>}
+                <Button onClick={submit} disabled={!dirty || save.isPending}>
+                    {save.isPending ? __("Saving…") : __("Save changes")}
+                </Button>
+            </div>
 
             <Card>
                 <CardHeader>
@@ -229,6 +287,20 @@ export function SettingsPage() {
                             aria-label={__("Store customer IP address")}
                             checked={draft.store_customer_ip}
                             onCheckedChange={(v) => set("store_customer_ip", v)}
+                        />
+                    }
+                />
+                <SettingRow
+                    icon={MailCheck}
+                    label={__("Send emails in the background")}
+                    description={__(
+                        "Order emails are built at checkout and sent by WP-Cron a moment later, so a slow mail server does not hold up the shopper. Use with a real system cron.",
+                    )}
+                    control={
+                        <Switch
+                            aria-label={__("Send emails in the background")}
+                            checked={draft.defer_emails}
+                            onCheckedChange={(v) => set("defer_emails", v)}
                         />
                     }
                 />

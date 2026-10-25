@@ -8,8 +8,9 @@ defined( 'ABSPATH' ) || exit;
 
 /**
  * The cart as stored in the session `data` column:
- * `{v:1, lines:[...], notices:[...], rate:{window,count}}`. Immutable; every
- * change returns a new instance.
+ * `{v:1, lines:[...], notices:[...], rate:{window,count}, shipping_rate,
+ * destination:{country,state,postcode,city}, checkout_token}` (doc 03 §4.9).
+ * Immutable; every change returns a new instance.
  */
 final class Cart {
 	public const VERSION = 1;
@@ -20,6 +21,7 @@ final class Cart {
 	 * @param list<CartLine>                       $lines
 	 * @param list<array{code:string,message:string}> $notices shown once, then cleared by the next write
 	 * @param array{window:int,count:int}          $rate
+	 * @param array{country:string,state:string,postcode:string,city:string} $destination last address used for shipping quotes
 	 */
 	public function __construct(
 		public readonly array $lines = [],
@@ -28,6 +30,14 @@ final class Cart {
 			'window' => 0,
 			'count'  => 0,
 		],
+		public readonly string $shipping_rate = '',
+		public readonly array $destination = [
+			'country'  => '',
+			'state'    => '',
+			'postcode' => '',
+			'city'     => '',
+		],
+		public readonly string $checkout_token = '',
 	) {}
 
 	/** @param array<string,mixed> $data */
@@ -48,24 +58,36 @@ final class Cart {
 				];
 			}
 		}
-		$rate = is_array( $data['rate'] ?? null ) ? $data['rate'] : [];
+		$rate        = is_array( $data['rate'] ?? null ) ? $data['rate'] : [];
+		$destination = is_array( $data['destination'] ?? null ) ? $data['destination'] : [];
 		return new self(
 			array_values( $lines ),
 			$notices,
 			[
 				'window' => (int) ( $rate['window'] ?? 0 ),
 				'count'  => (int) ( $rate['count'] ?? 0 ),
-			]
+			],
+			is_string( $data['shipping_rate'] ?? null ) ? $data['shipping_rate'] : '',
+			[
+				'country'  => is_string( $destination['country'] ?? null ) ? $destination['country'] : '',
+				'state'    => is_string( $destination['state'] ?? null ) ? $destination['state'] : '',
+				'postcode' => is_string( $destination['postcode'] ?? null ) ? $destination['postcode'] : '',
+				'city'     => is_string( $destination['city'] ?? null ) ? $destination['city'] : '',
+			],
+			is_string( $data['checkout_token'] ?? null ) ? $data['checkout_token'] : ''
 		);
 	}
 
 	/** @return array<string,mixed> */
 	public function to_data(): array {
 		return [
-			'v'       => self::VERSION,
-			'lines'   => array_map( static fn ( CartLine $l ): array => $l->to_array(), $this->lines ),
-			'notices' => $this->notices,
-			'rate'    => $this->rate,
+			'v'              => self::VERSION,
+			'lines'          => array_map( static fn ( CartLine $l ): array => $l->to_array(), $this->lines ),
+			'notices'        => $this->notices,
+			'rate'           => $this->rate,
+			'shipping_rate'  => $this->shipping_rate,
+			'destination'    => $this->destination,
+			'checkout_token' => $this->checkout_token,
 		];
 	}
 
@@ -111,32 +133,58 @@ final class Cart {
 		if ( ! $found ) {
 			$lines[] = $line;
 		}
-		return new self( $lines, $this->notices, $this->rate );
+		return $this->copy( lines: $lines );
 	}
 
 	public function with_quantity( string $key, int $quantity ): self {
 		if ( $quantity <= 0 ) {
 			return $this->without( $key );
 		}
-		$lines = array_map( static fn ( CartLine $l ): CartLine => $l->key === $key ? $l->with_quantity( $quantity ) : $l, $this->lines );
-		return new self( $lines, $this->notices, $this->rate );
+		return $this->copy( lines: array_map( static fn ( CartLine $l ): CartLine => $l->key === $key ? $l->with_quantity( $quantity ) : $l, $this->lines ) );
 	}
 
 	public function without( string $key ): self {
-		return new self( array_values( array_filter( $this->lines, static fn ( CartLine $l ): bool => $l->key !== $key ) ), $this->notices, $this->rate );
+		return $this->copy( lines: array_values( array_filter( $this->lines, static fn ( CartLine $l ): bool => $l->key !== $key ) ) );
 	}
 
-	public function emptied(): self {
-		return new self( [], [], $this->rate );
+	/** After an order: no lines, a new checkout token. The destination is kept for the next quote. */
+	public function emptied( string $checkout_token = '' ): self {
+		return new self( [], [], $this->rate, '', $this->destination, $checkout_token );
 	}
 
 	/** @param list<array{code:string,message:string}> $notices */
 	public function with_notices( array $notices ): self {
-		return new self( $this->lines, $notices, $this->rate );
+		return $this->copy( notices: $notices );
 	}
 
 	/** @param array{window:int,count:int} $rate */
 	public function with_rate( array $rate ): self {
-		return new self( $this->lines, $this->notices, $rate );
+		return $this->copy( rate: $rate );
+	}
+
+	/** @param array{country:string,state:string,postcode:string,city:string} $destination */
+	public function with_shipping( array $destination, string $rate_id ): self {
+		return $this->copy( shipping_rate: $rate_id, destination: $destination );
+	}
+
+	public function with_checkout_token( string $token ): self {
+		return $this->copy( checkout_token: $token );
+	}
+
+	/**
+	 * @param list<CartLine>|null                                     $lines
+	 * @param list<array{code:string,message:string}>|null            $notices
+	 * @param array{window:int,count:int}|null                        $rate
+	 * @param array{country:string,state:string,postcode:string,city:string}|null $destination
+	 */
+	private function copy( ?array $lines = null, ?array $notices = null, ?array $rate = null, ?string $shipping_rate = null, ?array $destination = null, ?string $checkout_token = null ): self {
+		return new self(
+			$lines ?? $this->lines,
+			$notices ?? $this->notices,
+			$rate ?? $this->rate,
+			$shipping_rate ?? $this->shipping_rate,
+			$destination ?? $this->destination,
+			$checkout_token ?? $this->checkout_token,
+		);
 	}
 }

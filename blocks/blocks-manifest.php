@@ -115,4 +115,26 @@ return [
 		'style' => 'flexacommerce-storefront',
 		'render' => 'file:./render.php',
 	],
+	'checkout' => [
+		'apiVersion' => 3,
+		'name' => 'flexacommerce/checkout',
+		'version' => '0.1.0',
+		'title' => 'Checkout',
+		'category' => 'widgets',
+		'icon' => 'money-alt',
+		'description' => 'The checkout form, and the order confirmation and payment pages after it.',
+		'textdomain' => 'flexacommerce',
+		'attributes' => [],
+		'supports' => [
+			'html' => false,
+			'multiple' => false,
+			'align' => [
+				'wide',
+				'full',
+			],
+		],
+		'editorScript' => 'flexacommerce-blocks-editor',
+		'style' => 'flexacommerce-storefront',
+		'render' => 'file:./render.php',
+	],
 ];

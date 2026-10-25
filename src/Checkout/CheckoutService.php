@@ -1,0 +1,705 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Flexa\Commerce\Checkout;
+
+use Flexa\Commerce\Cart\CartPresenter;
+use Flexa\Commerce\Cart\CartService;
+use Flexa\Commerce\Cart\CartState;
+use Flexa\Commerce\Contracts\Exceptions\InsufficientStock;
+use Flexa\Commerce\Contracts\Exceptions\InvalidCheckout;
+use Flexa\Commerce\Contracts\Exceptions\OrderNotFound;
+use Flexa\Commerce\Contracts\Exceptions\RateLimited;
+use Flexa\Commerce\Contracts\Exceptions\TotalsChanged;
+use Flexa\Commerce\Contracts\Logger;
+use Flexa\Commerce\Contracts\MoneyFactory;
+use Flexa\Commerce\Contracts\Orders\AddressView;
+use Flexa\Commerce\Contracts\Payments\CheckoutContext;
+use Flexa\Commerce\Contracts\Payments\PaymentGateway;
+use Flexa\Commerce\Contracts\Payments\PaymentResult;
+use Flexa\Commerce\Contracts\Shipping\Destination;
+use Flexa\Commerce\Contracts\Shipping\ShippingRate;
+use Flexa\Commerce\Database\Transaction as DbTransaction;
+use Flexa\Commerce\Orders\NewOrder;
+use Flexa\Commerce\Orders\NewOrderItem;
+use Flexa\Commerce\Orders\Order;
+use Flexa\Commerce\Orders\OrderAccess;
+use Flexa\Commerce\Orders\OrderItem;
+use Flexa\Commerce\Orders\OrderService;
+use Flexa\Commerce\Orders\OrderStatus;
+use Flexa\Commerce\Orders\TransitionContext;
+use Flexa\Commerce\Payments\Gateways\BankTransfer;
+use Flexa\Commerce\Payments\OfflineGateway;
+use Flexa\Commerce\Payments\PaymentService;
+use Flexa\Commerce\Payments\Transaction;
+use Flexa\Commerce\Shipping\ShippingService;
+use Flexa\Commerce\Support\ClientIp;
+use Flexa\Commerce\Support\Countries;
+use Flexa\Commerce\Support\RateLimiter;
+use Flexa\Commerce\Support\Settings;
+use Flexa\Commerce\Contracts\Tax\TaxLine;
+use Flexa\Commerce\Contracts\Tax\TaxLocation;
+use Flexa\Commerce\Contracts\Tax\TaxRequest;
+use Flexa\Commerce\Tax\TaxService;
+
+defined( 'ABSPATH' ) || exit;
+
+/**
+ * Turns a cart into an order (doc 02 §7.5). Everything the customer saw is
+ * recomputed on submit; the browser only names choices. The order number is
+ * taken before the transaction, the gateway is called after it commits, and
+ * a repeated submit with the same checkout token returns the first order.
+ */
+final class CheckoutService {
+	public const RETURN_ARG = 'fxc_return';
+
+	public function __construct(
+		private readonly CartService $cart,
+		private readonly CartPresenter $presenter,
+		private readonly ShippingService $shipping,
+		private readonly TaxService $tax,
+		private readonly OrderService $orders,
+		private readonly PaymentService $payments,
+		private readonly CheckoutValidator $validator,
+		private readonly CheckoutPages $pages,
+		private readonly DbTransaction $transaction,
+		private readonly MoneyFactory $money,
+		private readonly Logger $log,
+		private readonly RateLimiter $limiter = new RateLimiter(),
+	) {}
+
+	public function pages(): CheckoutPages {
+		return $this->pages;
+	}
+
+	/**
+	 * Totals for a cart shipped to a destination. Without a valid rate id
+	 * the first offered rate is shown; the submit must name one exactly.
+	 *
+	 * @throws \Flexa\Commerce\Contracts\Exceptions\TaxUnavailable a tax add-on failed and allows no fallback
+	 */
+	public function quote( CartState $state, Destination $destination, string $rate_id, ?AddressView $billing = null, int $user_id = 0 ): Quote {
+		$needs   = ! $state->cart->is_empty() && $this->shipping->is_configured();
+		$package = $this->cart->package( $state, $destination );
+		$rates   = $needs ? $this->shipping->rates( $package ) : [];
+		$rate    = null;
+		foreach ( $rates as $offered ) {
+			if ( $offered->id === $rate_id ) {
+				$rate = $offered;
+				break;
+			}
+		}
+		$rate   ??= $rates[0] ?? null;
+		$zero     = $state->subtotal->multiply( 0 );
+		$shipping = $rate !== null ? $rate->cost : $zero;
+		if ( ! $this->tax->enabled() ) {
+			// Taxes off: no tax request at all, so no tax classes load (PT-off).
+			$net = $zero;
+			foreach ( $state->items as $item ) {
+				if ( $item->unit !== null && $item->total !== null && $item->product !== null && $item->variant !== null ) {
+					$net = $net->add( $item->total );
+				}
+			}
+			return new Quote( $state, $package, $needs, $rates, $rate, $shipping, $zero, $net->add( $shipping ), null, $net );
+		}
+		$to       = new TaxLocation( $destination->country, $destination->state, $destination->postcode, $destination->city );
+		$from     = $billing !== null ? new TaxLocation( (string) $billing->country, (string) $billing->state, (string) $billing->postcode, (string) $billing->city ) : $to;
+		$location = $this->tax->location( $needs ? $to : null, $from );
+		$request  = $this->tax_request( $state, $rate, $location, TaxRequest::CHECKOUT, $user_id, (string) ( $billing->email ?? '' ) );
+		$outcome  = $this->tax->calculate( $request );
+		$taxes    = $outcome->result;
+		$net      = $zero;
+		foreach ( $request->lines as $line ) {
+			if ( $line->type === TaxLine::PRODUCT ) {
+				$net = $net->add( $taxes->line( $line->key )->net ?? $line->amount );
+			}
+		}
+		$tax = $taxes->total();
+
+		return new Quote( $state, $package, $needs, $rates, $rate, $shipping, $tax, $net->add( $shipping )->add( $tax ), $taxes, $net, $request->prices_include_tax, $outcome->failure );
+	}
+
+	/**
+	 * What the checkout page needs to render and to post back.
+	 *
+	 * @return array<string,mixed>
+	 */
+	public function form_state( int $user_id ): array {
+		$state       = $this->cart->state( $user_id );
+		$destination = $this->stored_destination( $state );
+		$quote       = $this->quote( $state, $destination, $state->cart->shipping_rate, null, $user_id );
+		$allowed     = Countries::allowed();
+		$states      = [];
+		foreach ( array_keys( $allowed ) as $code ) {
+			$list = Countries::states( $code );
+			if ( $list !== [] ) {
+				$states[ $code ] = $list;
+			}
+		}
+
+		return [
+			'checkout_token' => $state->cart->is_empty() ? '' : $this->cart->checkout_token( $user_id, $state ),
+			'cart'           => $this->presenter->to_array( $state ),
+			'destination'    => $destination->to_array(),
+			'countries'      => $allowed,
+			'states'         => $states,
+			'fields'         => [
+				'billing'  => FieldSchema::for_address( 'billing', $destination->country )->to_array(),
+				'shipping' => FieldSchema::for_address( 'shipping', $destination->country )->to_array(),
+			],
+			'paused'         => Settings::bool( 'checkout_paused' ),
+			'terms_url'      => $this->pages->terms_url(),
+			'logged_in'      => $user_id > 0,
+		] + $this->quote_view( $quote, $user_id );
+	}
+
+	/**
+	 * The customer changed the address or the rate: requote and remember the
+	 * choice so a reload shows the same thing.
+	 *
+	 * @return array<string,mixed>
+	 */
+	public function update_shipping( int $user_id, Destination $destination, string $rate_id ): array {
+		$state = $this->cart->state( $user_id );
+		$quote = $this->quote( $state, $destination, $rate_id, null, $user_id );
+		$chose = $quote->rate->id ?? '';
+		$saved = $state->cart->destination;
+		if ( $state->has_session && ( $saved['country'] !== $destination->country || $saved['state'] !== $destination->state || $saved['postcode'] !== $destination->postcode || $saved['city'] !== $destination->city || $state->cart->shipping_rate !== $chose ) ) {
+			$this->cart->set_shipping(
+				$user_id,
+				[
+					'country'  => $destination->country,
+					'state'    => $destination->state,
+					'postcode' => $destination->postcode,
+					'city'     => $destination->city,
+				],
+				$chose
+			);
+		}
+		return [
+			'destination' => $destination->to_array(),
+			'fields'      => [
+				'billing'  => FieldSchema::for_address( 'billing', $destination->country )->to_array(),
+				'shipping' => FieldSchema::for_address( 'shipping', $destination->country )->to_array(),
+			],
+		] + $this->quote_view( $quote, $user_id );
+	}
+
+	/**
+	 * @throws InvalidCheckout the submission has errors; `errors` maps fields to messages
+	 * @throws TotalsChanged the total differs from the one the customer saw
+	 * @throws RateLimited   too many attempts from this cart or this IP (doc 06 §2.9)
+	 */
+	public function place_order( CheckoutRequest $request ): CheckoutResult {
+		if ( Settings::bool( 'checkout_paused' ) ) {
+			throw new InvalidCheckout( [ 'cart' => __( 'Checkout is paused for maintenance. Please try again shortly.', 'flexacommerce' ) ] );
+		}
+		if ( $request->checkout_token === '' ) {
+			throw new InvalidCheckout( [ 'cart' => __( 'Your session has expired. Reload the page and try again.', 'flexacommerce' ) ] );
+		}
+		$existing = $this->orders->find_by_checkout_token( $request->checkout_token );
+		if ( $existing !== null ) {
+			return $this->duplicate( $existing );
+		}
+
+		$state = $this->cart->state( $request->user_id );
+		if ( $state->cart->is_empty() || $state->cart->checkout_token !== $request->checkout_token ) {
+			// A parallel submit of the same form may have placed the order and emptied the cart since the lookup above.
+			$existing = $this->orders->find_by_checkout_token( $request->checkout_token );
+			if ( $existing !== null ) {
+				return $this->duplicate( $existing );
+			}
+		}
+		if ( $state->cart->is_empty() ) {
+			throw new InvalidCheckout( [ 'cart' => __( 'Your cart is empty.', 'flexacommerce' ) ] );
+		}
+		// Counted before validation: card testing fails validation or payment over and over.
+		$this->limiter->hit( 'checkout_session', $state->cart->checkout_token );
+		$this->limiter->hit( 'checkout_ip', $request->customer_ip );
+		if ( $state->cart->checkout_token !== $request->checkout_token ) {
+			throw new InvalidCheckout( [ 'cart' => __( 'Your cart changed in another window. Review it and place the order again.', 'flexacommerce' ) ] );
+		}
+		if ( $state->has_problems() ) {
+			throw new InvalidCheckout( [ 'cart' => __( 'Some items in your cart are no longer available. Review your cart and try again.', 'flexacommerce' ) ] );
+		}
+
+		$destination = $this->validator->destination( $request );
+		$quote       = $this->quote( $state, $destination, $request->shipping_rate, null, $request->user_id );
+		$addresses   = $this->validator->addresses( $request, $quote->needs_address() );
+		$errors      = $addresses['errors'];
+		if ( $errors === [] ) {
+			$quote = $this->quote( $state, $destination, $request->shipping_rate, $addresses['billing'], $request->user_id );
+		}
+		$context  = $this->context( $quote, $addresses['billing']->country, $addresses['shipping']->country ?? '', $request->user_id );
+		$gateways = $this->payments->gateways()->available( $context );
+		$errors  += $this->validator->choices( $request, $quote, $context, $gateways );
+		if ( $errors !== [] ) {
+			throw new InvalidCheckout( $errors );
+		}
+		if ( $request->expected_total !== null && $request->expected_total !== $quote->total->amount ) {
+			throw new TotalsChanged( __( 'Your order total changed. Review the new total and place the order again.', 'flexacommerce' ) );
+		}
+
+		$gateway = $quote->total->amount > 0 ? $gateways[ $request->payment_method ] : null;
+		$new     = $this->new_order( $request, $quote, $addresses['billing'], $addresses['shipping'], $addresses['meta'], $gateway );
+		$ctx     = new TransitionContext( 'customer', $request->user_id );
+		$number  = $this->orders->next_number();
+
+		try {
+			/** @var array{0:Order,1:?Transaction} $created */
+			$created = $this->transaction->run(
+				function () use ( $new, $number, $ctx, $gateway ): array {
+					$order = $this->orders->create( $new, $number, $ctx );
+					if ( $order->order_number !== $number ) {
+						return [ $order, null ];
+					}
+					return [ $order, $gateway !== null ? $this->payments->create_payment( $order, $gateway ) : null ];
+				}
+			);
+		} catch ( InsufficientStock $e ) {
+			throw new InvalidCheckout( [ 'cart' => $e->getMessage() ] );
+		}
+		[ $order, $txn ] = $created;
+		if ( $order->order_number !== $number ) {
+			// Read again outside the transaction: inside it, the other submit's items were not visible.
+			return $this->duplicate( $this->orders->get( $order->id ) );
+		}
+
+		$result   = null;
+		$redirect = $this->pages->confirmation_url( $order );
+		if ( $txn !== null ) {
+			$result   = $this->payments->initiate( $txn->id, $this->return_url( $order, $txn ), $this->pages->pay_url( $order ), $request->gateway_input, $order );
+			$redirect = $this->redirect_for( $order, $result );
+		}
+
+		try {
+			$this->cart->finish_checkout( $request->user_id, $request->checkout_token );
+		} catch ( \Throwable $e ) {
+			$this->log->warning(
+				'Could not empty the cart after order {order_id}: {message}',
+				[
+					'order_id' => $order->id,
+					'message'  => $e->getMessage(),
+				]
+			);
+		}
+
+		return new CheckoutResult( $this->orders->get( $order->id ), $redirect, $result, false );
+	}
+
+	/**
+	 * Pay a pending order again from the order-pay page, possibly with
+	 * another gateway.
+	 *
+	 * @param array<string,mixed> $input gateway fields
+	 * @throws OrderNotFound   no such order or the key does not match
+	 * @throws InvalidCheckout the order cannot be paid or the gateway refused the input
+	 * @throws RateLimited     too many wrong keys from this IP
+	 */
+	public function retry_payment( int $order_id, string $key, string $gateway_id, array $input, int $user_id ): CheckoutResult {
+		$order = $this->orders->find( $order_id );
+		if ( ! $this->may_view( $order, $key, $user_id ) ) {
+			throw new OrderNotFound( __( 'Order not found.', 'flexacommerce' ) );
+		}
+		if ( $order->status !== OrderStatus::PENDING || $order->total <= 0 ) {
+			throw new InvalidCheckout( [ 'order' => __( 'This order does not need a payment.', 'flexacommerce' ) ] );
+		}
+
+		$context  = new CheckoutContext(
+			$this->money->from_minor( $order->total, $order->currency ),
+			$order->billing->country ?? '',
+			$order->shipping->country ?? '',
+			$order->shipping_total > 0 || $order->shipping !== null,
+			null,
+			$order->customer_id,
+			$this->item_count( $order ),
+		);
+		$gateways = $this->payments->gateways()->available( $context );
+		$gateway  = $gateways[ $gateway_id ] ?? null;
+		if ( $gateway === null ) {
+			throw new InvalidCheckout( [ 'payment_method' => __( 'Choose a payment method.', 'flexacommerce' ) ] );
+		}
+		$errors = [];
+		foreach ( $gateway->validate( $context, $input )->errors as $error ) {
+			$errors[ 'gateway.' . $error['code'] ] = $error['message'];
+		}
+		if ( $errors !== [] ) {
+			throw new InvalidCheckout( $errors );
+		}
+
+		$ctx   = new TransitionContext( 'customer', $user_id );
+		$order = $this->orders->change_payment_method( $order->id, $gateway->id(), $this->payments->gateways()->title( $gateway ), $ctx );
+		$txn   = $this->transaction->run( fn (): Transaction => $this->payments->create_payment( $order, $gateway ) );
+
+		if ( $gateway instanceof OfflineGateway ) {
+			$status = $this->payments->initial_status( $gateway, $order->total );
+			if ( $status !== OrderStatus::PENDING ) {
+				$order = $this->orders->transition( $order->id, $status, $ctx );
+			}
+		}
+		$result = $this->payments->initiate( $txn->id, $this->return_url( $order, $txn ), $this->pages->pay_url( $order ), $input );
+
+		return new CheckoutResult( $this->orders->get( $order->id ), $this->redirect_for( $order, $result ), $result, false );
+	}
+
+	/** @return list<array<string,mixed>> gateways the order-pay page offers for a pending order */
+	public function pay_methods( Order $order ): array {
+		$context = new CheckoutContext(
+			$this->money->from_minor( $order->total, $order->currency ),
+			$order->billing->country ?? '',
+			$order->shipping->country ?? '',
+			$order->shipping !== null,
+			null,
+			$order->customer_id,
+			$this->item_count( $order ),
+		);
+		return $this->methods_view( $context );
+	}
+
+	/**
+	 * The order the customer may see, or null. Order pages use it so a wrong
+	 * key and a missing order look the same.
+	 */
+	public function viewable_order( int $order_id, string $key, int $user_id ): ?Order {
+		$order = $order_id > 0 ? $this->orders->find( $order_id ) : null;
+		try {
+			return $this->may_view( $order, $key, $user_id ) ? $order : null;
+		} catch ( RateLimited ) {
+			return null;
+		}
+	}
+
+	/**
+	 * Owner and staff pass without a key. A key is checked only while the IP
+	 * is under the failure limit, and a wrong key or an unknown order with a
+	 * key counts as one failure (doc 06 §2.7, §2.9).
+	 *
+	 * @phpstan-assert-if-true !null $order
+	 * @throws RateLimited
+	 */
+	private function may_view( ?Order $order, string $key, int $user_id ): bool {
+		if ( $order !== null && OrderAccess::can_view( $order, '', $user_id ) ) {
+			return true;
+		}
+		if ( $key === '' ) {
+			return false;
+		}
+		$ip = ClientIp::get();
+		$this->limiter->check( 'order_key_ip', $ip );
+		if ( $order !== null && OrderAccess::key_matches( $order, $key ) ) {
+			return true;
+		}
+		$this->limiter->count( 'order_key_ip', $ip );
+		return false;
+	}
+
+	/**
+	 * The customer is back from the gateway with a transaction id in the
+	 * URL. The id must belong to the order; a failure here is logged and the
+	 * webhook stays in charge (doc 02 §7.8).
+	 *
+	 * @param array<string,mixed> $query
+	 */
+	public function returned( Order $order, int $transaction_id, array $query ): void {
+		$txn = $this->payments->find( $transaction_id );
+		if ( $txn === null || $txn->order_id !== $order->id ) {
+			return;
+		}
+		try {
+			$this->payments->handle_return( $txn->id, $query );
+		} catch ( \Throwable $e ) {
+			$this->log->warning(
+				'Return from gateway for order {order_id} failed: {message}',
+				[
+					'order_id' => $order->id,
+					'message'  => $e->getMessage(),
+				]
+			);
+		}
+	}
+
+	/** Payment instructions to show on the confirmation page (bank transfer), else ''. */
+	public function instructions( Order $order ): string {
+		if ( ! in_array( $order->status, [ OrderStatus::PENDING, OrderStatus::ON_HOLD ], true ) || $order->payment_method === '' ) {
+			return '';
+		}
+		$gateway = $this->payments->gateways()->get( $order->payment_method );
+		return $gateway instanceof BankTransfer ? $gateway->instructions( $order->order_number ) : '';
+	}
+
+	public function format( int $amount, string $currency ): string {
+		return $this->money->format( $this->money->from_minor( $amount, $currency ) );
+	}
+
+	private function duplicate( Order $order ): CheckoutResult {
+		return new CheckoutResult( $order, $this->pages->confirmation_url( $order ), null, true );
+	}
+
+	private function stored_destination( CartState $state ): Destination {
+		$saved = $state->cart->destination;
+		if ( $saved['country'] !== '' ) {
+			return new Destination( $saved['country'], $saved['state'], $saved['postcode'], $saved['city'] );
+		}
+		// Before the shopper types an address, quote at the store address,
+		// as WooCommerce does, so tax for the store's state shows.
+		$store = Settings::string( 'store_country' );
+		$sells = Countries::allowed();
+		if ( ! isset( $sells[ $store ] ) && $sells !== [] ) {
+			return new Destination( (string) array_key_first( $sells ) );
+		}
+		return new Destination( $store, Settings::string( 'store_state' ), Settings::string( 'store_postcode' ), Settings::string( 'store_city' ) );
+	}
+
+	private function context( Quote $quote, string $billing_country, string $shipping_country, int $user_id ): CheckoutContext {
+		return new CheckoutContext(
+			$quote->total,
+			$billing_country,
+			$shipping_country !== '' ? $shipping_country : $quote->package->destination->country,
+			$quote->needs_shipping,
+			$quote->rate?->id,
+			$user_id > 0 ? $user_id : null,
+			$quote->state->item_count(),
+		);
+	}
+
+	/**
+	 * The tax request for a cart: one line per priced cart item (key = cart
+	 * line key) and one `shipping` line for the chosen rate.
+	 */
+	private function tax_request( CartState $state, ?ShippingRate $rate, ?TaxLocation $location, string $context = TaxRequest::CHECKOUT, int $user_id = 0, string $email = '' ): TaxRequest {
+		$enabled = $this->tax->enabled();
+		$lines   = [];
+		foreach ( $state->items as $item ) {
+			if ( $item->unit === null || $item->total === null || $item->product === null || $item->variant === null ) {
+				continue;
+			}
+			$lines[] = new TaxLine(
+				$item->line->key,
+				TaxLine::PRODUCT,
+				$item->total,
+				$item->line->quantity,
+				$enabled ? $this->tax->known_class( $item->product->tax_class_of( $item->variant ) ) : '',
+				$item->product->tax_status_of( $item->variant ),
+				$item->line->variant_id,
+			);
+		}
+		if ( $rate !== null ) {
+			$lines[] = new TaxLine( TaxService::SHIPPING_KEY, TaxLine::SHIPPING, $rate->cost, 1, '', $rate->taxable ? TaxLine::TAXABLE : TaxLine::NONE );
+		}
+		return new TaxRequest(
+			$state->subtotal->currency,
+			$enabled && Settings::bool( 'prices_include_tax' ),
+			$enabled ? $location : null,
+			$lines,
+			$user_id,
+			$email,
+			$context,
+		);
+	}
+
+	/** @return array<string,mixed> */
+	private function quote_view( Quote $quote, int $user_id ): array {
+		$rates = [];
+		foreach ( $quote->rates as $rate ) {
+			$rates[] = [
+				'id'            => $rate->id,
+				'label'         => $rate->label,
+				'meta'          => $rate->meta,
+				'cost'          => $this->presenter->money( $rate->cost ),
+				'needs_address' => $rate->needs_address,
+			];
+		}
+		$context = $this->context( $quote, $quote->package->destination->country, '', $user_id );
+
+		return [
+			'needs_shipping'  => $quote->needs_shipping,
+			'needs_address'   => $quote->needs_address(),
+			'shipping_rates'  => $rates,
+			'shipping_rate'   => $quote->rate->id ?? '',
+			'payment_methods' => $quote->total->amount > 0 ? $this->methods_view( $context ) : [],
+			'totals'          => [
+				'subtotal' => $this->presenter->money( $this->display_subtotal( $quote ) ),
+				'shipping' => $this->presenter->money( $quote->shipping ),
+				'tax'      => $this->presenter->money( $quote->tax ),
+				'total'    => $this->presenter->money( $quote->total ),
+			],
+			'tax'             => $this->tax_view( $quote ),
+		];
+	}
+
+	/** Items subtotal with or without tax, as `tax_display_cart` says (doc 02 §7.12.5). */
+	private function display_subtotal( Quote $quote ): \Flexa\Commerce\Contracts\Money {
+		if ( $quote->taxes === null ) {
+			return $quote->state->subtotal;
+		}
+		$settings = $this->tax->settings( $quote->package->destination->country );
+		return $settings['tax_display_cart'] === 'incl' ? $quote->items_net->add( $quote->taxes->items_total() ) : $quote->items_net;
+	}
+
+	/**
+	 * Tax rows for the totals table: one per rate, or one "Tax" row with
+	 * `tax_total_display` = single. `included` means the total already shows
+	 * tax-inclusive amounts, so the rows read "includes".
+	 *
+	 * @return array{enabled:bool,included:bool,lines:list<array{label:string,amount:array<string,mixed>}>}
+	 */
+	private function tax_view( Quote $quote ): array {
+		if ( $quote->taxes === null ) {
+			return [
+				'enabled'  => false,
+				'included' => false,
+				'lines'    => [],
+			];
+		}
+		$settings = $this->tax->settings( $quote->package->destination->country );
+		$lines    = [];
+		if ( $settings['tax_total_display'] === 'single' ) {
+			if ( ! $quote->tax->is_zero() ) {
+				$lines[] = [
+					'label'  => __( 'Tax', 'flexacommerce' ),
+					'amount' => $this->presenter->money( $quote->tax ),
+				];
+			}
+		} else {
+			foreach ( $quote->taxes->rates as $rate ) {
+				$lines[] = [
+					'label'  => $rate->rate->label,
+					'amount' => $this->presenter->money( $rate->total() ),
+				];
+			}
+		}
+		return [
+			'enabled'  => true,
+			'included' => $settings['tax_display_cart'] === 'incl',
+			'lines'    => $lines,
+		];
+	}
+
+	/** @return list<array<string,mixed>> */
+	private function methods_view( CheckoutContext $context ): array {
+		$out = [];
+		foreach ( $this->payments->gateways()->available( $context ) as $id => $gateway ) {
+			try {
+				$fields = $gateway->checkout_fields( $context );
+			} catch ( \Throwable $e ) {
+				$this->log->error(
+					'Gateway {gateway} failed to build its checkout fields: {message}',
+					[
+						'gateway'   => $id,
+						'message'   => $e->getMessage(),
+						'exception' => $e,
+					]
+				);
+				continue;
+			}
+			$out[] = [
+				'id'            => $id,
+				'title'         => $this->payments->gateways()->title( $gateway ),
+				'description'   => $fields->description,
+				'fields'        => array_map( static fn ( $field ): array => $field->to_array(), $fields->fields ),
+				'script_module' => $fields->script_module,
+			];
+		}
+		return $out;
+	}
+
+	/** @param array<string,string> $meta */
+	private function new_order( CheckoutRequest $request, Quote $quote, AddressView $billing, ?AddressView $shipping, array $meta, ?PaymentGateway $gateway ): NewOrder {
+		$items = [];
+		foreach ( $quote->state->items as $item ) {
+			if ( $item->unit === null ) {
+				continue;
+			}
+			$attributes = [];
+			foreach ( $item->line->labels as $label ) {
+				$attributes[] = [
+					'label' => $label['name'],
+					'value' => $label['value'],
+				];
+			}
+			$taxed   = $quote->taxes?->line( $item->line->key );
+			$items[] = NewOrderItem::product(
+				$item->line->product_id,
+				$item->line->variant_id,
+				$item->stock_id(),
+				$item->name(),
+				$item->sku(),
+				$attributes,
+				$item->line->quantity,
+				$item->unit->active->amount,
+				$taxed?->net->amount,
+				$taxed?->by_rate() ?? []
+			);
+		}
+		if ( $quote->rate !== null ) {
+			$items[] = NewOrderItem::shipping( $quote->rate->id, $quote->rate->label, $quote->rate->cost->amount, $quote->taxes?->line( TaxService::SHIPPING_KEY )?->by_rate() ?? [] );
+		}
+		foreach ( $quote->taxes->rates ?? [] as $total ) {
+			$items[] = NewOrderItem::tax(
+				$total->rate->code,
+				$total->rate->label,
+				$total->total()->amount,
+				[
+					'rate_id'      => $total->rate->key(),
+					'rate'         => $total->rate->percent(),
+					'compound'     => $total->rate->compound,
+					'items_tax'    => $total->items->amount,
+					'shipping_tax' => $total->shipping->amount,
+				]
+			);
+		}
+		$currency = $quote->total->currency;
+
+		return new NewOrder(
+			status: $this->payments->initial_status( $gateway, $quote->total->amount ),
+			currency: $currency,
+			currency_exponent: $this->money->exponent( $currency ),
+			items: $items,
+			subtotal: $quote->items_net->amount,
+			shipping_total: $quote->shipping->amount,
+			total: $quote->total->amount,
+			customer_email: $billing->email,
+			customer_id: $request->user_id > 0 ? $request->user_id : null,
+			billing: $billing,
+			shipping: $shipping,
+			customer_note: $this->validator->note( $request ),
+			customer_ip: Settings::bool( 'store_customer_ip' ) ? $request->customer_ip : '',
+			payment_method: $gateway?->id() ?? '',
+			payment_method_title: $gateway !== null ? $this->payments->gateways()->title( $gateway ) : '',
+			checkout_token: $request->checkout_token,
+			locale: determine_locale(),
+			tax_total: $quote->tax->amount,
+			meta: $quote->taxes?->exempt === true ? $meta + [ '_fxc_tax_exempt' => '1' ] : $meta,
+			prices_include_tax: $quote->prices_include_tax,
+			attention: $quote->tax_failure !== null
+				/* translators: %s: class name of the tax add-on */
+				? sprintf( __( 'Tax add-on %s failed at checkout; tax was calculated from the store rate table. Check the tax on this order.', 'flexacommerce' ), $quote->tax_failure )
+				: null,
+		);
+	}
+
+	private function return_url( Order $order, Transaction $txn ): string {
+		return add_query_arg( self::RETURN_ARG, $txn->id, $this->pages->confirmation_url( $order ) );
+	}
+
+	private function redirect_for( Order $order, PaymentResult $result ): string {
+		if ( $result->type === PaymentResult::REDIRECT && $result->redirect_url !== null && $result->redirect_url !== '' ) {
+			return $result->redirect_url;
+		}
+		if ( $result->type === PaymentResult::FAILED ) {
+			return $this->pages->pay_url( $order );
+		}
+		return $this->pages->confirmation_url( $order );
+	}
+
+	private function item_count( Order $order ): int {
+		$count = 0;
+		foreach ( $order->items as $item ) {
+			if ( $item->type === OrderItem::PRODUCT ) {
+				$count += $item->quantity;
+			}
+		}
+		return $count;
+	}
+}

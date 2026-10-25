@@ -10,6 +10,8 @@ export type Visibility = "visible" | "catalog" | "search" | "hidden";
 
 export type StockStatus = "instock" | "outofstock" | "onbackorder";
 
+export type TaxStatus = "taxable" | "shipping" | "none";
+
 export type Backorders = "no" | "notify" | "yes";
 
 /** Combination key (`g:{term}` or `l:{slug}`) => value key, or `*` for any. */
@@ -38,7 +40,10 @@ export interface VariantRow {
     width: string | null;
     height: string | null;
     image_id: number | null;
+    /** A variation's `parent` means "same as the product". */
     tax_class: string;
+    /** Only the base row's value is used; WooCommerce reads it from the parent too. */
+    tax_status: TaxStatus;
     description: string | null;
 }
 

@@ -38,7 +38,16 @@ final class FormHandlerTest extends CartTestCase {
 
 	public function test_add_then_update_and_remove(): void {
 		$id = $this->simple( 1000, 5 );
-		self::assertSame( 'added', $this->post( 'add', [ 'product_id' => (string) $id, 'quantity' => '2' ] ) );
+		self::assertSame(
+			'added',
+			$this->post(
+				'add',
+				[
+					'product_id' => (string) $id,
+					'quantity'   => '2',
+				]
+			)
+		);
 		$cart = Plugin::instance()->cart()->cart()->state( 0 )->cart;
 		self::assertSame( 2, $cart->item_count() );
 		$key = array_values( $cart->lines )[0]->key;
@@ -53,12 +62,30 @@ final class FormHandlerTest extends CartTestCase {
 	public function test_variable_product_from_select_fields(): void {
 		[ $id ] = $this->sized();
 		self::assertSame( 'incomplete', $this->post( 'add', [ 'product_id' => (string) $id ] ) );
-		self::assertSame( 'added', $this->post( 'add', [ 'product_id' => (string) $id, 'attributes' => [ 'l:size' => 'm' ] ] ) );
+		self::assertSame(
+			'added',
+			$this->post(
+				'add',
+				[
+					'product_id' => (string) $id,
+					'attributes' => [ 'l:size' => 'm' ],
+				]
+			)
+		);
 	}
 
 	public function test_stock_errors_come_back_as_codes(): void {
 		$id = $this->simple( 1000, 1 );
-		self::assertSame( 'insufficient_stock', $this->post( 'add', [ 'product_id' => (string) $id, 'quantity' => '3' ] ) );
+		self::assertSame(
+			'insufficient_stock',
+			$this->post(
+				'add',
+				[
+					'product_id' => (string) $id,
+					'quantity'   => '3',
+				]
+			)
+		);
 	}
 
 	public function test_cross_site_posts_and_bad_nonces_change_nothing(): void {
@@ -87,8 +114,8 @@ final class FormHandlerTest extends CartTestCase {
 	private function post( string $operation, array $fields, ?string $nonce = null ): string {
 		$cart  = Plugin::instance()->cart();
 		$_POST = [
-			'action'          => FormHandler::ACTION,
-			'fxc_op'          => $operation,
+			'action'           => FormHandler::ACTION,
+			'fxc_op'           => $operation,
 			FormHandler::FIELD => $nonce ?? $cart->nonce()->create( 0, '', $cart->sessions()->token() ),
 		] + $fields;
 		// A fresh request: new services, the same cookie.

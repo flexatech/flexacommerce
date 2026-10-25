@@ -35,6 +35,7 @@ final class Activator {
 	public static function activate_site(): void {
 		Schema::migrate();
 		Settings::seed();
+		Pages::install();
 		Roles::install();
 		Cron::schedule();
 		Requirements::store();

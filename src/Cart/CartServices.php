@@ -13,12 +13,14 @@ defined( 'ABSPATH' ) || exit;
 
 /**
  * Pricing, stock and cart part of the composition root, built by Plugin
- * next to CatalogServices. Tests pass their own token store.
+ * next to CatalogServices. Tests pass their own token store. `$tax`
+ * resolves the tax service for catalog display prices; Cart never calls it.
  */
 final class CartServices {
 	private ?PricingService $pricing  = null;
 	private ?StockService $stock      = null;
 	private ?SessionStore $sessions   = null;
+	private ?SessionRepository $rows  = null;
 	private ?CartService $cart        = null;
 	private ?SessionNonce $nonce      = null;
 	private ?TokenStore $token_store  = null;
@@ -29,12 +31,13 @@ final class CartServices {
 		private readonly Services $services,
 		private readonly CatalogServices $catalog,
 		?TokenStore $tokens = null,
+		private readonly ?\Closure $tax = null,
 	) {
 		$this->token_store = $tokens;
 	}
 
 	public function pricing(): PricingService {
-		return $this->pricing ??= new PricingService( $this->services->money(), $this->services->clock() );
+		return $this->pricing ??= new PricingService( $this->services->money(), $this->services->clock(), $this->tax );
 	}
 
 	public function stock(): StockService {
@@ -54,10 +57,15 @@ final class CartServices {
 
 	public function sessions(): SessionStore {
 		return $this->sessions ??= new SessionStore(
-			new SessionRepository( $this->services->wpdb() ),
+			$this->session_rows(),
 			$this->tokens(),
 			$this->services->clock(),
 		);
+	}
+
+	/** The session table itself, for the privacy tools. */
+	public function session_rows(): SessionRepository {
+		return $this->rows ??= new SessionRepository( $this->services->wpdb() );
 	}
 
 	public function nonce(): SessionNonce {

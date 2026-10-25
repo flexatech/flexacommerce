@@ -1,0 +1,400 @@
+{
+	"id": "us",
+	"name": "United States",
+	"country": "US",
+	"version": 1,
+	"as_of": "2025-01-01",
+	"notes": "State base rates only, as the lowest rate charged anywhere in each state (Utah and Virginia include their mandatory statewide local share; California includes its 1.25 % statewide local share). County, city and district rates are not included: import them as CSV rows at priority 2 to 4, or use a rate provider add-on. Shipping taxability is the general rule when shipping is stated separately on the invoice; several states have exceptions. The store owner is responsible for the rates. Check every row against the state's revenue department before going live.",
+	"settings": {
+		"prices_include_tax": false,
+		"tax_display_shop": "excl",
+		"tax_display_cart": "excl",
+		"tax_based_on": "shipping",
+		"tax_default_location": "none",
+		"tax_total_display": "itemized"
+	},
+	"market": {
+		"id": "us",
+		"name": "United States",
+		"countries": [
+			"US"
+		],
+		"overrides": {
+			"intrastate_sourcing": "origin"
+		}
+	},
+	"origin_states": [
+		"AZ",
+		"CA",
+		"IL",
+		"MS",
+		"MO",
+		"NM",
+		"OH",
+		"PA",
+		"TN",
+		"TX",
+		"UT",
+		"VA"
+	],
+	"label": "{STATE} State Tax",
+	"regions": [
+		{
+			"state": "AL",
+			"name": "Alabama",
+			"rate": "4",
+			"shipping": false,
+			"source": "Alabama Department of Revenue"
+		},
+		{
+			"state": "AK",
+			"name": "Alaska",
+			"rate": null,
+			"shipping": false,
+			"source": "No statewide sales tax"
+		},
+		{
+			"state": "AZ",
+			"name": "Arizona",
+			"rate": "5.6",
+			"shipping": false,
+			"source": "Arizona Department of Revenue"
+		},
+		{
+			"state": "AR",
+			"name": "Arkansas",
+			"rate": "6.5",
+			"shipping": true,
+			"source": "Arkansas Department of Finance and Administration"
+		},
+		{
+			"state": "CA",
+			"name": "California",
+			"rate": "7.25",
+			"shipping": false,
+			"source": "California Department of Tax and Fee Administration"
+		},
+		{
+			"state": "CO",
+			"name": "Colorado",
+			"rate": "2.9",
+			"shipping": false,
+			"source": "Colorado Department of Revenue"
+		},
+		{
+			"state": "CT",
+			"name": "Connecticut",
+			"rate": "6.35",
+			"shipping": true,
+			"source": "Connecticut Department of Revenue Services"
+		},
+		{
+			"state": "DE",
+			"name": "Delaware",
+			"rate": null,
+			"shipping": false,
+			"source": "No statewide sales tax"
+		},
+		{
+			"state": "DC",
+			"name": "District of Columbia",
+			"rate": "6",
+			"shipping": true,
+			"source": "DC Office of Tax and Revenue"
+		},
+		{
+			"state": "FL",
+			"name": "Florida",
+			"rate": "6",
+			"shipping": false,
+			"source": "Florida Department of Revenue"
+		},
+		{
+			"state": "GA",
+			"name": "Georgia",
+			"rate": "4",
+			"shipping": true,
+			"source": "Georgia Department of Revenue"
+		},
+		{
+			"state": "HI",
+			"name": "Hawaii",
+			"rate": "4",
+			"shipping": true,
+			"source": "Hawaii Department of Taxation"
+		},
+		{
+			"state": "ID",
+			"name": "Idaho",
+			"rate": "6",
+			"shipping": false,
+			"source": "Idaho State Tax Commission"
+		},
+		{
+			"state": "IL",
+			"name": "Illinois",
+			"rate": "6.25",
+			"shipping": false,
+			"source": "Illinois Department of Revenue"
+		},
+		{
+			"state": "IN",
+			"name": "Indiana",
+			"rate": "7",
+			"shipping": true,
+			"source": "Indiana Department of Revenue"
+		},
+		{
+			"state": "IA",
+			"name": "Iowa",
+			"rate": "6",
+			"shipping": false,
+			"source": "Iowa Department of Revenue"
+		},
+		{
+			"state": "KS",
+			"name": "Kansas",
+			"rate": "6.5",
+			"shipping": true,
+			"source": "Kansas Department of Revenue"
+		},
+		{
+			"state": "KY",
+			"name": "Kentucky",
+			"rate": "6",
+			"shipping": true,
+			"source": "Kentucky Department of Revenue"
+		},
+		{
+			"state": "LA",
+			"name": "Louisiana",
+			"rate": "5",
+			"shipping": false,
+			"source": "Louisiana Department of Revenue"
+		},
+		{
+			"state": "ME",
+			"name": "Maine",
+			"rate": "5.5",
+			"shipping": false,
+			"source": "Maine Revenue Services"
+		},
+		{
+			"state": "MD",
+			"name": "Maryland",
+			"rate": "6",
+			"shipping": false,
+			"source": "Comptroller of Maryland"
+		},
+		{
+			"state": "MA",
+			"name": "Massachusetts",
+			"rate": "6.25",
+			"shipping": false,
+			"source": "Massachusetts Department of Revenue"
+		},
+		{
+			"state": "MI",
+			"name": "Michigan",
+			"rate": "6",
+			"shipping": true,
+			"source": "Michigan Department of Treasury"
+		},
+		{
+			"state": "MN",
+			"name": "Minnesota",
+			"rate": "6.875",
+			"shipping": true,
+			"source": "Minnesota Department of Revenue"
+		},
+		{
+			"state": "MS",
+			"name": "Mississippi",
+			"rate": "7",
+			"shipping": true,
+			"source": "Mississippi Department of Revenue"
+		},
+		{
+			"state": "MO",
+			"name": "Missouri",
+			"rate": "4.225",
+			"shipping": false,
+			"source": "Missouri Department of Revenue"
+		},
+		{
+			"state": "MT",
+			"name": "Montana",
+			"rate": null,
+			"shipping": false,
+			"source": "No statewide sales tax"
+		},
+		{
+			"state": "NE",
+			"name": "Nebraska",
+			"rate": "5.5",
+			"shipping": true,
+			"source": "Nebraska Department of Revenue"
+		},
+		{
+			"state": "NV",
+			"name": "Nevada",
+			"rate": "6.85",
+			"shipping": false,
+			"source": "Nevada Department of Taxation"
+		},
+		{
+			"state": "NH",
+			"name": "New Hampshire",
+			"rate": null,
+			"shipping": false,
+			"source": "No statewide sales tax"
+		},
+		{
+			"state": "NJ",
+			"name": "New Jersey",
+			"rate": "6.625",
+			"shipping": true,
+			"source": "New Jersey Division of Taxation"
+		},
+		{
+			"state": "NM",
+			"name": "New Mexico",
+			"rate": "4.875",
+			"shipping": true,
+			"source": "New Mexico Taxation and Revenue Department"
+		},
+		{
+			"state": "NY",
+			"name": "New York",
+			"rate": "4",
+			"shipping": true,
+			"source": "New York State Department of Taxation and Finance"
+		},
+		{
+			"state": "NC",
+			"name": "North Carolina",
+			"rate": "4.75",
+			"shipping": true,
+			"source": "North Carolina Department of Revenue"
+		},
+		{
+			"state": "ND",
+			"name": "North Dakota",
+			"rate": "5",
+			"shipping": true,
+			"source": "North Dakota Office of State Tax Commissioner"
+		},
+		{
+			"state": "OH",
+			"name": "Ohio",
+			"rate": "5.75",
+			"shipping": true,
+			"source": "Ohio Department of Taxation"
+		},
+		{
+			"state": "OK",
+			"name": "Oklahoma",
+			"rate": "4.5",
+			"shipping": false,
+			"source": "Oklahoma Tax Commission"
+		},
+		{
+			"state": "OR",
+			"name": "Oregon",
+			"rate": null,
+			"shipping": false,
+			"source": "No statewide sales tax"
+		},
+		{
+			"state": "PA",
+			"name": "Pennsylvania",
+			"rate": "6",
+			"shipping": true,
+			"source": "Pennsylvania Department of Revenue"
+		},
+		{
+			"state": "RI",
+			"name": "Rhode Island",
+			"rate": "7",
+			"shipping": true,
+			"source": "Rhode Island Division of Taxation"
+		},
+		{
+			"state": "SC",
+			"name": "South Carolina",
+			"rate": "6",
+			"shipping": true,
+			"source": "South Carolina Department of Revenue"
+		},
+		{
+			"state": "SD",
+			"name": "South Dakota",
+			"rate": "4.2",
+			"shipping": true,
+			"source": "South Dakota Department of Revenue"
+		},
+		{
+			"state": "TN",
+			"name": "Tennessee",
+			"rate": "7",
+			"shipping": true,
+			"source": "Tennessee Department of Revenue"
+		},
+		{
+			"state": "TX",
+			"name": "Texas",
+			"rate": "6.25",
+			"shipping": true,
+			"source": "Texas Comptroller of Public Accounts"
+		},
+		{
+			"state": "UT",
+			"name": "Utah",
+			"rate": "6.1",
+			"shipping": false,
+			"source": "Utah State Tax Commission"
+		},
+		{
+			"state": "VT",
+			"name": "Vermont",
+			"rate": "6",
+			"shipping": true,
+			"source": "Vermont Department of Taxes"
+		},
+		{
+			"state": "VA",
+			"name": "Virginia",
+			"rate": "5.3",
+			"shipping": false,
+			"source": "Virginia Department of Taxation"
+		},
+		{
+			"state": "WA",
+			"name": "Washington",
+			"rate": "6.5",
+			"shipping": true,
+			"source": "Washington State Department of Revenue"
+		},
+		{
+			"state": "WV",
+			"name": "West Virginia",
+			"rate": "6",
+			"shipping": true,
+			"source": "West Virginia Tax Division"
+		},
+		{
+			"state": "WI",
+			"name": "Wisconsin",
+			"rate": "5",
+			"shipping": true,
+			"source": "Wisconsin Department of Revenue"
+		},
+		{
+			"state": "WY",
+			"name": "Wyoming",
+			"rate": "4",
+			"shipping": false,
+			"source": "Wyoming Department of Revenue"
+		}
+	]
+}

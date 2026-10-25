@@ -11,7 +11,7 @@ use Flexa\Commerce\Tests\Unit\TestCase;
 final class StoreMoneyFactoryTest extends TestCase {
 	public function test_uses_store_currency_and_its_exponent(): void {
 		\WP_Test_State::$options[ Settings::OPTION ] = [ 'currency' => 'JPY' ];
-		$money = ( new StoreMoneyFactory() )->from_decimal_string( '1500' );
+		$money                                       = ( new StoreMoneyFactory() )->from_decimal_string( '1500' );
 		self::assertSame( 1500, $money->amount );
 		self::assertSame( 'JPY', $money->currency );
 	}

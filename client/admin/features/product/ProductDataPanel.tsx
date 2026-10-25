@@ -9,7 +9,7 @@ import { __, _n, sprintf } from "@/shared/lib/i18n";
 import { AttributesPanel } from "./AttributesPanel";
 import type { Draft } from "./draft";
 import { Field, InvalidFields, Toggle } from "./fields";
-import { InventoryFields, PricingFields, ShippingFields } from "./RowFields";
+import { InventoryFields, PricingFields, ShippingFields, TaxFields } from "./RowFields";
 import type { ProductType, VariantRow, Visibility } from "./types";
 import type { ProductDraftState, Tab } from "./useProductDraft";
 import { VariationsPanel } from "./VariationsPanel";
@@ -131,14 +131,18 @@ export function ProductDataPanel({ editor }: { editor: ProductDraftState }) {
                     </nav>
 
                     <div className="fxc:min-w-0 fxc:p-5">
-                        {visibleTab === "general" &&
-                            (isVariable ? (
-                                <p className="fxc:text-muted-foreground fxc:text-sm">
-                                    {__("Prices of a variable product are set on each variation. The shop shows the range from the lowest to the highest price.")}
-                                </p>
-                            ) : (
-                                <PricingFields row={draft.base} onChange={setBase} errors={errors} path="base" />
-                            ))}
+                        {visibleTab === "general" && (
+                            <div className="fxc:space-y-6">
+                                {isVariable ? (
+                                    <p className="fxc:text-muted-foreground fxc:text-sm">
+                                        {__("Prices of a variable product are set on each variation. The shop shows the range from the lowest to the highest price.")}
+                                    </p>
+                                ) : (
+                                    <PricingFields row={draft.base} onChange={setBase} errors={errors} path="base" />
+                                )}
+                                <TaxFields row={draft.base} onChange={setBase} errors={errors} path="base" />
+                            </div>
+                        )}
                         {visibleTab === "inventory" && (
                             <>
                                 {isVariable && (

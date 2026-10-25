@@ -19,6 +19,13 @@ final class Variant {
 	public const STOCK_STATUSES = [ self::INSTOCK, self::OUTOFSTOCK, self::ONBACKORDER ];
 	public const BACKORDERS     = [ 'no', 'notify', 'yes' ];
 
+	/** `shipping`: only the shipping of this item is taxed (doc 02 §7.12.2). */
+	public const TAXABLE      = 'taxable';
+	public const TAX_STATUSES = [ self::TAXABLE, 'shipping', 'none' ];
+
+	/** Variation tax class that means "the base row's class". */
+	public const PARENT_CLASS = 'parent';
+
 	/** @param array<string,mixed> $meta */
 	public function __construct(
 		public readonly int $id,
@@ -44,6 +51,7 @@ final class Variant {
 		public readonly ?string $height = null,
 		public readonly ?int $image_id = null,
 		public readonly string $tax_class = '',
+		public readonly string $tax_status = self::TAXABLE,
 		public readonly ?string $description = null,
 		public readonly array $meta = [],
 		public readonly string $created_at = '',
@@ -80,6 +88,7 @@ final class Variant {
 			height: self::nullable_string( $row['height'] ?? null ),
 			image_id: self::nullable_int( $row['image_id'] ?? null ),
 			tax_class: (string) ( $row['tax_class'] ?? '' ),
+			tax_status: in_array( $row['tax_status'] ?? null, self::TAX_STATUSES, true ) ? (string) $row['tax_status'] : self::TAXABLE,
 			description: self::nullable_string( $row['description'] ?? null ),
 			meta: self::decode_meta( $row['meta'] ?? null ),
 			created_at: (string) ( $row['created_at'] ?? '' ),
@@ -117,6 +126,7 @@ final class Variant {
 			'height'              => $this->height,
 			'image_id'            => $this->image_id,
 			'tax_class'           => $this->tax_class,
+			'tax_status'          => $this->tax_status,
 			'description'         => $this->description,
 			'meta'                => $this->meta === [] ? null : json_encode( $this->meta, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR ), // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- THROW_ON_ERROR, wp_json_encode() swallows failures.
 		];
@@ -206,6 +216,7 @@ final class Variant {
 			'height'              => $this->height,
 			'image_id'            => $this->image_id,
 			'tax_class'           => $this->tax_class,
+			'tax_status'          => $this->tax_status,
 			'description'         => $this->description,
 		];
 	}

@@ -116,7 +116,8 @@ Legend: **MVP** = required for MVP. **FND** = architectural foundation in MVP, u
 | Email notifications | MVP | 8 emails (5 to customers, 4 to the admin, the cancellation email goes to both), `wp_mail`, overridable templates (doc 02 §7.9). |
 | Cancellation | MVP | Customer can cancel only while `pending`. Admin can cancel any non-final order. |
 | Refunds | MVP (manual) | Admin records full or partial refunds with optional restock. Gateway-initiated refunds through the contract when the gateway supports them. |
-| Taxes | **FND** (see Q2) | Hidden requirement. Schema stores tax per line and per order. MVP ships "prices entered and displayed as final" with tax amounts zero, plus a `TaxCalculator` seam. Whether MVP must calculate tax is open question Q2, the single most important scope question. |
+| Taxes | MVP (Q2 changed 2026-10-25, ADR-020) | Rate-table engine with the options WooCommerce has: rates by country, state, ZIP/postcode and city, tax classes, priority and compound rates, shipping tax, prices entered with or without tax, shop and cart display, itemized tax lines, per-line or subtotal rounding. Off by default. Per market: presets, market overrides, a rate provider interface for add-ons. **US first**: stacked state, county, city and district rates by ZIP, nexus states, per-state shipping taxability, in-state origin sourcing, prices shown without tax. |
+| Tax rate data for a whole country, VAT ID validation, tax reports and filing | OUT (add-ons) | The US preset carries state base rates only; local rates come from a CSV import or a rate provider add-on (TaxJar, Avalara). |
 | Coupons / discounts | FND | Schema has discount columns and `discount` order lines so migrated WooCommerce orders keep their coupon history. Coupon management is POST. |
 | Invoices / PDF | POST | |
 | Abandoned cart recovery | OUT | |
@@ -147,7 +148,7 @@ Legend: **MVP** = required for MVP. **FND** = architectural foundation in MVP, u
 
 ## 5. Hidden requirements and ambiguities found
 
-1. **Tax.** The brief does not mention it. Many jurisdictions require a correct tax line on every order. Decision needed (Q2). The schema is ready either way.
+1. **Tax.** The brief does not mention it. Many jurisdictions require a correct tax line on every order. Decided 2026-10-25 (Q2, ADR-020): a rate-table engine with WooCommerce-equivalent options in M1, US market first.
 2. **GDPR / privacy.** Custom order tables hold personal data and must be wired to the WordPress personal data exporter and eraser. Erasure anonymizes orders (accounting retention) instead of deleting them.
 3. **Coexistence with WooCommerce.** Migration requires both plugins active on the same site at the same time. Every post type, taxonomy, shortcode, rewrite slug, cookie, role and capability must be namespaced. FlexaCommerce must also declare HPOS compatibility so WooCommerce does not flag it as incompatible.
 4. **URL continuity.** Stores migrating from WooCommerce will lose search ranking if product URLs change. Cutover must be able to adopt WooCommerce's permalink bases (doc 05 §9).
@@ -163,7 +164,7 @@ Legend: **MVP** = required for MVP. **FND** = architectural foundation in MVP, u
 |---|---|
 | Stock reservation table with timed holds per cart | The order itself is the reservation (ADR-005). Cart-level holds add a cleanup system and race conditions without preventing oversell better than an atomic decrement at order placement. |
 | Real-time two-way sync with WooCommerce | Conflict resolution across two writable stores is a product of its own. One-time migration plus re-runnable incremental import covers the stated need. |
-| Full tax engine | Pending Q2. A rate-table tax engine with compound rates, shipping tax, rounding modes and tax-inclusive displays is larger than the shipping module. |
+| Full tax engine | Kept to a rate table plus WooCommerce's options (ADR-020). Excluded: maintaining rate data for all US jurisdictions, product tax codes, VAT ID checks, tax reports and filing. Those belong to provider add-ons, through `TaxRateProvider` or `TaxCalculator`. |
 | Coupons | Discount rules interact with tax, shipping and refunds. Deferred, with schema support. |
 | Custom React storefront / headless API | Core blocks + Interactivity API meet the need without a frontend framework. |
 | Multi-currency | Changes the money model, reporting and refunds. Out. |
@@ -190,7 +191,7 @@ Legend: **MVP** = required for MVP. **FND** = architectural foundation in MVP, u
 
 Two milestones, both part of version 1.0:
 
-**M1 "Can safely take real orders" (smallest coherent MVP).** Catalog (simple + variable), cart, guest and account checkout, shipping zones with flat/free/pickup, COD and bank transfer, atomic stock, order state machine, admin order management, manual refunds, emails, blocks + templates + shortcodes, GDPR hooks, security gates from doc 06 passed. Taxes per Q2 decision.
+**M1 "Can safely take real orders" (smallest coherent MVP).** Catalog (simple + variable), cart, guest and account checkout, shipping zones with flat/free/pickup, COD and bank transfer, atomic stock, order state machine, admin order management, manual refunds, emails, blocks + templates + shortcodes, GDPR hooks, security gates from doc 06 passed. Taxes with the US preset (ADR-020).
 
 **M2 "1.0 release".** M1 plus WooCommerce → FlexaCommerce and FlexaCommerce → WooCommerce migration (legacy storage and HPOS), verification reports, published payment/shipping extension contract v1, benchmark report.
 

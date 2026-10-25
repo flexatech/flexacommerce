@@ -61,7 +61,7 @@ final class MultisiteTest extends \WP_UnitTestCase {
 		switch_to_blog( $site_id );
 		$missing = count( Schema::missing_tables() );
 		restore_current_blog();
-		self::assertSame( 14, $missing );
+		self::assertSame( count( Schema::tables() ), $missing );
 		return $site_id;
 	}
 

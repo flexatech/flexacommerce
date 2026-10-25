@@ -34,7 +34,7 @@ final class DependencyRulesTest extends TestCase {
 		'Inventory' => [ 'Catalog', 'Database', 'Support' ],
 		'Pricing'   => [ 'Catalog', 'Tax', 'Support' ],
 		'Shipping'  => [ 'Support' ],
-		'Tax'       => [ 'Support' ],
+		'Tax'       => [ 'Support', 'Database' ],
 		'Payments'  => [ 'Orders', 'Database', 'Support' ],
 		'Cart'      => [ 'Catalog', 'Pricing', 'Inventory', 'Shipping', 'Support', 'Database' ],
 		'Checkout'  => [ 'Cart', 'Pricing', 'Inventory', 'Shipping', 'Tax', 'Orders', 'Payments', 'Support', 'Database' ],
@@ -53,6 +53,7 @@ final class DependencyRulesTest extends TestCase {
 		'Setup'       => [ 'Api', 'Admin', 'Cli', 'Storefront' ],
 		'Maintenance' => [ 'Api', 'Admin', 'Cli', 'Storefront' ],
 		'Migration'   => [ 'Checkout', 'Cart', 'Notifications', 'Api', 'Admin', 'Storefront' ],
+		'Privacy'     => [ 'Api', 'Admin', 'Cli', 'Storefront', 'Notifications', 'Migration' ],
 	];
 
 	public function test_modules_respect_the_dependency_table(): void {
@@ -109,7 +110,7 @@ final class DependencyRulesTest extends TestCase {
 
 	/** @return list<string> top-level module names this file references */
 	private static function references( string $code ): array {
-		$found = [];
+		$found  = [];
 		$quoted = preg_quote( self::ROOT, '/' );
 		if ( preg_match_all( '/\\\\?' . $quoted . '([A-Za-z_]+)(?:\\\\|\b)/', $code, $m ) > 0 ) {
 			foreach ( $m[1] as $name ) {

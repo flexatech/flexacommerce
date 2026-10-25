@@ -39,7 +39,8 @@ flexacommerce/
 │   │                            OrderService; OrderStateMachine; OrderNumber; OrderAccess
 │   ├── Payments/                PaymentService, GatewayRegistry, TransactionRepository,
 │   │                            WebhookEventRepository, Gateways/{CashOnDelivery,BankTransfer}
-│   ├── Tax/                     TaxCalculator seam; NullTaxCalculator (MVP default, see Q2)
+│   ├── Tax/                     TaxEngine, TaxService, TaxRateRepository, TableRateProvider, Presets,
+│   │                            TaxCalculator and TaxRateProvider seams (ADR-020, §7.12)
 │   ├── Customers/               CustomerProfile (user meta), AccountService
 │   ├── Notifications/           EmailRegistry, Mailer, Emails/*, listens to domain events
 │   ├── Storefront/              Render/* (shared renderers), Blocks/Registrar, Templates/Loader,
@@ -90,9 +91,9 @@ flexacommerce/
 | Inventory | Catalog (VariantRepository), Database | Orders, Cart, Checkout |
 | Pricing | Catalog, Tax, Support, Contracts | Cart, Orders |
 | Shipping | Support, Contracts | Cart internals (receives a `ShippingPackage` DTO) |
-| Tax | Support, Contracts | Cart, Orders |
+| Tax | Support, Database, Contracts | Cart, Orders, Checkout |
 | Payments | Orders (OrderService), Database, Contracts | Cart, Checkout, Catalog |
-| Cart | Catalog, Pricing, Inventory (availability reads), Shipping, Support | Orders, Payments, Checkout |
+| Cart | Catalog, Pricing, Inventory (availability reads), Shipping, Tax, Support | Orders, Payments, Checkout |
 | Checkout | Cart, Pricing, Inventory, Shipping, Tax, Orders, Payments | Storefront, Api |
 | Notifications | Orders (read), Support. Triggered by hooks only | any service write method |
 | Storefront, Api, Admin, Cli | any L1 to L4 service and read repositories | each other |
@@ -257,7 +258,7 @@ Loaded only for administrators in wp-admin or WP-CLI when WooCommerce is active.
 | Need | Mechanism |
 |---|---|
 | Expire unpaid `pending` orders, purge expired sessions, prune webhook records | WP-Cron recurring events (`flexacommerce.cron.expire_pending` every 5 min, `flexacommerce.cron.daily`). Handlers are idempotent and bounded (order expiry: max 200 orders per run; purges: max 1,000 rows per run). Docs recommend a real system cron for production. |
-| Deferred emails (optional setting) | `wp_schedule_single_event()` per email, falling back to inline send. |
+| Deferred emails (optional setting `defer_emails`) | The message is rendered during the request and stored in a transient `fxc_mail_<32 hex>` (one day); a single event `flexacommerce.cron.send_email` with the queue id sends it. When the transient or the event cannot be stored, the email is sent inline. The handler is registered only under cron and WP-CLI, so page views do not pay for the callback. |
 | Migration batches | Transport-agnostic `Migration\Runner::run_batch( job_id )`. Driven by the admin screen (REST polling), by WP-CLI (loop), or by Action Scheduler when present. Action Scheduler ships with WooCommerce, and migration always requires WooCommerce to be active, so it is available without adding a dependency. |
 
 ## 7. Commerce lifecycle (Phase 3 specification)
@@ -327,7 +328,7 @@ Unpaid online orders: a `pending` order older than `hold_minutes` (default 60, s
  3. Validate input (CheckoutValidator): fields per FieldSchema and country rules, email, terms checkbox if
     enabled, shipping method id is one of the rates just computed, gateway enabled and is_available().
  4. Recompute everything on the server: unit prices (PricingService), shipping (ShippingService), tax
-    (TaxCalculator), totals. If the grand total differs from the total the customer last saw
+    (TaxService::calculate, per line and per rate, §7.12), totals. If the grand total differs from the total the customer last saw
     (`expected_total`, sent only as a consistency check), stop and return "totals changed" with the new
     summary. The submitted value is never used as the amount.
  5. Transaction::run(
@@ -479,6 +480,140 @@ Each send writes an `order_history` row (`type = email`, success or failure). Te
 | Cron and customer act on the same pending order | Both transitions lock the order row. The second sees the new status and the transition table rejects or no-ops it. |
 | Deadlock between concurrent checkouts | Ordered locking + retry (§4.3). |
 
+### 7.12 Taxes (phase 4.5 specification)
+
+ADR-020. The engine runs only when `tax_enabled` is on; with it off, every tax amount is zero, no tax class or rate is read, and the cost is the current one (doc 10 §4.1). Labels as in the rest of this document; every **[WC]** item is WooCommerce 11 behavior that phase 4.5 confirms with golden tests on the bench stack (§7.12.9) before it is treated as a fact.
+
+#### 7.12.1 Settings (WooCommerce equivalents)
+
+All keys live in the `flexacommerce_settings` option (`Support\Settings`), on the **Tax** tab of the settings screen (Settings > Tax, which also holds classes, rates, CSV and presets).
+
+| Key | Values (default) | WooCommerce option |
+|---|---|---|
+| `tax_enabled` | bool (`false`) | `woocommerce_calc_taxes` |
+| `prices_include_tax` | bool (`false`) | `woocommerce_prices_include_tax` |
+| `tax_based_on` | `shipping` \| `billing` \| `base` (`shipping`) | `woocommerce_tax_based_on` |
+| `tax_default_location` | `base` \| `none` (`base`): the location used before the customer has given an address | `woocommerce_default_customer_address` (without geolocation, which is out of scope) |
+| `shipping_tax_class` | `inherit` \| a class slug (`inherit`) | `woocommerce_shipping_tax_class` |
+| `tax_round_at_subtotal` | bool (`false`) | `woocommerce_tax_round_at_subtotal` |
+| `tax_classes` | list of `{slug, name}` after Standard (`reduced-rate`, `zero-rate`) | `woocommerce_tax_classes` / `wc_tax_rate_classes` |
+| `tax_display_shop` | `excl` \| `incl` (`excl`) | `woocommerce_tax_display_shop` |
+| `tax_display_cart` | `excl` \| `incl` (`excl`) | `woocommerce_tax_display_cart` |
+| `price_display_suffix` | string, may contain `{price_including_tax}` and `{price_excluding_tax}` (`''`) | `woocommerce_price_display_suffix` |
+| `tax_total_display` | `itemized` \| `single` (`itemized`) | `woocommerce_tax_total_display` |
+| `tax_markets` | list of market overrides (§7.12.6), (`[]`) | none |
+| `tax_base_rates` | compiled, not edited: the matched rates for the store base address per class (§7.12.8) | none |
+
+The Standard class is the empty slug `''`, as in WooCommerce. Deleting a class deletes its rates after a confirmation that names the number of rates and products using it; products keep the slug and fall back to Standard with an admin notice.
+
+#### 7.12.2 Product tax settings
+
+- `fxc_variants.tax_status`: `taxable` \| `shipping` \| `none` (doc 03 §4.1). `shipping` means only the shipping on this item is taxed, as in WooCommerce.
+- `fxc_variants.tax_class`: a class slug. On variation rows the value `parent` (the default for new variation rows) takes the base row's class. `tax_status` is read from the base row only, as WooCommerce does for variations **[WC]**.
+- The product editor shows both on the General tab, and the variation rows show the class select with "Same as parent" first.
+
+#### 7.12.3 Rates and matching
+
+A rate (`fxc_tax_rates`, doc 03 §4.13) has: tax class, country (ISO 3166-1 alpha-2 or empty for all), state (code or empty), postcodes and cities (`fxc_tax_rate_locations`, empty for all), rate (percent with up to 4 decimals), name, priority, compound flag, shipping flag, order.
+
+`TaxLocation` = (country, state, postcode, city), taken from the address chosen by `tax_based_on`, or the store base address (`store_country`, which exists, plus `store_state`, `store_postcode`, `store_city`, added in phase 4.5) for `base` and for `tax_default_location = base` before an address exists. Normalization: country and state upper-case; postcode upper-case without spaces; for US addresses ZIP+4 is cut to the first 5 digits; city upper-case, trimmed.
+
+Matching for one location and one class:
+
+```
+1. Candidate rates: class = c AND country IN (location.country, '') AND state IN (location.state, '').
+2. Postcode: a rate with postcode rows matches if one row matches:
+      exact code, or a prefix ending in * (902* matches 90210), or a numeric range from...to (90210...90299,
+      compared as integers; both ends must be digits, low to high, or the rate is refused on save).
+3. City: a rate with city rows matches if the normalized city equals one of them.
+4. Sort the matches by priority, then specificity (country set, state set, postcode set, city set before
+   empty), then rate id. Keep the first match of each priority. [WC] (rate order is only the order of the
+   rate table screen and of the CSV export)
+5. Result: an ordered list, simple rates first, compound rates after, each in priority order.
+```
+
+`flexacommerce.tax.rates` filters the result (doc 04 §7). With a `TaxRateProvider` add-on the provider replaces steps 1 to 5 (§7.12.7).
+
+#### 7.12.4 Calculation
+
+Integer minor units throughout. A rate is stored as millionths of a percent unit (`7.25 %` = `72500`, 100 % = `1000000`), so `tax = amount × rate / 1,000,000`, computed with `Support\IntMath::mul_div_half_up()` (quotient and remainder, no float, no overflow for any `bigint` amount).
+
+```
+For each line (product, shipping, fee) with its class and taxable amount (after discount):
+  exclusive prices:
+     simple rates:   t_i = amount × r_i
+     compound rates: t_j = (amount + Σ taxes so far) × r_j
+  inclusive prices (the amount already holds the tax):
+     taxes are taken back out with the same order; the net amount is amount − Σ t  [WC formula]
+  rounding:
+     per line (default): each t is rounded half up per line and per rate
+     at subtotal: per rate, sum the unrounded line taxes (kept as a numerator over 1,000,000),
+                  round the sum once, then split it back to the lines with Money::allocate()
+                  (largest remainder), so line taxes still add up to the order tax
+```
+
+- **Shipping.** Each shipping line is taxed with the rates of the shipping tax class that have the shipping flag set. With `shipping_tax_class = inherit`: the class of the cart items if they all share one; else Standard if any item uses Standard; else the first class in the `tax_classes` order **[WC]**. Rates whose shipping flag is off are skipped for shipping only. A `ShippingRate` with `taxable = false` (for example local pickup if the admin says so) is never taxed.
+- **Status `shipping` items** add to the class choice for shipping but their own amount is not taxed.
+- **Fees** (the `flexacommerce.cart.fees` filter, doc 04 §7, not built yet): the `Fee` DTO gets `taxable` (default `true`) and `tax_class` (Standard by default) when fees land, and the engine taxes fee lines like product lines.
+- **Exempt customer.** `flexacommerce.tax.exempt` (default `false`) returns true → no tax at all: the lines carry no per-rate split, the order has no `tax` lines, tax 0 and meta `_fxc_tax_exempt = 1` (WooCommerce also writes no tax line for a VAT-exempt customer). With inclusive prices an exempt customer pays the net price (the tax is removed), which is WooCommerce's behavior for a VAT-exempt customer **[WC]**.
+- **Determinism.** The same `TaxRequest` gives the same `TaxResult`; checkout calculates twice (form state, submit) and compares totals (§7.5 step 4).
+
+#### 7.12.5 Display
+
+- Catalog prices: the stored price, or the price with or without tax according to `tax_display_shop`, using the store base location (never the session, P11). Price ranges of variable products are converted at both ends. The suffix is appended with its placeholders replaced.
+- Cart, checkout, confirmation, account and emails: line prices and subtotal per `tax_display_cart`; then one "Tax" row (`single`) or one row per rate label (`itemized`, rates with the same label are summed, as WooCommerce does **[WC]**). With `excl` display the tax rows come before the total; with `incl` display the total shows "includes X tax".
+- Before an address exists and with `tax_default_location = none`, the cart shows "Tax is calculated at checkout" and no tax amount.
+- **Phase 4.5 state.** Checkout, confirmation, account, emails and the admin order show the tax rows. The cart page and the `store/cart` response do not show tax yet; that lands with the cart display work in phase 5. The cart keeps the city of the quoted address with country, state and postcode (doc 03 §4.9), because city rates need it.
+- **Base-location adjustment** (inclusive prices only). When the customer's rate differs from the base rate, WooCommerce keeps the net price and recalculates the tax, so the customer-facing price changes. The net is not rounded before the customer's tax is taken from it (1999 with 7.25 % base and 6.25 % destination gives tax 116, not 117), as in WooCommerce. `flexacommerce.tax.adjust_non_base_prices` (default `true`) keeps that behavior; returning `false` keeps the gross price constant in every location (the EU-style "same price everywhere"). US stores use exclusive prices and are not affected.
+
+#### 7.12.6 Markets
+
+A market is `{ id, name, countries[], overrides{} }`, stored in `tax_markets`. The tax location's country selects the first market that lists it; no match uses the global settings. Overridable keys: `tax_display_shop`, `tax_display_cart`, `price_display_suffix`, `tax_total_display`, `tax_round_at_subtotal`, `tax_based_on`, `intrastate_sourcing`, `origin_states`. A key that is absent inherits the global value. Catalog pages use the market of the store base country, since they never know the visitor's location.
+
+`intrastate_sourcing` (`destination` default, or `origin`) with `origin_states[]`: when the destination state equals the store's base state and that state is in `origin_states`, the store base address is the tax location instead of the customer's. This is how a US store in an origin-based state charges its own local rate on in-state orders while charging destination rates elsewhere.
+
+#### 7.12.7 Extension seams
+
+| Seam | Use | Contract |
+|---|---|---|
+| `TaxRateProvider` (`flexacommerce.tax.rate_provider`) | Rates from a service (TaxJar, Avalara rates API) while the core engine does the math, rounding, storage and refunds | `rates( TaxLocation, string $class ): list<TaxRate>` (doc 04 §7.1). Called at most once per (location, class) per request; core caches the answer for `HOUR_IN_SECONDS` in the `fxc_tax` cache group keyed by location and class. |
+| `TaxCalculator` (`flexacommerce.tax.calculator`) | Replace the whole calculation (product tax codes, per-item exemption certificates) | `calculate( TaxRequest ): TaxResult` (doc 04 §7.1). |
+| Presets (`flexacommerce.tax.presets`) | Add a market | `list<TaxPreset>`; core ships `us`. |
+| Filters | Exemptions, rate changes, display | `flexacommerce.tax.exempt`, `flexacommerce.tax.rates`, `flexacommerce.tax.adjust_non_base_prices` (doc 04 §7). |
+
+Both interfaces are wrapped like shipping methods: an exception, a timeout (≤ 3 s for remote calls) or an invalid result (wrong currency, negative amount, line keys that do not match the request, line sums that differ from the totals) makes the engine fall back to the table provider. Checkout then still places the order, sets `needs_attention`, writes an order note "Tax calculated from the local rate table: {provider} failed", and logs the error on the `tax` channel. An add-on that must never fall back (`TaxRateProvider::fallback_allowed(): false`) makes checkout refuse with "Tax could not be calculated, please try again" instead.
+
+#### 7.12.8 US market (first preset)
+
+`resources/tax-presets/us.json`, applied from **Taxes > Presets > United States**:
+
+1. The admin picks the **nexus states** (states where the store must collect). Only those states get rows; a sale to any other state has no tax, which is correct for a seller without nexus there.
+2. For each picked state the preset inserts one Standard rate at priority 1 with the state base rate, name `"{STATE} State Tax"`, and the shipping flag from the preset's per-state shipping taxability. States with no state sales tax (for example Delaware, Montana, New Hampshire, Oregon; Alaska has only local taxes) get no row. The rows get `source = 'preset:us'`; applying the preset again replaces only rows with that source, after a preview of the changes. Editing a preset row changes its source to `manual`, so a later re-apply leaves it alone.
+3. Settings it proposes (shown before apply, each can be unticked): `prices_include_tax = false`, `tax_display_shop = excl`, `tax_display_cart = excl`, `tax_based_on = shipping`, `tax_default_location = none`, `tax_total_display = itemized`, and a `us` market with `intrastate_sourcing = origin` and the preset's `origin_states`.
+4. **Local rates** (county, city, special district) are not in the preset: there are thousands of jurisdictions and they change often. The rate table is built for them: one row per jurisdiction at priority 2 (county), 3 (city) and 4 (district), each with its ZIP list or ZIP ranges, so the engine stacks state + county + city + district for one address. They come from a WooCommerce-format CSV (a rate vendor's ZIP file or the store's own) or from a `TaxRateProvider` add-on.
+5. Product taxability by category (for example clothing or groceries exempt or reduced in some states) uses tax classes: a "Clothing" class with a 0 % or reduced row for those states.
+6. The preset file has an `as_of` date and a source per state. **[Assumption]** The state rates, shipping taxability and origin-state list are checked against each state's revenue department when the file is written (phase 4.5) and on each release. The screen shows the `as_of` date and states that the store owner is responsible for the rates. FlexaCommerce never changes rates by itself.
+
+The US case drives two design limits: a ZIP-level table for a store with nexus in several states can hold tens of thousands of location rows, so matching is one indexed query per location (doc 03 §4.13), and CSV import runs in batches of 500 rows, never in one request. The admin screen parses the file and sends the batches one after another (validate pass first, then write); the server refuses a batch over 500 rows.
+
+#### 7.12.9 CSV import and export, migration, parity tests
+
+- **CSV** columns in WooCommerce's order: `Country code, State code, Postcode / ZIP, City, Rate %, Tax name, Priority, Compound, Shipping, Tax class`. Postcodes and cities are `;`-separated. A file exported from WooCommerce imports unchanged; an exported FlexaCommerce file imports into WooCommerce. Import modes: add, or replace the rates of the selected class. Errors are reported per line, and nothing is written when the file has an error in validate-only mode.
+- **Migration** (doc 05 §7): WooCommerce tax classes, rates with locations, the tax settings above and product `_tax_status` / `_tax_class` are migrated in both directions.
+- **Golden parity tests** (phase 4.5 exit): a fixture set of carts (classes, compound, shipping flag, inclusive and exclusive, both rounding modes, US stacked rates by ZIP, a ZIP range, ZIP+4, exempt customer) is priced by WooCommerce on the bench stack and the expected totals per rate are stored in `tests/fixtures/tax-golden.json`; the integration suite asserts FlexaCommerce produces the same amounts to the minor unit. A difference is either fixed or listed as an intended divergence in this section.
+- **Golden results (2026-10-25, WooCommerce 11.2.1).** 20 cases; `./bench.sh tax-golden` (in `tools/bench`) prices them on the `tax.bench` store through a real cart and `WC_Checkout::create_order()` and writes the expected amounts into the fixture; `tests/Integration/Tax/TaxGoldenTest.php` places the same carts through `CheckoutService::place_order()` and compares total, tax total, shipping tax, items and shipping tax per rate, and net and tax per line. 19 match to the minor unit. Two differences found by the first run were fixed: the base-location adjustment rounded the net before taxing it, and an exempt order stored a `tax` line of 0 per rate.
+- **Intended divergences.**
+  - *ZIP+4.* WooCommerce normalizes `95014-1234` to `950141234`, so only wildcard rows such as `950*` match it and exact ZIPs and ZIP ranges do not. FlexaCommerce cuts a US ZIP+4 to its first five digits (§7.12.3), so the address gets the same rates as `95014`. The test asserts FlexaCommerce's totals for this case and fails if WooCommerce ever starts to agree.
+- **Not covered by the golden set.** Fees (no fee API yet), coupons (phase 5+), `tax_status = shipping` items, markets and origin sourcing (FlexaCommerce only), and the form total with `tax_based_on = billing`: the checkout form is quoted for the shipping address, so the shopper sees the billing-based total only when the order is placed (a known limit of the phase 4 requote, which sends one address).
+
+#### 7.12.10 Orders and refunds
+
+- Each product, shipping and fee line stores `tax_total` (sum) and its per-rate split in item `meta.taxes` (`{"<rate_id>": amount}`).
+- One `tax` line per rate: `code` = rate code (`{COUNTRY}-{STATE}-{NAME}-{priority}`, as WooCommerce builds it **[WC]**), `name` = label, `total` = items tax + shipping tax for that rate, `meta` = `{rate_id, rate, compound, items_tax, shipping_tax}`. A snapshot: later rate edits never change an order.
+- Invariant asserted on insert: `orders.tax_total = Σ tax lines.total = Σ other lines.tax_total`.
+- `orders.prices_include_tax` records the setting at order time. Line amounts stay exclusive of tax (doc 03 §4.3).
+- Refunds: a line refund amount is gross, as today (`refunded_total`). The engine splits it into net and tax per rate in the line's proportions with `Money::allocate()`; the split is stored in the refund transaction meta (`taxes`), so a tax report can subtract refunded tax per rate. A refund of the whole line refunds exactly the line's tax.
+
 ## 8. Service contracts (internal, signatures illustrative)
 
 Value objects referenced: `Money` (amount int + currency), `Product`, `Variant`, `Cart`, `CartLine`, `Order`, `OrderItem`, `Address`, `Transaction`, `TransitionContext`, `ShippingPackage`, `ShippingRate`. Exceptions extend `Flexa\Commerce\Contracts\CommerceException` and carry a machine code and a translated message.
@@ -524,7 +659,25 @@ final class StockService {
 final class PricingService {
 	public function unit_price( Variant $variant, ?\DateTimeImmutable $at = null ): PriceResolution; // regular, sale, active
 	/** @param list<CartLine> $lines */
-	public function totals( array $lines, ?ShippingRate $shipping, TaxContext $tax ): Totals;
+	public function totals( array $lines, ?ShippingRate $shipping, TaxResult $tax ): Totals;
+}
+
+final class TaxService {
+	public function enabled(): bool;
+	public function location( ?TaxLocation $shipping, ?TaxLocation $billing ): ?TaxLocation;  // tax_based_on, markets, sourcing
+	public function calculate( TaxRequest $request ): TaxOutcome;     // TaxResult + fallback note; engine or add-on, guarded (§7.12.7)
+	public function display_price( Money $price, string $tax_class, string $context ): Money; // shop|cart, base rates
+	public function compile_base_rates(): void;                       // tax_base_rates, on settings and rate changes
+}
+// Refund splits need only the stored line, so they live on the order item:
+// OrderItem::refund_split( int $amount ): array{net:int, taxes:array<string,int>}
+
+interface TaxRateRepository {
+	/** @return list<TaxRate> */
+	public function matching( TaxLocation $location, string $tax_class ): array;   // one query, §7.12.3
+	public function save( TaxRate $rate ): int;
+	public function delete( int $rate_id ): void;
+	public function replace_source( string $source, array $rates ): int;          // preset re-apply
 }
 
 final class CartService {
@@ -592,10 +745,10 @@ Call rules:
 
 | Caller | May call | Must not call |
 |---|---|---|
-| CheckoutService | CartService, PricingService, ShippingService, TaxCalculator, StockService (via OrderService::create), OrderService, PaymentService | repositories of other modules directly |
+| CheckoutService | CartService, PricingService, ShippingService, TaxService, StockService (via OrderService::create), OrderService, PaymentService | repositories of other modules directly |
 | PaymentService | gateways, TransactionRepository, OrderService | StockService, CartService |
 | OrderService | OrderRepository, HistoryRepository, StockService (release/deduct for transitions), AfterCommit | PaymentService, gateways, mailer |
-| CartService | Catalog repositories (read), PricingService, StockService::available, ShippingService | OrderService |
+| CartService | Catalog repositories (read), PricingService, StockService::available, ShippingService, TaxService | OrderService |
 | Storefront / Api | any service's public methods | repositories for writes |
 | MigrationService | repositories in import mode, ProductService validation helpers | CheckoutService, PaymentService::initiate, Notifications |
 

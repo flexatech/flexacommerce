@@ -23,6 +23,9 @@ final class Logger implements LoggerContract {
 		private readonly Clock $clock,
 	) {}
 
+	/** @var list<array{0:string,1:string,2:?string,3:string}>|null rows held by batch() */
+	private ?array $held = null;
+
 	public function log( string $level, string $message, array $context = [] ): void {
 		if ( ! in_array( $level, self::LEVELS, true ) ) {
 			$level = 'info';
@@ -32,22 +35,58 @@ final class Logger implements LoggerContract {
 		}
 
 		$clean   = $this->redactor->context( $context );
-		$text    = $this->redactor->text( self::interpolate( $message, $clean ) );
 		$encoded = $clean === [] ? null : wp_json_encode( $clean );
-		$when    = $this->clock->db_now();
-		$channel = $this->channel;
+		$row     = [ $level, $this->redactor->text( self::interpolate( $message, $clean ) ), $encoded === false ? null : $encoded, $this->clock->db_now() ];
+		if ( $this->held !== null ) {
+			$this->held[] = $row;
+			return;
+		}
+		$this->write( [ $row ] );
+	}
 
+	/**
+	 * Run $work and store every entry it logs on this channel with one
+	 * insert, for callers that log once per order line (P6q).
+	 *
+	 * @param callable():void $work
+	 */
+	public function batch( callable $work ): void {
+		if ( $this->held !== null ) {
+			$work();
+			return;
+		}
+		$this->held = [];
+		try {
+			$work();
+		} finally {
+			$this->flush();
+		}
+	}
+
+	private function flush(): void {
+		$rows       = $this->held ?? [];
+		$this->held = null;
+		if ( $rows !== [] ) {
+			$this->write( $rows );
+		}
+	}
+
+	/** @param non-empty-list<array{0:string,1:string,2:?string,3:string}> $rows */
+	private function write( array $rows ): void {
+		$channel = $this->channel;
 		$this->transaction->when_idle(
-			function () use ( $level, $channel, $text, $encoded, $when ): void {
+			function () use ( $channel, $rows ): void {
 				$stored = false;
 				try {
-					$stored = $this->repository->insert( $level, $channel, $text, $encoded === false ? null : $encoded, $when );
+					$stored = $this->repository->insert_many( $channel, $rows );
 				} catch ( \Throwable ) {
 					$stored = false;
 				}
 				if ( ! $stored ) {
-					// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- last-resort fallback.
-					error_log( sprintf( '[flexacommerce] %s.%s: %s', $channel, $level, $text ) );
+					foreach ( $rows as [ $level, $text ] ) {
+						// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- last-resort fallback.
+						error_log( sprintf( '[flexacommerce] %s.%s: %s', $channel, $level, $text ) );
+					}
 				}
 			}
 		);

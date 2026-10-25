@@ -200,6 +200,7 @@ final class ProductService {
 							is_base: false,
 							combination: $combination,
 							menu_order: $menu_order++,
+							tax_class: Variant::PARENT_CLASS,
 						)
 					);
 					++$created;
@@ -440,7 +441,7 @@ final class ProductService {
 					if ( $item['combination'] === null ) {
 						throw new InvalidProduct( __( 'A new variation needs attribute values.', 'flexacommerce' ), $path . '.attributes' );
 					}
-					$row = new Variant( id: 0, product_id: $before->id, is_base: false, combination: $item['combination'], menu_order: $i );
+					$row = new Variant( id: 0, product_id: $before->id, is_base: false, combination: $item['combination'], menu_order: $i, tax_class: Variant::PARENT_CLASS );
 				}
 				$changes = $item['fields'];
 				if ( $item['combination'] !== null ) {

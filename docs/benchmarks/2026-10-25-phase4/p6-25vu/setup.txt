@@ -1,0 +1,6 @@
+size=M seed=42
+wordpress=7.1.3
+woocommerce=11.2.1
+flexacommerce=de966f5+dirty
+php=8.2.35
+mysql=8.0.40

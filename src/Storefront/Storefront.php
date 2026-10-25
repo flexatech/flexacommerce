@@ -24,7 +24,7 @@ defined( 'ABSPATH' ) || exit;
 final class Storefront {
 	use HasInstance;
 
-	public const BLOCKS = [ 'product-price', 'product-add-to-cart', 'cart', 'mini-cart' ];
+	public const BLOCKS = [ 'product-price', 'product-add-to-cart', 'cart', 'mini-cart', 'checkout' ];
 
 	private bool $blocks = false;
 
@@ -112,6 +112,8 @@ final class Storefront {
 				return $this->cart_html();
 			case 'mini-cart':
 				return $this->mini()->html();
+			case 'checkout':
+				return CheckoutPage::instance()->render();
 		}
 		$product = $this->product( $this->product_id( $attributes, $block ) );
 		if ( $product === null ) {
@@ -128,6 +130,12 @@ final class Storefront {
 	public function shortcode_cart( array|string $atts = [] ): string {
 		unset( $atts );
 		return $this->cart_html();
+	}
+
+	/** @param array<string,mixed>|string $atts */
+	public function shortcode_checkout( array|string $atts = [] ): string {
+		unset( $atts );
+		return CheckoutPage::instance()->render();
 	}
 
 	/** @param array<string,mixed>|string $atts */

@@ -1,0 +1,1508 @@
+{
+    "about": "Tax golden cases (doc 02 §7.12.9). Inputs are hand written; every `expected` is written by tools/bench/tax-golden.php from a WooCommerce order on the bench stack (./bench.sh tax-golden). Amounts are minor units; per-rate results follow the order of `rates`.",
+    "store": {
+        "country": "US",
+        "state": "CA",
+        "postcode": "95014",
+        "city": "Cupertino"
+    },
+    "woocommerce": "11.2.1",
+    "cases": [
+        {
+            "id": "exclusive-single-rate",
+            "settings": [],
+            "rates": [
+                {
+                    "country": "US",
+                    "state": "CA",
+                    "rate": "7.2500",
+                    "name": "CA Tax",
+                    "priority": 1,
+                    "compound": false,
+                    "shipping": true,
+                    "tax_class": "",
+                    "postcodes": [],
+                    "cities": []
+                }
+            ],
+            "address": {
+                "country": "US",
+                "state": "CA",
+                "postcode": "95014",
+                "city": "Cupertino"
+            },
+            "lines": [
+                {
+                    "price": 1000,
+                    "qty": 2,
+                    "tax_class": "",
+                    "tax_status": "taxable"
+                }
+            ],
+            "exempt": false,
+            "shipping": 500,
+            "expected": {
+                "total": 2681,
+                "tax_total": 181,
+                "shipping": 500,
+                "shipping_tax": 36,
+                "rates": [
+                    {
+                        "items": 145,
+                        "shipping": 36
+                    }
+                ],
+                "lines": [
+                    {
+                        "net": 2000,
+                        "tax": 145
+                    }
+                ]
+            }
+        },
+        {
+            "id": "inclusive-base-address",
+            "settings": {
+                "prices_include_tax": true
+            },
+            "rates": [
+                {
+                    "country": "US",
+                    "state": "CA",
+                    "rate": "7.2500",
+                    "name": "CA Tax",
+                    "priority": 1,
+                    "compound": false,
+                    "shipping": true,
+                    "tax_class": "",
+                    "postcodes": [],
+                    "cities": []
+                }
+            ],
+            "address": {
+                "country": "US",
+                "state": "CA",
+                "postcode": "95014",
+                "city": "Cupertino"
+            },
+            "lines": [
+                {
+                    "price": 1000,
+                    "qty": 2,
+                    "tax_class": "",
+                    "tax_status": "taxable"
+                },
+                {
+                    "price": 1999,
+                    "qty": 1,
+                    "tax_class": "",
+                    "tax_status": "taxable"
+                }
+            ],
+            "exempt": false,
+            "shipping": 500,
+            "expected": {
+                "total": 4535,
+                "tax_total": 306,
+                "shipping": 500,
+                "shipping_tax": 36,
+                "rates": [
+                    {
+                        "items": 270,
+                        "shipping": 36
+                    }
+                ],
+                "lines": [
+                    {
+                        "net": 1865,
+                        "tax": 135
+                    },
+                    {
+                        "net": 1864,
+                        "tax": 135
+                    }
+                ]
+            }
+        },
+        {
+            "id": "inclusive-non-base-address",
+            "settings": {
+                "prices_include_tax": true
+            },
+            "rates": [
+                {
+                    "country": "US",
+                    "state": "CA",
+                    "rate": "7.2500",
+                    "name": "CA Tax",
+                    "priority": 1,
+                    "compound": false,
+                    "shipping": true,
+                    "tax_class": "",
+                    "postcodes": [],
+                    "cities": []
+                },
+                {
+                    "country": "US",
+                    "state": "TX",
+                    "rate": "6.2500",
+                    "name": "TX Tax",
+                    "priority": 1,
+                    "compound": false,
+                    "shipping": true,
+                    "tax_class": "",
+                    "postcodes": [],
+                    "cities": []
+                }
+            ],
+            "address": {
+                "country": "US",
+                "state": "TX",
+                "postcode": "73301",
+                "city": "Austin"
+            },
+            "lines": [
+                {
+                    "price": 1000,
+                    "qty": 2,
+                    "tax_class": "",
+                    "tax_status": "taxable"
+                },
+                {
+                    "price": 1999,
+                    "qty": 1,
+                    "tax_class": "",
+                    "tax_status": "taxable"
+                }
+            ],
+            "exempt": false,
+            "shipping": 500,
+            "expected": {
+                "total": 4493,
+                "tax_total": 264,
+                "shipping": 500,
+                "shipping_tax": 31,
+                "rates": [
+                    null,
+                    {
+                        "items": 233,
+                        "shipping": 31
+                    }
+                ],
+                "lines": [
+                    {
+                        "net": 1865,
+                        "tax": 117
+                    },
+                    {
+                        "net": 1864,
+                        "tax": 116
+                    }
+                ]
+            }
+        },
+        {
+            "id": "exclusive-round-per-line",
+            "settings": [],
+            "rates": [
+                {
+                    "country": "US",
+                    "state": "CA",
+                    "rate": "7.2500",
+                    "name": "CA Tax",
+                    "priority": 1,
+                    "compound": false,
+                    "shipping": true,
+                    "tax_class": "",
+                    "postcodes": [],
+                    "cities": []
+                }
+            ],
+            "address": {
+                "country": "US",
+                "state": "CA",
+                "postcode": "95014",
+                "city": "Cupertino"
+            },
+            "lines": [
+                {
+                    "price": 333,
+                    "qty": 3,
+                    "tax_class": "",
+                    "tax_status": "taxable"
+                },
+                {
+                    "price": 99,
+                    "qty": 1,
+                    "tax_class": "",
+                    "tax_status": "taxable"
+                },
+                {
+                    "price": 777,
+                    "qty": 2,
+                    "tax_class": "",
+                    "tax_status": "taxable"
+                },
+                {
+                    "price": 1,
+                    "qty": 7,
+                    "tax_class": "",
+                    "tax_status": "taxable"
+                }
+            ],
+            "exempt": false,
+            "shipping": 500,
+            "expected": {
+                "total": 3388,
+                "tax_total": 229,
+                "shipping": 500,
+                "shipping_tax": 36,
+                "rates": [
+                    {
+                        "items": 193,
+                        "shipping": 36
+                    }
+                ],
+                "lines": [
+                    {
+                        "net": 999,
+                        "tax": 72
+                    },
+                    {
+                        "net": 99,
+                        "tax": 7
+                    },
+                    {
+                        "net": 1554,
+                        "tax": 113
+                    },
+                    {
+                        "net": 7,
+                        "tax": 1
+                    }
+                ]
+            }
+        },
+        {
+            "id": "exclusive-round-at-subtotal",
+            "settings": {
+                "tax_round_at_subtotal": true
+            },
+            "rates": [
+                {
+                    "country": "US",
+                    "state": "CA",
+                    "rate": "7.2500",
+                    "name": "CA Tax",
+                    "priority": 1,
+                    "compound": false,
+                    "shipping": true,
+                    "tax_class": "",
+                    "postcodes": [],
+                    "cities": []
+                }
+            ],
+            "address": {
+                "country": "US",
+                "state": "CA",
+                "postcode": "95014",
+                "city": "Cupertino"
+            },
+            "lines": [
+                {
+                    "price": 333,
+                    "qty": 3,
+                    "tax_class": "",
+                    "tax_status": "taxable"
+                },
+                {
+                    "price": 99,
+                    "qty": 1,
+                    "tax_class": "",
+                    "tax_status": "taxable"
+                },
+                {
+                    "price": 777,
+                    "qty": 2,
+                    "tax_class": "",
+                    "tax_status": "taxable"
+                },
+                {
+                    "price": 1,
+                    "qty": 7,
+                    "tax_class": "",
+                    "tax_status": "taxable"
+                }
+            ],
+            "exempt": false,
+            "shipping": 500,
+            "expected": {
+                "total": 3388,
+                "tax_total": 229,
+                "shipping": 500,
+                "shipping_tax": 36,
+                "rates": [
+                    {
+                        "items": 193,
+                        "shipping": 36
+                    }
+                ],
+                "lines": [
+                    {
+                        "net": 999,
+                        "tax": 72
+                    },
+                    {
+                        "net": 99,
+                        "tax": 7
+                    },
+                    {
+                        "net": 1554,
+                        "tax": 113
+                    },
+                    {
+                        "net": 7,
+                        "tax": 1
+                    }
+                ]
+            }
+        },
+        {
+            "id": "inclusive-round-at-subtotal",
+            "settings": {
+                "prices_include_tax": true,
+                "tax_round_at_subtotal": true
+            },
+            "rates": [
+                {
+                    "country": "US",
+                    "state": "CA",
+                    "rate": "7.2500",
+                    "name": "CA Tax",
+                    "priority": 1,
+                    "compound": false,
+                    "shipping": true,
+                    "tax_class": "",
+                    "postcodes": [],
+                    "cities": []
+                }
+            ],
+            "address": {
+                "country": "US",
+                "state": "CA",
+                "postcode": "95014",
+                "city": "Cupertino"
+            },
+            "lines": [
+                {
+                    "price": 333,
+                    "qty": 3,
+                    "tax_class": "",
+                    "tax_status": "taxable"
+                },
+                {
+                    "price": 99,
+                    "qty": 1,
+                    "tax_class": "",
+                    "tax_status": "taxable"
+                },
+                {
+                    "price": 777,
+                    "qty": 2,
+                    "tax_class": "",
+                    "tax_status": "taxable"
+                },
+                {
+                    "price": 1,
+                    "qty": 7,
+                    "tax_class": "",
+                    "tax_status": "taxable"
+                }
+            ],
+            "exempt": false,
+            "shipping": 500,
+            "expected": {
+                "total": 3195,
+                "tax_total": 216,
+                "shipping": 500,
+                "shipping_tax": 36,
+                "rates": [
+                    {
+                        "items": 180,
+                        "shipping": 36
+                    }
+                ],
+                "lines": [
+                    {
+                        "net": 931,
+                        "tax": 68
+                    },
+                    {
+                        "net": 92,
+                        "tax": 7
+                    },
+                    {
+                        "net": 1449,
+                        "tax": 105
+                    },
+                    {
+                        "net": 7,
+                        "tax": 0
+                    }
+                ]
+            }
+        },
+        {
+            "id": "compound",
+            "settings": [],
+            "rates": [
+                {
+                    "country": "US",
+                    "state": "CA",
+                    "rate": "6.0000",
+                    "name": "CA State",
+                    "priority": 1,
+                    "compound": false,
+                    "shipping": true,
+                    "tax_class": "",
+                    "postcodes": [],
+                    "cities": []
+                },
+                {
+                    "country": "US",
+                    "state": "CA",
+                    "rate": "1.5000",
+                    "name": "Compound",
+                    "priority": 2,
+                    "compound": true,
+                    "shipping": true,
+                    "tax_class": "",
+                    "postcodes": [],
+                    "cities": []
+                }
+            ],
+            "address": {
+                "country": "US",
+                "state": "CA",
+                "postcode": "95014",
+                "city": "Cupertino"
+            },
+            "lines": [
+                {
+                    "price": 1234,
+                    "qty": 3,
+                    "tax_class": "",
+                    "tax_status": "taxable"
+                }
+            ],
+            "exempt": false,
+            "shipping": 500,
+            "expected": {
+                "total": 4521,
+                "tax_total": 319,
+                "shipping": 500,
+                "shipping_tax": 38,
+                "rates": [
+                    {
+                        "items": 222,
+                        "shipping": 30
+                    },
+                    {
+                        "items": 59,
+                        "shipping": 8
+                    }
+                ],
+                "lines": [
+                    {
+                        "net": 3702,
+                        "tax": 281
+                    }
+                ]
+            }
+        },
+        {
+            "id": "inclusive-compound",
+            "settings": {
+                "prices_include_tax": true
+            },
+            "rates": [
+                {
+                    "country": "US",
+                    "state": "CA",
+                    "rate": "6.0000",
+                    "name": "CA State",
+                    "priority": 1,
+                    "compound": false,
+                    "shipping": true,
+                    "tax_class": "",
+                    "postcodes": [],
+                    "cities": []
+                },
+                {
+                    "country": "US",
+                    "state": "CA",
+                    "rate": "1.5000",
+                    "name": "Compound",
+                    "priority": 2,
+                    "compound": true,
+                    "shipping": true,
+                    "tax_class": "",
+                    "postcodes": [],
+                    "cities": []
+                }
+            ],
+            "address": {
+                "country": "US",
+                "state": "CA",
+                "postcode": "95014",
+                "city": "Cupertino"
+            },
+            "lines": [
+                {
+                    "price": 1234,
+                    "qty": 3,
+                    "tax_class": "",
+                    "tax_status": "taxable"
+                }
+            ],
+            "exempt": false,
+            "shipping": 500,
+            "expected": {
+                "total": 4240,
+                "tax_total": 299,
+                "shipping": 500,
+                "shipping_tax": 38,
+                "rates": [
+                    {
+                        "items": 206,
+                        "shipping": 30
+                    },
+                    {
+                        "items": 55,
+                        "shipping": 8
+                    }
+                ],
+                "lines": [
+                    {
+                        "net": 3441,
+                        "tax": 261
+                    }
+                ]
+            }
+        },
+        {
+            "id": "classes-and-shipping-inherit",
+            "settings": [],
+            "rates": [
+                {
+                    "country": "US",
+                    "state": "CA",
+                    "rate": "10.0000",
+                    "name": "Standard",
+                    "priority": 1,
+                    "compound": false,
+                    "shipping": true,
+                    "tax_class": "",
+                    "postcodes": [],
+                    "cities": []
+                },
+                {
+                    "country": "US",
+                    "state": "CA",
+                    "rate": "5.0000",
+                    "name": "Reduced",
+                    "priority": 1,
+                    "compound": false,
+                    "shipping": true,
+                    "tax_class": "reduced-rate",
+                    "postcodes": [],
+                    "cities": []
+                },
+                {
+                    "country": "US",
+                    "state": "CA",
+                    "rate": "0.0000",
+                    "name": "Zero",
+                    "priority": 1,
+                    "compound": false,
+                    "shipping": true,
+                    "tax_class": "zero-rate",
+                    "postcodes": [],
+                    "cities": []
+                }
+            ],
+            "address": {
+                "country": "US",
+                "state": "CA",
+                "postcode": "95014",
+                "city": "Cupertino"
+            },
+            "lines": [
+                {
+                    "price": 1000,
+                    "qty": 1,
+                    "tax_class": "",
+                    "tax_status": "taxable"
+                },
+                {
+                    "price": 2000,
+                    "qty": 1,
+                    "tax_class": "reduced-rate",
+                    "tax_status": "taxable"
+                },
+                {
+                    "price": 500,
+                    "qty": 2,
+                    "tax_class": "zero-rate",
+                    "tax_status": "taxable"
+                }
+            ],
+            "exempt": false,
+            "shipping": 500,
+            "expected": {
+                "total": 4750,
+                "tax_total": 250,
+                "shipping": 500,
+                "shipping_tax": 50,
+                "rates": [
+                    {
+                        "items": 100,
+                        "shipping": 50
+                    },
+                    {
+                        "items": 100,
+                        "shipping": 0
+                    },
+                    {
+                        "items": 0,
+                        "shipping": 0
+                    }
+                ],
+                "lines": [
+                    {
+                        "net": 1000,
+                        "tax": 100
+                    },
+                    {
+                        "net": 2000,
+                        "tax": 100
+                    },
+                    {
+                        "net": 1000,
+                        "tax": 0
+                    }
+                ]
+            }
+        },
+        {
+            "id": "shipping-inherit-reduced-only",
+            "settings": [],
+            "rates": [
+                {
+                    "country": "US",
+                    "state": "CA",
+                    "rate": "10.0000",
+                    "name": "Standard",
+                    "priority": 1,
+                    "compound": false,
+                    "shipping": true,
+                    "tax_class": "",
+                    "postcodes": [],
+                    "cities": []
+                },
+                {
+                    "country": "US",
+                    "state": "CA",
+                    "rate": "5.0000",
+                    "name": "Reduced",
+                    "priority": 1,
+                    "compound": false,
+                    "shipping": true,
+                    "tax_class": "reduced-rate",
+                    "postcodes": [],
+                    "cities": []
+                }
+            ],
+            "address": {
+                "country": "US",
+                "state": "CA",
+                "postcode": "95014",
+                "city": "Cupertino"
+            },
+            "lines": [
+                {
+                    "price": 2000,
+                    "qty": 1,
+                    "tax_class": "reduced-rate",
+                    "tax_status": "taxable"
+                }
+            ],
+            "exempt": false,
+            "shipping": 500,
+            "expected": {
+                "total": 2625,
+                "tax_total": 125,
+                "shipping": 500,
+                "shipping_tax": 25,
+                "rates": [
+                    null,
+                    {
+                        "items": 100,
+                        "shipping": 25
+                    }
+                ],
+                "lines": [
+                    {
+                        "net": 2000,
+                        "tax": 100
+                    }
+                ]
+            }
+        },
+        {
+            "id": "shipping-tax-class-set",
+            "settings": {
+                "shipping_tax_class": "reduced-rate"
+            },
+            "rates": [
+                {
+                    "country": "US",
+                    "state": "CA",
+                    "rate": "10.0000",
+                    "name": "Standard",
+                    "priority": 1,
+                    "compound": false,
+                    "shipping": true,
+                    "tax_class": "",
+                    "postcodes": [],
+                    "cities": []
+                },
+                {
+                    "country": "US",
+                    "state": "CA",
+                    "rate": "5.0000",
+                    "name": "Reduced",
+                    "priority": 1,
+                    "compound": false,
+                    "shipping": true,
+                    "tax_class": "reduced-rate",
+                    "postcodes": [],
+                    "cities": []
+                }
+            ],
+            "address": {
+                "country": "US",
+                "state": "CA",
+                "postcode": "95014",
+                "city": "Cupertino"
+            },
+            "lines": [
+                {
+                    "price": 1000,
+                    "qty": 2,
+                    "tax_class": "",
+                    "tax_status": "taxable"
+                }
+            ],
+            "exempt": false,
+            "shipping": 500,
+            "expected": {
+                "total": 2725,
+                "tax_total": 225,
+                "shipping": 500,
+                "shipping_tax": 25,
+                "rates": [
+                    {
+                        "items": 200,
+                        "shipping": 0
+                    },
+                    {
+                        "items": 0,
+                        "shipping": 25
+                    }
+                ],
+                "lines": [
+                    {
+                        "net": 2000,
+                        "tax": 200
+                    }
+                ]
+            }
+        },
+        {
+            "id": "us-stacked-by-zip",
+            "settings": [],
+            "rates": [
+                {
+                    "country": "US",
+                    "state": "CA",
+                    "rate": "6.0000",
+                    "name": "CA State",
+                    "priority": 1,
+                    "compound": false,
+                    "shipping": true,
+                    "tax_class": "",
+                    "postcodes": [],
+                    "cities": []
+                },
+                {
+                    "country": "US",
+                    "state": "CA",
+                    "rate": "0.2500",
+                    "name": "County",
+                    "priority": 2,
+                    "compound": false,
+                    "shipping": true,
+                    "tax_class": "",
+                    "postcodes": [
+                        "950*"
+                    ],
+                    "cities": []
+                },
+                {
+                    "country": "US",
+                    "state": "CA",
+                    "rate": "1.0000",
+                    "name": "City",
+                    "priority": 3,
+                    "compound": false,
+                    "shipping": true,
+                    "tax_class": "",
+                    "postcodes": [
+                        "95014"
+                    ],
+                    "cities": [
+                        "Cupertino"
+                    ]
+                },
+                {
+                    "country": "US",
+                    "state": "CA",
+                    "rate": "2.1250",
+                    "name": "District",
+                    "priority": 4,
+                    "compound": false,
+                    "shipping": false,
+                    "tax_class": "",
+                    "postcodes": [
+                        "95000...95099"
+                    ],
+                    "cities": []
+                },
+                {
+                    "country": "US",
+                    "state": "CA",
+                    "rate": "5.0000",
+                    "name": "Other ZIP",
+                    "priority": 3,
+                    "compound": false,
+                    "shipping": true,
+                    "tax_class": "",
+                    "postcodes": [
+                        "94016"
+                    ],
+                    "cities": []
+                }
+            ],
+            "address": {
+                "country": "US",
+                "state": "CA",
+                "postcode": "95014",
+                "city": "Cupertino"
+            },
+            "lines": [
+                {
+                    "price": 1000,
+                    "qty": 2,
+                    "tax_class": "",
+                    "tax_status": "taxable"
+                },
+                {
+                    "price": 2599,
+                    "qty": 1,
+                    "tax_class": "",
+                    "tax_status": "taxable"
+                }
+            ],
+            "exempt": false,
+            "shipping": 500,
+            "expected": {
+                "total": 5566,
+                "tax_total": 467,
+                "shipping": 500,
+                "shipping_tax": 36,
+                "rates": [
+                    {
+                        "items": 276,
+                        "shipping": 30
+                    },
+                    {
+                        "items": 11,
+                        "shipping": 1
+                    },
+                    {
+                        "items": 46,
+                        "shipping": 5
+                    },
+                    {
+                        "items": 98,
+                        "shipping": 0
+                    },
+                    null
+                ],
+                "lines": [
+                    {
+                        "net": 2000,
+                        "tax": 188
+                    },
+                    {
+                        "net": 2599,
+                        "tax": 243
+                    }
+                ]
+            }
+        },
+        {
+            "id": "zip-range-only",
+            "settings": [],
+            "rates": [
+                {
+                    "country": "US",
+                    "state": "CA",
+                    "rate": "1.0000",
+                    "name": "Range",
+                    "priority": 1,
+                    "compound": false,
+                    "shipping": true,
+                    "tax_class": "",
+                    "postcodes": [
+                        "95000...95099"
+                    ],
+                    "cities": []
+                },
+                {
+                    "country": "US",
+                    "state": "CA",
+                    "rate": "2.0000",
+                    "name": "Outside range",
+                    "priority": 1,
+                    "compound": false,
+                    "shipping": true,
+                    "tax_class": "",
+                    "postcodes": [
+                        "96000...96099"
+                    ],
+                    "cities": []
+                }
+            ],
+            "address": {
+                "country": "US",
+                "state": "CA",
+                "postcode": "95050",
+                "city": "Santa Clara"
+            },
+            "lines": [
+                {
+                    "price": 1000,
+                    "qty": 1,
+                    "tax_class": "",
+                    "tax_status": "taxable"
+                }
+            ],
+            "exempt": false,
+            "shipping": 500,
+            "expected": {
+                "total": 1515,
+                "tax_total": 15,
+                "shipping": 500,
+                "shipping_tax": 5,
+                "rates": [
+                    {
+                        "items": 10,
+                        "shipping": 5
+                    },
+                    null
+                ],
+                "lines": [
+                    {
+                        "net": 1000,
+                        "tax": 10
+                    }
+                ]
+            }
+        },
+        {
+            "id": "zip-plus-four",
+            "settings": [],
+            "rates": [
+                {
+                    "country": "US",
+                    "state": "CA",
+                    "rate": "6.0000",
+                    "name": "CA State",
+                    "priority": 1,
+                    "compound": false,
+                    "shipping": true,
+                    "tax_class": "",
+                    "postcodes": [],
+                    "cities": []
+                },
+                {
+                    "country": "US",
+                    "state": "CA",
+                    "rate": "0.2500",
+                    "name": "County",
+                    "priority": 2,
+                    "compound": false,
+                    "shipping": true,
+                    "tax_class": "",
+                    "postcodes": [
+                        "950*"
+                    ],
+                    "cities": []
+                },
+                {
+                    "country": "US",
+                    "state": "CA",
+                    "rate": "1.0000",
+                    "name": "City",
+                    "priority": 3,
+                    "compound": false,
+                    "shipping": true,
+                    "tax_class": "",
+                    "postcodes": [
+                        "95014"
+                    ],
+                    "cities": [
+                        "Cupertino"
+                    ]
+                },
+                {
+                    "country": "US",
+                    "state": "CA",
+                    "rate": "2.1250",
+                    "name": "District",
+                    "priority": 4,
+                    "compound": false,
+                    "shipping": false,
+                    "tax_class": "",
+                    "postcodes": [
+                        "95000...95099"
+                    ],
+                    "cities": []
+                },
+                {
+                    "country": "US",
+                    "state": "CA",
+                    "rate": "5.0000",
+                    "name": "Other ZIP",
+                    "priority": 3,
+                    "compound": false,
+                    "shipping": true,
+                    "tax_class": "",
+                    "postcodes": [
+                        "94016"
+                    ],
+                    "cities": []
+                }
+            ],
+            "address": {
+                "country": "US",
+                "state": "CA",
+                "postcode": "95014-1234",
+                "city": "Cupertino"
+            },
+            "lines": [
+                {
+                    "price": 1000,
+                    "qty": 2,
+                    "tax_class": "",
+                    "tax_status": "taxable"
+                }
+            ],
+            "exempt": false,
+            "shipping": 500,
+            "expected": {
+                "total": 2656,
+                "tax_total": 156,
+                "shipping": 500,
+                "shipping_tax": 31,
+                "rates": [
+                    {
+                        "items": 120,
+                        "shipping": 30
+                    },
+                    {
+                        "items": 5,
+                        "shipping": 1
+                    },
+                    null,
+                    null,
+                    null
+                ],
+                "lines": [
+                    {
+                        "net": 2000,
+                        "tax": 125
+                    }
+                ]
+            }
+        },
+        {
+            "id": "city-case-insensitive",
+            "settings": [],
+            "rates": [
+                {
+                    "country": "US",
+                    "state": "CA",
+                    "rate": "1.0000",
+                    "name": "City",
+                    "priority": 1,
+                    "compound": false,
+                    "shipping": true,
+                    "tax_class": "",
+                    "postcodes": [],
+                    "cities": [
+                        "Cupertino"
+                    ]
+                }
+            ],
+            "address": {
+                "country": "US",
+                "state": "CA",
+                "postcode": "95014",
+                "city": "CUPERTINO"
+            },
+            "lines": [
+                {
+                    "price": 1000,
+                    "qty": 1,
+                    "tax_class": "",
+                    "tax_status": "taxable"
+                }
+            ],
+            "exempt": false,
+            "shipping": 500,
+            "expected": {
+                "total": 1515,
+                "tax_total": 15,
+                "shipping": 500,
+                "shipping_tax": 5,
+                "rates": [
+                    {
+                        "items": 10,
+                        "shipping": 5
+                    }
+                ],
+                "lines": [
+                    {
+                        "net": 1000,
+                        "tax": 10
+                    }
+                ]
+            }
+        },
+        {
+            "id": "non-taxable-line",
+            "settings": [],
+            "rates": [
+                {
+                    "country": "US",
+                    "state": "CA",
+                    "rate": "7.2500",
+                    "name": "CA Tax",
+                    "priority": 1,
+                    "compound": false,
+                    "shipping": true,
+                    "tax_class": "",
+                    "postcodes": [],
+                    "cities": []
+                }
+            ],
+            "address": {
+                "country": "US",
+                "state": "CA",
+                "postcode": "95014",
+                "city": "Cupertino"
+            },
+            "lines": [
+                {
+                    "price": 1000,
+                    "qty": 1,
+                    "tax_class": "",
+                    "tax_status": "taxable"
+                },
+                {
+                    "price": 1000,
+                    "qty": 1,
+                    "tax_class": "",
+                    "tax_status": "none"
+                }
+            ],
+            "exempt": false,
+            "shipping": 500,
+            "expected": {
+                "total": 2609,
+                "tax_total": 109,
+                "shipping": 500,
+                "shipping_tax": 36,
+                "rates": [
+                    {
+                        "items": 73,
+                        "shipping": 36
+                    }
+                ],
+                "lines": [
+                    {
+                        "net": 1000,
+                        "tax": 73
+                    },
+                    {
+                        "net": 1000,
+                        "tax": 0
+                    }
+                ]
+            }
+        },
+        {
+            "id": "exempt-customer",
+            "settings": [],
+            "exempt": true,
+            "rates": [
+                {
+                    "country": "US",
+                    "state": "CA",
+                    "rate": "7.2500",
+                    "name": "CA Tax",
+                    "priority": 1,
+                    "compound": false,
+                    "shipping": true,
+                    "tax_class": "",
+                    "postcodes": [],
+                    "cities": []
+                }
+            ],
+            "address": {
+                "country": "US",
+                "state": "CA",
+                "postcode": "95014",
+                "city": "Cupertino"
+            },
+            "lines": [
+                {
+                    "price": 1000,
+                    "qty": 2,
+                    "tax_class": "",
+                    "tax_status": "taxable"
+                }
+            ],
+            "shipping": 500,
+            "expected": {
+                "total": 2500,
+                "tax_total": 0,
+                "shipping": 500,
+                "shipping_tax": 0,
+                "rates": [
+                    null
+                ],
+                "lines": [
+                    {
+                        "net": 2000,
+                        "tax": 0
+                    }
+                ]
+            }
+        },
+        {
+            "id": "inclusive-exempt-customer",
+            "settings": {
+                "prices_include_tax": true
+            },
+            "exempt": true,
+            "rates": [
+                {
+                    "country": "US",
+                    "state": "CA",
+                    "rate": "7.2500",
+                    "name": "CA Tax",
+                    "priority": 1,
+                    "compound": false,
+                    "shipping": true,
+                    "tax_class": "",
+                    "postcodes": [],
+                    "cities": []
+                }
+            ],
+            "address": {
+                "country": "US",
+                "state": "CA",
+                "postcode": "95014",
+                "city": "Cupertino"
+            },
+            "lines": [
+                {
+                    "price": 1000,
+                    "qty": 2,
+                    "tax_class": "",
+                    "tax_status": "taxable"
+                }
+            ],
+            "shipping": 500,
+            "expected": {
+                "total": 2365,
+                "tax_total": 0,
+                "shipping": 500,
+                "shipping_tax": 0,
+                "rates": [
+                    null
+                ],
+                "lines": [
+                    {
+                        "net": 1865,
+                        "tax": 0
+                    }
+                ]
+            }
+        },
+        {
+            "id": "based-on-billing",
+            "settings": {
+                "tax_based_on": "billing"
+            },
+            "rates": [
+                {
+                    "country": "US",
+                    "state": "CA",
+                    "rate": "7.2500",
+                    "name": "CA Tax",
+                    "priority": 1,
+                    "compound": false,
+                    "shipping": true,
+                    "tax_class": "",
+                    "postcodes": [],
+                    "cities": []
+                },
+                {
+                    "country": "US",
+                    "state": "TX",
+                    "rate": "6.2500",
+                    "name": "TX Tax",
+                    "priority": 1,
+                    "compound": false,
+                    "shipping": true,
+                    "tax_class": "",
+                    "postcodes": [],
+                    "cities": []
+                }
+            ],
+            "address": {
+                "country": "US",
+                "state": "CA",
+                "postcode": "95014",
+                "city": "Cupertino"
+            },
+            "billing": {
+                "country": "US",
+                "state": "TX",
+                "postcode": "73301",
+                "city": "Austin"
+            },
+            "lines": [
+                {
+                    "price": 1000,
+                    "qty": 2,
+                    "tax_class": "",
+                    "tax_status": "taxable"
+                }
+            ],
+            "exempt": false,
+            "shipping": 500,
+            "expected": {
+                "total": 2656,
+                "tax_total": 156,
+                "shipping": 500,
+                "shipping_tax": 31,
+                "rates": [
+                    null,
+                    {
+                        "items": 125,
+                        "shipping": 31
+                    }
+                ],
+                "lines": [
+                    {
+                        "net": 2000,
+                        "tax": 125
+                    }
+                ]
+            }
+        },
+        {
+            "id": "based-on-base",
+            "settings": {
+                "tax_based_on": "base"
+            },
+            "rates": [
+                {
+                    "country": "US",
+                    "state": "CA",
+                    "rate": "7.2500",
+                    "name": "CA Tax",
+                    "priority": 1,
+                    "compound": false,
+                    "shipping": true,
+                    "tax_class": "",
+                    "postcodes": [],
+                    "cities": []
+                },
+                {
+                    "country": "US",
+                    "state": "TX",
+                    "rate": "6.2500",
+                    "name": "TX Tax",
+                    "priority": 1,
+                    "compound": false,
+                    "shipping": true,
+                    "tax_class": "",
+                    "postcodes": [],
+                    "cities": []
+                }
+            ],
+            "address": {
+                "country": "US",
+                "state": "TX",
+                "postcode": "73301",
+                "city": "Austin"
+            },
+            "lines": [
+                {
+                    "price": 1000,
+                    "qty": 2,
+                    "tax_class": "",
+                    "tax_status": "taxable"
+                }
+            ],
+            "exempt": false,
+            "shipping": 500,
+            "expected": {
+                "total": 2681,
+                "tax_total": 181,
+                "shipping": 500,
+                "shipping_tax": 36,
+                "rates": [
+                    {
+                        "items": 145,
+                        "shipping": 36
+                    },
+                    null
+                ],
+                "lines": [
+                    {
+                        "net": 2000,
+                        "tax": 145
+                    }
+                ]
+            }
+        }
+    ]
+}

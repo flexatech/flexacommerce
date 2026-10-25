@@ -72,7 +72,7 @@ final class SettingsEndpoint extends Endpoint {
 	 */
 	private static function payload( array $settings ): array {
 		return [
-			'settings'   => $settings,
+			'settings'   => array_diff_key( $settings, array_flip( Settings::INTERNAL ) ),
 			'currencies' => Currency::codes(),
 		];
 	}

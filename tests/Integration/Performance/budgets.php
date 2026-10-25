@@ -8,7 +8,7 @@ declare(strict_types=1);
 
 return [
 	// Blog post and home page with no FlexaCommerce content, against core.
-	'P1'     => [
+	'P1'          => [
 		'queries'   => 0,
 		'memory'    => 262144,
 		'callbacks' => 30,
@@ -27,46 +27,86 @@ return [
 		],
 	],
 	// REST request for another plugin's route: no endpoint object built.
-	'R-REST' => [
+	'R-REST'      => [
 		'queries' => 0,
 		'classes' => [ 'Flexa\\Commerce\\Api\\Admin\\', 'Flexa\\Commerce\\Api\\Endpoint' ],
 	],
 	// Autoloaded options owned by FlexaCommerce, on any request.
-	'P10'    => [
+	'P10'         => [
 		'options' => 1,
 		'bytes'   => 10240,
 	],
 	// Product archive at 12 and 48 per page, against a core archive of the
 	// same posts. Queries must also be equal for both sizes.
-	'P2'     => [
+	'P2'          => [
 		'queries' => 2,
 		// Measured 1 282 992 B at 48 per page (Darwin, PHP 8.5, warm OPcache), + 10 %.
 		'memory'  => 1411292,
 	],
 	// Simple product page, against a core single post.
-	'P3a'    => [
+	'P3a'         => [
 		'queries' => 3,
 	],
 	// Variable product with 6 and 250 variants: queries equal for both, and
 	// the inlined variant state (JSON bytes) at 250.
-	'P3b'    => [
+	'P3b'         => [
 		'queries' => 3,
 		// Measured 37 211 B at 250 variants, + 10 % (doc limit 60 KB).
 		'state'   => 40933,
 	],
 	// Simple and variable product pages (P3a, P3b at 6 and 250 variants).
-	'P3'     => [
+	'P3'          => [
 		// Measured 1 048 848 B at 250 variants (Darwin, PHP 8.5, warm OPcache), + 10 %.
 		'memory' => 1153733,
 	],
 	// GET store/cart with 1 and 10 lines; equal for both.
-	'P4q'    => [
+	'P4q'         => [
 		'queries' => 4,
 	],
 	// POST store/cart/items for a guest without a cart yet.
-	'P5q'    => [
+	'P5q'         => [
 		// Measured 6, + 10 % rounded up (doc limit 8).
 		'queries' => 7,
+	],
+	// POST store/checkout with cash on delivery and deferred emails, at 1 and
+	// 10 lines: a fixed part plus exactly `per_line` queries per line.
+	'P6q'         => [
+		// Measured 54 fixed (2026-10-25, Darwin, PHP 8.5), + 10 % rounded up.
+		// Raised once from the provisional 30 (doc 10 §4.1); see docs/benchmarks.
+		'fixed'    => 60,
+		'per_line' => 1,
+	],
+	// Extra peak memory of the same checkout at 10 lines, against core.
+	'P6m'         => [
+		// Measured 953 600 B at 10 lines (Darwin, PHP 8.5, warm OPcache), + 10 %.
+		'memory' => 1048960,
+	],
+	// Phase 4.5 taxes (PT-*): the same request with taxes on against off.
+	// Catalog pages with display incl: base rates come from the settings option.
+	'PT-cat'      => [
+		'queries' => 0,
+	],
+	// The settings option with 5 classes and 4 stacked rates each (within P10).
+	'PT-opt'      => [
+		'bytes' => 10240,
+	],
+	// GET store/cart with a known address, 1 and 10 lines: the rate match.
+	'PT-cart'     => [
+		'queries' => 1,
+	],
+	// POST store/checkout with 4 stacked rates, 1 and 10 lines.
+	'PT-q'        => [
+		'queries' => 1,
+	],
+	// Extra peak memory of that checkout at 10 lines. Recorded 84 KB on
+	// 2026-10-25 (doc 10 said 64 KB provisional): 10 lines x 4 rates of tax
+	// meta, 4 tax rows and the order read back, plus ~10 KB of query log.
+	'PT-m'        => [
+		'memory' => 98304,
+	],
+	// Handler rows read by one match on a 50 000-location table.
+	'PT-rows'     => [
+		'rows' => 200,
 	],
 	// Allowed growth of measured memory over the recorded baseline.
 	'memory_band' => 0.05,

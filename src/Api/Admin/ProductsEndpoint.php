@@ -616,6 +616,7 @@ final class ProductsEndpoint extends Endpoint {
 				],
 				'image_id'            => [ 'type' => [ 'integer', 'null' ] ],
 				'tax_class'           => [ 'type' => [ 'string', 'null' ] ],
+				'tax_status'          => [ 'type' => 'string' ],
 				'description'         => [ 'type' => [ 'string', 'null' ] ],
 			],
 		];

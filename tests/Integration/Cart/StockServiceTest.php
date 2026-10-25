@@ -82,12 +82,18 @@ final class StockServiceTest extends CartTestCase {
 	public function test_low_and_out_events_and_mail(): void {
 		$id     = $this->simple( 1000, 3 );
 		$events = [];
-		add_action( 'flexacommerce.stock.low', static function ( int $variant ) use ( &$events ): void {
-			$events[] = 'low';
-		} );
-		add_action( 'flexacommerce.stock.out', static function () use ( &$events ): void {
-			$events[] = 'out';
-		} );
+		add_action(
+			'flexacommerce.stock.low',
+			static function ( int $variant ) use ( &$events ): void {
+				$events[] = 'low';
+			}
+		);
+		add_action(
+			'flexacommerce.stock.out',
+			static function () use ( &$events ): void {
+				$events[] = 'out';
+			}
+		);
 		reset_phpmailer_instance();
 		$stock = Plugin::instance()->cart()->stock();
 		$stock->deduct( [ $this->line( $id, 1 ) ], 'test' );

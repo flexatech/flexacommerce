@@ -76,11 +76,15 @@ foreach ( glob( $dir . '/*.*.*', GLOB_ONLYDIR ) ?: [] as $run_dir ) {
 	$cpu      = [];
 	$errors   = 0;
 	$requests = 0;
+	$stamps   = [];
 	foreach ( jsonl( $run_dir . '/nginx.jsonl' ) as $row ) {
 		if ( $row['run'] !== $label ) {
 			continue;
 		}
 		++$requests;
+		if ( isset( $row['msec'] ) ) {
+			$stamps[] = (float) $row['msec'];
+		}
 		// 201 is the success status of an add-to-cart request.
 		if ( (int) $row['status'] < 200 || (int) $row['status'] > 201 ) {
 			++$errors;
@@ -99,6 +103,24 @@ foreach ( glob( $dir . '/*.*.*', GLOB_ONLYDIR ) ?: [] as $run_dir ) {
 	$after  = status_file( $run_dir . '/mysql-after.txt' );
 	$rows   = isset( $before['Innodb_rows_read'], $after['Innodb_rows_read'] ) ? $after['Innodb_rows_read'] - $before['Innodb_rows_read'] : null;
 	$rss    = rss_file( $run_dir . '/rss-after.txt' );
+	// Requests per second over the measured window (first to last response).
+	$rps = count( $stamps ) > 1 && max( $stamps ) > min( $stamps ) ? ( count( $stamps ) - 1 ) / ( max( $stamps ) - min( $stamps ) ) : null;
+
+	// Checkout: every order takes one unit of each product, so each stock
+	// drop must equal the orders placed, and no stock may go below zero.
+	$orders   = null;
+	$oversell = null;
+	if ( is_file( $run_dir . '/checkout-before.txt' ) && is_file( $run_dir . '/checkout-after.txt' ) ) {
+		$was      = status_file( $run_dir . '/checkout-before.txt' );
+		$now      = status_file( $run_dir . '/checkout-after.txt' );
+		$orders   = ( $now['orders'] ?? 0 ) - ( $was['orders'] ?? 0 );
+		$oversell = 0;
+		foreach ( $was as $key => $value ) {
+			if ( str_starts_with( $key, 'stock_' ) && ( ( $value - ( $now[ $key ] ?? 0 ) ) !== $orders || ( $now[ $key ] ?? 0 ) < 0 ) ) {
+				++$oversell;
+			}
+		}
+	}
 
 	$runs[ $scenario ][ $store ][ (int) $run ] = [
 		'requests'      => $requests,
@@ -116,6 +138,9 @@ foreach ( glob( $dir . '/*.*.*', GLOB_ONLYDIR ) ?: [] as $run_dir ) {
 		'rss_kb_median' => $rss !== [] ? median( $rss ) : null,
 		'rss_kb_max'    => $rss !== [] ? max( $rss ) : null,
 		'html_bytes'    => is_file( $run_dir . '/page.html' ) ? filesize( $run_dir . '/page.html' ) : null,
+		'rps'           => $rps,
+		'orders'        => $orders,
+		'stock_errors'  => $oversell,
 	];
 }
 ksort( $runs );
@@ -128,13 +153,14 @@ foreach ( $runs as $scenario => $stores ) {
 		$p95 = $col( 'p95' );
 		$mid = median( $p95 );
 		$out = [ 'runs' => count( $per_run ) ];
-		foreach ( [ 'p50', 'p95', 'p99', 'php_p50', 'php_p95', 'queries', 'peak_kb', 'cpu_ms', 'rows_per_req', 'rss_kb_median', 'rss_kb_max', 'html_bytes' ] as $key ) {
+		foreach ( [ 'p50', 'p95', 'p99', 'php_p50', 'php_p95', 'queries', 'peak_kb', 'cpu_ms', 'rows_per_req', 'rss_kb_median', 'rss_kb_max', 'html_bytes', 'rps' ] as $key ) {
 			$out[ $key ] = $col( $key ) !== [] ? median( $col( $key ) ) : null;
 		}
 		$out['error_rate'] = (float) max( $col( 'error_rate' ) );
+		$out['stock_errors'] = $col( 'stock_errors' ) !== [] ? (int) array_sum( $col( 'stock_errors' ) ) : null;
 		$out['spread']     = $mid > 0 ? ( max( $p95 ) - min( $p95 ) ) / $mid : null;
 		$out['valid']      = $out['spread'] !== null && $out['spread'] <= 0.10 && $out['error_rate'] === 0.0
-			&& min( $col( 'requests' ) ) === max( $col( 'joined' ) );
+			&& min( $col( 'requests' ) ) === max( $col( 'joined' ) ) && ! $out['stock_errors'];
 		$out['per_run']    = $per_run;
 		$summary[ $scenario ][ $store ] = $out;
 	}
@@ -143,8 +169,8 @@ foreach ( $runs as $scenario => $stores ) {
 file_put_contents( $dir . '/summary.json', json_encode( $summary, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES ) . "\n" );
 
 $fmt = static fn ( $v, int $d = 1 ): string => $v === null || ( is_float( $v ) && is_nan( $v ) ) ? 'n/a' : number_format( (float) $v, $d, '.', '' );
-$md  = "| Scenario | Store | p50 ms | p95 ms | p99 ms | PHP p50 / p95 ms | Spread | Errors | Queries | Peak KB | CPU ms | Rows/req | FPM RSS KB (median / max) | HTML bytes | Valid |\n";
-$md .= "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n";
+$md  = "| Scenario | Store | p50 ms | p95 ms | p99 ms | PHP p50 / p95 ms | Spread | Errors | Req/s | Queries | Peak KB | CPU ms | Rows/req | FPM RSS KB (median / max) | HTML bytes | Stock errors | Valid |\n";
+$md .= "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n";
 foreach ( $summary as $scenario => $stores ) {
 	foreach ( [ 'core', 'fxc', 'wc' ] as $store ) {
 		if ( ! isset( $stores[ $store ] ) ) {
@@ -152,7 +178,7 @@ foreach ( $summary as $scenario => $stores ) {
 		}
 		$s   = $stores[ $store ];
 		$md .= sprintf(
-			"| %s | %s | %s | %s | %s | %s / %s | %s %% | %s %% | %s | %s | %s | %s | %s / %s | %s | %s |\n",
+			"| %s | %s | %s | %s | %s | %s / %s | %s %% | %s %% | %s | %s | %s | %s | %s | %s / %s | %s | %s | %s |\n",
 			$scenario,
 			$store,
 			$fmt( $s['p50'] ),
@@ -162,6 +188,7 @@ foreach ( $summary as $scenario => $stores ) {
 			$fmt( $s['php_p95'] ),
 			$fmt( $s['spread'] * 100 ),
 			$fmt( $s['error_rate'] * 100 ),
+			$fmt( $s['rps'] ),
 			$fmt( $s['queries'], 0 ),
 			$fmt( $s['peak_kb'], 0 ),
 			$fmt( $s['cpu_ms'] ),
@@ -169,6 +196,7 @@ foreach ( $summary as $scenario => $stores ) {
 			$fmt( $s['rss_kb_median'], 0 ),
 			$fmt( $s['rss_kb_max'], 0 ),
 			$fmt( $s['html_bytes'], 0 ),
+			$s['stock_errors'] === null ? 'n/a' : (string) $s['stock_errors'],
 			$s['valid'] ? 'yes' : 'no'
 		);
 	}

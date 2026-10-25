@@ -21,9 +21,14 @@ final class Assets {
 	public const MODULE = '@flexacommerce/cart';
 	public const STYLE  = 'flexacommerce-storefront';
 
+	public const CHECKOUT = '@flexacommerce/checkout';
+
 	private static bool $registered = false;
 
 	private static bool $used = false;
+
+	/** @var array<string,mixed>|null */
+	private static ?array $checkout = null;
 
 	public static function register(): void {
 		if ( self::$registered ) {
@@ -36,6 +41,7 @@ final class Assets {
 			[ [ 'id' => '@wordpress/interactivity' ] ],
 			FLEXACOMMERCE_VERSION
 		);
+		wp_register_script_module( self::CHECKOUT, FLEXACOMMERCE_URL . 'assets/frontend/checkout.js', [], FLEXACOMMERCE_VERSION );
 		wp_register_style( self::STYLE, FLEXACOMMERCE_URL . 'assets/frontend/storefront.css', [], FLEXACOMMERCE_VERSION );
 		wp_style_add_data( self::STYLE, 'path', FLEXACOMMERCE_PATH . 'assets/frontend/storefront.css' );
 	}
@@ -50,6 +56,36 @@ final class Assets {
 		wp_enqueue_script_module( self::MODULE );
 		wp_enqueue_style( self::STYLE );
 		wp_interactivity_config( 'flexacommerce/cart', self::config() );
+	}
+
+	/**
+	 * The checkout and order-pay forms: a plain script module (no
+	 * Interactivity store) that reads its config from the module data
+	 * script WordPress prints for it.
+	 *
+	 * @param array<string,mixed> $config
+	 */
+	public static function use_checkout( array $config ): void {
+		self::register();
+		wp_enqueue_style( self::STYLE );
+		if ( self::$checkout === null ) {
+			wp_enqueue_script_module( self::CHECKOUT );
+			add_filter( 'script_module_data_' . self::CHECKOUT, [ self::class, 'checkout_data' ] );
+			$cart           = Plugin::instance()->cart();
+			self::$checkout = [
+				'api'   => esc_url_raw( rest_url( FLEXACOMMERCE_REST_NAMESPACE . '/store/' ) ),
+				'nonce' => $cart->nonce()->create( get_current_user_id(), wp_get_session_token(), $cart->sessions()->token() ),
+			];
+		}
+		self::$checkout = array_merge( self::$checkout, $config );
+	}
+
+	/**
+	 * @param array<string,mixed> $data
+	 * @return array<string,mixed>
+	 */
+	public static function checkout_data( array $data ): array {
+		return array_merge( $data, self::$checkout ?? [] );
 	}
 
 	/** @return array<string,mixed> */
@@ -76,14 +112,21 @@ final class Assets {
 	}
 
 	/**
-	 * The cart page, else the shop. Resolving the page's permalink costs one
-	 * post lookup when no object cache holds it.
+	 * The cart page, else the shop. Its permalink needs the page post; when
+	 * no cache holds it the link is `?page_id=`, which WordPress redirects
+	 * to the permalink, so a product page does not pay a query for a link
+	 * few shoppers click (P2).
 	 */
 	public static function cart_url(): string {
 		$page = Settings::int( 'cart_page_id' );
-		$url  = $page > 0 && get_post_status( $page ) === 'publish' ? get_permalink( $page ) : false;
-		if ( is_string( $url ) ) {
-			return $url;
+		if ( $page > 0 ) {
+			if ( wp_cache_get( $page, 'posts' ) === false ) {
+				return add_query_arg( 'page_id', $page, home_url( '/' ) );
+			}
+			$url = get_post_status( $page ) === 'publish' ? get_permalink( $page ) : false;
+			if ( is_string( $url ) ) {
+				return $url;
+			}
 		}
 		$shop = get_post_type_archive_link( PostTypes::PRODUCT );
 		return is_string( $shop ) ? $shop : home_url( '/' );

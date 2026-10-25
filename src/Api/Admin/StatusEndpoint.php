@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Flexa\Commerce\Api\Admin;
 
 use Flexa\Commerce\Api\Endpoint;
+use Flexa\Commerce\Contracts\Extensions;
 use Flexa\Commerce\Database\Schema;
 use Flexa\Commerce\Maintenance\Doctor;
 use Flexa\Commerce\Plugin;
@@ -44,7 +45,7 @@ final class StatusEndpoint extends Endpoint {
 					'db_server'      => (string) $wpdb->db_server_info(),
 					'multisite'      => is_multisite(),
 					'woocommerce'    => class_exists( 'WooCommerce' ),
-					'api_version'    => $services->extensions()->api_version(),
+					'api_version'    => Extensions::API_VERSION,
 				],
 				'database'     => [
 					'installed_version' => Schema::installed_version(),

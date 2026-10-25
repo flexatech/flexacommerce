@@ -110,6 +110,7 @@ The context is decided once in `Plugin::boot()` from cheap signals: `is_admin()`
 | Session and cart | **no** (unless cookie present) | yes | yes | | | purge | |
 | Checkout, orders | | yes | yes | yes | on use | expiry | on use |
 | Payment gateways | | checkout only | checkout, webhooks | settings | settings | | |
+| Tax (doc 02 §7.12) | only with taxes on and `tax_display_shop = incl`, reading the compiled base rates | when taxes are on | when taxes are on | settings, rates | Taxes screen | | import, migration |
 | Shipping methods | | when the cart needs shipping | rates route | settings | settings | | |
 | Notifications | | after commit | after commit | after commit | after commit | after commit | |
 | Admin UI | | | | | our screens only | | |
@@ -193,13 +194,22 @@ Columns: **Budget** is the limit. **Tier** says which test enforces it (§5.1). 
 | P3 | Simple and variable product | extra peak memory | ≤ 1,153,733 B (measured 1,048,848 B at 250 variants + 10 %) | T1 | 215,136 B simple; 234,648 B at 6 variants, 1,048,848 B at 250 (macOS, PHP 8.5) |
 | P4q | `GET store/cart`, 1 and 10 lines | queries | ≤ 4, identical for both | T1 | 4 at 1 and 10 lines |
 | P5q | `POST store/cart/items` | queries | ≤ 7 (measured 6 + 10 %, rounded up) | T1 | 6 |
-| P6q | Checkout (COD), 1 and 10 lines | queries | fixed part ≤ 30 *provisional*, plus exactly 1 per line | T1 | n/a |
-| P6m | Checkout | extra peak memory | ≤ 3 MB *provisional* | T1 | n/a |
+| P6q | Checkout (COD), 1 and 10 lines | queries | fixed part ≤ 60 (measured 54 + 10 %, rounded up; raised once from the provisional 30), plus exactly 1 per line | T1 | 55 at 1 line, 64 at 10 (fixed part 54) |
+| P6m | Checkout | extra peak memory | ≤ 1,048,960 B (measured 953,600 B at 10 lines + 10 %) | T1 | 862,000 B at 1 line, 953,600 B at 10 (macOS, PHP 8.5) |
+| PT-off | Any scenario, taxes off | extra queries, classes loaded vs the same scenario before phase 4.5 | 0, no `Tax` class except `TaxService::enabled()` on cart and checkout | T1 | holds on archive, simple and variable product, cart and checkout: 0 extra queries; catalog pages load no `Tax` class, cart and checkout only `TaxService` and `TaxServices` |
+| PT-cat | Archive, simple and variable product, taxes on, display incl | extra queries vs taxes off | 0 (base rates come from the settings option, no table read) | T1 | 0 on archive, simple and variable product |
+| PT-opt | Settings option with the compiled base rates | size of `flexacommerce_settings` | within P10 (≤ 10 KB) with 5 classes and 4 stacked US rates each | T1 | 5,019 B |
+| PT-cart | `GET store/cart` and `POST store/cart/items`, taxes on, address known | extra queries vs taxes off | ≤ 1 (rate match), 0 when the `fxc_tax` cache already holds the location | T1 | 0 on `GET store/cart` at 1 and 10 lines, but only because the cart response has no tax yet (§4.1 note); `POST store/cart/items` not probed |
+| PT-q | Checkout, taxes on, 1 and 10 lines, US address with 4 stacked rates | extra queries vs P6q | ≤ 1, identical for 1 and 10 lines (the match covers every class in the cart) | T1 | +1 at 1 and 10 lines |
+| PT-m | Checkout, taxes on, 10 lines | extra peak memory vs P6m | ≤ 96 KB (measured 84 KB + 10 %, rounded up; raised once from the provisional 64 KB) | T1 | 84,280 B at 10 lines (macOS, PHP 8.5, asserted only with the OPcache file cache) |
+| PT-rows | Rate match on a 50,000-location US fixture | rows read | ≤ 200 per match | T1 | 174 (5,000 rates × 10 ZIPs plus 50 ranges) |
 | R-REST | REST request for another plugin's route | FlexaCommerce endpoint objects built | 0 | T1 | 0 (was 5, F6, fixed by O6) |
 | P10 | Any request | autoloaded options owned | 1, ≤ 10 KB | T1 | 1, 575 B (plus `flexacommerce_rewrite_guard`, which exists only while another plugin claims the shop URL, §3.4) |
 | P11 | Catalog pages | `Set-Cookie` or `no-cache` from FlexaCommerce | none | T1 | holds on archive, simple and variable product: no sessions query, no `nocache_headers`, no `Set-Cookie` in `wp_headers` (§5.2) |
 | P8 | Product page | JS / CSS gzip | ≤ 15 KB / ≤ 10 KB | T1 (build) | n/a |
 | P9 | Migration batch | peak memory | < 128 MB | T2 | n/a |
+
+Phase 4.5 notes: PT-m covers more than class loading (about 3 KB). The rest is order data that taxes add (10 lines × 4 rates of per-line tax meta, 4 `tax` rows, the order read back) and about 10 KB of the probe's own query log, so the provisional 64 KB was re-recorded once. PT-cart is measured, but the cart response does not carry tax yet (doc 02 §7.12.5), so its 0 says little until the cart shows tax; the budget stays binding for that change. The tests are in `tests/Integration/Performance/TaxBudgetTest.php`.
 
 P1 memory is tightened from doc 06's 0.5 MB to 256 KB because the measured cost is 93 KB; the 2 ms time limit moves to T3 because CLI timing cannot resolve it. Whether load-test timing (nginx upstream time over 500 requests) can is checked on the first T3 run: if the run-to-run spread of the p50 exceeds 2 ms, P1t is reported instead of gated until the stack is quieter. The first run (§7.1) was on a busy developer laptop and the p50 moved by up to 9 ms, so P1t is reported, not gated, until a run on the reference machine (Q18).
 
@@ -216,6 +226,7 @@ Provisional values come from the design, not from data. Each is confirmed or cor
 | P4 | `POST store/cart/items` | p95 ≤ 150 ms | p95 ≤ 150 ms | report | T3 |
 | P5 | `GET store/cart` | p95 ≤ 100 ms | p95 ≤ 100 ms | report | T3 |
 | P6 | Checkout COD, 5 lines, deferred email | p95 ≤ 500 ms | p95 ≤ 500 ms | report, 0 oversells | T3 |
+| P6t | P6 with taxes on (US address, 4 stacked rates, ZIP table of dataset M's tax fixture) | p95 ≤ P6 p95 + 5 % | same | report | T3 |
 | C1 | All catalog scenarios | | | p95 at 25 VU ≤ 2 × p95 at 1 VU, with FPM workers ≥ VU | T3 |
 | C2 | Capacity | report requests/s at which p95 first exceeds its budget, and FPM worker RSS (p50, max) | | | T3 |
 
@@ -302,7 +313,7 @@ Per scenario and configuration: p50/p95/p99 server time, throughput, error rate,
 
 ## 7. Optimization priorities
 
-Ordered by evidence and cost. Status as of 2026-10-25: O1, O2, O3, O4 and O6 done in phase 2.5, O5 and O8 in phase 3; the rest are open.
+Ordered by evidence and cost. Status as of 2026-10-25: O1, O2, O3, O4 and O6 done in phase 2.5, O5 and O8 in phase 3, O7 in phase 4; O9 is open.
 
 | # | Item | Evidence | Expected effect (verified by) |
 |---|---|---|---|
@@ -312,7 +323,7 @@ Ordered by evidence and cost. Status as of 2026-10-25: O1, O2, O3, O4 and O6 don
 | O4 | Dataset seeder (S/M) and WooCommerce loader with parity check | F7 | T3 can run |
 | O5 | Batch loaders and prime calls designed into the phase 3 renderers from the start | doc 02 §7.1 | P2/P3 query counts flat at N and 4N (T1). Done in phase 3: one variant prime per page at 12 and 48 products, 6 and 250 variants |
 | O6 | Build REST endpoint objects only for our namespace or the route index | F6 | R-REST 5 → 0 (T1) |
-| O7 | Gateway and shipping descriptors with lazy classes | §3.2 | Gateway classes absent from catalog requests (T1 allowlist) |
+| O7 | Gateway and shipping descriptors with lazy classes | §3.2 | Gateway classes absent from catalog requests (T1 allowlist). Done in phase 4: no `Payments`, `Shipping`, `Checkout`, `Orders` or `Notifications` class loads on the archive, simple or variable product page |
 | O8 | Mini-cart count: REST call or count cookie | §3.7 | Decided by T3 numbers (Q19). Done in phase 3: count cookie `fxc_cart_count`, because the REST read costs about 14 queries and 10 ms of server time per page view (§7.2) |
 | O9 | Static classmap for the release build instead of path-computing autoload | files and autoload calls per request | Measured with T2 before adopting; dropped if the gain is under 1 % of request time |
 
@@ -344,13 +355,31 @@ The T3 counters, FlexaCommerce against WooCommerce 11.2.1 default: cart-add 16 a
 
 Open items: memory baselines for P2 and P3 come from macOS only, and the first CI run on Linux may need them recorded there; the P1 baselines for Linux and for macOS PHP 8.2 must be re-recorded with `FXC_PERF_RECORD=1` because the probe now uses an OPcache file cache (§5.2).
 
+### 7.3 Phase 4 results (2026-10-25)
+
+| Item | Result | Verified by |
+|---|---|---|
+| O7 | No `Payments`, `Shipping`, `Checkout`, `Orders` or `Notifications` class on the archive, simple or variable product page | T1 `StorefrontBudgetTest` |
+| P6q, P6m | Provisional 30 queries raised once to measured 54 + 10 % = 60, 1 query per line; memory 953,600 B at 10 lines, budget 1,048,960 B (macOS, PHP 8.5) | T1 |
+| P6 | Checkout COD, 5 lines, deferred email: fxc p95 45 ms at 1 VU, 161 ms at 10 VU, 322 ms at 25 VU; 0 stock errors in 18 runs of 500 orders | T3, indicative |
+| C1 | Not met on the developer laptop: 25 VU / 1 VU ratio 3.9 to 6.5 × for fxc and 8.2 × for core home, with 25 workers on 8 CPUs | T3, indicative |
+| C2 | Worker RSS 46 to 48 MB for fxc, 77 to 85 MB for WooCommerce, on every scenario and load | T3 |
+| T3 | `checkout` scenario (`tools/bench/k6/checkout.js`, `./bench.sh prep-checkout`). Report: `docs/benchmarks/2026-10-25-phase4.md` | report |
+
+The T3 counters for the order request, FlexaCommerce against WooCommerce 11.2.1 (HPOS on for checkout): 65 against 913 queries, 5.3 to 6.5 MB against 12.2 MB peak memory, 17 to 24 ms against 78 to 159 ms CPU time. Latency is indicative: one row of 26 passes the spread rule. On checkout, the fxc p95 stays under the 500 ms budget up to 25 VU, while the WooCommerce p95 passes it between 1 and 10 VU.
+
+The bench turns off the per-IP checkout limit (`flexacommerce.rate_limit.checkout_ip`), because every k6 request comes from one address; WooCommerce has no limit on by default. The phase 3 report says WooCommerce ran with HPOS on; it was off for those scenarios, which create no orders.
+
+Open items: C1 and every latency budget need the reference machine (Q18); at 25 VU the laptop is short of CPU, and core alone rises 8.2 ×. The baseline open items of §7.2 still apply.
+
 ## 8. Roadmap integration
 
 Doc 07 carries the tasks. Summary of what this document adds:
 
 - **Phase 2.5 (before phase 3 feature work, done 2026-10-24 except the reference-machine rerun, §7.1):** O1, O2, O3, O4 (S and M), the T3 Docker stack and k6 scripts for the scenarios that exist (blog post, home), first `docs/benchmarks/` report as a baseline.
 - **Phase 3 (done 2026-10-25 except the reference-machine rerun, §7.2):** O5; T1 budgets P2, P3a, P3b, P4q, P5q, P11 become binding; T3 cart scenarios P4 and P5; first FXC versus WooCommerce run for listing and product pages, marked indicative because the storefront is minimal.
-- **Phase 4:** O6, O7; P6q, P6m binding; T3 checkout P6 and concurrency C1; worker RSS (C2) reported.
+- **Phase 4 (done 2026-10-25 except C1 and the reference-machine rerun, §7.3):** O6, O7; P6q, P6m binding; T3 checkout P6 and concurrency C1; worker RSS (C2) reported.
+- **Phase 4.5 (taxes, ADR-020):** PT-off, PT-cat, PT-opt, PT-cart, PT-q, PT-m, PT-rows binding; T3 P6t against WooCommerce with the same rates (bench `prep-tax`).
 - **Phase 5:** P1h, P8 binding; full scenario set in §6.4 at dataset M, both WooCommerce configurations.
 - **Phase 6:** P9 nightly; migration-based dataset cross-check (§6.2).
 - **Phase 7:** dataset L, final published report, third-party rerun invitation, release thresholds §5.4 in force.

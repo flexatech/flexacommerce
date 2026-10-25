@@ -60,7 +60,15 @@ final class CartServiceTest extends CartTestCase {
 
 		$state = $cart->add( 0, $id, 0, 1, [ 'l:size' => 'm' ] );
 		self::assertSame( $sizes['m'], $state->cart->lines[0]->variant_id );
-		self::assertSame( [ [ 'name' => 'Size', 'value' => 'M' ] ], $state->cart->lines[0]->labels );
+		self::assertSame(
+			[
+				[
+					'name'  => 'Size',
+					'value' => 'M',
+				],
+			],
+			$state->cart->lines[0]->labels
+		);
 
 		$this->expectException( InvalidCartRequest::class );
 		$cart->add( 0, $id, 0, 1, [ 'l:size' => 'xxl' ] );
@@ -79,9 +87,9 @@ final class CartServiceTest extends CartTestCase {
 	}
 
 	public function test_quantity_update_and_removal(): void {
-		$id    = $this->simple( 1000, 10 );
-		$cart  = $this->browser()->cart();
-		$key   = $cart->add( 0, $id, 0, 1 )->cart->lines[0]->key;
+		$id   = $this->simple( 1000, 10 );
+		$cart = $this->browser()->cart();
+		$key  = $cart->add( 0, $id, 0, 1 )->cart->lines[0]->key;
 		self::assertSame( 4, $cart->set_quantity( 0, $key, 4 )->item_count() );
 		self::assertSame( 0, $cart->set_quantity( 0, $key, 0 )->item_count() );
 

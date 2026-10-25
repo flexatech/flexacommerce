@@ -45,6 +45,7 @@ final class VariantRepository {
 		'height'              => '%s',
 		'image_id'            => '%d',
 		'tax_class'           => '%s',
+		'tax_status'          => '%s',
 		'description'         => '%s',
 		'meta'                => '%s',
 		'created_at'          => '%s',

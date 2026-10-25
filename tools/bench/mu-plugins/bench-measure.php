@@ -19,6 +19,14 @@ if ( defined( 'BENCH_HOST' ) && BENCH_HOST === 'core.bench' ) {
 
 // Mail servers stay out of the numbers; the email rendering cost stays in.
 add_filter( 'pre_wp_mail', '__return_true' );
+// Checkout runs with deferred order emails in both stores (doc 10 §4.2 P6);
+// FlexaCommerce reads its `defer_emails` setting, set by prep-checkout.php.
+add_filter( 'woocommerce_defer_transactional_emails', '__return_true' );
+// Every k6 request comes from one IP. FlexaCommerce limits checkouts per IP
+// (doc 06 §2.9), WooCommerce's Store API rate limiting is off by default, so
+// the bench turns ours off too. The per-session limit stays: each iteration
+// is a new guest.
+add_filter( 'flexacommerce.rate_limit.checkout_ip', static fn (): array => [ 'limit' => 0 ] );
 
 $bench_rusage = getrusage();
 

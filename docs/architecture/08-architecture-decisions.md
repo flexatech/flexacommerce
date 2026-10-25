@@ -1,6 +1,6 @@
 # 08. Architecture Decision Records
 
-Status of every ADR: **Accepted** (plan approved 2026-10-24). Format: context, decision, alternatives, consequences, revisit when.
+Status of every ADR: **Accepted** (plan approved 2026-10-24) unless it says otherwise; ADR-015 is superseded by ADR-020. Format: context, decision, alternatives, consequences, revisit when.
 
 ---
 
@@ -178,6 +178,8 @@ Status of every ADR: **Accepted** (plan approved 2026-10-24). Format: context, d
 
 ## ADR-015: Tax as a seam in MVP pending Q2
 
+**Status.** Superseded by ADR-020 (2026-10-25). Kept for history.
+
 **Decision.** Schema stores tax per line and per order. `TaxCalculator` interface with `NullTaxCalculator` default; prices are final as entered. A tax engine is a separate scope decision (Q2).
 
 **Consequences.** Stores that must show tax lines cannot launch on M1 unless Q2 changes the scope. Migrated orders keep their historic tax amounts.
@@ -229,3 +231,21 @@ Status of every ADR: **Accepted** (plan approved 2026-10-24). Format: context, d
 **Consequences.** A standalone editor needs no new endpoint and no change to the panel; it adds a screen, post field inputs and a host that saves the whole payload in one request. Until then the `app` value only removes the metabox, so nothing ships that is switched off. There is no setting until the screen exists.
 
 **Revisit when.** The standalone editor ships: then decide whether `app` becomes the default and whether the post editor redirects to it.
+
+---
+
+## ADR-020: Tax engine with WooCommerce-equivalent options, built per market, US first
+
+**Context.** Q2 was answered on 2026-10-25: taxes ship in M1 with the options a WooCommerce store owner knows, they must be easy to adapt to each market, and the US market comes first. US sales tax is the hardest common case for a rate table: state, county, city and special district rates stack, the rate depends on the ZIP code, a store collects only in states where it has nexus, shipping is taxable in some states and not in others, and some states source in-state sales at the seller's address. ADR-015 left a single-total `TaxCalculator` seam, which cannot produce per-rate order lines or refund tax correctly.
+
+**Decision.**
+1. **Core engine, table based** (`Tax\TaxEngine`), integer-only and deterministic: rates in a table (`fxc_tax_rates`, `fxc_tax_rate_locations`, doc 03 §4.13) matched by country, state, postcode (exact, `*` wildcard, numeric range) and city, one rate per priority, compound rates after simple ones, per-line half-up rounding or rounding at subtotal. The options mirror WooCommerce's (doc 02 §7.12): enable taxes, prices entered with or without tax, calculate on shipping, billing or store base address, shipping tax class, rounding, shop and cart display, price suffix, tax totals as one line or itemized, tax classes, product tax status. Off by default, and with taxes off nothing in this ADR runs.
+2. **Per-market layers on top.** (a) **Presets**: JSON files that create the rate rows and recommended settings for one market; the US preset ships first, with state base rates for the states the admin selects as nexus states. (b) **Market overrides**: a market is a list of countries that can override display, suffix, rounding, address basis and in-state sourcing. (c) **`TaxRateProvider`** interface: the table is the default provider; an add-on can supply rates from a service (TaxJar, Avalara) without replacing the math. (d) **`TaxCalculator`** interface for an add-on that must replace the whole calculation (product tax codes). (e) Filters for exemptions and rate changes (doc 04 §7).
+3. **Order storage per rate.** Every line keeps its tax per rate; the order gets one `tax` line per rate (doc 03 §4.3). Refunds split tax per rate pro rata.
+4. **The experimental `TaxCalculator::tax(): Money` is replaced** by `calculate( TaxRequest ): TaxResult` (doc 04 §7.1). It was tagged experimental and no release has shipped, so no deprecation period applies.
+
+**Alternatives.** Keep the seam and leave taxes to add-ons: a US store could not take orders on M1 without a paid service, and the stores migrating from WooCommerce lose the rate table they already have. Ship a single rate per country (the old Q2 fallback): wrong for every US store, where the rate changes by ZIP code. Bundle a full US rate database (about 13,000 jurisdictions, rates change monthly): FlexaCommerce would then be responsible for keeping it current, which a free plugin cannot promise; this stays with CSV imports and provider add-ons.
+
+**Consequences.** Phase 4.5 (about 4 weeks) is added before phase 5 (doc 07). Phase 6 can migrate WooCommerce tax rates and product tax settings. The preset files carry an `as_of` date and the admin screen says the store owner is responsible for the rates; FlexaCommerce never changes rates on its own. Cost: 0 extra queries with taxes off; with taxes on, catalog pages still read no tax table (the base-location rates are compiled into the settings option), cart and checkout read at most 1 extra query per distinct address per request (doc 10 §4.1). VAT ID validation, tax reports and filing stay out of core.
+
+**Revisit when.** A second market preset is requested (EU VAT is the expected next one: prices inclusive, base-location adjustment), a provider add-on needs a contract change, or a store's US table grows past 100,000 location rows (§4.13 index review).

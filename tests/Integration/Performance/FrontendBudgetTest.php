@@ -148,7 +148,7 @@ final class FrontendBudgetTest extends TestCase {
 		}
 		self::assertLessThanOrEqual( $budget, $delta, "Extra peak memory {$delta} B is over the budget." );
 
-		$file     = __DIR__ . '/baseline.json';
+		$file = __DIR__ . '/baseline.json';
 		// Allocation sizes differ between platforms, so a baseline only gates
 		// the platform and PHP minor version it was recorded on.
 		$version  = PHP_OS_FAMILY . '-' . PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION;

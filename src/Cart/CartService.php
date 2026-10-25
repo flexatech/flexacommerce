@@ -14,6 +14,9 @@ use Flexa\Commerce\Contracts\Exceptions\InvalidCartRequest;
 use Flexa\Commerce\Contracts\Exceptions\NotPurchasable;
 use Flexa\Commerce\Contracts\Exceptions\RateLimited;
 use Flexa\Commerce\Contracts\Money;
+use Flexa\Commerce\Contracts\Shipping\Destination;
+use Flexa\Commerce\Contracts\Shipping\PackageLine;
+use Flexa\Commerce\Contracts\Shipping\ShippingPackage;
 use Flexa\Commerce\Contracts\ValidationResult;
 use Flexa\Commerce\Inventory\StockService;
 use Flexa\Commerce\Pricing\PricingService;
@@ -156,12 +159,73 @@ final class CartService {
 		if ( $user_id <= 0 && ! $this->sessions->has_token() ) {
 			return $this->resolve( new Cart(), $user_id, false );
 		}
-		return $this->mutate( $user_id, static fn ( Cart $cart ): Cart => $cart->emptied() );
+		return $this->mutate( $user_id, static fn ( Cart $cart ): Cart => $cart->emptied( $cart->checkout_token ) );
+	}
+
+	/**
+	 * Remember the address used for quotes and the chosen rate. The rate is
+	 * not checked here: checkout checks it against fresh rates.
+	 *
+	 * @param array{country:string,state:string,postcode:string,city:string} $destination
+	 * @throws RateLimited
+	 */
+	public function set_shipping( int $user_id, array $destination, string $rate_id ): CartState {
+		return $this->mutate( $user_id, static fn ( Cart $cart ): Cart => $cart->with_shipping( $destination, $rate_id ) );
+	}
+
+	/**
+	 * The token the checkout form posts back (doc 02 §7.5). Issued on first
+	 * use and stored in the session, so it only exists for a cart that has a
+	 * session. Returns '' without one.
+	 */
+	public function checkout_token( int $user_id, CartState $state ): string {
+		if ( ! $state->has_session ) {
+			return '';
+		}
+		if ( $state->cart->checkout_token !== '' ) {
+			return $state->cart->checkout_token;
+		}
+		$token = self::new_token();
+		$next  = $this->mutate(
+			$user_id,
+			static fn ( Cart $cart ): Cart => $cart->checkout_token !== '' ? $cart : $cart->with_checkout_token( $token ),
+			false
+		);
+		return $next->cart->checkout_token;
+	}
+
+	/**
+	 * After an order: empty the cart and rotate the token. When the cart
+	 * already holds another token (a second tab finished first), it is left
+	 * alone.
+	 */
+	public function finish_checkout( int $user_id, string $used_token ): void {
+		$this->mutate(
+			$user_id,
+			static fn ( Cart $cart ): Cart => $cart->checkout_token === $used_token ? $cart->emptied( self::new_token() ) : $cart,
+			false
+		);
+	}
+
+	/** What shipping methods price: the sellable lines of a resolved cart. */
+	public function package( CartState $state, Destination $destination ): ShippingPackage {
+		$lines = [];
+		foreach ( $state->items as $item ) {
+			if ( $item->total === null ) {
+				continue;
+			}
+			$lines[] = new PackageLine( $item->line->variant_id, $item->line->quantity, $item->weight_g(), $item->dimensions_mm(), $item->total );
+		}
+		return new ShippingPackage( $destination, $lines, $state->subtotal );
 	}
 
 	/** Lines of a resolved cart a renderer can show, with display prices. */
 	public function format( Money $money ): string {
 		return $this->pricing->format( $money );
+	}
+
+	private static function new_token(): string {
+		return bin2hex( random_bytes( 16 ) );
 	}
 
 	public function line_max_quantity( Product $product, Variant $variant ): int {

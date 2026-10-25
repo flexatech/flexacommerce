@@ -8,13 +8,14 @@ use Flexa\Commerce\Cart\CartServices;
 use Flexa\Commerce\Cart\MemoryTokenStore;
 use Flexa\Commerce\Cart\SessionNonce;
 use Flexa\Commerce\Plugin;
-use Flexa\Commerce\Tests\Integration\Cart\CartTestCase;
+use Flexa\Commerce\Payments\GatewaySettings;
+use Flexa\Commerce\Tests\Integration\Orders\OrderTestCase;
 
 /**
  * Store routes through the REST server. Each "request" gets a fresh
  * CartServices whose cookie store holds what the browser would send.
  */
-final class StoreApiTest extends CartTestCase {
+final class StoreApiTest extends OrderTestCase {
 	private \WP_REST_Server $server;
 
 	private MemoryTokenStore $cookie;
@@ -45,7 +46,14 @@ final class StoreApiTest extends CartTestCase {
 
 	public function test_add_with_the_public_guest_nonce_then_with_the_session_nonce(): void {
 		$id       = $this->simple( 1500 );
-		$response = $this->dispatch( 'POST', '/store/cart/items', [ 'product_id' => $id, 'quantity' => 2 ] );
+		$response = $this->dispatch(
+			'POST',
+			'/store/cart/items',
+			[
+				'product_id' => $id,
+				'quantity'   => 2,
+			]
+		);
 		self::assertSame( 201, $response->get_status(), (string) wp_json_encode( $response->get_data() ) );
 		self::assertSame( 3000, $response->get_data()['totals']['subtotal']['amount'] );
 		self::assertNotNull( $this->cookie->get() );
@@ -122,6 +130,53 @@ final class StoreApiTest extends CartTestCase {
 		unset( $sizes );
 	}
 
+	public function test_checkout_places_an_order_and_reports_field_errors(): void {
+		$cod = Plugin::instance()->payments()->gateways()->get( 'cod' );
+		self::assertNotNull( $cod );
+		Plugin::instance()->payments()->gateways()->settings()->save( $cod, [ 'enabled' => true ] );
+		$response = $this->dispatch( 'POST', '/store/cart/items', [ 'product_id' => $this->simple( 1500 ) ] );
+		$nonce    = $response->get_headers()[ SessionNonce::HEADER ];
+
+		$this->next_request();
+		$form = $this->dispatch( 'GET', '/store/checkout' );
+		self::assertSame( 200, $form->get_status() );
+		self::assertSame( 'no-store, private', $form->get_headers()['Cache-Control'] );
+		$token = $form->get_data()['checkout_token'];
+		self::assertNotSame( '', $token );
+
+		$body = [
+			'checkout_token' => $token,
+			'billing'        => [
+				'first_name' => 'Ada',
+				'last_name'  => 'Lovelace',
+				'address_1'  => '1 Main St',
+				'city'       => 'Hanoi',
+				'postcode'   => '100000',
+				'country'    => 'VN',
+			],
+			'payment_method' => 'cod',
+			'expected_total' => 1500,
+		];
+		$this->next_request();
+		$error = $this->dispatch( 'POST', '/store/checkout', $body, $nonce );
+		self::assertSame( 400, $error->get_status() );
+		self::assertSame( 'flexacommerce_invalid_checkout', $error->get_data()['code'] );
+		self::assertArrayHasKey( 'billing.email', $error->get_data()['data']['errors'] );
+
+		$body['billing']['email'] = 'ada@example.com';
+		$this->next_request();
+		$changed = $this->dispatch( 'POST', '/store/checkout', [ 'expected_total' => 1499 ] + $body, $nonce );
+		self::assertSame( 409, $changed->get_status() );
+
+		$this->next_request();
+		$placed = $this->dispatch( 'POST', '/store/checkout', $body, $nonce );
+		self::assertSame( 201, $placed->get_status(), (string) wp_json_encode( $placed->get_data() ) );
+		self::assertSame( 'processing', $placed->get_data()['status'] );
+		self::assertStringContainsString( 'order-received=', $placed->get_data()['redirect'] );
+
+		delete_option( GatewaySettings::PREFIX . 'cod' );
+	}
+
 	/** A new request: fresh services, the browser's cookie carried over. */
 	private function next_request(): void {
 		$this->swap_cart( new CartServices( Plugin::instance()->services(), Plugin::instance()->catalog(), $this->cookie ) );
@@ -130,6 +185,7 @@ final class StoreApiTest extends CartTestCase {
 	private function swap_cart( ?CartServices $services ): void {
 		$property = new \ReflectionProperty( Plugin::class, 'cart' );
 		$property->setValue( Plugin::instance(), $services );
+		( new \ReflectionProperty( Plugin::class, 'checkout' ) )->setValue( Plugin::instance(), null );
 	}
 
 	private function nonce(): string {

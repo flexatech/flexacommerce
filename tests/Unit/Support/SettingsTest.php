@@ -17,16 +17,16 @@ final class SettingsTest extends TestCase {
 	public function test_sanitize_drops_unknown_keys_and_coerces(): void {
 		$clean = Settings::sanitize(
 			[
-				'unknown'            => 'x',
-				'currency'           => ' eur ',
-				'currency_position'  => 'middle',
-				'hold_minutes'       => '999999',
-				'max_line_quantity'  => 'abc',
-				'store_customer_ip'  => '0',
-				'checkout_paused'    => 'yes',
-				'thousand_separator' => '<b>"',
-				'decimal_separator'  => ' , ',
-				'order_number_prefix' => "<script>x</script>SO-",
+				'unknown'             => 'x',
+				'currency'            => ' eur ',
+				'currency_position'   => 'middle',
+				'hold_minutes'        => '999999',
+				'max_line_quantity'   => 'abc',
+				'store_customer_ip'   => '0',
+				'checkout_paused'     => 'yes',
+				'thousand_separator'  => '<b>"',
+				'decimal_separator'   => ' , ',
+				'order_number_prefix' => '<script>x</script>SO-',
 			]
 		);
 
@@ -40,6 +40,50 @@ final class SettingsTest extends TestCase {
 		self::assertSame( 'b', $clean['thousand_separator'] );
 		self::assertSame( ' , ', $clean['decimal_separator'] );
 		self::assertSame( 'xSO-', $clean['order_number_prefix'] );
+	}
+
+	public function test_store_country_and_sell_to_list_are_normalized(): void {
+		$clean = Settings::sanitize(
+			[
+				'store_country'     => ' vn ',
+				'sell_to_countries' => 'us, ca,us,usa,,x1',
+			]
+		);
+		self::assertSame( 'VN', $clean['store_country'] );
+		self::assertSame( [ 'US', 'CA' ], $clean['sell_to_countries'] );
+
+		self::assertSame( 'US', Settings::sanitize( [ 'store_country' => 'USA' ] )['store_country'] );
+		self::assertSame( [ 'DE' ], Settings::sanitize( [ 'sell_to_countries' => [ 'de', 7, [ 'fr' ] ] ] )['sell_to_countries'] );
+		self::assertSame( [], Settings::sanitize( [ 'sell_to_countries' => 42 ] )['sell_to_countries'] );
+	}
+
+	public function test_checkout_field_modes_page_ids_and_bases(): void {
+		$clean = Settings::sanitize(
+			[
+				'checkout_company'   => 'required',
+				'checkout_phone'     => 'sometimes',
+				'checkout_address_2' => 'required',
+				'terms_page_id'      => '-3',
+				'checkout_page_id'   => '12',
+				'product_base'       => ' Shop Items! ',
+				'tag_base'           => [ 'x' ],
+			]
+		);
+		self::assertSame( 'required', $clean['checkout_company'] );
+		self::assertSame( 'optional', $clean['checkout_phone'], 'unknown mode keeps the default' );
+		self::assertSame( 'optional', $clean['checkout_address_2'], 'address line 2 cannot be required' );
+		self::assertSame( 0, $clean['terms_page_id'] );
+		self::assertSame( 12, $clean['checkout_page_id'] );
+		self::assertSame( 'shop-items', $clean['product_base'] );
+		self::assertSame( '', $clean['tag_base'] );
+	}
+
+	public function test_typed_readers_never_return_the_wrong_type(): void {
+		\WP_Test_State::$options[ Settings::OPTION ] = 'corrupt';
+		self::assertSame( 0, Settings::int( 'checkout_page_id' ) );
+		self::assertSame( '', Settings::string( 'sell_to_countries' ), 'a list is not a string' );
+		self::assertSame( 0, Settings::int( 'not_a_setting' ) );
+		self::assertNull( Settings::get( 'not_a_setting' ) );
 	}
 
 	public function test_invalid_currency_keeps_default(): void {

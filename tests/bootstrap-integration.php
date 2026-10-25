@@ -33,3 +33,7 @@ tests_add_filter(
 );
 
 require $tests_dir . '/includes/bootstrap.php';
+
+// Build the order module before the first test saves the hooks, so the
+// email listeners it binds stay bound in every test.
+\Flexa\Commerce\Plugin::instance()->orders();

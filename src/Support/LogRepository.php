@@ -18,18 +18,34 @@ final class LogRepository {
 	public function __construct( private readonly \wpdb $wpdb ) {}
 
 	public function insert( string $level, string $channel, string $message, ?string $context, string $created_at ): bool {
-		$inserted = $this->wpdb->insert(
-			Schema::table( 'logs' ),
-			[
-				'level'      => $level,
-				'channel'    => substr( $channel, 0, 64 ),
-				'message'    => $message,
-				'context'    => $context,
-				'created_at' => $created_at,
-			],
-			[ '%s', '%s', '%s', '%s', '%s' ]
-		);
-		return $inserted !== false;
+		return $this->insert_many( $channel, [ [ $level, $message, $context, $created_at ] ] );
+	}
+
+	/** @param non-empty-list<array{0:string,1:string,2:?string,3:string}> $rows level, message, context, created_at */
+	public function insert_many( string $channel, array $rows ): bool {
+		if ( count( $rows ) === 1 ) {
+			[ $level, $message, $context, $created_at ] = $rows[0];
+			return $this->wpdb->insert(
+				Schema::table( 'logs' ),
+				[
+					'level'      => $level,
+					'channel'    => substr( $channel, 0, 64 ),
+					'message'    => $message,
+					'context'    => $context,
+					'created_at' => $created_at,
+				],
+				[ '%s', '%s', '%s', '%s', '%s' ]
+			) !== false;
+		}
+		$values = [];
+		$args   = [ Schema::table( 'logs' ) ];
+		foreach ( $rows as [ $level, $message, $context, $created_at ] ) {
+			$values[] = $context === null ? '(%s, %s, %s, NULL, %s)' : '(%s, %s, %s, %s, %s)';
+			array_push( $args, $level, substr( $channel, 0, 64 ), $message, ...( $context === null ? [ $created_at ] : [ $context, $created_at ] ) );
+		}
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- $values holds placeholders only.
+		$sql = $this->wpdb->prepare( 'INSERT INTO %i (level, channel, message, context, created_at) VALUES ' . implode( ', ', $values ), ...$args );
+		return $this->wpdb->query( $sql ) !== false;
 	}
 
 	/**

@@ -22,7 +22,14 @@ final class Probe {
 			[ __DIR__ . '/probe-request.php', $uri, $plugin ? 'on' : 'off', $out, (string) json_encode( (object) $options ) ]
 		);
 
-		$process = proc_open( $cmd, [ 1 => [ 'pipe', 'w' ], 2 => [ 'pipe', 'w' ] ], $pipes );
+		$process = proc_open(
+			$cmd,
+			[
+				1 => [ 'pipe', 'w' ],
+				2 => [ 'pipe', 'w' ],
+			],
+			$pipes
+		);
 		if ( ! is_resource( $process ) ) {
 			throw new \RuntimeException( 'Could not start the probe process.' );
 		}

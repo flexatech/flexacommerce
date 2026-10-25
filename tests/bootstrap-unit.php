@@ -161,4 +161,17 @@ function sanitize_title( string $title ): string {
 	return trim( (string) preg_replace( '/-+/', '-', $title ), '-' );
 }
 
+function remove_accents( string $text ): string {
+	$ascii = iconv( 'UTF-8', 'ASCII//TRANSLIT//IGNORE', $text );
+	return $ascii === false ? $text : $ascii;
+}
+
+function is_email( string $email ): string|false {
+	return filter_var( $email, FILTER_VALIDATE_EMAIL ) !== false ? $email : false;
+}
+
+function sanitize_textarea_field( string $text ): string {
+	return trim( strip_tags( $text ) );
+}
+
 $GLOBALS['wpdb'] = new wpdb();

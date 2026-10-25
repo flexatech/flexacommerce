@@ -5,7 +5,7 @@
 
 export type AppTheme = "light" | "dark";
 
-export type AdminPage = "flexacommerce" | "flexacommerce-settings" | "flexacommerce-attributes" | "product-editor";
+export type AdminPage = "flexacommerce" | "flexacommerce-orders" | "flexacommerce-customers" | "flexacommerce-settings" | "flexacommerce-attributes" | "product-editor";
 
 export type CurrencyPosition = "left" | "right" | "left_space" | "right_space";
 
@@ -36,6 +36,8 @@ export interface FlexaCommerceGlobal {
     productId?: number;
     canManageTerms?: boolean;
     attributesAdminUrl?: string;
+    /** Standard (slug "") first, then the store's classes. */
+    taxClasses?: { slug: string; name: string }[];
 }
 
 declare global {

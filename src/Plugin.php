@@ -9,6 +9,10 @@ use Flexa\Commerce\Catalog\CatalogServices;
 use Flexa\Commerce\Concerns\HasInstance;
 use Flexa\Commerce\Contracts\Exceptions\IncompatibleApi;
 use Flexa\Commerce\Contracts\Extensions;
+use Flexa\Commerce\Contracts\Orders\OrderReader;
+use Flexa\Commerce\Contracts\Payments\GatewayRegistry;
+use Flexa\Commerce\Contracts\Shipping\ShippingMethodRegistry;
+use Flexa\Commerce\Support\ExtensionsFacade;
 use Flexa\Commerce\Support\Services;
 
 defined( 'ABSPATH' ) || exit;
@@ -26,6 +30,20 @@ final class Plugin {
 	private ?CatalogServices $catalog = null;
 
 	private ?CartServices $cart = null;
+
+	private ?Orders\OrderServices $orders = null;
+
+	private ?Payments\PaymentServices $payments = null;
+
+	private ?Shipping\ShippingServices $shipping = null;
+
+	private ?Checkout\CheckoutServices $checkout = null;
+
+	private ?Tax\TaxServices $tax = null;
+
+	private ?Notifications\NotificationServices $notifications = null;
+
+	private ?Extensions $extensions = null;
 
 	private bool $blocks = false;
 
@@ -53,14 +71,17 @@ final class Plugin {
 		add_action( 'wp_logout', [ $this, 'on_logout' ] );
 		add_shortcode( 'flexacommerce_cart', [ $this, 'shortcode_cart' ] );
 		add_shortcode( 'flexacommerce_add_to_cart', [ $this, 'shortcode_add_to_cart' ] );
+		add_shortcode( 'flexacommerce_checkout', [ $this, 'shortcode_checkout' ] );
 
 		if ( is_admin() ) {
 			add_action( 'init', [ $this, 'register_blocks' ] );
 			add_action( 'admin_post_' . Storefront\FormHandler::ACTION, [ Storefront\FormHandler::class, 'handle' ] );
 			add_action( 'admin_post_nopriv_' . Storefront\FormHandler::ACTION, [ Storefront\FormHandler::class, 'handle' ] );
+			$this->watch_settings();
 			Admin\Menu::instance()->register();
 			Admin\Enqueue::instance()->register();
 			Admin\ProductEditor::instance()->register();
+			Privacy\Privacy::instance()->register();
 		} else {
 			add_filter( 'pre_render_block', [ $this, 'on_pre_render_block' ], 10, 3 );
 			add_filter( 'the_posts', [ $this, 'on_the_posts' ] );
@@ -68,6 +89,7 @@ final class Plugin {
 		}
 
 		if ( defined( 'WP_CLI' ) && constant( 'WP_CLI' ) ) {
+			$this->watch_settings();
 			Setup\Activator::maybe_upgrade();
 			Cli\ShopCommand::register();
 			Cli\DbCommand::register();
@@ -110,7 +132,64 @@ final class Plugin {
 
 	/** @internal Pricing, stock, sessions and the cart. */
 	public function cart(): CartServices {
-		return $this->cart ??= new CartServices( $this->services(), $this->catalog() );
+		return $this->cart ??= new CartServices( $this->services(), $this->catalog(), tax: fn (): Tax\TaxService => $this->tax()->service() );
+	}
+
+	/**
+	 * @internal Orders, order history and the extension order reader.
+	 * Every order write builds this first, so the email listeners are bound
+	 * here and nowhere else: requests that never touch an order add none (P1).
+	 */
+	public function orders(): Orders\OrderServices {
+		if ( $this->orders === null ) {
+			$this->orders = new Orders\OrderServices( $this->services(), $this->cart()->stock() );
+			$this->notifications()->notifier()->bind();
+		}
+		return $this->orders;
+	}
+
+	/** @internal Order emails, their settings and templates. */
+	public function notifications(): Notifications\NotificationServices {
+		return $this->notifications ??= new Notifications\NotificationServices( $this->services(), $this->orders(), fn (): Checkout\CheckoutServices => $this->checkout() );
+	}
+
+	/** @internal Zones, shipping methods and rates. */
+	public function shipping(): Shipping\ShippingServices {
+		return $this->shipping ??= new Shipping\ShippingServices( $this->services() );
+	}
+
+	/** @internal Gateways, transactions, webhooks and refunds. */
+	public function payments(): Payments\PaymentServices {
+		return $this->payments ??= new Payments\PaymentServices( $this->services(), fn (): Orders\OrderService => $this->orders()->service() );
+	}
+
+	/** @internal Checkout, order confirmation and order-pay. */
+	public function checkout(): Checkout\CheckoutServices {
+		return $this->checkout ??= new Checkout\CheckoutServices( $this->services(), $this->cart(), $this->shipping(), $this->orders(), $this->payments(), $this->tax() );
+	}
+
+	public function tax(): Tax\TaxServices {
+		return $this->tax ??= new Tax\TaxServices( $this->services() );
+	}
+
+	/**
+	 * Settings change only in admin, REST and WP-CLI requests, so the hook is
+	 * added there and storefront pages keep their callback budget (P1).
+	 */
+	private function watch_settings(): void {
+		if ( ! has_action( 'flexacommerce.settings.updated', [ $this, 'on_settings_updated' ] ) ) {
+			add_action( 'flexacommerce.settings.updated', [ $this, 'on_settings_updated' ], 10, 2 );
+		}
+	}
+
+	/**
+	 * Recompile the base-location rates when a setting they depend on changes.
+	 *
+	 * @param array<string,mixed> $new
+	 * @param array<string,mixed> $old
+	 */
+	public function on_settings_updated( array $new, array $old ): void {
+		$this->tax()->service()->on_settings_updated( $new, $old );
 	}
 
 	/** Every product gets its base row as soon as the post exists (doc 03 §3). */
@@ -142,6 +221,7 @@ final class Plugin {
 	 * builds WP_Scripts, which costs two queries on every cart request (P4q).
 	 */
 	public function on_rest_api_init(): void {
+		$this->watch_settings();
 		$route = isset( $GLOBALS['wp'] ) && $GLOBALS['wp'] instanceof \WP ? (string) ( $GLOBALS['wp']->query_vars['rest_route'] ?? '' ) : '';
 		if ( str_starts_with( $route, '/' . FLEXACOMMERCE_REST_NAMESPACE . '/' ) ) {
 			return;
@@ -206,6 +286,24 @@ final class Plugin {
 		) {
 			Storefront\Storefront::instance()->on_template_redirect();
 		}
+		if ( self::is_checkout_request() ) {
+			Storefront\CheckoutPage::instance()->handle();
+		}
+	}
+
+	/**
+	 * The checkout page, a checkout or order-pay post, or an order view.
+	 * Literal names keep the Checkout classes unloaded on other pages (P1);
+	 * CheckoutPage and CheckoutPages hold the same names as constants.
+	 */
+	private static function is_checkout_request(): bool {
+		// phpcs:disable WordPress.Security.NonceVerification -- routing only; CheckoutPage verifies.
+		if ( isset( $_POST['fxc_checkout'] ) || isset( $_POST['fxc_pay'] ) || isset( $_GET['order-received'] ) || isset( $_GET['order-pay'] ) ) {
+			return true;
+		}
+		// phpcs:enable
+		$page = Support\Settings::int( 'checkout_page_id' );
+		return $page > 0 && is_page( $page );
 	}
 
 	/** The count cookie belongs to the user's cart; a guest starts at zero. */
@@ -223,7 +321,17 @@ final class Plugin {
 		return Storefront\Storefront::instance()->shortcode_add_to_cart( $atts );
 	}
 
+	/** @param array<string,string>|string $atts */
+	public function shortcode_checkout( array|string $atts = [] ): string {
+		return Storefront\Storefront::instance()->shortcode_checkout( $atts );
+	}
+
 	public function extensions(): Extensions {
-		return $this->services()->extensions();
+		return $this->extensions ??= new ExtensionsFacade(
+			$this->services(),
+			fn (): GatewayRegistry => $this->payments()->gateways(),
+			fn (): ShippingMethodRegistry => $this->shipping()->methods(),
+			fn (): OrderReader => $this->orders()->reader(),
+		);
 	}
 }

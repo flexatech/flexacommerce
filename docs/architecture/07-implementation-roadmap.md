@@ -1,6 +1,6 @@
 # 07. Implementation Roadmap
 
-Status: **Approved 2026-10-24**, phase 1 complete (exit criteria verified locally and in CI), phase 2 complete (its browser pass was done in phase 3), phase 2.5 and phase 3 complete except the latency rerun on a reference machine. Effort figures are rough estimates for one experienced WordPress/PHP developer with part-time frontend help, given only to compare phases; they are not commitments.
+Status: **Approved 2026-10-24**, phase 1 complete (exit criteria verified locally and in CI), phase 2 complete (its browser pass was done in phase 3), phase 2.5 and phase 3 complete except the latency rerun on a reference machine, phase 4 complete except C1 and that rerun. Phase 4.5 (taxes) added on 2026-10-25 when Q2 changed (ADR-020) and complete except T3 P6t and the cart tax display. Effort figures are rough estimates for one experienced WordPress/PHP developer with part-time frontend help, given only to compare phases; they are not commitments.
 
 Priorities: **P0** blocks the milestone, **P1** expected in the milestone, **P2** may slip to the next milestone, **P3** nice to have.
 
@@ -14,6 +14,7 @@ Priorities: **P0** blocks the milestone, **P1** expected in the milestone, **P2*
 | 2.5 | Performance harness and baseline (doc 10) | 2 | M1 | 1 to 1.5 weeks |
 | 3 | Pricing, stock, cart, minimal storefront | 2.5 | M1 | 3 to 4 weeks |
 | 4 | Checkout, orders, shipping, COD/bank, emails | 3 | M1 | 4 to 5 weeks |
+| 4.5 | Taxes: WooCommerce-equivalent options, US preset (ADR-020) | 4 | M1 | about 4 weeks |
 | 5 | Full storefront (blocks, templates, account) | 3 (parallel with 4 after cart API is stable) | M1 | 3 to 4 weeks |
 | 6 | Migration (WC→FXC, then FXC→WC) | 2, 4 | M2 | 5 to 7 weeks |
 | 7 | Hardening, benchmark, release | all | M2 (1.0) | 2 to 3 weeks |
@@ -144,11 +145,64 @@ Implementation notes (phase 3, 2026-10-25):
 | P1 | Customers screen (users with orders + guest emails) |
 | P1 | Rate limits (doc 06 §2.9) |
 | P2 | Deferred email sending setting |
-| P2 | `TaxCalculator` seam hardening (depends on Q2) |
+| P2 | `TaxCalculator` seam hardening (moved to phase 4.5 when Q2 changed) |
 
 Exit criteria: full concurrency suite green; state machine transition table fully covered; security review gate (doc 06 §2.12) passes for checkout, store and admin order routes.
 
 Performance exit: P6q (fixed part + exactly 1 query per line, checked at 1 and 10 lines) and P6m binding; gateway and shipping classes absent from catalog requests (T1 allowlist, O7); T3 P6 and C1 within budget with 0 oversells; worker RSS (C2) reported.
+
+Implementation notes (phase 4, 2026-10-25):
+
+- **Exit criteria.** Concurrency (`tests/Integration/Concurrency/ConcurrencyTest.php`, separate PHP processes with their own connections): parallel checkouts never oversell with 1 and with 5 units in stock; two carts holding the same lines in opposite order do not deadlock; the same checkout submitted five times at once makes one order; a webhook delivered ten times at once pays once; cron expiry and a customer cancel at the same time restore stock once; parallel adds to one cart lose no update. State machine: `OrderStateMachineTest` checks every (from, to) pair of statuses against the table of doc 02 §7.4, plus terminal statuses and the rule that `refunded` never moves stock. Security review (doc 06 §2.12): see the next item.
+- **Security review.** Every route in our namespace has a real permission callback, and every `/admin/` handler, every method, refuses anonymous users and subscribers (`RoutesHavePermissionsTest`). Store writes need a JSON body, a same-origin `Origin` and `X-FXC-Nonce` bound to the session; webhooks are checked by the gateway's signature; order pages and `retry_payment` take the order key with `hash_equals`, rate limited per IP, then the owner or staff check. Order notes go through `wp_kses_post`; checkout, confirmation and email templates escape every value. One fix came out of it: with a proxy header configured, `ClientIp` took the first address of the list, which the client controls, so a forged entry got around the per-IP limits. It now takes the right-most public address (doc 06 §2.9).
+- **Duplicate submits.** The insert of a second order with the same checkout token fails on the unique key, but under REPEATABLE READ a plain read cannot see the row the other transaction just committed. `OrderRepository::find_by_checkout_token()` has a `$lock` flag, and `OrderService::create()` re-reads with `FOR UPDATE` in that case; callers read the order again after commit, because its items can still be hidden by the snapshot.
+- **P6q work.** The first measurement was 73 queries for one line (fixed part 72). What brought it to 55: `Database\TableCharset` answers wpdb's charset questions for our tables, which skips one `SHOW FULL COLUMNS` per table and request; addresses are written with one `REPLACE` (`save_addresses()`, replaces `save_address()`); `set_stock_reduced()` updates every line in one statement; `Logger::batch()` collects log rows and writes them with one multi-row insert (`LogRepository::insert_many()`); `GatewaySettings::prime()` and `EmailSettings::prime()` load the options with one query; `PaymentService::initiate()` takes the order the caller already holds (`?Order $order`); `OrderService::create()` seeds the read model cache so the deferred events do not read the order again. The budget was raised once, from the provisional 30 to measured 54 + 10 % = 60, with exactly 1 query per line (doc 10 §4.1). P6m: 953,600 B at 10 lines, budget 1,048,960 B.
+- **Deferred emails** (`defer_emails`, default off). The message is built during the request and kept in a transient `fxc_mail_<id>` for a day; the single event `flexacommerce.cron.send_email` sends it. If the transient or the event cannot be stored, the email goes out inline. The cron handler is added only under cron and WP-CLI (P1 budget). `NotificationServices::mailer()` is the shared mailer.
+- **O7.** `StorefrontBudgetTest` now asserts that the archive, simple and variable product pages load no class from `Payments`, `Shipping`, `Checkout`, `Orders` or `Notifications`.
+- **T3.** Checkout (COD, 5 lines, deferred email) and the catalog pages at 1, 10 and 25 VU on dataset M, report `docs/benchmarks/2026-10-25-phase4.md`. Order request: 65 queries against WooCommerce's 913, fxc p95 under 500 ms up to 25 VU, no oversell in 18 runs. Latency is indicative (laptop, one valid row of 26), and C1 is not met there: core home alone rises 8.2 × from 1 to 25 VU with 25 workers on 8 CPUs, so C1 waits for the reference machine (Q18). The bench turns off the per-IP checkout limit, because all k6 traffic shares one address. WooCommerce runs checkout with HPOS on; the phase 3 report said HPOS was on, but it was off for those scenarios.
+- **Not done.** `TaxCalculator` hardening (P2) moved to phase 4.5 (taxes, ADR-020); the seam stays as in phase 3 until then. C1 waits for Q18.
+
+## Phase 4.5: Taxes (ADR-020, US first)
+
+Added 2026-10-25 when Q2 changed. Specification: doc 02 §7.12; schema: doc 03 §4.13; contracts: doc 04 §7.1; budgets: doc 10 §4.1 (PT-*).
+
+| Pri | Task |
+|---|---|
+| P0 | Schema `DB_VERSION` 2: `fxc_tax_rates`, `fxc_tax_rate_locations`, `fxc_variants.tax_status`, upgrade step that sets variation rows to `tax_class = parent` (with its fixture test, doc 03 §6) |
+| P0 | Tax settings (doc 02 §7.12.1) in `Support\Settings`, tax classes, store base address fields |
+| P0 | `Contracts\Tax` (`TaxLocation`, `TaxRate`, `TaxRequest`, `TaxResult`, `TaxRateProvider`, `TaxCalculator`), replacing the phase 3 seam; `Support\IntMath::mul_div_half_up()` |
+| P0 | `TaxRateRepository` with the one-query match (postcode exact, prefix, range; city), `TableRateProvider`, `fxc_tax` cache group with a version key |
+| P0 | `TaxEngine`: priority, compound, inclusive and exclusive prices, per-line and subtotal rounding, shipping tax class rule, `tax_status`, exemption filter |
+| P0 | `TaxService`: location from `tax_based_on`, default location, markets, in-state origin sourcing; guard and fallback for add-on providers and calculators |
+| P0 | Cart, checkout `Quote`, order lines: per-line per-rate tax, one `tax` line per rate, totals invariant; confirmation, account, emails and admin order detail show the tax rows (single or itemized) |
+| P0 | Refunds split tax per rate (`OrderItem::refund_split()`) |
+| P0 | Admin Taxes screen (React): options, classes, rate table per class with search and pagination, CSV import (batches of 500) and export in WooCommerce's format |
+| P0 | US preset `resources/tax-presets/us.json` (state base rates, per-state shipping taxability, origin states, `as_of` and sources) and the apply dialog with nexus states and preview |
+| P0 | Product editor: tax status and class on the General tab, class per variation with "Same as parent" |
+| P0 | Golden parity tests against WooCommerce on the bench stack (`tests/fixtures/tax-golden.json`, doc 02 §7.12.9) |
+| P1 | Catalog display incl/excl with the compiled base rates, price suffix placeholders, variable price ranges |
+| P1 | Market overrides UI (one market per row, countries and overridden keys) |
+| P1 | `flexacommerce.tax.presets` filter and a second preset skeleton in tests (proves the format is not US-only) |
+| P2 | Tax-exempt flag on the Customers screen (feeds `flexacommerce.tax.exempt`) |
+| P2 | Base-location adjustment for inclusive prices (`flexacommerce.tax.adjust_non_base_prices`) |
+
+Exit criteria: golden parity tests pass to the minor unit or every difference is listed as intended in doc 02 §7.12.9; a US order with state, county, city and district rates for one ZIP stores four `tax` lines whose sum equals `tax_total`; shipping is taxed only by rates with the shipping flag; a full refund returns exactly the tax charged; with taxes off the full test suite and every phase 4 budget give the same numbers as before phase 4.5.
+
+Performance exit: PT-off, PT-cat, PT-opt, PT-cart, PT-q, PT-m, PT-rows binding in T1; T3 P6t reported against WooCommerce with the same rate table.
+
+Implementation notes (phase 4.5, 2026-10-25):
+
+- **Exit criteria.** Golden parity: 20 cases priced by WooCommerce 11.2.1 (`tools/bench/bench.sh tax-golden`, `tests/Integration/Tax/TaxGoldenTest.php`); 19 match to the minor unit and the ZIP+4 case is an intended divergence (doc 02 §7.12.9). The golden run found two bugs, both fixed: the base-location adjustment rounded the net before taxing it (1 cent off on some inclusive lines), and exempt orders stored a 0 `tax` line per rate. A Cupertino order with state, county, city and district rates stores four `tax` lines that add up to `tax_total`, the district rate (shipping flag off) does not tax shipping, and a full refund returns exactly the tax charged (`TaxCheckoutTest`). With taxes off, the full suite and every phase 4 budget give the same numbers as before.
+- **Taxes off costs nothing.** `PricingService` reads `tax_enabled` before it calls the tax closure, so catalog pages load no `Tax` class. `CheckoutService::quote()` returns early without a `TaxRequest`, and `Quote::taxes` is `null` while taxes are off; cart and checkout load only `TaxService` and `TaxServices` (PT-off).
+- **Budgets** (doc 10 §4.1): PT-cat 0, PT-opt 5,019 B, PT-cart 0, PT-q +1 at 1 and 10 lines, PT-m 84 KB at 10 lines (re-recorded once from the provisional 64 KB, budget 96 KB), PT-rows 174 on a 50,050-location fixture.
+- **Cart destination keeps the city.** The cart stored country, state and postcode only, so the form total missed a city rate and checkout answered `totals_changed`. `Cart` and `CartService` now keep `{country, state, postcode, city}` (doc 03 §4.9). Before an address is known the destination defaults to the store address (`tax_default_location = base`).
+- **Exempt orders** get meta `_fxc_tax_exempt = 1` and no `tax` lines.
+- **Rate matching.** Ties after priority and specificity break on the rate id, as WooCommerce does; rate order is only the screen and CSV order. Postcode ranges must be two numbers, low to high; anything else is refused on save. The range branch of the match query reads every range row with `range_from <=` the postcode in that country and state, which is fine at US scale (PT-rows) but would grow with tens of thousands of ranges in one state.
+- **Refunds.** The split lives on the order item, `OrderItem::refund_split()`, since it needs only the stored line; the task table used to name `TaxService::split_refund()`.
+- **CSV import batches are sent by the admin screen**, 500 rows each, validate pass first; the server refuses a larger batch. There is no server-side batch runner for it.
+- **Tax UI** is the Tax tab of Settings (options, classes, rates per class, CSV, presets, markets), not a separate screen.
+- **US preset.** `resources/tax-presets/us.json` has `as_of` 2025-01-01 and a source per state. The state rates, shipping taxability and origin-state list still need the check against each revenue department that doc 02 §7.12.8 asks for before release.
+- **Not done.** The cart page and the `store/cart` response show no tax yet (phase 5 cart display), so PT-cart passes trivially; `POST store/cart/items` is not probed. T3 P6t against WooCommerce with the same rate table is not run. The tax-exempt flag on the Customers screen (P2) is not built; the filter is the only way in. With `tax_based_on = billing` the checkout form total follows the shipping address until the order is placed. In the admin order view, an inclusive-price line shows unit × quantity, which differs from its stored net total.
 
 ## Phase 5: Full storefront
 
@@ -173,6 +227,7 @@ Exit criteria: E2E journeys green on Twenty Twenty-Five and the chosen classic t
 | P0 | Migration tables repositories, `MigrationService`, `Runner` (lease, budgets, cursors), job state machine, ImportGuard |
 | P0 | Canonical DTOs, validator, checksum |
 | P0 | `WooSource` + `FxcTarget`: attributes, terms, products, customers, orders with items, transactions, refunds, notes |
+| P0 | Tax classes, rates with locations, tax settings and product tax fields in both directions (doc 05 §5, ADR-020) |
 | P0 | Preflight, dry run, verification report, admin migration screen, WP-CLI `migrate` commands |
 | P0 | Cutover wizard, permalink adoption, redirect map |
 | P0 | Golden fixtures in legacy, HPOS and HPOS+sync; crash/resume tests; ImportGuard tests |
@@ -201,7 +256,7 @@ Exit: **1.0 (M2)**.
 ## Post-1.0 candidates (ordered by expected demand, to be validated)
 
 1. Online gateway add-on (Q4).
-2. Tax engine (if Q2 deferred it).
+2. Tax presets for more markets (EU VAT, UK, Canada, Australia), VAT ID validation and tax reports, as add-ons or presets.
 3. Coupons.
 4. Shipping zones migration and cross-site transport.
 5. Product lookup table if the revisit condition in doc 03 §5 triggers.
@@ -211,7 +266,8 @@ Exit: **1.0 (M2)**.
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| Tax decision (Q2) lands late | Checkout and emails rework | Decide before phase 4 starts. Schema already carries tax columns. |
+| Tax decision (Q2) lands late | Checkout and emails rework | Decided 2026-10-25 after phase 4 (ADR-020). Phase 4.5 reworks the checkout quote, order lines, emails and refunds; the schema already had the tax columns, so no order data changes. |
+| US rate data goes stale or is wrong in the preset | Stores charge the wrong tax | Preset carries `as_of` and sources, checked at each release; the screen states the owner's responsibility; local rates come from CSV or a provider add-on |
 | Performance budgets found late | Rework of renderers and routes after they ship | Phase 2.5 puts the T1 gate in CI before phase 3 code exists (doc 10) |
 | Variant admin UI larger than estimated | Phase 2 slips | Ship bulk edit as P1, generation and per-row edit as P0 |
 | WooCommerce data diversity (plugins writing odd meta) | Migration rejects or warnings explode | Spike in phase 2, beta stores in phase 7, preserve-unknown policy |

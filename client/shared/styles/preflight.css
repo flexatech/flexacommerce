@@ -51,6 +51,13 @@ select.flexacommerce-control {
     border-color: var(--border) !important;
 }
 
+/* WP paints a blue focus ring outside checkboxes and radios. */
+.flexacommerce-check:focus,
+.flexacommerce-check:focus-visible {
+    outline: none;
+    box-shadow: none;
+}
+
 /* Radix portals land on <body>, where `.wp-core-ui button` outranks text utilities. */
 .fxc\:text-white,
 .fxc\:text-primary-foreground,

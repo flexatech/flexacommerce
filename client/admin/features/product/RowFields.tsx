@@ -6,7 +6,7 @@ import { Select } from "@/shared/components/ui/select";
 import { __ } from "@/shared/lib/i18n";
 import { localInputToUtc, utcToLocalInput } from "@/shared/lib/units";
 import { DimensionInput, Field, IntInput, MoneyInput, Toggle, WeightInput } from "./fields";
-import type { Backorders, StockStatus, VariantRow } from "./types";
+import type { Backorders, StockStatus, TaxStatus, VariantRow } from "./types";
 
 export type RowChange = (patch: Partial<VariantRow>) => void;
 
@@ -23,6 +23,12 @@ const BACKORDER_OPTIONS: { value: Backorders; label: string }[] = [
     { value: "no", label: __("Do not allow") },
     { value: "notify", label: __("Allow, but notify the customer") },
     { value: "yes", label: __("Allow") },
+];
+
+const TAX_STATUS_OPTIONS: { value: TaxStatus; label: string }[] = [
+    { value: "taxable", label: __("Taxable") },
+    { value: "shipping", label: __("Shipping only") },
+    { value: "none", label: __("None") },
 ];
 
 const GRID = "fxc:grid fxc:gap-4 fxc:sm:grid-cols-2";
@@ -195,6 +201,40 @@ export function ShippingFields({ row, onChange, errors, path }: { row: VariantRo
                     {(id) => <DimensionInput id={id} value={row.height} onChange={(height) => onChange({ height })} />}
                 </Field>
             </div>
+        </div>
+    );
+}
+
+/**
+ * Tax status and class. The status lives on the product only; a variation
+ * picks a class or keeps "Same as product" (`parent`).
+ */
+export function TaxFields({ row, onChange, errors, path }: { row: VariantRow; onChange: RowChange; errors: FieldErrors; path: string }) {
+    const classes = (window.flexaCommerce?.taxClasses ?? [{ slug: "", name: __("Standard") }]).map((c) => ({ value: c.slug, label: c.name }));
+    const options = row.is_base ? classes : [{ value: "parent", label: __("Same as product") }, ...classes];
+    // A class removed in the tax settings still shows, so saving does not change it silently.
+    if (!options.some((o) => o.value === row.tax_class)) {
+        options.push({ value: row.tax_class, label: row.tax_class });
+    }
+
+    return (
+        <div className={GRID}>
+            {row.is_base && (
+                <Field label={__("Tax status")} error={errors[`${path}.tax_status`]} help={__("Shipping only taxes the shipping cost of this product, not its price.")}>
+                    {(id) => (
+                        <Select
+                            id={id}
+                            className="fxc:w-full"
+                            options={TAX_STATUS_OPTIONS}
+                            value={row.tax_status}
+                            onChange={(event) => onChange({ tax_status: event.target.value as TaxStatus })}
+                        />
+                    )}
+                </Field>
+            )}
+            <Field label={__("Tax class")} error={errors[`${path}.tax_class`]}>
+                {(id) => <Select id={id} className="fxc:w-full" options={options} value={row.tax_class} onChange={(event) => onChange({ tax_class: event.target.value })} />}
+            </Field>
         </div>
     );
 }

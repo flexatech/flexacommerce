@@ -51,7 +51,7 @@ final class StorefrontBudgetTest extends TestCase {
 		for ( $i = 1; $i <= 48; $i++ ) {
 			self::$listed[] = self::product( 'Budget product ' . $i, [ 'base' => [ 'regular_price' => 1000 + $i ] ] );
 		}
-		self::$simple = self::product(
+		self::$simple        = self::product(
 			'Budget simple',
 			[
 				'base' => [
@@ -211,6 +211,14 @@ final class StorefrontBudgetTest extends TestCase {
 		$cache = strtolower( (string) ( $on['headers']['Cache-Control'] ?? '' ) );
 		self::assertStringNotContainsString( 'no-', $cache, "{$label}: Cache-Control {$cache}." );
 		self::assertArrayNotHasKey( 'Set-Cookie', $on['headers'] );
+		// O7: gateways, shipping, checkout, orders and emails stay unloaded on catalog pages.
+		$loaded = array_values(
+			array_filter(
+				(array) $on['own'],
+				static fn ( string $class ): bool => preg_match( '/^Flexa\\\\Commerce\\\\(Payments|Shipping|Checkout|Orders|Notifications)\\\\/', $class ) === 1
+			)
+		);
+		self::assertSame( [], $loaded, "{$label}: a catalog page loaded checkout classes." );
 	}
 
 	/** @param array{on:array<string,mixed>,off:array<string,mixed>} $run */

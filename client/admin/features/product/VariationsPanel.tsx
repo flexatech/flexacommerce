@@ -10,7 +10,7 @@ import { __, _n, sprintf } from "@/shared/lib/i18n";
 import { formatMoney } from "@/shared/lib/units";
 import { combinationLabel, newVariation } from "./draft";
 import { Field, IntInput, MoneyInput, Toggle } from "./fields";
-import { InventoryFields, PricingFields, ShippingFields, type FieldErrors } from "./RowFields";
+import { InventoryFields, PricingFields, ShippingFields, TaxFields, type FieldErrors } from "./RowFields";
 import type { ProductAttribute, VariantRow } from "./types";
 
 type BulkAction = "" | "regular_price" | "sale_price" | "stock_quantity" | "enable" | "disable" | "delete";
@@ -290,6 +290,7 @@ function VariationEditor({
             <PricingFields row={row} onChange={onChange} errors={errors} path={path} />
             <InventoryFields row={row} onChange={onChange} errors={errors} path={path} baseManagesStock={baseManagesStock} />
             <ShippingFields row={row} onChange={onChange} errors={errors} path={path} />
+            <TaxFields row={row} onChange={onChange} errors={errors} path={path} />
 
             <Field label={__("Description")}>
                 {(id) => (

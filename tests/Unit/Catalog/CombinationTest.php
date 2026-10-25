@@ -9,8 +9,20 @@ use Flexa\Commerce\Tests\Unit\TestCase;
 
 final class CombinationTest extends TestCase {
 	public function test_keys_are_sorted_by_byte_order(): void {
-		$a = Combination::from_array( [ 'l:fabric' => 'linen', 'g:12' => '31', 'g:2' => '7' ] );
-		$b = Combination::from_array( [ 'g:2' => '7', 'l:fabric' => 'linen', 'g:12' => '31' ] );
+		$a = Combination::from_array(
+			[
+				'l:fabric' => 'linen',
+				'g:12'     => '31',
+				'g:2'      => '7',
+			]
+		);
+		$b = Combination::from_array(
+			[
+				'g:2'      => '7',
+				'l:fabric' => 'linen',
+				'g:12'     => '31',
+			]
+		);
 
 		self::assertSame( 'g:12=31&g:2=7&l:fabric=linen', $a->canonical() );
 		self::assertSame( $a->hash(), $b->hash() );
@@ -30,7 +42,12 @@ final class CombinationTest extends TestCase {
 	}
 
 	public function test_json_round_trip(): void {
-		$c = Combination::from_array( [ 'g:12' => '*', 'l:size' => 'xl' ] );
+		$c = Combination::from_array(
+			[
+				'g:12'   => '*',
+				'l:size' => 'xl',
+			]
+		);
 		self::assertTrue( $c->equals( Combination::from_json( $c->to_json() ) ) );
 		self::assertSame( 1, $c->wildcard_count() );
 	}
@@ -49,13 +66,13 @@ final class CombinationTest extends TestCase {
 	/** @return array<string,array{0:array<string,mixed>}> */
 	public static function invalid_pairs(): array {
 		return [
-			'unknown prefix'      => [ [ 'x:1' => '2' ] ],
-			'global key zero'     => [ [ 'g:0' => '2' ] ],
-			'global value text'   => [ [ 'g:12' => 'red' ] ],
-			'local value spaces'  => [ [ 'l:size' => 'X L' ] ],
-			'local value empty'   => [ [ 'l:size' => '' ] ],
-			'value not a string'  => [ [ 'l:size' => [ 'xl' ] ] ],
-			'separator in value'  => [ [ 'l:size' => 'a&b=c' ] ],
+			'unknown prefix'     => [ [ 'x:1' => '2' ] ],
+			'global key zero'    => [ [ 'g:0' => '2' ] ],
+			'global value text'  => [ [ 'g:12' => 'red' ] ],
+			'local value spaces' => [ [ 'l:size' => 'X L' ] ],
+			'local value empty'  => [ [ 'l:size' => '' ] ],
+			'value not a string' => [ [ 'l:size' => [ 'xl' ] ] ],
+			'separator in value' => [ [ 'l:size' => 'a&b=c' ] ],
 		];
 	}
 
@@ -69,16 +86,50 @@ final class CombinationTest extends TestCase {
 	}
 
 	public function test_matches_requires_every_key(): void {
-		$c = Combination::from_array( [ 'g:1' => '10', 'g:2' => '*' ] );
-		self::assertTrue( $c->matches( [ 'g:1' => '10', 'g:2' => '20' ] ) );
-		self::assertFalse( $c->matches( [ 'g:1' => '11', 'g:2' => '20' ] ) );
+		$c = Combination::from_array(
+			[
+				'g:1' => '10',
+				'g:2' => '*',
+			]
+		);
+		self::assertTrue(
+			$c->matches(
+				[
+					'g:1' => '10',
+					'g:2' => '20',
+				]
+			)
+		);
+		self::assertFalse(
+			$c->matches(
+				[
+					'g:1' => '11',
+					'g:2' => '20',
+				]
+			)
+		);
 		self::assertFalse( $c->matches( [ 'g:1' => '10' ] ) );
 	}
 
 	public function test_overlaps(): void {
-		$any  = Combination::from_array( [ 'g:1' => '*', 'g:2' => '20' ] );
-		$red  = Combination::from_array( [ 'g:1' => '10', 'g:2' => '*' ] );
-		$blue = Combination::from_array( [ 'g:1' => '11', 'g:2' => '21' ] );
+		$any  = Combination::from_array(
+			[
+				'g:1' => '*',
+				'g:2' => '20',
+			]
+		);
+		$red  = Combination::from_array(
+			[
+				'g:1' => '10',
+				'g:2' => '*',
+			]
+		);
+		$blue = Combination::from_array(
+			[
+				'g:1' => '11',
+				'g:2' => '21',
+			]
+		);
 
 		self::assertTrue( $any->overlaps( $red ) );
 		self::assertTrue( $red->overlaps( $any ) );

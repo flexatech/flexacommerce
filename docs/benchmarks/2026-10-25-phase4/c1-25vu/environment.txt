@@ -1,0 +1,6 @@
+php_version=8.2 fpm_workers=25 vus=25 n=500 warmup=50 runs=3
+host=Darwin 25.6.0 arm64 cpus=8
+docker=29.0.1
+mysql:8.0.40 sha256:f6e7cfd1cb86
+fxc-bench-php:8.2 sha256:f8a54b7d1f92
+nginx:1.27.3-alpine sha256:f9d642c42f7b

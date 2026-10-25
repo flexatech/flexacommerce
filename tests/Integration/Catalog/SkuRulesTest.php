@@ -43,7 +43,15 @@ final class SkuRulesTest extends CatalogTestCase {
 	public function test_saving_the_same_sku_again_on_its_own_product_is_fine(): void {
 		$id = $this->product();
 		$this->save( $id, [ 'base' => [ 'sku' => $this->sku( 'SAME' ) ] ] );
-		$saved = $this->save( $id, [ 'base' => [ 'sku' => $this->sku( 'SAME' ), 'regular_price' => 500 ] ] );
+		$saved = $this->save(
+			$id,
+			[
+				'base' => [
+					'sku'           => $this->sku( 'SAME' ),
+					'regular_price' => 500,
+				],
+			]
+		);
 		self::assertSame( 500, $saved->base->regular_price );
 	}
 
@@ -55,8 +63,14 @@ final class SkuRulesTest extends CatalogTestCase {
 			$id,
 			[
 				'variations' => [
-					[ 'attributes' => [ 'l:size' => 's' ], 'sku' => $this->sku( 'v' ) ],
-					[ 'attributes' => [ 'l:size' => 'm' ], 'sku' => strtolower( $this->sku( 'V' ) ) ],
+					[
+						'attributes' => [ 'l:size' => 's' ],
+						'sku'        => $this->sku( 'v' ),
+					],
+					[
+						'attributes' => [ 'l:size' => 'm' ],
+						'sku'        => strtolower( $this->sku( 'V' ) ),
+					],
 				],
 			]
 		);
@@ -68,17 +82,33 @@ final class SkuRulesTest extends CatalogTestCase {
 		$id = $this->variable_product( [ 'S' ] );
 
 		$this->expectException( DuplicateSku::class );
-		$this->save( $id, [ 'variations' => [ [ 'attributes' => [ 'l:size' => 's' ], 'sku' => $this->sku( 'base' ) ] ] ] );
-	}
-
-	public function test_skus_can_be_swapped_between_variations_in_one_save(): void {
-		$id    = $this->variable_product( [ 'S', 'M' ] );
-		$saved = $this->save(
+		$this->save(
 			$id,
 			[
 				'variations' => [
-					[ 'attributes' => [ 'l:size' => 's' ], 'sku' => $this->sku( 'one' ) ],
-					[ 'attributes' => [ 'l:size' => 'm' ], 'sku' => $this->sku( 'two' ) ],
+					[
+						'attributes' => [ 'l:size' => 's' ],
+						'sku'        => $this->sku( 'base' ),
+					],
+				],
+			]
+		);
+	}
+
+	public function test_skus_can_be_swapped_between_variations_in_one_save(): void {
+		$id                 = $this->variable_product( [ 'S', 'M' ] );
+		$saved              = $this->save(
+			$id,
+			[
+				'variations' => [
+					[
+						'attributes' => [ 'l:size' => 's' ],
+						'sku'        => $this->sku( 'one' ),
+					],
+					[
+						'attributes' => [ 'l:size' => 'm' ],
+						'sku'        => $this->sku( 'two' ),
+					],
 				],
 			]
 		);
@@ -88,12 +118,18 @@ final class SkuRulesTest extends CatalogTestCase {
 			$id,
 			[
 				'variations' => [
-					[ 'id' => $small->id, 'sku' => $this->sku( 'two' ) ],
-					[ 'id' => $medium->id, 'sku' => $this->sku( 'one' ) ],
+					[
+						'id'  => $small->id,
+						'sku' => $this->sku( 'two' ),
+					],
+					[
+						'id'  => $medium->id,
+						'sku' => $this->sku( 'one' ),
+					],
 				],
 			]
 		);
-		$by_id = [];
+		$by_id   = [];
 		foreach ( $swapped->variations as $variation ) {
 			$by_id[ $variation->id ] = $variation->sku;
 		}

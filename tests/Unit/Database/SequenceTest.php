@@ -21,9 +21,9 @@ final class SequenceTest extends TestCase {
 	}
 
 	public function test_reads_last_insert_id(): void {
-		$wpdb                                 = new FakeWpdb();
+		$wpdb                                  = new FakeWpdb();
 		$wpdb->vars['SELECT LAST_INSERT_ID()'] = '17';
-		$sequence                             = new Sequence( $wpdb, new Transaction( $wpdb, new AfterCommit() ) );
+		$sequence                              = new Sequence( $wpdb, new Transaction( $wpdb, new AfterCommit() ) );
 
 		self::assertSame( 17, $sequence->next( 'order_number' ) );
 		self::assertStringContainsString( 'LAST_INSERT_ID(value + 1)', $wpdb->queries[0] );
