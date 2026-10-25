@@ -137,6 +137,20 @@ final class TemplateLoaderTest extends CartTestCase {
 		self::assertStringContainsString( '7.50', $html );
 	}
 
+	public function test_a_theme_without_a_sidebar_gets_none(): void {
+		$this->simple();
+		file_put_contents( $this->theme . '/sidebar.php', "<aside>side</aside>\n" );
+		$this->go_to( add_query_arg( 'post_type', PostTypes::PRODUCT, home_url( '/' ) ) );
+		self::assertStringContainsString( '<aside>side</aside>', $this->render( TemplateLoader::ARCHIVE ) );
+
+		// Core's theme-compat sidebar.php is deprecated (an unexpected
+		// deprecation fails the test) and its list markup fails axe.
+		unlink( $this->theme . '/sidebar.php' );
+		$html = $this->render( TemplateLoader::ARCHIVE );
+		self::assertStringNotContainsString( 'id="sidebar"', $html );
+		self::assertStringNotContainsString( '<aside>side</aside>', $html );
+	}
+
 	public function test_parts(): void {
 		$id = $this->simple( 1234 );
 		self::assertStringContainsString( '12.34', Storefront::instance()->part( 'card', $id ) );

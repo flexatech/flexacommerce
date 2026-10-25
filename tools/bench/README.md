@@ -16,6 +16,8 @@ T3 load tests and the WooCommerce comparison from doc 10 §5.3 and §6. This fol
 | `k6/cart.js` | Cart scenarios through each store's own REST API: `add` (a new guest per iteration adds one product) and `view` (one guest cart with three products, read on every iteration). |
 | `k6/checkout.js` | Checkout with cash on delivery: a new guest per iteration reads the cart nonce, adds five products, (FlexaCommerce) reads the checkout token, then places the order. |
 | `prep-checkout.php` | Sets up both stores for the checkout scenario (cash on delivery, one US flat rate, deferred emails, five products with stock of 1,000,000) and writes the IDs and rate to `out/checkout-<store>.json`. |
+| `e2e-prep.php` | Sets up `e2e.bench` for the browser tests in `tests/e2e`: cash on delivery, one US flat rate, a terms page, a page with the filter block, a customer `shopper`, and writes the URLs and products the journeys use to `out/e2e.json`. |
+| `mu-plugins/e2e.php` | On `e2e.bench` only: the theme comes from the `X-FXC-E2E-Theme` header (`twentytwentyfive`, `astra`, `twentytwentyone`), the mini cart block opens the body, and the per-IP order-page limit is off. |
 | `tax-golden.php` | Prices the tax golden cases of `tests/fixtures/tax-golden.json` with a real WooCommerce cart and order on `tax.bench`, and writes the expected amounts back (doc 02 §7.12.9). |
 | `summarize.php` | p50/p95/p99 per run, median of runs, spread check (≤ 10 %), JSON and markdown. |
 | `bench.sh` | Drives the rest. |
@@ -29,6 +31,7 @@ T3 load tests and the WooCommerce comparison from doc 10 §5.3 and §6. This fol
 | `fxc.bench` | `bench_fxc` | FlexaCommerce, read-only mount of this checkout |
 | `wc.bench` | `bench_wc` | WooCommerce, latest at setup time (the version is recorded) |
 | `tax.bench` | `bench_tax` | WooCommerce, used only by `tax-golden` (recreated on every run) |
+| `e2e.bench` | `bench_e2e` | FlexaCommerce with dataset S, used only by the browser tests; Astra and Twenty Twenty-One are installed for it |
 
 ## Usage
 
@@ -42,6 +45,9 @@ T3 load tests and the WooCommerce comparison from doc 10 §5.3 and §6. This fol
 ./bench.sh run checkout
 ./bench.sh summary out/runs/<stamp>
 ./bench.sh tax-golden    # reprice the tax golden fixture with WooCommerce
+./bench.sh e2e-setup     # once: the browser-test store, its dump in out/dumps/bench_e2e.sql.gz
+./bench.sh e2e           # restore it and run tests/e2e (pnpm install there first)
+./bench.sh e2e --project=astra specs/checkout.spec.ts
 ./bench.sh down
 ```
 
@@ -51,6 +57,7 @@ Each store block in a run starts with a PHP-FPM restart (empty OPcache), then th
 
 ## Notes
 
+- The browser tests run Chromium on the host with `--host-resolver-rules=MAP e2e.bench 127.0.0.1:8089`, one worker, against the same store for all three theme projects; `bench.sh e2e` restores the dump first, so every run starts from the same stock and orders. OPcache on the stack does not check file timestamps, so `bench.sh e2e` reloads PHP-FPM before the run to test the code on disk. Results land in `tests/e2e/results/` (ignored); theme axe violations are attachments named `axe-theme-<page>` in `results/report.json`.
 - `wp eval-file` runs scripts through `eval()`, so the loaders and the export have no `declare(strict_types=1)`.
 - The Debian MySQL client in the PHP image is MariaDB's, which refuses MySQL 8's self-signed certificate; `bench.sh` passes `--skip-ssl`.
 - A new WooCommerce store starts in coming-soon mode, which serves a placeholder page to visitors. Setup turns it off, because a store in that mode is not serving its shop.

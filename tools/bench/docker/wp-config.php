@@ -5,6 +5,7 @@
  *   wc.bench    WooCommerce store        (database bench_wc)
  *   core.bench  bench_fxc with every plugin off, the core baseline
  *   tax.bench   WooCommerce store that prices the tax golden cases (bench_tax)
+ *   e2e.bench   FlexaCommerce store for the browser tests (bench_e2e)
  */
 
 $bench_host  = strtolower( (string) ( $_SERVER['HTTP_HOST'] ?? 'fxc.bench' ) );
@@ -13,6 +14,7 @@ $bench_store = [
 	'core.bench' => 'bench_fxc',
 	'wc.bench'   => 'bench_wc',
 	'tax.bench'  => 'bench_tax',
+	'e2e.bench'  => 'bench_e2e',
 ];
 if ( ! isset( $bench_store[ $bench_host ] ) ) {
 	$bench_host = 'fxc.bench';

@@ -13,6 +13,8 @@
 # out/dumps before each of them). core runs blog-post and home only.
 #   ./bench.sh summary <dir>       summarize a run directory
 #   ./bench.sh tax-golden          price tests/fixtures/tax-golden.json with WooCommerce (doc 02 §7.12.9)
+#   ./bench.sh e2e-setup           store e2e.bench for the browser tests: dataset S, Astra and Twenty Twenty-One
+#   ./bench.sh e2e [args...]       restore e2e.bench and run the Playwright tests in tests/e2e (args go to playwright)
 #   ./bench.sh down                stop the stack (volumes are kept)
 #
 # Env: PHP_VERSION (8.2), FPM_WORKERS (4), VUS (1), N (500), WARMUP (50), RUNS (3).
@@ -229,6 +231,31 @@ cmd_run() {
 	php "$HERE/summarize.php" "$out"
 }
 
+# The browser tests (tests/e2e) run on their own store, so they never change
+# the benchmark dumps. One store serves every theme: the e2e mu-plugin picks
+# the theme from a request header.
+cmd_e2e_setup() {
+	local spec=/bench/out/dataset-S-$SEED.json
+	php_exec "[ -f $spec ] || php /bench/generate-dataset.php --size=S --seed=$SEED --out=$spec"
+	install_store e2e.bench bench_e2e
+	wp --url=http://e2e.bench plugin activate flexacommerce
+	wp --url=http://e2e.bench eval-file /bench/load-flexacommerce.php $spec
+	local theme
+	for theme in astra twentytwentyone; do
+		php_exec "[ -d /var/www/html/wp-content/themes/$theme ] || php -d memory_limit=512M /usr/local/bin/wp --allow-root --path=/var/www/html theme install $theme"
+	done
+	wp --url=http://e2e.bench eval-file /bench/e2e-prep.php $spec /bench/out/e2e.json
+	php_exec "mkdir -p /bench/out/dumps && mysqldump -h db -uroot -pbench --skip-ssl --single-transaction bench_e2e 2>/dev/null | gzip > /bench/out/dumps/bench_e2e.sql.gz"
+}
+
+cmd_e2e() {
+	php_exec "gunzip < /bench/out/dumps/bench_e2e.sql.gz | mysql -h db -uroot -pbench --skip-ssl bench_e2e 2>/dev/null"
+	# OPcache does not check timestamps on the stack; test the code on disk.
+	php_exec 'kill -USR2 1'
+	sleep 1
+	(cd "$HERE/../../tests/e2e" && pnpm exec playwright test "$@")
+}
+
 case "${1:-}" in
 	up) cmd_up ;;
 	setup) shift; cmd_setup "$@" ;;
@@ -236,7 +263,9 @@ case "${1:-}" in
 	prep-checkout) cmd_prep_checkout ;;
 	run) shift; cmd_run "$@" ;;
 	tax-golden) cmd_tax_golden ;;
+	e2e-setup) cmd_e2e_setup ;;
+	e2e) shift; cmd_e2e "$@" ;;
 	summary) php "$HERE/summarize.php" "${2:?run dir}" ;;
 	down) "${COMPOSE[@]}" down ;;
-	*) sed -n '2,19p' "$0"; exit 2 ;;
+	*) sed -n '2,21p' "$0"; exit 2 ;;
 esac

@@ -34,6 +34,7 @@ services:
       - wp:/var/www/html
       - ./wp-config.php:/var/www/html/wp-config.php:ro
       - ../mu-plugins/bench-measure.php:/var/www/html/wp-content/mu-plugins/bench-measure.php:ro
+      - ../mu-plugins/e2e.php:/var/www/html/wp-content/mu-plugins/e2e.php:ro
       - ../../..:/var/www/html/wp-content/plugins/flexacommerce:ro
       - ..:/bench
       - logs:/var/log/bench

@@ -206,7 +206,7 @@ Columns: **Budget** is the limit. **Tier** says which test enforces it (§5.1). 
 | R-REST | REST request for another plugin's route | FlexaCommerce endpoint objects built | 0 | T1 | 0 (was 5, F6, fixed by O6) |
 | P10 | Any request | autoloaded options owned | 1, ≤ 10 KB | T1 | 1, 575 B (plus `flexacommerce_rewrite_guard`, which exists only while another plugin claims the shop URL, §3.4) |
 | P11 | Catalog pages | `Set-Cookie` or `no-cache` from FlexaCommerce | none | T1 | holds on archive, simple and variable product, and since phase 5 on a sorted and filtered archive, a category, a search and the classic theme templates: no sessions query, no `nocache_headers`, no `Set-Cookie` in `wp_headers` (§5.2). The cart page does call `nocache_headers` |
-| P8 | Product page | JS / CSS gzip | ≤ 15 KB / ≤ 10 KB | T1 (build) | 3,355 B JS, 2,361 B CSS on simple and variable product |
+| P8 | Product page | JS / CSS gzip | ≤ 15 KB / ≤ 10 KB | T1 (build) | 3,355 B JS, 2,368 B CSS on simple and variable product |
 | P9 | Migration batch | peak memory | < 128 MB | T2 | n/a |
 
 Phase 4.5 notes: PT-m covers more than class loading (about 3 KB). The rest is order data that taxes add (10 lines × 4 rates of per-line tax meta, 4 `tax` rows, the order read back) and about 10 KB of the probe's own query log, so the provisional 64 KB was re-recorded once. PT-cart measured 0 in phase 4.5 because the cart response had no tax; since phase 5 it carries the item tax (doc 02 §7.12.5) and measures +1, the rate match. The tests are in `tests/Integration/Performance/TaxBudgetTest.php`.
@@ -377,13 +377,13 @@ Open items: C1 and every latency budget need the reference machine (Q18); at 25 
 | Item | Result | Verified by |
 |---|---|---|
 | P1h | A page with the Product list Query Loop (`flexacommerce/product-query`) at 12 and 48 products: +2 queries against the same Query Loop of plain posts at both sizes, 1 of them ours (the variant prime). The test also checks that 12 and 48 prices render | T1 `StorefrontBudgetTest` |
-| P8 | 3,355 B JS and 2,361 B CSS gzip on the simple and the variable product page, read from the files the rendered page loads (printed URLs, the import map and inlined styles) | T1 |
+| P8 | 3,355 B JS and 2,368 B CSS gzip on the simple and the variable product page, read from the files the rendered page loads (printed URLs, the import map and inlined styles). The CSS was 2,361 B until the E2E pass removed text opacity (doc 07 phase 5 notes) | T1 |
 | P11 | Also holds on `?orderby=price-desc&filter_cat=…`, a category archive, a search and the classic templates (fixture theme `tests/fixtures/themes/fxc-classic`); the cart page sends `no-cache` and defines `DONOTCACHEPAGE` | T1, `PageCacheTest` |
 | P3 | Related products first read the product's categories and tags with `wp_get_post_terms()`, 2 queries per product page that the term cache could answer. Now `get_the_terms()`: back to −2 queries, 1 own | T1 |
 
 P3 memory was re-recorded once in phase 5, from 1,048,848 B to 1,316,960 B at 250 variants. The phase 4 template measures 1,295,800 B on the same code, so the new product blocks (gallery, SKU, stock, attributes, breadcrumbs, related products) add about 21 KB; the rest came in between phases 3 and 5 and is not attributed yet. The P3b inlined state grew from 37,211 B to 40,211 B at 250 variants, which leaves 1.8 % under the budget. The next field added to the variant state will need the budget re-recorded or the state trimmed.
 
-Open items: the T3 run of the §6.4 scenarios at dataset M against WooCommerce default and tuned, and the Playwright pass with axe on Twenty Twenty-Five, Astra and Twenty Twenty-One. Neither has run yet. The baseline open items of §7.2 still apply.
+The Playwright pass with axe on Twenty Twenty-Five, Astra and Twenty Twenty-One is green (doc 07 phase 5 notes). Open items: the T3 run of the §6.4 scenarios at dataset M against WooCommerce default and tuned. The baseline open items of §7.2 still apply.
 
 ## 8. Roadmap integration
 
@@ -393,6 +393,6 @@ Doc 07 carries the tasks. Summary of what this document adds:
 - **Phase 3 (done 2026-10-25 except the reference-machine rerun, §7.2):** O5; T1 budgets P2, P3a, P3b, P4q, P5q, P11 become binding; T3 cart scenarios P4 and P5; first FXC versus WooCommerce run for listing and product pages, marked indicative because the storefront is minimal.
 - **Phase 4 (done 2026-10-25 except C1 and the reference-machine rerun, §7.3):** O6, O7; P6q, P6m binding; T3 checkout P6 and concurrency C1; worker RSS (C2) reported.
 - **Phase 4.5 (taxes, ADR-020):** PT-off, PT-cat, PT-opt, PT-cart, PT-q, PT-m, PT-rows binding; T3 P6t against WooCommerce with the same rates (bench `prep-tax`).
-- **Phase 5 (T1 done 2026-10-25, T3 and the browser pass open, §7.4):** P1h, P8 binding; full scenario set in §6.4 at dataset M, both WooCommerce configurations.
+- **Phase 5 (T1 and the browser pass done 2026-10-25, T3 open, §7.4):** P1h, P8 binding; full scenario set in §6.4 at dataset M, both WooCommerce configurations.
 - **Phase 6:** P9 nightly; migration-based dataset cross-check (§6.2).
 - **Phase 7:** dataset L, final published report, third-party rerun invitation, release thresholds §5.4 in force.

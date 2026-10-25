@@ -51,5 +51,9 @@ get_header();
 <?php endif; ?>
 <?php
 echo $fxc_wrapper[1]; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- theme markup.
-get_sidebar();
+// Without a sidebar.php, get_sidebar() prints core's deprecated theme-compat
+// sidebar (Twenty Twenty-One has none). locate_template() would find that one too.
+if ( file_exists( get_stylesheet_directory() . '/sidebar.php' ) || file_exists( get_template_directory() . '/sidebar.php' ) ) {
+	get_sidebar();
+}
 get_footer();
