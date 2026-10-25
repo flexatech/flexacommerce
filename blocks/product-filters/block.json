@@ -1,0 +1,30 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "flexacommerce/product-filters",
+	"version": "0.1.0",
+	"title": "Product filters",
+	"category": "widgets",
+	"icon": "filter",
+	"description": "Category and attribute filters for the shop page.",
+	"textdomain": "flexacommerce",
+	"attributes": {
+		"showCategories": {
+			"type": "boolean",
+			"default": true
+		},
+		"attributeSlugs": {
+			"type": "array",
+			"default": [],
+			"items": {
+				"type": "string"
+			}
+		}
+	},
+	"supports": {
+		"html": false
+	},
+	"editorScript": "flexacommerce-blocks-editor",
+	"style": "flexacommerce-storefront",
+	"render": "file:./render.php"
+}

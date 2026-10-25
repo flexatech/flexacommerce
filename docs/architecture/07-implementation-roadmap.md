@@ -202,7 +202,7 @@ Implementation notes (phase 4.5, 2026-10-25):
 - **CSV import batches are sent by the admin screen**, 500 rows each, validate pass first; the server refuses a larger batch. There is no server-side batch runner for it.
 - **Tax UI** is the Tax tab of Settings (options, classes, rates per class, CSV, presets, markets), not a separate screen.
 - **US preset.** `resources/tax-presets/us.json` has `as_of` 2025-01-01 and a source per state. The state rates, shipping taxability and origin-state list still need the check against each revenue department that doc 02 §7.12.8 asks for before release.
-- **Not done.** The cart page and the `store/cart` response show no tax yet (phase 5 cart display), so PT-cart passes trivially; `POST store/cart/items` is not probed. T3 P6t against WooCommerce with the same rate table is not run. The tax-exempt flag on the Customers screen (P2) is not built; the filter is the only way in. With `tax_based_on = billing` the checkout form total follows the shipping address until the order is placed. In the admin order view, an inclusive-price line shows unit × quantity, which differs from its stored net total.
+- **Not done.** The cart page and `store/cart` showed no tax (done in phase 5, see its notes). T3 P6t against WooCommerce with the same rate table is not run. The tax-exempt flag on the Customers screen (P2) is not built; the filter is the only way in. With `tax_based_on = billing` the checkout form total follows the shipping address until the order is placed. In the admin order view, an inclusive-price line shows unit × quantity, which differs from its stored net total.
 
 ## Phase 5: Full storefront
 
@@ -219,6 +219,19 @@ Implementation notes (phase 4.5, 2026-10-25):
 | P3 | Related products block |
 
 Exit criteria: E2E journeys green on Twenty Twenty-Five and the chosen classic theme (Q9); axe clean; P8 asset budget met; P1h binding; full doc 10 §6.4 scenario set at dataset M against WooCommerce default and tuned configurations, with parity notes. **M1 reached** when phases 1 to 5 exit criteria and the M1 release gates (doc 06 §7) pass.
+
+Implementation notes (phase 5, 2026-10-25):
+
+- **Block templates.** `Storefront\Templates` builds the single, archive and taxonomy templates from the theme's `header` and `footer` parts, core blocks and ours, so the Site Editor can replace any piece. The archive grid is a `core/query` with `namespace: flexacommerce/product-query`; the editor's Query Loop variation (`assets/frontend/blocks-editor.js`) inserts the same inner blocks, and `Templates::product_query()` is the PHP copy.
+- **Classic templates.** `TemplateLoader` serves `templates/single-product.php` and `templates/archive-product.php` on classic themes. A theme overrides them from `flexacommerce/` in its folder. Every template, the email ones included, carries `@version x.y.z`; `TemplateLoader::outdated()` lists theme copies with a lower or missing version. `get_file_data()` cannot read `@version 1.0.0` (it wants a colon), so the plugin reads the first 8 KB with its own pattern. Filters: `flexacommerce.classic_templates`, `flexacommerce.template`, `flexacommerce.template_wrapper`. A fixture classic theme lives in `tests/fixtures/themes/fxc-classic` for the probe.
+- **Blocks.** New: gallery, SKU, stock, attributes, breadcrumbs (`flexacommerce.breadcrumbs`), account, catalog sorting, product filters, related products.
+- **Account area.** Rewrite endpoints `orders`, `view-order`, `edit-address`, `edit-account` under the account page (`PostTypes::ACCOUNT_ENDPOINTS`). Forms post to the page itself and redirect after save.
+- **Sorting and filters.** `ShopQuery` reads `?orderby=` (`menu_order`, `popularity`, `date`, `price`, `price-desc`), `?filter_cat=` and `?filter_{attribute}=`. Price sorts use `_fxc_price_min` and `_fxc_price_max` and keep products without a price, last when ascending. `popularity` sorts newest first until sales counts are stored. Page size: the `products_per_page` setting, filter `flexacommerce.shop.per_page`.
+- **SKU search.** An exact SKU of a product or of one of its options adds that product to the main search query.
+- **Accessibility (checkout).** Group fields (shipping rates, payment methods) point to their errors with `aria-describedby`; gateway errors have stable ids and no `role="alert"` of their own (the summary has it); the summary links focus the field, or the checked radio of a group; a failed post without scripts focuses the summary; the ship-to-another-address toggle has `aria-controls`; the terms link says it opens a new tab.
+- **Page cache.** Catalog pages stay cacheable (P11, now also on sorted, filtered, category, search and classic pages). Cart, checkout and account call `nocache_headers()` and define `DONOTCACHEPAGE`. The readme FAQ says what to exclude when a cache ignores both, and not to bypass the cache on the `fxc_session` cookie.
+- **Budgets** (doc 10 §7.4): P1h +2 queries at 12 and 48 products (1 own); P8 3,355 B JS and 2,361 B CSS gzip; P3 memory re-recorded once. Related products read the product's terms with `wp_get_post_terms()`, 2 extra queries per product page; they now use `get_the_terms()`, which the term cache answers.
+- **Not done.** E2E journeys with axe on Twenty Twenty-Five, Astra and Twenty Twenty-One (Playwright), and the doc 10 §6.4 T3 scenario set at dataset M against WooCommerce default and tuned. Phase 5 does not exit until both pass.
 
 ## Phase 6: Migration
 

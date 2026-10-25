@@ -14,7 +14,8 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Pricing, stock and cart part of the composition root, built by Plugin
  * next to CatalogServices. Tests pass their own token store. `$tax`
- * resolves the tax service for catalog display prices; Cart never calls it.
+ * resolves the tax service for catalog display prices, and `$totals` adds
+ * the tax rows to the public cart shape; Cart never calls either itself.
  */
 final class CartServices {
 	private ?PricingService $pricing  = null;
@@ -32,6 +33,7 @@ final class CartServices {
 		private readonly CatalogServices $catalog,
 		?TokenStore $tokens = null,
 		private readonly ?\Closure $tax = null,
+		private readonly ?\Closure $totals = null,
 	) {
 		$this->token_store = $tokens;
 	}
@@ -88,6 +90,6 @@ final class CartServices {
 	}
 
 	public function presenter(): CartPresenter {
-		return $this->presenter ??= new CartPresenter( $this->cart(), $this->pricing() );
+		return $this->presenter ??= new CartPresenter( $this->cart(), $this->pricing(), $this->totals );
 	}
 }

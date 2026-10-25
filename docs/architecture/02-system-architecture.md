@@ -94,7 +94,8 @@ flexacommerce/
 | Tax | Support, Database, Contracts | Cart, Orders, Checkout |
 | Payments | Orders (OrderService), Database, Contracts | Cart, Checkout, Catalog |
 | Cart | Catalog, Pricing, Inventory (availability reads), Shipping, Tax, Support | Orders, Payments, Checkout |
-| Checkout | Cart, Pricing, Inventory, Shipping, Tax, Orders, Payments | Storefront, Api |
+| Customers | Support, Contracts (saved addresses in user meta) | every service module |
+| Checkout | Cart, Pricing, Inventory, Shipping, Tax, Orders, Payments, Customers | Storefront, Api |
 | Notifications | Orders (read), Support. Triggered by hooks only | any service write method |
 | Storefront, Api, Admin, Cli | any L1 to L4 service and read repositories | each other |
 | Migration | Catalog, Orders, Payments repositories (import mode), Contracts, Support | Checkout, Cart, Notifications |
@@ -230,7 +231,9 @@ Full method signatures are in §8. Responsibilities:
 
 Blocks (all dynamic, server-rendered with `render.php`, registered from one metadata collection with `wp_register_block_types_from_metadata_collection()` [Fact: available since WP 6.8, present in 7.1]):
 
-`flexacommerce/product-price`, `product-add-to-cart` (includes variant selector), `product-gallery`, `product-sku`, `product-stock`, `product-attributes`, `cart`, `mini-cart`, `checkout`, `order-confirmation`, `account`, `breadcrumbs`. Product listings use core `core/query` through a registered block variation for `fxc_product`, so themes keep full layout control.
+`flexacommerce/product-price`, `product-add-to-cart` (includes variant selector), `product-gallery`, `product-sku`, `product-stock`, `product-attributes`, `related-products`, `catalog-sorting`, `product-filters`, `cart`, `mini-cart`, `checkout`, `order-confirmation`, `account`, `breadcrumbs`. Product listings use core `core/query` through a registered block variation for `fxc_product` (`namespace: flexacommerce/product-query`), so themes keep full layout control. Breadcrumb items pass through the filter `flexacommerce.breadcrumbs`.
+
+Shop query (`Storefront\ShopQuery`, phase 5): sorting reads `?orderby=` (`menu_order`, `popularity`, `date`, `price`, `price-desc`; `popularity` is newest first until sales counts are stored), filters read `?filter_cat=slug,slug` and `?filter_{attribute}=slug,slug` into a `tax_query`. Price sorts order by `_fxc_price_min` or `_fxc_price_max` and keep products without a price. The page size is the `products_per_page` setting, filter `flexacommerce.shop.per_page`. An exact SKU in a search adds its product to the main search query.
 
 Interactivity: the Interactivity API and script modules (core since 6.5 [Fact]) for variant selection, cart updates and mini-cart. No frontend framework, no jQuery dependency.
 
@@ -238,7 +241,7 @@ Without JavaScript: add to cart, cart update and checkout are plain HTML forms t
 
 Templates:
 - Block themes: plugin templates registered with `register_block_template()` [Fact: since 6.7] for `single-fxc_product`, `archive-fxc_product`, `taxonomy-fxc_product_cat`, `taxonomy-fxc_product_tag`. Themes override them in the Site Editor or by shipping a template with the same slug.
-- Classic themes: `template_include` loads `templates/single-product.php` etc. unless the theme has `flexacommerce/single-product.php` (override path), matching the familiar WooCommerce pattern.
+- Classic themes: `template_include` (`Storefront\TemplateLoader`) loads `templates/single-product.php` or `templates/archive-product.php` (the archive also serves the category and tag pages) unless the theme has `flexacommerce/<name>` (override path), matching the familiar WooCommerce pattern. Every template, the email ones included, has an `@version x.y.z` tag in its header; `TemplateLoader::outdated()` lists theme copies whose version is lower or missing. Filters: `flexacommerce.classic_templates` (false turns the loader off, for a theme that brings its own templates), `flexacommerce.template` (the file found for a name), `flexacommerce.template_wrapper` (the opening and closing markup around the content: `<div id="primary" class="content-area"><main id="main" class="site-main">` by default, a plain `<div>` on Twenty Twenty-One).
 - Cart, checkout, account and order confirmation are normal WordPress pages created on activation (`Setup\PageInstaller`) containing the block (block theme) or shortcode (classic theme). Page IDs are stored in settings. Order confirmation and account sub-pages are rewrite endpoints on those pages.
 
 Shortcodes: `[flexacommerce_cart]`, `[flexacommerce_checkout]`, `[flexacommerce_account]`, `[flexacommerce_order_confirmation]`, `[flexacommerce_products ids="" category="" limit="" columns=""]`, `[flexacommerce_add_to_cart id=""]`.
@@ -288,6 +291,7 @@ Loaded only for administrators in wp-admin or WP-CLI when WooCommerce is active.
 - Logged-in users: on login the guest session is merged into the user's session (quantities summed, capped by stock) and the cart is keyed by user id.
 - Lifetime: 48 hours sliding for guests, 14 days for users, configurable. Expired rows are purged by the daily cron.
 - Page caching guidance (docs + readme): exclude cart, checkout and account pages, and bypass cache when `fxc_session` is present on those pages only. Catalog pages stay cacheable because the mini-cart markup is the same for every visitor: the block script reads the count from the `fxc_cart_count` cookie (doc 10 §3.7, Q19).
+- Header checks (phase 5): the cart, checkout and account pages call `nocache_headers()` and define `DONOTCACHEPAGE`, which most cache plugins read. Catalog pages send neither, asserted by P11 (doc 10 §4.1).
 
 ### 7.4 Stock: when, how, idempotency
 
@@ -563,7 +567,7 @@ For each line (product, shipping, fee) with its class and taxable amount (after 
 - Catalog prices: the stored price, or the price with or without tax according to `tax_display_shop`, using the store base location (never the session, P11). Price ranges of variable products are converted at both ends. The suffix is appended with its placeholders replaced.
 - Cart, checkout, confirmation, account and emails: line prices and subtotal per `tax_display_cart`; then one "Tax" row (`single`) or one row per rate label (`itemized`, rates with the same label are summed, as WooCommerce does **[WC]**). With `excl` display the tax rows come before the total; with `incl` display the total shows "includes X tax".
 - Before an address exists and with `tax_default_location = none`, the cart shows "Tax is calculated at checkout" and no tax amount.
-- **Phase 4.5 state.** Checkout, confirmation, account, emails and the admin order show the tax rows. The cart page and the `store/cart` response do not show tax yet; that lands with the cart display work in phase 5. The cart keeps the city of the quoted address with country, state and postcode (doc 03 §4.9), because city rates need it.
+- **Phase 4.5 state.** Checkout, confirmation, account, emails and the admin order show the tax rows. Since phase 5 the cart page and the `store/cart` response show it too, for the items only: the cart uses the address it remembers, else `tax_default_location`, and leaves shipping and its tax to checkout (so the cart never reads the shipping zones). Line prices, line totals and the subtotal follow `tax_display_cart`; the response gains `totals.tax`, `totals.total` and a `tax` object (`included`, `pending`, `lines` with `label`, `amount` and the `text` of an "Includes" row). With no location, `tax.pending` is true and the cart says tax is calculated at checkout. The rows reach the cart through a closure that `Plugin` hands to `CartServices`, so Cart still does not depend on Tax or Checkout (`Checkout\CartTaxes`). The cart keeps the city of the quoted address with country, state and postcode (doc 03 §4.9), because city rates need it.
 - **Base-location adjustment** (inclusive prices only). When the customer's rate differs from the base rate, WooCommerce keeps the net price and recalculates the tax, so the customer-facing price changes. The net is not rounded before the customer's tax is taken from it (1999 with 7.25 % base and 6.25 % destination gives tax 116, not 117), as in WooCommerce. `flexacommerce.tax.adjust_non_base_prices` (default `true`) keeps that behavior; returning `false` keeps the gross price constant in every location (the EU-style "same price everywhere"). US stores use exclusive prices and are not affected.
 
 #### 7.12.6 Markets

@@ -14,6 +14,7 @@ use Flexa\Commerce\Contracts\Exceptions\RateLimited;
 use Flexa\Commerce\Contracts\Exceptions\TotalsChanged;
 use Flexa\Commerce\Contracts\Payments\PaymentGateway;
 use Flexa\Commerce\Contracts\Payments\PaymentResult;
+use Flexa\Commerce\Customers\CustomerProfile;
 use Flexa\Commerce\Orders\OrderItem;
 use Flexa\Commerce\Orders\OrderStatus;
 use Flexa\Commerce\Payments\GatewaySettings;
@@ -101,6 +102,51 @@ final class CheckoutServiceTest extends OrderTestCase {
 		$after = $browser->cart()->state( 0 );
 		self::assertTrue( $after->cart->is_empty() );
 		self::assertNotSame( $form['checkout_token'], $after->cart->checkout_token );
+	}
+
+	public function test_a_customer_checkout_saves_the_addresses_for_the_next_one(): void {
+		$user     = self::factory()->user->create();
+		$browser  = $this->browser();
+		$checkout = $this->checkout( $browser );
+		$product  = $this->simple( 1000, 5 );
+		$browser->cart()->add( $user, $product, $this->service()->get( $product )->base->id, 1 );
+
+		$form = $checkout->form_state( $user );
+		self::assertSame( [], $form['saved'] );
+		$shipping = [
+			'first_name' => 'Ada',
+			'last_name'  => 'Lovelace',
+			'address_1'  => '9 Pine St',
+			'city'       => 'Reno',
+			'state'      => 'NV',
+			'postcode'   => '89501',
+			'country'    => 'US',
+		];
+		$request  = CheckoutRequest::from_array(
+			[
+				'checkout_token'            => $form['checkout_token'],
+				'billing'                   => self::BILLING,
+				'ship_to_different_address' => '1',
+				'shipping'                  => $shipping,
+				'shipping_rate'             => $this->rate_id,
+				'payment_method'            => 'cod',
+			],
+			$user
+		);
+		$order    = $checkout->place_order( $request )->order;
+		self::assertSame( $user, $order->customer_id );
+
+		$profile = new CustomerProfile();
+		self::assertSame( 'Cupertino', $profile->address( $user, 'billing' )?->city );
+		self::assertSame( 'ada@example.com', $profile->address( $user, 'billing' )?->email );
+		self::assertSame( 'Reno', $profile->address( $user, 'shipping' )?->city );
+
+		$browser->cart()->add( $user, $product, $this->service()->get( $product )->base->id, 1 );
+		$next = $checkout->form_state( $user );
+		self::assertSame( '1 Infinite Loop', $next['saved']['billing']['address_1'] );
+		self::assertSame( '9 Pine St', $next['saved']['shipping']['address_1'] );
+		self::assertSame( 'CA', $next['destination']['state'], 'the first quote uses the saved billing address' );
+		self::assertSame( [], $checkout->form_state( 0 )['saved'], 'a guest sees nothing saved' );
 	}
 
 	public function test_a_repeated_submit_returns_the_first_order(): void {

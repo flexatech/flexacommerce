@@ -24,6 +24,19 @@ final class PostTypes {
 	public const TAG       = 'fxc_product_tag';
 	public const ATTRIBUTE = 'fxc_attribute';
 
+	/**
+	 * Account sub-pages (doc 02 §6.3): query var => URL slug, rewrite
+	 * endpoints on pages. They live here with the other rewrite rules, so
+	 * one flush check covers both. The query vars carry our prefix so they
+	 * do not meet WooCommerce's while both plugins run during a migration.
+	 */
+	public const ACCOUNT_ENDPOINTS = [
+		'fxc_orders'       => 'orders',
+		'fxc_view_order'   => 'view-order',
+		'fxc_edit_address' => 'edit-address',
+		'fxc_edit_account' => 'edit-account',
+	];
+
 	/** Exists only on a site where another plugin owns our archive URL; see maybe_flush(). */
 	public const REWRITE_GUARD_OPTION = 'flexacommerce_rewrite_guard';
 
@@ -47,7 +60,7 @@ final class PostTypes {
 			return; // Core rebuilds missing rules itself.
 		}
 		$key = $wp_rewrite->root . self::bases()['shop'] . '/?$';
-		if ( ( $rules[ $key ] ?? null ) === 'index.php?post_type=' . self::PRODUCT ) {
+		if ( ( $rules[ $key ] ?? null ) === 'index.php?post_type=' . self::PRODUCT && self::has_endpoints( $rules, $wp_rewrite->root ) ) {
 			return;
 		}
 		// When another plugin claims the same URL a flush cannot fix it, so
@@ -57,9 +70,19 @@ final class PostTypes {
 		}
 		flush_rewrite_rules( false );
 		$rules = get_option( 'rewrite_rules' );
-		if ( ! is_array( $rules ) || ( $rules[ $key ] ?? null ) !== 'index.php?post_type=' . self::PRODUCT ) {
+		if ( ! is_array( $rules ) || ( $rules[ $key ] ?? null ) !== 'index.php?post_type=' . self::PRODUCT || ! self::has_endpoints( $rules, $wp_rewrite->root ) ) {
 			update_option( self::REWRITE_GUARD_OPTION, $key, true );
 		}
+	}
+
+	/**
+	 * Sites that stored their rules before the account endpoints existed
+	 * lack them until the next flush.
+	 *
+	 * @param array<mixed> $rules
+	 */
+	private static function has_endpoints( array $rules, string $root ): bool {
+		return isset( $rules[ $root . '(.?.+?)/' . self::ACCOUNT_ENDPOINTS['fxc_view_order'] . '(/(.*))?/?$' ] );
 	}
 
 	/**
@@ -85,6 +108,9 @@ final class PostTypes {
 
 	public function register_types(): void {
 		$bases = self::bases();
+		foreach ( self::ACCOUNT_ENDPOINTS as $var => $slug ) {
+			add_rewrite_endpoint( $slug, EP_PAGES, $var );
+		}
 
 		register_post_type(
 			self::PRODUCT,

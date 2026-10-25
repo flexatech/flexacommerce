@@ -10,15 +10,11 @@ use Flexa\Commerce\Support\SameSite;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Registers every REST endpoint in one place. Extensions add their own
+ * Registers every REST endpoint in one place, called from `rest_api_init`. Extensions add their own
  * endpoints by hooking `flexacommerce.rest.register_routes`.
  */
 final class Router {
 	use HasInstance;
-
-	public function register(): void {
-		add_action( 'rest_api_init', [ $this, 'register_routes' ] );
-	}
 
 	public function register_routes(): void {
 		if ( self::needs_core_routes() ) {

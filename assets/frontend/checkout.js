@@ -344,12 +344,25 @@ function setup( root ) {
 	}
 	const requoteSoon = debounce( requote, 350 );
 
+	// Server-rendered errors from a failed post go too, with the
+	// descriptions that point at them.
 	function clearErrors() {
-		for ( const node of form.querySelectorAll( '[data-fxc-js-error]' ) ) {
+		for ( const node of form.querySelectorAll( '.fxc-field__error' ) ) {
 			node.remove();
 		}
 		for ( const node of form.querySelectorAll( '[aria-invalid="true"]' ) ) {
 			node.removeAttribute( 'aria-invalid' );
+		}
+		for ( const node of form.querySelectorAll( '[aria-describedby]' ) ) {
+			const ids = node
+				.getAttribute( 'aria-describedby' )
+				.split( ' ' )
+				.filter( ( id ) => id && ! /(^fxc-gateway-error-|-error$)/.test( id ) );
+			if ( ids.length ) {
+				node.setAttribute( 'aria-describedby', ids.join( ' ' ) );
+			} else {
+				node.removeAttribute( 'aria-describedby' );
+			}
 		}
 		if ( summary ) {
 			summary.hidden = true;
@@ -379,7 +392,13 @@ function setup( root ) {
 					text
 				);
 				if ( target.tagName === 'FIELDSET' ) {
+					// A group takes no aria-invalid; several errors may describe it.
+					note.id = `${ id }-error-${ list.children.length }`;
 					target.append( note );
+					target.setAttribute(
+						'aria-describedby',
+						`${ target.getAttribute( 'aria-describedby' ) || '' } ${ note.id }`.trim()
+					);
 				} else {
 					target.setAttribute( 'aria-invalid', 'true' );
 					target.setAttribute( 'aria-describedby', note.id );
@@ -462,6 +481,28 @@ function setup( root ) {
 		form.classList.remove( 'is-busy' );
 	}
 
+	// A summary link moves focus to its control; for a fieldset, the
+	// chosen radio or the first control in it.
+	summary?.addEventListener( 'click', ( event ) => {
+		const link = event.target.closest( 'a[href^="#"]' );
+		const target = link
+			? document.getElementById( link.getAttribute( 'href' ).slice( 1 ) )
+			: null;
+		if ( ! target ) {
+			return;
+		}
+		const focusable =
+			target.tagName === 'FIELDSET'
+				? target.querySelector( 'input:checked' ) ||
+				  target.querySelector( 'input, select, textarea' )
+				: target;
+		if ( focusable ) {
+			event.preventDefault();
+			focusable.focus();
+			focusable.scrollIntoView( { block: 'center' } );
+		}
+	} );
+
 	form.addEventListener( 'submit', ( event ) => {
 		event.preventDefault();
 		if ( event.submitter?.hasAttribute( 'data-fxc-refresh' ) ) {
@@ -508,6 +549,10 @@ function setup( root ) {
 		button.closest( 'p' ).hidden = true;
 	}
 	syncShipping();
+	// After a failed post without scripts the summary is already there.
+	if ( summary && ! summary.hidden ) {
+		summary.focus();
+	}
 }
 
 for ( const root of document.querySelectorAll( '[data-fxc-checkout]' ) ) {

@@ -12,7 +12,7 @@ namespace Flexa\Commerce\Tests\Integration\Performance;
 final class Probe {
 	/**
 	 * @param array<string,mixed> $options see probe-request.php
-	 * @return array{ms:float,peak:int,queries:list<array{sql:string,caller:string}>,classes:int,own:list<string>,callbacks:int,assets:list<string>,autoload:array<string,int>,html:int,status:int|bool,state:int,nocache:bool,headers:array<string,string>,rest:mixed}
+	 * @return array{ms:float,peak:int,queries:list<array{sql:string,caller:string}>,classes:int,own:list<string>,callbacks:int,assets:list<string>,bytes:array<string,int>,autoload:array<string,int>,html:int,status:int|bool,state:int,nocache:bool,headers:array<string,string>,rest:mixed,template:string,counted:int}
 	 */
 	public static function run( string $uri, bool $plugin, array $options = [] ): array {
 		$out = (string) tempnam( sys_get_temp_dir(), 'fxc-probe' );
@@ -45,7 +45,7 @@ final class Probe {
 		if ( ! is_array( $result ) ) {
 			throw new \RuntimeException( "Probe for {$uri} produced no result. stderr: {$stderr}" );
 		}
-		/** @var array{ms:float,peak:int,queries:list<array{sql:string,caller:string}>,classes:int,own:list<string>,callbacks:int,assets:list<string>,autoload:array<string,int>,html:int,status:int|bool,state:int,nocache:bool,headers:array<string,string>,rest:mixed} $result */
+		/** @var array{ms:float,peak:int,queries:list<array{sql:string,caller:string}>,classes:int,own:list<string>,callbacks:int,assets:list<string>,bytes:array<string,int>,autoload:array<string,int>,html:int,status:int|bool,state:int,nocache:bool,headers:array<string,string>,rest:mixed,template:string,counted:int} $result */
 		return $result;
 	}
 

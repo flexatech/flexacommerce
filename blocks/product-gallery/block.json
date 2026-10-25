@@ -1,0 +1,31 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "flexacommerce/product-gallery",
+	"version": "0.1.0",
+	"title": "Product gallery",
+	"category": "widgets",
+	"icon": "format-gallery",
+	"description": "The product images: a large image and thumbnails that switch it.",
+	"textdomain": "flexacommerce",
+	"usesContext": [
+		"postId",
+		"postType"
+	],
+	"attributes": {
+		"productId": {
+			"type": "integer",
+			"default": 0
+		}
+	},
+	"supports": {
+		"html": false,
+		"align": [
+			"wide",
+			"full"
+		]
+	},
+	"editorScript": "flexacommerce-blocks-editor",
+	"style": "flexacommerce-storefront",
+	"render": "file:./render.php"
+}

@@ -62,6 +62,19 @@ final class CheckoutValidator {
 	}
 
 	/**
+	 * One address on its own, by the same rules as checkout: the account
+	 * page saves addresses through it.
+	 *
+	 * @param array<string,string> $input
+	 * @return array{0:AddressView,1:array<string,string>} the address and errors keyed `type.field`
+	 */
+	public function single_address( string $type, array $input ): array {
+		$errors      = [];
+		[ $address ] = $this->address( $type, $input, $errors );
+		return [ $address, $errors ];
+	}
+
+	/**
 	 * Terms, shipping rate, gateway and its own validation, then the
 	 * `flexacommerce.checkout.validate` filter.
 	 *

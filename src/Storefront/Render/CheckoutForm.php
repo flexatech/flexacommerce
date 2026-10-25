@@ -66,11 +66,11 @@ final class CheckoutForm {
 		$elsewhere = ! empty( $posted['ship_to_different_address'] );
 		if ( ! empty( $state['needs_address'] ) ) {
 			$html .= sprintf(
-				'<p class="fxc-checkout__toggle"><label><input type="checkbox" name="ship_to_different_address" value="1" data-fxc-ship-toggle%1$s> %2$s</label></p>',
+				'<p class="fxc-checkout__toggle"><label><input type="checkbox" name="ship_to_different_address" value="1" aria-controls="fxc-shipping-address" data-fxc-ship-toggle%1$s> %2$s</label></p>',
 				$elsewhere ? ' checked' : '',
 				esc_html__( 'Ship to a different address', 'flexacommerce' )
 			);
-			$html .= '<div class="fxc-checkout__shipping-address" data-fxc-shipping-address>'
+			$html .= '<div class="fxc-checkout__shipping-address" id="fxc-shipping-address" data-fxc-shipping-address>'
 				. $this->address( 'shipping', __( 'Shipping address', 'flexacommerce' ), $state, $posted, $errors )
 				. '</div>';
 		}
@@ -119,13 +119,13 @@ final class CheckoutForm {
 	 * @param array<string,string> $errors
 	 */
 	private function address( string $type, string $legend, array $state, array $posted, array $errors ): string {
-		$values  = is_array( $posted[ $type ] ?? null ) ? $posted[ $type ] : $this->defaults( $state );
+		$values  = is_array( $posted[ $type ] ?? null ) ? $posted[ $type ] : $this->defaults( $state, $type );
 		$country = is_string( $values['country'] ?? null ) && $values['country'] !== '' ? strtoupper( $values['country'] ) : (string) ( $state['destination']['country'] ?? '' );
 		$fields  = FieldSchema::for_address( $type, $country )->to_array();
 		$html    = '<fieldset class="fxc-checkout__address" data-fxc-address="' . esc_attr( $type ) . '"><legend>' . esc_html( $legend ) . '</legend>';
-		foreach ( $fields as $field ) {
-			$html .= $this->field( $type, $field, is_scalar( $values[ $field['id'] ] ?? null ) ? (string) $values[ $field['id'] ] : '', $state, $errors );
-		}
+		// The shipping address is hidden by CSS until its checkbox is ticked, and a
+		// hidden required control would block the submit; the server checks it.
+		$html .= self::fields( $type, $fields, $values, is_array( $state['countries'] ?? null ) ? $state['countries'] : [], $errors, $type !== 'shipping' );
 		if ( $type === 'billing' ) {
 			$html .= '<p class="fxc-checkout__refresh"><button type="submit" name="fxc_refresh" value="1" formnovalidate class="fxc-checkout__refresh-button" data-fxc-refresh>' . esc_html__( 'Update shipping and totals', 'flexacommerce' ) . '</button></p>';
 		}
@@ -133,11 +133,28 @@ final class CheckoutForm {
 	}
 
 	/**
+	 * The controls of one address, shared with the account page. With
+	 * `$native_required` off, required controls get `aria-required` only.
+	 *
+	 * @param list<array<string,mixed>> $fields    FieldSchema::to_array()
+	 * @param array<mixed>              $values    field id => value
+	 * @param array<string,string>      $countries code => name
+	 * @param array<string,string>      $errors
+	 */
+	public static function fields( string $type, array $fields, array $values, array $countries, array $errors, bool $native_required = true ): string {
+		$html = '';
+		foreach ( $fields as $field ) {
+			$html .= self::field( $type, $field, is_scalar( $values[ $field['id'] ] ?? null ) ? (string) $values[ $field['id'] ] : '', $countries, $errors, $native_required );
+		}
+		return $html;
+	}
+
+	/**
 	 * @param array<string,mixed>  $field CheckoutField::to_array()
-	 * @param array<string,mixed>  $state
+	 * @param array<string,string> $countries
 	 * @param array<string,string> $errors
 	 */
-	private function field( string $type, array $field, string $value, array $state, array $errors ): string {
+	private static function field( string $type, array $field, string $value, array $countries, array $errors, bool $native_required ): string {
 		$id       = (string) $field['id'];
 		$path     = $type . '.' . $id;
 		$dom_id   = self::field_id( $path );
@@ -147,14 +164,12 @@ final class CheckoutForm {
 			[
 				'id'            => $dom_id,
 				'name'          => $name,
-				// The shipping address is hidden by CSS until its checkbox is ticked, and a
-				// hidden required control would block the submit; the server checks it.
-				'required'      => $required && $type !== 'shipping',
-				'aria-required' => $required && $type === 'shipping' ? 'true' : null,
+				'required'      => $required && $native_required,
+				'aria-required' => $required && ! $native_required ? 'true' : null,
 				'autocomplete'  => (string) $field['autocomplete'] !== '' ? (string) $field['autocomplete'] : null,
 				'data-fxc-key'  => $id,
 			]
-		) . $this->invalid( $path, $errors );
+		) . self::invalid_for( $path, $errors );
 		$label    = sprintf(
 			'<label for="%1$s">%2$s%3$s</label>',
 			esc_attr( $dom_id ),
@@ -164,14 +179,14 @@ final class CheckoutForm {
 
 		$options = [];
 		if ( $field['type'] === 'country' ) {
-			$options = is_array( $state['countries'] ?? null ) ? $state['countries'] : [];
+			$options = $countries;
 		} elseif ( in_array( $field['type'], [ 'state', 'select' ], true ) ) {
 			$options = is_array( $field['options'] ) ? $field['options'] : [];
 		}
 
 		if ( $field['type'] === 'checkbox' ) {
 			$control = '<input type="checkbox" value="1"' . $attrs . ( $value !== '' && $value !== '0' ? ' checked' : '' ) . '>';
-			return '<p class="fxc-field fxc-field--checkbox">' . $control . ' ' . $label . $this->error( $path, $errors ) . '</p>';
+			return '<p class="fxc-field fxc-field--checkbox">' . $control . ' ' . $label . self::error_for( $path, $errors ) . '</p>';
 		}
 		if ( $options !== [] ) {
 			$control = '<select' . $attrs . '>';
@@ -196,7 +211,7 @@ final class CheckoutForm {
 				$attrs
 			);
 		}
-		return '<p class="fxc-field fxc-field--' . esc_attr( $id ) . '">' . $label . $control . $this->error( $path, $errors ) . '</p>';
+		return '<p class="fxc-field fxc-field--' . esc_attr( $id ) . '">' . $label . $control . self::error_for( $path, $errors ) . '</p>';
 	}
 
 	/**
@@ -208,7 +223,7 @@ final class CheckoutForm {
 			return '';
 		}
 		$rates = is_array( $state['shipping_rates'] ?? null ) ? $state['shipping_rates'] : [];
-		$html  = '<fieldset class="fxc-checkout__rates" id="fxc-shipping-rate" data-fxc-rates><legend>' . esc_html__( 'Shipping', 'flexacommerce' ) . '</legend>';
+		$html  = '<fieldset class="fxc-checkout__rates" id="fxc-shipping-rate"' . self::described( [ 'shipping_rate' ], $errors ) . ' data-fxc-rates><legend>' . esc_html__( 'Shipping', 'flexacommerce' ) . '</legend>';
 		if ( $rates === [] ) {
 			$html .= '<p>' . esc_html__( 'There are no shipping options for this address. Check the address or contact us.', 'flexacommerce' ) . '</p>';
 		}
@@ -322,7 +337,7 @@ final class CheckoutForm {
 	 * @param array<string,string>      $errors
 	 */
 	public static function methods_html( array $methods, string $chosen, array $input, array $errors ): string {
-		$html = '<fieldset class="fxc-checkout__methods" id="fxc-payment-method"><legend>' . esc_html__( 'Payment', 'flexacommerce' ) . '</legend>';
+		$html = '<fieldset class="fxc-checkout__methods" id="fxc-payment-method"' . self::described( array_merge( [ 'payment_method' ], array_filter( array_keys( $errors ), static fn ( string $path ): bool => str_starts_with( $path, 'gateway.' ) ) ), $errors ) . '><legend>' . esc_html__( 'Payment', 'flexacommerce' ) . '</legend>';
 		if ( $methods === [] ) {
 			$html .= '<p>' . esc_html__( 'No payment methods are available for this order. Contact us to complete it.', 'flexacommerce' ) . '</p>';
 		}
@@ -346,7 +361,7 @@ final class CheckoutForm {
 		$gateway = '';
 		foreach ( $errors as $path => $message ) {
 			if ( str_starts_with( $path, 'gateway.' ) ) {
-				$gateway .= '<span class="fxc-field__error" role="alert">' . esc_html( $message ) . '</span>';
+				$gateway .= '<span class="fxc-field__error" id="' . esc_attr( self::error_id( $path ) ) . '">' . esc_html( $message ) . '</span>';
 			}
 		}
 		return $html . self::error_for( 'payment_method', $errors ) . $gateway . '</fieldset>';
@@ -408,20 +423,24 @@ final class CheckoutForm {
 			sprintf(
 				/* translators: %s: link to the terms and conditions page */
 				esc_html__( 'I have read and agree to the %s.', 'flexacommerce' ),
-				'<a href="' . esc_url( $url ) . '" target="_blank" rel="noopener">' . esc_html__( 'terms and conditions', 'flexacommerce' ) . '</a>'
+				'<a href="' . esc_url( $url ) . '" target="_blank" rel="noopener">' . esc_html__( 'terms and conditions', 'flexacommerce' ) . '<span class="screen-reader-text"> ' . esc_html__( '(opens in a new tab)', 'flexacommerce' ) . '</span></a>'
 			),
 			$this->error( 'terms', $errors )
 		);
 	}
 
 	/**
-	 * Address values before anything was posted: the saved destination and
-	 * the account's email.
+	 * Address values before anything was posted: the account's saved
+	 * address, else the cart's destination and the account's name and email.
 	 *
 	 * @param array<string,mixed> $state
 	 * @return array<string,string>
 	 */
-	private function defaults( array $state ): array {
+	private function defaults( array $state, string $type ): array {
+		$saved = is_array( $state['saved'][ $type ] ?? null ) ? $state['saved'][ $type ] : null;
+		if ( $saved !== null ) {
+			return array_map( 'strval', array_filter( $saved, 'is_scalar' ) );
+		}
 		$destination = is_array( $state['destination'] ?? null ) ? $state['destination'] : [];
 		$values      = [
 			'country'  => (string) ( $destination['country'] ?? '' ),
@@ -464,7 +483,36 @@ final class CheckoutForm {
 
 	/** @param array<string,string> $errors */
 	private function invalid( string $path, array $errors ): string {
-		return isset( $errors[ $path ] ) ? ' aria-invalid="true" aria-describedby="' . esc_attr( self::field_id( $path ) ) . '-error"' : '';
+		return self::invalid_for( $path, $errors );
+	}
+
+	/** @param array<string,string> $errors */
+	private static function invalid_for( string $path, array $errors ): string {
+		return isset( $errors[ $path ] ) ? ' aria-invalid="true" aria-describedby="' . esc_attr( self::error_id( $path ) ) . '"' : '';
+	}
+
+	/**
+	 * `aria-describedby` for a fieldset (shipping, payment): a group takes
+	 * no `aria-invalid`, so its errors are only described.
+	 *
+	 * @param list<string>         $paths
+	 * @param array<string,string> $errors
+	 */
+	private static function described( array $paths, array $errors ): string {
+		$ids = [];
+		foreach ( $paths as $path ) {
+			if ( isset( $errors[ $path ] ) ) {
+				$ids[] = self::error_id( $path );
+			}
+		}
+		return $ids === [] ? '' : ' aria-describedby="' . esc_attr( implode( ' ', $ids ) ) . '"';
+	}
+
+	/** DOM id of the message for an error path. Gateway errors share a fieldset, so they keep their own key. */
+	private static function error_id( string $path ): string {
+		return str_starts_with( $path, 'gateway.' )
+			? 'fxc-gateway-error-' . sanitize_html_class( str_replace( '.', '-', substr( $path, 8 ) ) )
+			: self::field_id( $path ) . '-error';
 	}
 
 	/** @param array<string,string> $errors */
@@ -477,7 +525,7 @@ final class CheckoutForm {
 		if ( ! isset( $errors[ $path ] ) ) {
 			return '';
 		}
-		return '<span class="fxc-field__error" id="' . esc_attr( self::field_id( $path ) ) . '-error">' . esc_html( $errors[ $path ] ) . '</span>';
+		return '<span class="fxc-field__error" id="' . esc_attr( self::error_id( $path ) ) . '">' . esc_html( $errors[ $path ] ) . '</span>';
 	}
 
 	/** DOM id of the control for an error path; '' for errors without a field (cart). */

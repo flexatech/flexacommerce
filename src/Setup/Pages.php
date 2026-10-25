@@ -9,7 +9,7 @@ use Flexa\Commerce\Support\Settings;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * The cart and checkout pages. Activation creates each one that is not set
+ * The cart, checkout and account pages. Activation creates each one that is not set
  * or whose page was deleted; a page the merchant picked is never replaced.
  * Pages hold the block, which classic themes render through the_content.
  */
@@ -18,6 +18,7 @@ final class Pages {
 		$pages   = [
 			'cart_page_id'     => [ _x( 'Cart', 'page title', 'flexacommerce' ), 'cart', '<!-- wp:flexacommerce/cart /-->' ],
 			'checkout_page_id' => [ _x( 'Checkout', 'page title', 'flexacommerce' ), 'checkout', '<!-- wp:flexacommerce/checkout /-->' ],
+			'account_page_id'  => [ _x( 'My account', 'page title', 'flexacommerce' ), 'my-account', '<!-- wp:flexacommerce/account /-->' ],
 		];
 		$changes = [];
 		foreach ( $pages as $setting => [ $title, $slug, $content ] ) {

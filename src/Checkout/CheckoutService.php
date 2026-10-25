@@ -37,6 +37,7 @@ use Flexa\Commerce\Shipping\ShippingService;
 use Flexa\Commerce\Support\ClientIp;
 use Flexa\Commerce\Support\Countries;
 use Flexa\Commerce\Support\RateLimiter;
+use Flexa\Commerce\Customers\CustomerProfile;
 use Flexa\Commerce\Support\Settings;
 use Flexa\Commerce\Contracts\Tax\TaxLine;
 use Flexa\Commerce\Contracts\Tax\TaxLocation;
@@ -54,6 +55,10 @@ defined( 'ABSPATH' ) || exit;
 final class CheckoutService {
 	public const RETURN_ARG = 'fxc_return';
 
+	private readonly CartTaxes $cart_taxes;
+
+	private readonly CustomerProfile $profile;
+
 	public function __construct(
 		private readonly CartService $cart,
 		private readonly CartPresenter $presenter,
@@ -67,7 +72,12 @@ final class CheckoutService {
 		private readonly MoneyFactory $money,
 		private readonly Logger $log,
 		private readonly RateLimiter $limiter = new RateLimiter(),
-	) {}
+		?CartTaxes $cart_taxes = null,
+		?CustomerProfile $profile = null,
+	) {
+		$this->cart_taxes = $cart_taxes ?? new CartTaxes( $tax, $presenter );
+		$this->profile    = $profile ?? new CustomerProfile();
+	}
 
 	public function pages(): CheckoutPages {
 		return $this->pages;
@@ -106,7 +116,7 @@ final class CheckoutService {
 		$to       = new TaxLocation( $destination->country, $destination->state, $destination->postcode, $destination->city );
 		$from     = $billing !== null ? new TaxLocation( (string) $billing->country, (string) $billing->state, (string) $billing->postcode, (string) $billing->city ) : $to;
 		$location = $this->tax->location( $needs ? $to : null, $from );
-		$request  = $this->tax_request( $state, $rate, $location, TaxRequest::CHECKOUT, $user_id, (string) ( $billing->email ?? '' ) );
+		$request  = $this->cart_taxes->request( $state, $rate, $location, TaxRequest::CHECKOUT, $user_id, (string) ( $billing->email ?? '' ) );
 		$outcome  = $this->tax->calculate( $request );
 		$taxes    = $outcome->result;
 		$net      = $zero;
@@ -127,10 +137,18 @@ final class CheckoutService {
 	 */
 	public function form_state( int $user_id ): array {
 		$state       = $this->cart->state( $user_id );
-		$destination = $this->stored_destination( $state );
+		$destination = $this->stored_destination( $state, $user_id );
 		$quote       = $this->quote( $state, $destination, $state->cart->shipping_rate, null, $user_id );
-		$allowed     = Countries::allowed();
-		$states      = [];
+		$saved       = [];
+		foreach ( $this->profile->addresses( $user_id ) as $type => $address ) {
+			$saved[ $type ] = $address->to_array();
+		}
+		if ( isset( $saved['billing'] ) && $state->cart->destination['country'] !== '' ) {
+			// The form starts with billing as the shipping address: it must match what was quoted.
+			$saved['billing'] = array_merge( $saved['billing'], $state->cart->destination );
+		}
+		$allowed = Countries::allowed();
+		$states  = [];
 		foreach ( array_keys( $allowed ) as $code ) {
 			$list = Countries::states( $code );
 			if ( $list !== [] ) {
@@ -151,6 +169,7 @@ final class CheckoutService {
 			'paused'         => Settings::bool( 'checkout_paused' ),
 			'terms_url'      => $this->pages->terms_url(),
 			'logged_in'      => $user_id > 0,
+			'saved'          => $saved,
 		] + $this->quote_view( $quote, $user_id );
 	}
 
@@ -271,6 +290,14 @@ final class CheckoutService {
 		if ( $txn !== null ) {
 			$result   = $this->payments->initiate( $txn->id, $this->return_url( $order, $txn ), $this->pages->pay_url( $order ), $request->gateway_input, $order );
 			$redirect = $this->redirect_for( $order, $result );
+		}
+
+		if ( $request->user_id > 0 ) {
+			// The next checkout and the account page start from the addresses used (doc 03 §7).
+			$this->profile->save( $request->user_id, $addresses['billing'] );
+			if ( $addresses['shipping'] !== null ) {
+				$this->profile->save( $request->user_id, $addresses['shipping'] );
+			}
 		}
 
 		try {
@@ -436,10 +463,15 @@ final class CheckoutService {
 		return new CheckoutResult( $order, $this->pages->confirmation_url( $order ), null, true );
 	}
 
-	private function stored_destination( CartState $state ): Destination {
+	private function stored_destination( CartState $state, int $user_id = 0 ): Destination {
 		$saved = $state->cart->destination;
 		if ( $saved['country'] !== '' ) {
 			return new Destination( $saved['country'], $saved['state'], $saved['postcode'], $saved['city'] );
+		}
+		// The form opens with "ship to a different address" off, so billing is the address quoted.
+		$address = $this->profile->address( $user_id, 'billing' ) ?? $this->profile->address( $user_id, 'shipping' );
+		if ( $address !== null && $address->country !== '' ) {
+			return new Destination( $address->country, $address->state, $address->postcode, $address->city );
 		}
 		// Before the shopper types an address, quote at the store address,
 		// as WooCommerce does, so tax for the store's state shows.
@@ -460,41 +492,6 @@ final class CheckoutService {
 			$quote->rate?->id,
 			$user_id > 0 ? $user_id : null,
 			$quote->state->item_count(),
-		);
-	}
-
-	/**
-	 * The tax request for a cart: one line per priced cart item (key = cart
-	 * line key) and one `shipping` line for the chosen rate.
-	 */
-	private function tax_request( CartState $state, ?ShippingRate $rate, ?TaxLocation $location, string $context = TaxRequest::CHECKOUT, int $user_id = 0, string $email = '' ): TaxRequest {
-		$enabled = $this->tax->enabled();
-		$lines   = [];
-		foreach ( $state->items as $item ) {
-			if ( $item->unit === null || $item->total === null || $item->product === null || $item->variant === null ) {
-				continue;
-			}
-			$lines[] = new TaxLine(
-				$item->line->key,
-				TaxLine::PRODUCT,
-				$item->total,
-				$item->line->quantity,
-				$enabled ? $this->tax->known_class( $item->product->tax_class_of( $item->variant ) ) : '',
-				$item->product->tax_status_of( $item->variant ),
-				$item->line->variant_id,
-			);
-		}
-		if ( $rate !== null ) {
-			$lines[] = new TaxLine( TaxService::SHIPPING_KEY, TaxLine::SHIPPING, $rate->cost, 1, '', $rate->taxable ? TaxLine::TAXABLE : TaxLine::NONE );
-		}
-		return new TaxRequest(
-			$state->subtotal->currency,
-			$enabled && Settings::bool( 'prices_include_tax' ),
-			$enabled ? $location : null,
-			$lines,
-			$user_id,
-			$email,
-			$context,
 		);
 	}
 
@@ -524,7 +521,7 @@ final class CheckoutService {
 				'tax'      => $this->presenter->money( $quote->tax ),
 				'total'    => $this->presenter->money( $quote->total ),
 			],
-			'tax'             => $this->tax_view( $quote ),
+			'tax'             => $this->cart_taxes->view( $quote->taxes, $quote->package->destination->country ),
 		];
 	}
 
@@ -535,45 +532,6 @@ final class CheckoutService {
 		}
 		$settings = $this->tax->settings( $quote->package->destination->country );
 		return $settings['tax_display_cart'] === 'incl' ? $quote->items_net->add( $quote->taxes->items_total() ) : $quote->items_net;
-	}
-
-	/**
-	 * Tax rows for the totals table: one per rate, or one "Tax" row with
-	 * `tax_total_display` = single. `included` means the total already shows
-	 * tax-inclusive amounts, so the rows read "includes".
-	 *
-	 * @return array{enabled:bool,included:bool,lines:list<array{label:string,amount:array<string,mixed>}>}
-	 */
-	private function tax_view( Quote $quote ): array {
-		if ( $quote->taxes === null ) {
-			return [
-				'enabled'  => false,
-				'included' => false,
-				'lines'    => [],
-			];
-		}
-		$settings = $this->tax->settings( $quote->package->destination->country );
-		$lines    = [];
-		if ( $settings['tax_total_display'] === 'single' ) {
-			if ( ! $quote->tax->is_zero() ) {
-				$lines[] = [
-					'label'  => __( 'Tax', 'flexacommerce' ),
-					'amount' => $this->presenter->money( $quote->tax ),
-				];
-			}
-		} else {
-			foreach ( $quote->taxes->rates as $rate ) {
-				$lines[] = [
-					'label'  => $rate->rate->label,
-					'amount' => $this->presenter->money( $rate->total() ),
-				];
-			}
-		}
-		return [
-			'enabled'  => true,
-			'included' => $settings['tax_display_cart'] === 'incl',
-			'lines'    => $lines,
-		];
 	}
 
 	/** @return list<array<string,mixed>> */

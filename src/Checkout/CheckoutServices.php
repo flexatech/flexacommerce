@@ -17,6 +17,7 @@ defined( 'ABSPATH' ) || exit;
 final class CheckoutServices {
 	private ?CheckoutService $service = null;
 	private ?CheckoutPages $pages     = null;
+	private ?CartTaxes $cart_taxes    = null;
 
 	public function __construct(
 		private readonly Services $services,
@@ -35,6 +36,10 @@ final class CheckoutServices {
 		return $this->tax ??= new TaxServices( $this->services );
 	}
 
+	public function cart_taxes(): CartTaxes {
+		return $this->cart_taxes ??= new CartTaxes( $this->tax()->service(), $this->cart->presenter() );
+	}
+
 	public function service(): CheckoutService {
 		return $this->service ??= new CheckoutService(
 			$this->cart->cart(),
@@ -49,6 +54,7 @@ final class CheckoutServices {
 			$this->services->money(),
 			$this->services->logger( 'checkout' ),
 			$this->services->limiter(),
+			$this->cart_taxes(),
 		);
 	}
 }

@@ -9,7 +9,6 @@ use Flexa\Commerce\Catalog\Variant;
 use Flexa\Commerce\Contracts\Money;
 use Flexa\Commerce\Contracts\Pricing\PriceResolution;
 use Flexa\Commerce\Inventory\Availability;
-use Flexa\Commerce\Support\Settings;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -66,39 +65,19 @@ final class CartItem {
 	/** Unit weight in grams; a variation without its own weight uses the product's. */
 	public function weight_g(): ?int {
 		$value = $this->variant->weight ?? $this->product?->base->weight;
-		if ( $value === null || ! is_numeric( $value ) ) {
-			return null;
-		}
-		$factor = [
-			'kg' => 1000.0,
-			'g'  => 1.0,
-			'lb' => 453.59237,
-			'oz' => 28.349523125,
-		][ Settings::string( 'weight_unit' ) ] ?? 1000.0;
-		return (int) round( (float) $value * $factor );
+		return $value !== null && is_numeric( $value ) ? (int) round( (float) $value ) : null;
 	}
 
 	/** @return array{0:int,1:int,2:int}|null length, width, height in millimetres */
 	public function dimensions_mm(): ?array {
 		$own  = $this->variant;
 		$base = $this->product?->base;
-		$dims = [ $own->length ?? $base?->length, $own->width ?? $base?->width, $own->height ?? $base?->height ];
-		if ( in_array( null, $dims, true ) ) {
-			return null;
-		}
-		$factor = [
-			'mm' => 1.0,
-			'cm' => 10.0,
-			'm'  => 1000.0,
-			'in' => 25.4,
-			'yd' => 914.4,
-		][ Settings::string( 'dimension_unit' ) ] ?? 10.0;
-		$mm     = [];
-		foreach ( $dims as $value ) {
-			if ( ! is_numeric( $value ) ) {
+		$mm   = [];
+		foreach ( [ $own->length ?? $base?->length, $own->width ?? $base?->width, $own->height ?? $base?->height ] as $value ) {
+			if ( $value === null || ! is_numeric( $value ) ) {
 				return null;
 			}
-			$mm[] = (int) round( (float) $value * $factor );
+			$mm[] = (int) round( (float) $value );
 		}
 		return [ $mm[0], $mm[1], $mm[2] ];
 	}

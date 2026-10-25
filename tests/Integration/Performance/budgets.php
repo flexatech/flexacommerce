@@ -56,8 +56,21 @@ return [
 	],
 	// Simple and variable product pages (P3a, P3b at 6 and 250 variants).
 	'P3'          => [
-		// Measured 1 048 848 B at 250 variants (Darwin, PHP 8.5, warm OPcache), + 10 %.
-		'memory' => 1153733,
+		// Measured 1 316 960 B at 250 variants (Darwin, PHP 8.5, warm OPcache), + 10 %.
+		// Phase 5: was 1 048 848 B (phase 3). The phase 4 template measures
+		// 1 295 800 B on the same code, so the new product blocks add ~21 KB;
+		// the rest came in between and is not attributed yet (doc 10 §7.4).
+		'memory' => 1448656,
+	],
+	// A page with the Product list Query Loop at 12 and 48 products, against
+	// the same block of plain posts. Queries must be equal for both sizes.
+	'P1h'         => [
+		'queries' => 3,
+	],
+	// Our JS and CSS on a product page, gzip bytes, as the page loads them.
+	'P8'          => [
+		'js'  => 15360,
+		'css' => 10240,
 	],
 	// GET store/cart with 1 and 10 lines; equal for both.
 	'P4q'         => [

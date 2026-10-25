@@ -1,0 +1,304 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Flexa\Commerce\Storefront;
+
+use Flexa\Commerce\Catalog\PostTypes;
+use Flexa\Commerce\Catalog\ProductRepository;
+use Flexa\Commerce\Concerns\HasInstance;
+use Flexa\Commerce\Plugin;
+use Flexa\Commerce\Support\Settings;
+
+defined( 'ABSPATH' ) || exit;
+
+/**
+ * The shop's main query (doc 07 phase 5): catalog visibility, the page
+ * size, sorting, category and attribute filters, and exact SKU matches in
+ * product search. Plugin::on_pre_get_posts() calls it only for the main
+ * query of a shop archive, a product taxonomy or a search.
+ *
+ * Sorting reads `?orderby=` (a public query var, as in WooCommerce);
+ * filters read `?filter_cat=slug,slug` and `?filter_{attribute}=slug,slug`.
+ * Values of one filter match any, different filters must all match.
+ */
+final class ShopQuery {
+	use HasInstance;
+
+	public const SORTS = [ 'menu_order', 'popularity', 'date', 'price', 'price-desc' ];
+
+	public const CATEGORY_FILTER = 'filter_cat';
+
+	public const FILTER_PREFIX = 'filter_';
+
+	/** Visibilities left out of the catalog and of search (doc 03 §3.3). */
+	private const HIDDEN_IN = [
+		'catalog' => [ 'hidden', 'search' ],
+		'search'  => [ 'hidden', 'catalog' ],
+	];
+
+	/** @var list<int> */
+	private array $sku_matches = [];
+
+	public function main( \WP_Query $query ): void {
+		if ( $query->is_search() ) {
+			$this->search( $query );
+			return;
+		}
+		$query->set( 'posts_per_page', self::per_page() );
+		$this->hide( $query, 'catalog' );
+		$this->sort( $query, (string) $query->get( 'orderby' ) );
+		$this->filter( $query, self::request() );
+	}
+
+	/**
+	 * A Query Loop block listing products follows the same visibility rule
+	 * as the shop (`query_loop_block_query_vars`).
+	 *
+	 * @param array<string,mixed> $vars
+	 * @return array<string,mixed>
+	 */
+	public function loop_vars( array $vars ): array {
+		$types = (array) ( $vars['post_type'] ?? [] );
+		if ( ! in_array( PostTypes::PRODUCT, $types, true ) ) {
+			return $vars;
+		}
+		$vars['meta_query'] = array_merge( (array) ( $vars['meta_query'] ?? [] ), [ self::visibility_clause( 'catalog' ) ] ); // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- visibility lives in postmeta until the lookup table (doc 03 §8).
+		return $vars;
+	}
+
+	/**
+	 * Products per shop page; WooCommerce shows 16 (4 rows of 4).
+	 */
+	public static function per_page(): int {
+		/**
+		 * Filters the number of products on a shop page.
+		 *
+		 * @param int $per_page
+		 */
+		return max( 1, (int) apply_filters( 'flexacommerce.shop.per_page', Settings::int( 'products_per_page' ) ) );
+	}
+
+	/**
+	 * The sort the request asked for, or the default one. It reads the
+	 * request vars: sort() replaces the query's `orderby` with clauses.
+	 */
+	public static function current_sort(): string {
+		global $wp_query;
+		$sort = $wp_query instanceof \WP_Query ? ( $wp_query->query['orderby'] ?? '' ) : '';
+		return is_string( $sort ) && in_array( $sort, self::SORTS, true ) ? $sort : 'menu_order';
+	}
+
+	/**
+	 * The filter values of the request, keyed by filter name (`cat` or an
+	 * attribute slug). Each value is a list of term slugs.
+	 *
+	 * @return array<string,list<string>>
+	 */
+	public static function request(): array {
+		$out = [];
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only filter links.
+		foreach ( wp_unslash( $_GET ) as $key => $value ) {
+			if ( ! is_string( $key ) || ! str_starts_with( $key, self::FILTER_PREFIX ) ) {
+				continue;
+			}
+			// `filter_x=a,b` from a link, `filter_x[]=a&filter_x[]=b` from the filter form.
+			$value = is_array( $value ) ? implode( ',', array_filter( $value, 'is_string' ) ) : $value;
+			if ( ! is_string( $value ) ) {
+				continue;
+			}
+			$name  = sanitize_title( substr( $key, strlen( self::FILTER_PREFIX ) ) );
+			$slugs = array_values( array_unique( array_filter( array_map( 'sanitize_title', explode( ',', $value ) ) ) ) );
+			if ( $name !== '' && $slugs !== [] ) {
+				$out[ $name ] = array_slice( $slugs, 0, 20 );
+			}
+		}
+		return $out;
+	}
+
+	private function search( \WP_Query $query ): void {
+		$types = $query->get( 'post_type' );
+		$types = $types === '' || $types === 'any' ? [ 'any' ] : (array) $types;
+		if ( ! in_array( 'any', $types, true ) && ! in_array( PostTypes::PRODUCT, $types, true ) ) {
+			return;
+		}
+		$this->hide( $query, 'search' );
+		if ( $types === [ PostTypes::PRODUCT ] ) {
+			$query->set( 'posts_per_page', self::per_page() );
+			$this->sort( $query, (string) $query->get( 'orderby' ) );
+			$this->filter( $query, self::request() );
+		}
+		$this->sku( $query );
+	}
+
+	/** Products whose visibility leaves them out of this context; posts have no such meta. */
+	private function hide( \WP_Query $query, string $context ): void {
+		$meta   = $query->get( 'meta_query' );
+		$meta   = is_array( $meta ) ? $meta : [];
+		$meta[] = self::visibility_clause( $context );
+		$query->set( 'meta_query', $meta ); // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- see loop_vars().
+	}
+
+	/**
+	 * Leaves out what is hidden in `catalog` or `search`; posts have no such meta.
+	 *
+	 * @return array<string|int,mixed>
+	 */
+	public static function visibility_clause( string $context ): array {
+		return [
+			'relation' => 'OR',
+			[
+				'key'     => ProductRepository::META_VISIBILITY,
+				'compare' => 'NOT EXISTS',
+			],
+			[
+				'key'     => ProductRepository::META_VISIBILITY,
+				'value'   => self::HIDDEN_IN[ $context ],
+				'compare' => 'NOT IN',
+			],
+		];
+	}
+
+	private function sort( \WP_Query $query, string $sort ): void {
+		$sort = in_array( $sort, self::SORTS, true ) ? $sort : 'menu_order';
+		switch ( $sort ) {
+			case 'date':
+				$query->set(
+					'orderby',
+					[
+						'date' => 'DESC',
+						'ID'   => 'DESC',
+					]
+				);
+				return;
+			case 'price':
+			case 'price-desc':
+				$desc = $sort === 'price-desc';
+				$key  = $desc ? ProductRepository::META_PRICE_MAX : ProductRepository::META_PRICE_MIN;
+				$meta = $query->get( 'meta_query' );
+				$meta = is_array( $meta ) ? $meta : [];
+				// Products without a price stay in the list, last when ascending.
+				$meta['fxc_price'] = [
+					'relation'        => 'OR',
+					'fxc_price_value' => [
+						'key'     => $key,
+						'compare' => 'EXISTS',
+						'type'    => 'NUMERIC',
+					],
+					[
+						'key'     => $key,
+						'compare' => 'NOT EXISTS',
+					],
+				];
+				$query->set( 'meta_query', $meta ); // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- `_fxc_price_min/max` exist for sorting (doc 03 §8).
+				$query->set(
+					'orderby',
+					[
+						'fxc_price_value' => $desc ? 'DESC' : 'ASC',
+						'ID'              => 'DESC',
+					]
+				);
+				return;
+			case 'popularity':
+				// Placeholder until sales counts are stored: newest first.
+				$query->set(
+					'orderby',
+					[
+						'date' => 'DESC',
+						'ID'   => 'DESC',
+					]
+				);
+				return;
+			default:
+				$query->set(
+					'orderby',
+					[
+						'menu_order' => 'ASC',
+						'title'      => 'ASC',
+					]
+				);
+		}
+	}
+
+	/** @param array<string,list<string>> $filters */
+	private function filter( \WP_Query $query, array $filters ): void {
+		if ( $filters === [] ) {
+			return;
+		}
+		$tax = $query->get( 'tax_query' );
+		$tax = is_array( $tax ) ? $tax : [];
+		foreach ( $filters as $name => $slugs ) {
+			if ( $name === 'cat' ) {
+				$tax[] = [
+					'taxonomy'         => PostTypes::CATEGORY,
+					'field'            => 'slug',
+					'terms'            => $slugs,
+					'include_children' => true,
+				];
+				continue;
+			}
+			$ids = self::attribute_values( $name, $slugs );
+			// An unknown attribute or value matches nothing, like an empty filter result in WooCommerce.
+			$tax[] = [
+				'taxonomy'         => PostTypes::ATTRIBUTE,
+				'field'            => 'term_id',
+				'terms'            => $ids !== [] ? $ids : [ 0 ],
+				'include_children' => false,
+			];
+		}
+		$tax['relation'] = 'AND';
+		$query->set( 'tax_query', $tax ); // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_tax_query -- the filter itself.
+	}
+
+	/**
+	 * Term ids of the values `$slugs` under the global attribute `$attribute`.
+	 *
+	 * @param list<string> $slugs
+	 * @return list<int>
+	 */
+	public static function attribute_values( string $attribute, array $slugs ): array {
+		$parent = get_term_by( 'slug', $attribute, PostTypes::ATTRIBUTE );
+		if ( ! $parent instanceof \WP_Term || $parent->parent !== 0 ) {
+			return [];
+		}
+		$ids = get_terms(
+			[
+				'taxonomy'   => PostTypes::ATTRIBUTE,
+				'parent'     => $parent->term_id,
+				'slug'       => $slugs,
+				'hide_empty' => false,
+				'fields'     => 'ids',
+			]
+		);
+		return is_array( $ids ) ? array_map( 'intval', $ids ) : [];
+	}
+
+	/** An exact SKU, of the product or of one of its options, also finds the product (doc 01). */
+	private function sku( \WP_Query $query ): void {
+		$term = trim( (string) $query->get( 's' ) );
+		if ( $term === '' || strlen( $term ) > 100 ) {
+			return;
+		}
+		$variant = Plugin::instance()->catalog()->variants()->find_by_sku( $term );
+		if ( $variant === null || ! $variant->enabled ) {
+			return;
+		}
+		$this->sku_matches = [ $variant->product_id ];
+		add_filter( 'posts_search', [ $this, 'posts_search' ], 10, 2 );
+	}
+
+	/** Adds the SKU matches to the search clause of that one query. */
+	public function posts_search( string $search, \WP_Query $query ): string {
+		remove_filter( 'posts_search', [ $this, 'posts_search' ], 10 );
+		global $wpdb;
+		$ids               = implode( ',', array_map( 'intval', $this->sku_matches ) );
+		$this->sku_matches = [];
+		if ( $ids === '' || ! $query->is_main_query() ) {
+			return $search;
+		}
+		$rest = (string) preg_replace( '/^\s*AND\s*/', '', $search );
+		return $rest === ''
+			? " AND {$wpdb->posts}.ID IN ({$ids})"
+			: " AND ({$wpdb->posts}.ID IN ({$ids}) OR ({$rest}))";
+	}
+}

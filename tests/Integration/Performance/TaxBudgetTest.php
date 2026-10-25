@@ -151,7 +151,13 @@ final class TaxBudgetTest extends TestCase {
 				'store_city'           => 'Cupertino',
 				'tax_display_shop'     => 'incl',
 				'price_display_suffix' => 'incl. tax',
-				'tax_classes'          => array_map( static fn ( string $slug ): array => [ 'slug' => $slug, 'name' => ucfirst( $slug ) ], self::CLASSES ),
+				'tax_classes'          => array_map(
+					static fn ( string $slug ): array => [
+						'slug' => $slug,
+						'name' => ucfirst( $slug ),
+					],
+					self::CLASSES
+				),
 			]
 		);
 		$repository = Plugin::instance()->tax()->repository();
@@ -233,17 +239,46 @@ final class TaxBudgetTest extends TestCase {
 	public function test_pt_cart_reads_the_rates_at_most_once(): void {
 		$extra = [];
 		foreach ( [ 1, 10 ] as $lines ) {
-			$token = $this->cart( $lines )[2];
-			$uri   = '/?rest_route=/' . FLEXACOMMERCE_REST_NAMESPACE . '/store/cart';
+			$token        = $this->cart( $lines )[2];
+			$uri          = '/?rest_route=/' . FLEXACOMMERCE_REST_NAMESPACE . '/store/cart';
 			[ $off, $on ] = $this->both( $uri, [ 'cookies' => [ 'fxc_session' => $token ] ] );
 			self::assertSame( 200, $on['status'] );
 			self::assertSame( $lines, $on['rest']['item_count'] ?? null, 'The probe did not read the cart.' );
+			self::assertGreaterThan( 0, $on['rest']['totals']['tax']['amount'] ?? 0, 'The cart response carries no tax.' );
+			self::assertArrayNotHasKey( 'tax', (array) $off['rest'], 'The cart response with taxes off carries tax rows.' );
 			$this->assert_off( $off, "PT-off cart at {$lines}" );
 			$extra[ $lines ] = count( $on['queries'] ) - count( $off['queries'] );
 			$this->report( "PT-cart queries at {$lines}", $extra[ $lines ] );
 			self::assertLessThanOrEqual( (int) self::$budgets['PT-cart']['queries'], $extra[ $lines ], "PT-cart at {$lines}:\n  " . implode( "\n  ", $this->extra( $on, $off ) ) );
 		}
 		self::assertSame( $extra[1], $extra[10], 'PT-cart: tax queries grow with the number of lines.' );
+	}
+
+	public function test_pt_cart_adding_an_item_reads_the_rates_at_most_once(): void {
+		$token        = $this->cart( 3 )[2];
+		$uri          = '/?rest_route=/' . FLEXACOMMERCE_REST_NAMESPACE . '/store/cart/items';
+		$add          = static fn (): array => [
+			'method'  => 'POST',
+			'cookies' => [ 'fxc_session' => $token ],
+			'headers' => [
+				'Content-Type' => 'application/json',
+				'Origin'       => home_url(),
+				'X-FXC-Nonce'  => Plugin::instance()->cart()->nonce()->create( 0, '', $token ),
+			],
+			'body'    => (string) wp_json_encode(
+				[
+					'product_id' => self::$products[0],
+					'quantity'   => 1,
+				]
+			),
+		];
+		[ $off, $on ] = $this->both( $uri, $add() );
+		self::assertSame( 201, $on['status'], (string) wp_json_encode( $on['rest'] ) );
+		self::assertGreaterThan( 0, $on['rest']['totals']['tax']['amount'] ?? 0, 'The add response carries no tax.' );
+		$this->assert_off( $off, 'PT-off add to cart' );
+		$extra = count( $on['queries'] ) - count( $off['queries'] );
+		$this->report( 'PT-cart add queries', $extra );
+		self::assertLessThanOrEqual( (int) self::$budgets['PT-cart']['queries'], $extra, "PT-cart add:\n  " . implode( "\n  ", $this->extra( $on, $off ) ) );
 	}
 
 	public function test_pt_q_and_pt_m_checkout_with_four_stacked_rates(): void {
@@ -320,7 +355,7 @@ final class TaxBudgetTest extends TestCase {
 		$noise = $read();
 		$noise = $read() - $noise;
 
-		$at    = new TaxLocation( 'US', 'CA', '95014', 'Cupertino' );
+		$at = new TaxLocation( 'US', 'CA', '95014', 'Cupertino' );
 		$wpdb->query( 'FLUSH STATUS' ); // phpcs:ignore WordPress.DB
 		$start = $read();
 		$found = $repository->matching( $at, [ '', ...self::CLASSES ] );
@@ -346,10 +381,31 @@ final class TaxBudgetTest extends TestCase {
 			'tax_class' => $class,
 		];
 		return [
-			$row + [ 'rate' => '6', 'name' => 'CA State', 'priority' => 1 ],
-			$row + [ 'rate' => '0.25', 'name' => 'County', 'priority' => 2, 'postcodes' => '950*' ],
-			$row + [ 'rate' => '1', 'name' => 'City', 'priority' => 3, 'postcodes' => '95014', 'cities' => 'Cupertino' ],
-			$row + [ 'rate' => '2.125', 'name' => 'District', 'priority' => 4, 'postcodes' => '95000...95099', 'shipping' => false ],
+			$row + [
+				'rate'     => '6',
+				'name'     => 'CA State',
+				'priority' => 1,
+			],
+			$row + [
+				'rate'      => '0.25',
+				'name'      => 'County',
+				'priority'  => 2,
+				'postcodes' => '950*',
+			],
+			$row + [
+				'rate'      => '1',
+				'name'      => 'City',
+				'priority'  => 3,
+				'postcodes' => '95014',
+				'cities'    => 'Cupertino',
+			],
+			$row + [
+				'rate'      => '2.125',
+				'name'      => 'District',
+				'priority'  => 4,
+				'postcodes' => '95000...95099',
+				'shipping'  => false,
+			],
 		];
 	}
 
@@ -405,7 +461,7 @@ final class TaxBudgetTest extends TestCase {
 	/** @return array<string,mixed> the probe result of one checkout with a new cart */
 	private function place( int $lines, bool $taxes ): array {
 		[ , $checkout, $session ] = $this->cart( $lines );
-		$form = $checkout->form_state( 0 );
+		$form                     = $checkout->form_state( 0 );
 		self::assertSame( $taxes, $form['totals']['tax']['amount'] > 0, 'The form state has the wrong tax.' );
 
 		$run = Probe::run(

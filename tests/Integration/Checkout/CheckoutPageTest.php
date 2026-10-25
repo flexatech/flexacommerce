@@ -124,6 +124,34 @@ final class CheckoutPageTest extends OrderTestCase {
 		self::assertNull( $this->orders()->find_by_checkout_token( $token ) );
 	}
 
+	public function test_group_errors_describe_their_fieldset_and_the_summary_links_them(): void {
+		$this->add( $this->simple( 1000, 5 ), 1 );
+		$token = $this->token( do_shortcode( '[flexacommerce_checkout]' ) );
+		self::assertNull(
+			$this->post(
+				$this->form(
+					$token,
+					[
+						'shipping_rate'  => 'no-such-rate',
+						'payment_method' => 'no-such-method',
+					]
+				)
+			)
+		);
+
+		$html = CheckoutPage::instance()->render();
+		self::assertMatchesRegularExpression( '#<div class="fxc-checkout__errors[^"]*" role="alert" data-fxc-errors tabindex="-1">#', $html );
+		self::assertStringContainsString( 'href="#fxc-payment-method"', $html );
+		self::assertStringContainsString( '<fieldset class="fxc-checkout__methods" id="fxc-payment-method" aria-describedby="fxc-payment-method-error">', $html );
+		self::assertStringContainsString( 'id="fxc-payment-method-error"', $html );
+		self::assertStringContainsString( 'aria-controls="fxc-shipping-address"', $html );
+
+		Settings::update( [ 'terms_page_id' => self::factory()->post->create( [ 'post_type' => 'page' ] ) ] );
+		$html = do_shortcode( '[flexacommerce_checkout]' );
+		Settings::update( [ 'terms_page_id' => 0 ] );
+		self::assertStringContainsString( 'terms and conditions<span class="screen-reader-text"> (opens in a new tab)</span></a>', $html );
+	}
+
 	public function test_a_post_from_another_site_or_with_a_stale_nonce_changes_nothing(): void {
 		$this->add( $this->simple( 1000, 5 ), 1 );
 		$token = $this->token( do_shortcode( '[flexacommerce_checkout]' ) );

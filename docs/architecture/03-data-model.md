@@ -19,7 +19,7 @@ Status: **Approved 2026-10-24**. All table names below are shown without `{$wpdb
 | Tax rates | `fxc_tax_rates`, `fxc_tax_rate_locations` | Indexed matching by country, state, ZIP and city; the same shape as WooCommerce's tables (§4.13). |
 | Plugin log | `fxc_logs` | Filterable by channel and level, pruned by cron (§4.12). |
 | Migration | `fxc_id_map`, `fxc_migration_jobs`, `fxc_migration_log` | Idempotency and resumability (doc 05). |
-| Customers | `wp_users` + user meta `fxc_billing`, `fxc_shipping` (JSON) | No separate customer table (§7). |
+| Customers | `wp_users` + user options `fxc_billing`, `fxc_shipping` (JSON, site-prefixed meta keys) | No separate customer table (§7). |
 | Settings | `wp_options`: `flexacommerce_settings` (autoload), `flexacommerce_shipping_zones`, `flexacommerce_gateway_{id}`, `flexacommerce_email_{id}` (no autoload) | Small configuration data. |
 | Media | Media Library attachments | Product meta and variants store attachment IDs only. |
 
@@ -704,7 +704,7 @@ Tax classes are not a table; they live in `flexacommerce_settings.tax_classes` (
 
 ## 7. Customers
 
-- Account holders are WordPress users (default role: `subscriber`, setting). Saved addresses live in user meta `fxc_billing` and `fxc_shipping` (JSON with the same fields as `fxc_order_addresses`).
+- Account holders are WordPress users (default role: `subscriber`, setting). Saved addresses live in user options `fxc_billing` and `fxc_shipping` (JSON with the same fields as `fxc_order_addresses`). User options store the meta key with the site's table prefix (`wp_fxc_billing`, `wp_2_fxc_billing`), so each site of a network keeps its own addresses for a shared user.
 - Guests exist only as order snapshots. The admin **Customers** screen lists registered users with orders plus distinct guest emails (query over `fxc_orders` grouped by `customer_email`, paginated, uses the `customer_email` index).
 - Guest orders are linked to an account when the user registers with the same, verified email (manual admin action or the opt-in setting `link_guest_orders_on_registration`, which only links after the user confirms the email through WordPress's account email).
 - Alternative: a `fxc_customers` table (WooCommerce `wc_customer_lookup`). Rejected for MVP: it is an analytics cache with its own sync bugs. Revisit with the analytics feature.

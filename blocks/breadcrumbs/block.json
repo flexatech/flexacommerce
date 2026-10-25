@@ -1,0 +1,27 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "flexacommerce/breadcrumbs",
+	"version": "0.1.0",
+	"title": "Store breadcrumbs",
+	"category": "widgets",
+	"icon": "arrow-right-alt2",
+	"description": "The path from the home page to the current shop page.",
+	"textdomain": "flexacommerce",
+	"attributes": {},
+	"supports": {
+		"html": false,
+		"align": true,
+		"color": {
+			"text": true,
+			"link": true,
+			"background": false
+		},
+		"typography": {
+			"fontSize": true
+		}
+	},
+	"editorScript": "flexacommerce-blocks-editor",
+	"style": "flexacommerce-storefront",
+	"render": "file:./render.php"
+}

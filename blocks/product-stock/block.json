@@ -1,0 +1,30 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "flexacommerce/product-stock",
+	"version": "0.1.0",
+	"title": "Product stock",
+	"category": "widgets",
+	"icon": "yes-alt",
+	"description": "Whether the current product is in stock, and how many are left.",
+	"textdomain": "flexacommerce",
+	"usesContext": [
+		"postId",
+		"postType"
+	],
+	"attributes": {
+		"productId": {
+			"type": "integer",
+			"default": 0
+		}
+	},
+	"supports": {
+		"html": false,
+		"typography": {
+			"fontSize": true
+		}
+	},
+	"editorScript": "flexacommerce-blocks-editor",
+	"style": "flexacommerce-storefront",
+	"render": "file:./render.php"
+}

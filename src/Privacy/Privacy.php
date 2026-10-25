@@ -31,13 +31,17 @@ final class Privacy {
 	 * @return array<string,array<string,mixed>>
 	 */
 	public function exporters( array $exporters ): array {
-		$exporters['flexacommerce-orders'] = [
+		$exporters['flexacommerce-orders']    = [
 			'exporter_friendly_name' => __( 'FlexaCommerce orders', 'flexacommerce' ),
 			'callback'               => [ $this, 'export_orders' ],
 		];
-		$exporters['flexacommerce-cart']   = [
+		$exporters['flexacommerce-cart']      = [
 			'exporter_friendly_name' => __( 'FlexaCommerce cart', 'flexacommerce' ),
 			'callback'               => [ $this, 'export_cart' ],
+		];
+		$exporters['flexacommerce-addresses'] = [
+			'exporter_friendly_name' => __( 'FlexaCommerce saved addresses', 'flexacommerce' ),
+			'callback'               => [ $this, 'export_addresses' ],
 		];
 		return $exporters;
 	}
@@ -47,13 +51,17 @@ final class Privacy {
 	 * @return array<string,array<string,mixed>>
 	 */
 	public function erasers( array $erasers ): array {
-		$erasers['flexacommerce-orders'] = [
+		$erasers['flexacommerce-orders']    = [
 			'eraser_friendly_name' => __( 'FlexaCommerce orders', 'flexacommerce' ),
 			'callback'             => [ $this, 'erase_orders' ],
 		];
-		$erasers['flexacommerce-cart']   = [
+		$erasers['flexacommerce-cart']      = [
 			'eraser_friendly_name' => __( 'FlexaCommerce cart', 'flexacommerce' ),
 			'callback'             => [ $this, 'erase_cart' ],
+		];
+		$erasers['flexacommerce-addresses'] = [
+			'eraser_friendly_name' => __( 'FlexaCommerce saved addresses', 'flexacommerce' ),
+			'callback'             => [ $this, 'erase_addresses' ],
 		];
 		return $erasers;
 	}
@@ -79,6 +87,18 @@ final class Privacy {
 	public function erase_cart( string $email, int $page = 1 ): array {
 		unset( $page );
 		return $this->data()->erase_session( $email );
+	}
+
+	/** @return array{data:list<array<string,mixed>>,done:bool} */
+	public function export_addresses( string $email, int $page = 1 ): array {
+		unset( $page );
+		return $this->data()->export_addresses( $email );
+	}
+
+	/** @return array{items_removed:bool,items_retained:bool,messages:list<string>,done:bool} */
+	public function erase_addresses( string $email, int $page = 1 ): array {
+		unset( $page );
+		return $this->data()->erase_addresses( $email );
 	}
 
 	public function policy(): void {

@@ -1,0 +1,33 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "flexacommerce/related-products",
+	"version": "0.1.0",
+	"title": "Related products",
+	"category": "widgets",
+	"icon": "grid-view",
+	"description": "Products from the same categories or tags as the current product.",
+	"textdomain": "flexacommerce",
+	"usesContext": [
+		"postId",
+		"postType"
+	],
+	"attributes": {
+		"count": {
+			"type": "integer",
+			"default": 4,
+			"minimum": 1,
+			"maximum": 12
+		}
+	},
+	"supports": {
+		"html": false,
+		"align": [
+			"wide",
+			"full"
+		]
+	},
+	"editorScript": "flexacommerce-blocks-editor",
+	"style": "flexacommerce-storefront",
+	"render": "file:./render.php"
+}

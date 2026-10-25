@@ -1,0 +1,23 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "flexacommerce/order-confirmation",
+	"version": "0.1.0",
+	"title": "Order confirmation",
+	"category": "widgets",
+	"icon": "yes-alt",
+	"description": "The order from the confirmation link: status, items, totals and addresses.",
+	"textdomain": "flexacommerce",
+	"attributes": {},
+	"supports": {
+		"html": false,
+		"multiple": false,
+		"align": [
+			"wide",
+			"full"
+		]
+	},
+	"editorScript": "flexacommerce-blocks-editor",
+	"style": "flexacommerce-storefront",
+	"render": "file:./render.php"
+}

@@ -8,6 +8,7 @@ use Flexa\Commerce\Cart\Cart;
 use Flexa\Commerce\Cart\SessionRepository;
 use Flexa\Commerce\Contracts\MoneyFactory;
 use Flexa\Commerce\Contracts\Orders\AddressView;
+use Flexa\Commerce\Customers\CustomerProfile;
 use Flexa\Commerce\Orders\HistoryRepository;
 use Flexa\Commerce\Orders\Order;
 use Flexa\Commerce\Orders\OrderRepository;
@@ -23,7 +24,7 @@ defined( 'ABSPATH' ) || exit;
  * §2.8). Orders are found by the customer email and, for a registered
  * address, by the user id. Erasure anonymizes orders in place; orders still
  * in progress are kept until they finish. The cart session of a user is
- * exported and then deleted.
+ * exported and then deleted, and so are the addresses saved on the account.
  *
  * Each call returns the core page shape: `data` + `done` for an export,
  * `items_removed`, `items_retained`, `messages`, `done` for an erasure.
@@ -37,7 +38,51 @@ final class PersonalData {
 		private readonly OrderService $service,
 		private readonly SessionRepository $sessions,
 		private readonly MoneyFactory $money,
+		private readonly CustomerProfile $profile = new CustomerProfile(),
 	) {}
+
+	/** @return array{data:list<array<string,mixed>>,done:bool} */
+	public function export_addresses( string $email ): array {
+		$user = self::user_id( $email );
+		$data = [];
+		foreach ( $user > 0 ? $this->profile->addresses( $user ) : [] as $type => $address ) {
+			$billing = $type === 'billing';
+			$fields  = [
+				self::field( __( 'Address', 'flexacommerce' ), self::address( $address ) ),
+				self::field( __( 'Phone', 'flexacommerce' ), $address->phone ),
+				self::field( __( 'Email address', 'flexacommerce' ), $address->email ),
+			];
+			$data[]  = [
+				'group_id'          => 'flexacommerce-addresses',
+				'group_label'       => __( 'Saved addresses', 'flexacommerce' ),
+				'group_description' => __( 'Addresses saved on the account to fill in the checkout form.', 'flexacommerce' ),
+				'item_id'           => 'address-' . $type,
+				'data'              => array_merge(
+					[ self::field( __( 'Type', 'flexacommerce' ), $billing ? __( 'Billing address', 'flexacommerce' ) : __( 'Shipping address', 'flexacommerce' ) ) ],
+					array_values( array_filter( $fields, static fn ( array $field ): bool => $field['value'] !== '' ) )
+				),
+			];
+		}
+		return [
+			'data' => $data,
+			'done' => true,
+		];
+	}
+
+	/** @return array{items_removed:bool,items_retained:bool,messages:list<string>,done:bool} */
+	public function erase_addresses( string $email ): array {
+		$user    = self::user_id( $email );
+		$removed = $user > 0 && $this->profile->addresses( $user ) !== [];
+		if ( $removed ) {
+			$this->profile->delete( $user );
+		}
+		return [
+			'items_removed'  => $removed,
+			'items_retained' => false,
+			'messages'       => [],
+			'done'           => true,
+		];
+	}
 
 	/** @return array{data:list<array<string,mixed>>,done:bool} */
 	public function export_orders( string $email, int $page ): array {

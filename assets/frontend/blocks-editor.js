@@ -59,10 +59,57 @@
 		'flexacommerce/cart',
 		'flexacommerce/mini-cart',
 		'flexacommerce/checkout',
+		'flexacommerce/account',
+		'flexacommerce/order-confirmation',
+		'flexacommerce/product-gallery',
+		'flexacommerce/product-sku',
+		'flexacommerce/product-stock',
+		'flexacommerce/product-attributes',
+		'flexacommerce/breadcrumbs',
+		'flexacommerce/catalog-sorting',
+		'flexacommerce/product-filters',
+		'flexacommerce/related-products',
 	].forEach( ( name ) => {
 		registerBlockType( name, {
 			edit: ( props ) => el( Edit, Object.assign( { name }, props ) ),
 			save: () => null,
 		} );
+	} );
+
+	// A Query Loop preset for products: the same card as the shop template.
+	wp.blocks.registerBlockVariation( 'core/query', {
+		name: 'flexacommerce/product-query',
+		title: __( 'Product list', 'flexacommerce' ),
+		description: __( 'A list of products with price and add-to-cart button.', 'flexacommerce' ),
+		icon: 'products',
+		category: 'widgets',
+		isActive: [ 'namespace' ],
+		scope: [ 'inserter' ],
+		allowedControls: [ 'order', 'taxQuery', 'search' ],
+		attributes: {
+			namespace: 'flexacommerce/product-query',
+			query: {
+				perPage: 4,
+				pages: 0,
+				offset: 0,
+				postType: PRODUCT,
+				order: 'desc',
+				orderBy: 'date',
+				inherit: false,
+			},
+		},
+		innerBlocks: [
+			[
+				'core/post-template',
+				{ layout: { type: 'grid', columnCount: 4 } },
+				[
+					[ 'core/post-featured-image', { isLink: true, aspectRatio: '1' } ],
+					[ 'core/post-title', { isLink: true, level: 3, fontSize: 'medium' } ],
+					[ 'flexacommerce/product-price' ],
+					[ 'flexacommerce/product-add-to-cart' ],
+				],
+			],
+			[ 'core/query-no-results', {}, [ [ 'core/paragraph', { content: __( 'No products found.', 'flexacommerce' ) } ] ] ],
+		],
 	} );
 } )( window.wp );

@@ -58,6 +58,12 @@ final class Assets {
 		wp_interactivity_config( 'flexacommerce/cart', self::config() );
 	}
 
+	/** The stylesheet alone, enqueued before the page head prints (classic templates). */
+	public static function use_style(): void {
+		self::register();
+		wp_enqueue_style( self::STYLE );
+	}
+
 	/**
 	 * The checkout and order-pay forms: a plain script module (no
 	 * Interactivity store) that reads its config from the module data

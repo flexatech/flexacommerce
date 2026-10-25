@@ -16,9 +16,11 @@ defined( 'ABSPATH' ) || exit;
  * formatted string for display.
  */
 final class CartPresenter {
+	/** @param ?\Closure(array<string,mixed>,CartState):array<string,mixed> $totals adds the tax rows (Checkout\CartTaxes) */
 	public function __construct(
 		private readonly CartService $cart,
 		private readonly PricingService $pricing,
+		private readonly ?\Closure $totals = null,
 	) {}
 
 	/** @return array<string,mixed> */
@@ -33,6 +35,9 @@ final class CartPresenter {
 			'notices'     => $state->notices,
 			'needs_fixes' => $state->has_problems(),
 		];
+		if ( $this->totals !== null ) {
+			$data = ( $this->totals )( $data, $state );
+		}
 
 		/**
 		 * Filters the public shape of the cart (REST and storefront state).

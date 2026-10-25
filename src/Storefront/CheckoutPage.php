@@ -137,6 +137,28 @@ final class CheckoutPage {
 		return $this->form->html( $service->form_state( get_current_user_id() ), $this->posted, $this->errors );
 	}
 
+	/**
+	 * The order confirmation alone, for a block or shortcode on a page of
+	 * its own. Empty without an order in the URL, so the editor and a direct
+	 * visit show nothing.
+	 */
+	public function render_confirmation(): string {
+		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- display only; the key is the access check.
+		$id  = isset( $_GET[ CheckoutPages::RECEIVED ] ) ? absint( $_GET[ CheckoutPages::RECEIVED ] ) : 0;
+		$key = isset( $_GET['key'] ) ? sanitize_text_field( wp_unslash( $_GET['key'] ) ) : '';
+		// phpcs:enable
+		if ( $id === 0 ) {
+			return '';
+		}
+		$service = $this->service();
+		$order   = $this->order !== null && $this->order->id === $id ? $this->order : $service->viewable_order( $id, $key, get_current_user_id() );
+		if ( $order === null ) {
+			return '<p class="fxc-notice fxc-notice--error" role="alert">' . esc_html__( 'Order not found. Use the link from your order email or sign in to your account.', 'flexacommerce' ) . '</p>';
+		}
+		$this->order = $order;
+		return $this->confirmation( $service )->html( $order );
+	}
+
 	private function place( CheckoutService $service, int $user ): void {
 		$this->posted = $this->posted();
 		if ( ! $this->verified() ) {

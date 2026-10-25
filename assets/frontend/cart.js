@@ -146,6 +146,9 @@ function applyCart( data ) {
 const { state, actions } = store( 'flexacommerce/cart', {
 	state: {
 		products: {},
+		// productId => the variation the form picked, and the image shown.
+		chosen: {},
+		gallery: {},
 		count: 0,
 		message: '',
 		get countLabel() {
@@ -162,6 +165,21 @@ const { state, actions } = store( 'flexacommerce/cart', {
 			const { key } = getContext();
 			const item = state.cart?.items.find( ( line ) => line.key === key );
 			return item?.total?.formatted ?? '';
+		},
+		get sku() {
+			const { productId, sku } = getContext();
+			return state.chosen[ productId ]?.sku || sku || '';
+		},
+		get galleryImage() {
+			const context = getContext();
+			const image =
+				context.images[ state.gallery[ context.productId ] ] || context.images[ context.main ];
+			return { ...image, alt: image.alt || context.title };
+		},
+		get galleryCurrent() {
+			const context = getContext();
+			const shown = String( state.gallery[ context.productId ] ?? context.main );
+			return getElement().attributes[ 'data-image' ] === shown ? 'true' : false;
 		},
 		get cannotAdd() {
 			const context = getContext();
@@ -236,16 +254,19 @@ const { state, actions } = store( 'flexacommerce/cart', {
 			if ( ! matrix || ! complete( matrix, context.selection ) ) {
 				context.ready = false;
 				context.variantId = 0;
+				actions.pick( context.productId, null );
 				return;
 			}
 			const variant = match( matrix, context.selection );
 			if ( ! variant ) {
 				context.ready = false;
 				context.variantId = 0;
+				actions.pick( context.productId, null );
 				context.message = i18n.unavailable;
 				context.failed = true;
 				return;
 			}
+			actions.pick( context.productId, variant );
 			context.variantId = variant.in_stock ? variant.id : 0;
 			context.price = variant.price;
 			context.regular = variant.regular;
@@ -255,6 +276,25 @@ const { state, actions } = store( 'flexacommerce/cart', {
 			context.quantity = Math.max( 1, Math.min( context.quantity, context.max ) );
 			context.ready = true;
 		},
+		/** Tells the SKU and gallery blocks of the product which variation is chosen. */
+		pick( productId, variant ) {
+			const before = state.chosen[ productId ];
+			state.chosen[ productId ] = variant;
+			if ( variant?.image_id ) {
+				state.gallery[ productId ] = variant.image_id;
+			} else if ( before?.image_id && state.gallery[ productId ] === before.image_id ) {
+				delete state.gallery[ productId ];
+			}
+		},
+		showImage: withSyncEvent( ( event ) => {
+			const context = getContext();
+			const id = parseInt( getElement().ref.dataset.image, 10 );
+			if ( ! context.images[ id ] ) {
+				return;
+			}
+			event.preventDefault();
+			state.gallery[ context.productId ] = id;
+		} ),
 		setQuantity( event ) {
 			const context = getContext();
 			const value = parseInt( event.target.value, 10 );

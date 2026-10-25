@@ -1,0 +1,23 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "flexacommerce/account",
+	"version": "0.1.0",
+	"title": "My account",
+	"category": "widgets",
+	"icon": "admin-users",
+	"description": "Sign-in form for guests; orders, addresses and account details for customers.",
+	"textdomain": "flexacommerce",
+	"attributes": {},
+	"supports": {
+		"html": false,
+		"multiple": false,
+		"align": [
+			"wide",
+			"full"
+		]
+	},
+	"editorScript": "flexacommerce-blocks-editor",
+	"style": "flexacommerce-storefront",
+	"render": "file:./render.php"
+}

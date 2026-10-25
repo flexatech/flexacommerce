@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Flexa\Commerce\Maintenance;
 
 use Flexa\Commerce\Catalog\PostTypes;
+use Flexa\Commerce\Customers\CustomerProfile;
 use Flexa\Commerce\Database\Schema;
 use Flexa\Commerce\Setup\Roles;
 
@@ -12,8 +13,8 @@ defined( 'ABSPATH' ) || exit;
 
 /**
  * The single destructive path: deletes the products and their terms, then
- * drops every table, option, role and cron event of the current site.
- * Uninstall and WP-CLI both call this.
+ * drops every table, option, role, saved address and cron event of the
+ * current site. Uninstall and WP-CLI both call this.
  */
 final class Eraser {
 	public static function erase_site(): void {
@@ -21,6 +22,7 @@ final class Eraser {
 		self::erase_catalog();
 		Schema::drop_all();
 		Roles::uninstall();
+		CustomerProfile::delete_all();
 
 		do_action( 'flexacommerce.data_erased', get_current_blog_id() );
 	}

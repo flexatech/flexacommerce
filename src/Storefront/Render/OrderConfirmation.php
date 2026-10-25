@@ -60,8 +60,8 @@ final class OrderConfirmation {
 		$html .= $this->items( $order );
 
 		$html .= '<div class="fxc-order__addresses">'
-			. $this->address( __( 'Billing address', 'flexacommerce' ), $order->billing )
-			. $this->address( __( 'Shipping address', 'flexacommerce' ), $order->shipping )
+			. self::address( __( 'Billing address', 'flexacommerce' ), $order->billing )
+			. self::address( __( 'Shipping address', 'flexacommerce' ), $order->shipping )
 			. '</div>';
 		return $html . '</div>';
 	}
@@ -115,7 +115,7 @@ final class OrderConfirmation {
 		return $html . '</tfoot></table>';
 	}
 
-	private function address( string $title, ?AddressView $address ): string {
+	public static function address( string $title, ?AddressView $address ): string {
 		if ( $address === null ) {
 			return '';
 		}

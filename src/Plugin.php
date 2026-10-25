@@ -62,7 +62,6 @@ final class Plugin {
 		add_action( 'before_delete_post', [ $this, 'on_post_deleted' ], 10, 2 );
 
 		Maintenance\Cron::instance()->register();
-		Api\Router::instance()->register();
 		Setup\Requirements::instance()->register();
 
 		// Storefront (doc 02 §6.3): every callback below is a cheap gate that
@@ -72,6 +71,8 @@ final class Plugin {
 		add_shortcode( 'flexacommerce_cart', [ $this, 'shortcode_cart' ] );
 		add_shortcode( 'flexacommerce_add_to_cart', [ $this, 'shortcode_add_to_cart' ] );
 		add_shortcode( 'flexacommerce_checkout', [ $this, 'shortcode_checkout' ] );
+		add_shortcode( 'flexacommerce_account', [ $this, 'shortcode_account' ] );
+		add_shortcode( 'flexacommerce_order_confirmation', [ $this, 'shortcode_order_confirmation' ] );
 
 		if ( is_admin() ) {
 			add_action( 'init', [ $this, 'register_blocks' ] );
@@ -82,9 +83,11 @@ final class Plugin {
 			Admin\Enqueue::instance()->register();
 			Admin\ProductEditor::instance()->register();
 			Privacy\Privacy::instance()->register();
+			add_action( 'admin_notices', [ Storefront\TemplateLoader::class, 'notice' ] );
 		} else {
 			add_filter( 'pre_render_block', [ $this, 'on_pre_render_block' ], 10, 3 );
 			add_filter( 'the_posts', [ $this, 'on_the_posts' ] );
+			add_action( 'pre_get_posts', [ $this, 'on_pre_get_posts' ] );
 			add_action( 'template_redirect', [ $this, 'on_template_redirect' ] );
 		}
 
@@ -132,7 +135,23 @@ final class Plugin {
 
 	/** @internal Pricing, stock, sessions and the cart. */
 	public function cart(): CartServices {
-		return $this->cart ??= new CartServices( $this->services(), $this->catalog(), tax: fn (): Tax\TaxService => $this->tax()->service() );
+		return $this->cart ??= new CartServices(
+			$this->services(),
+			$this->catalog(),
+			tax: fn (): Tax\TaxService => $this->tax()->service(),
+			totals: fn ( array $data, Cart\CartState $state ): array => $this->cart_totals( $data, $state ),
+		);
+	}
+
+	/**
+	 * The tax rows of the cart page and `store/cart` (doc 02 §7.12.5). With
+	 * taxes off the Checkout module stays unloaded (PT-off).
+	 *
+	 * @param array<string,mixed> $data
+	 * @return array<string,mixed>
+	 */
+	private function cart_totals( array $data, Cart\CartState $state ): array {
+		return Support\Settings::bool( 'tax_enabled' ) ? $this->checkout()->cart_taxes()->extend( $data, $state, get_current_user_id() ) : $data;
 	}
 
 	/**
@@ -216,11 +235,13 @@ final class Plugin {
 	}
 
 	/**
-	 * The editor needs the block types over REST (block renderer, templates).
-	 * Our own routes never render a block, and registering the editor script
-	 * builds WP_Scripts, which costs two queries on every cart request (P4q).
+	 * Our routes first, then the block types the editor needs over REST
+	 * (block renderer, templates); one callback serves both (P1). Our own
+	 * routes never render a block, and registering the editor script builds
+	 * WP_Scripts, which costs two queries on every cart request (P4q).
 	 */
 	public function on_rest_api_init(): void {
+		Api\Router::instance()->register_routes();
 		$this->watch_settings();
 		$route = isset( $GLOBALS['wp'] ) && $GLOBALS['wp'] instanceof \WP ? (string) ( $GLOBALS['wp']->query_vars['rest_route'] ?? '' ) : '';
 		if ( str_starts_with( $route, '/' . FLEXACOMMERCE_REST_NAMESPACE . '/' ) ) {
@@ -278,6 +299,17 @@ final class Plugin {
 		return $posts;
 	}
 
+	/** The shop's main query: visibility, page size, sorting, filters and SKU search. */
+	public function on_pre_get_posts( \WP_Query $query ): void {
+		if ( $query->is_main_query() && (
+			$query->is_search()
+			|| $query->is_post_type_archive( Catalog\PostTypes::PRODUCT )
+			|| $query->is_tax( [ Catalog\PostTypes::CATEGORY, Catalog\PostTypes::TAG ] )
+		) ) {
+			Storefront\ShopQuery::instance()->main( $query );
+		}
+	}
+
 	public function on_template_redirect(): void {
 		if (
 			is_singular( Catalog\PostTypes::PRODUCT )
@@ -287,7 +319,29 @@ final class Plugin {
 			Storefront\Storefront::instance()->on_template_redirect();
 		}
 		if ( self::is_checkout_request() ) {
+			self::no_page_cache();
 			Storefront\CheckoutPage::instance()->handle();
+		}
+		$account = Support\Settings::int( 'account_page_id' );
+		if ( $account > 0 && is_page( $account ) ) {
+			self::no_page_cache();
+			Storefront\AccountPage::instance()->handle();
+		}
+		$cart = Support\Settings::int( 'cart_page_id' );
+		if ( $cart > 0 && is_page( $cart ) ) {
+			self::no_page_cache();
+		}
+	}
+
+	/**
+	 * Cart, checkout and account pages differ per visitor, so page caches
+	 * must skip them (doc 02 §7.3.1). Catalog pages never get here.
+	 */
+	private static function no_page_cache(): void {
+		nocache_headers();
+		if ( ! defined( 'DONOTCACHEPAGE' ) ) {
+			// Read by WP Super Cache, W3 Total Cache, LiteSpeed Cache and others.
+			define( 'DONOTCACHEPAGE', true ); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedConstantFound
 		}
 	}
 
@@ -324,6 +378,16 @@ final class Plugin {
 	/** @param array<string,string>|string $atts */
 	public function shortcode_checkout( array|string $atts = [] ): string {
 		return Storefront\Storefront::instance()->shortcode_checkout( $atts );
+	}
+
+	/** @param array<string,string>|string $atts */
+	public function shortcode_account( array|string $atts = [] ): string {
+		return Storefront\Storefront::instance()->shortcode_account( $atts );
+	}
+
+	/** @param array<string,string>|string $atts */
+	public function shortcode_order_confirmation( array|string $atts = [] ): string {
+		return Storefront\Storefront::instance()->shortcode_order_confirmation( $atts );
 	}
 
 	public function extensions(): Extensions {

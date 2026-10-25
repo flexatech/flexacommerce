@@ -10,6 +10,8 @@ use Flexa\Commerce\Catalog\PostTypes;
 use Flexa\Commerce\Catalog\ProductInput;
 use Flexa\Commerce\Database\Schema;
 use Flexa\Commerce\Plugin;
+use Flexa\Commerce\Storefront\Templates;
+use Flexa\Commerce\Support\Settings;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -134,6 +136,101 @@ final class StorefrontBudgetTest extends TestCase {
 			}
 		}
 		self::assertSame( $extra[6], $extra[250], 'Product page queries grow with the number of variants.' );
+	}
+
+	public function test_p1h_product_list_cost_does_not_grow_with_its_size(): void {
+		$extra = [];
+		foreach ( [ 12, 48 ] as $size ) {
+			$page = (int) wp_insert_post(
+				[
+					'post_type'    => 'page',
+					'post_status'  => 'publish',
+					'post_title'   => 'Budget home ' . $size,
+					'post_content' => Templates::product_query( '{"queryId":2,"query":{"perPage":' . $size . ',"pages":0,"offset":0,"postType":"' . PostTypes::PRODUCT . '","order":"desc","orderBy":"date","inherit":false},"namespace":"flexacommerce/product-query"}' ),
+				]
+			);
+			self::$posts[] = $page;
+			$run           = Probe::compare(
+				'/?page_id=' . $page,
+				[
+					'bare_types' => true,
+					// Each item of the list; get_post_class() adds it.
+					'count'      => ' type-' . PostTypes::PRODUCT . ' ',
+				]
+			);
+			self::assertSame( 200, $run['on']['status'] );
+			self::assertSame( $size, $run['on']['counted'], "P1h at {$size}: the list did not render {$size} products." );
+			$extra[ $size ] = $this->extra_queries( $run, (int) self::$budgets['P1h']['queries'], "P1h at {$size}" );
+			$this->assert_catalog_page( $run['on'], "P1h at {$size}" );
+		}
+		self::assertSame( $extra[12], $extra[48], 'Product list queries grow with the number of products.' );
+	}
+
+	/** P8: what a product page loads of ours, simple and with options. */
+	public function test_p8_product_page_assets(): void {
+		foreach ( [ 'simple' => self::$simple, 'variable' => self::$variable[6] ] as $label => $id ) {
+			$bytes = Probe::run( '/?post_type=' . PostTypes::PRODUCT . '&p=' . $id, true )['bytes'];
+			$js    = 0;
+			$css   = 0;
+			foreach ( $bytes as $file => $size ) {
+				if ( str_ends_with( $file, '.js' ) ) {
+					$js += $size;
+				} else {
+					$css += $size;
+				}
+			}
+			$this->report( "P8 {$label} JS", $js );
+			$this->report( "P8 {$label} CSS", $css );
+			self::assertGreaterThan( 0, $js, "P8 {$label}: no script found, the probe missed the page's assets." );
+			self::assertGreaterThan( 0, $css, "P8 {$label}: no style found, the probe missed the page's assets." );
+			self::assertLessThanOrEqual( (int) self::$budgets['P8']['js'], $js, "P8 {$label} JS: " . (string) wp_json_encode( $bytes ) );
+			self::assertLessThanOrEqual( (int) self::$budgets['P8']['css'], $css, "P8 {$label} CSS: " . (string) wp_json_encode( $bytes ) );
+		}
+	}
+
+	/**
+	 * P11 on the phase 5 catalog URLs: sorting, filters, a category, search,
+	 * and the classic theme templates. One run each, with the plugin only.
+	 */
+	public function test_p11_sorted_filtered_and_classic_catalog_pages_stay_cacheable(): void {
+		$term = wp_insert_term( 'Budget category', PostTypes::CATEGORY );
+		self::assertIsArray( $term );
+		$slug = (string) get_term( (int) $term['term_id'] )->slug;
+		wp_set_object_terms( self::$simple, [ (int) $term['term_id'] ], PostTypes::CATEGORY );
+		$saved = Settings::int( 'cart_page_id' );
+		try {
+			$pages = [
+				'sorted and filtered' => [ '/?post_type=' . PostTypes::PRODUCT . '&orderby=price-desc&filter_cat=' . $slug, [] ],
+				'category'            => [ '/?' . PostTypes::CATEGORY . '=' . $slug, [] ],
+				'search'              => [ '/?s=Budget', [] ],
+				'classic product'     => [ '/?post_type=' . PostTypes::PRODUCT . '&p=' . self::$variable[6], [ 'theme' => 'classic' ] ],
+				'classic archive'     => [ '/?post_type=' . PostTypes::PRODUCT . '&orderby=price', [ 'theme' => 'classic' ] ],
+			];
+			$runs = [];
+			foreach ( $pages as $label => [ $uri, $options ] ) {
+				$runs[ $label ] = Probe::run( $uri, true, $options );
+				self::assertSame( 200, $runs[ $label ]['status'], $label );
+				$this->assert_catalog_page( $runs[ $label ], "P11 {$label}" );
+			}
+			self::assertSame( 'single-product.php', $runs['classic product']['template'] );
+			self::assertGreaterThan( 0, $runs['classic product']['state'], 'The classic product page has no add-to-cart state.' );
+			self::assertSame( 'archive-product.php', $runs['classic archive']['template'] );
+
+			// The other side: the cart page differs per visitor and turns caching off.
+			$cart = (int) wp_insert_post(
+				[
+					'post_type'   => 'page',
+					'post_status' => 'publish',
+					'post_title'  => 'Budget cart',
+				]
+			);
+			self::$posts[] = $cart;
+			Settings::update( [ 'cart_page_id' => $cart ] );
+			self::assertTrue( Probe::run( '/?page_id=' . $cart, true )['nocache'], 'The cart page can be cached.' );
+		} finally {
+			Settings::update( [ 'cart_page_id' => $saved ] );
+			wp_delete_term( (int) $term['term_id'], PostTypes::CATEGORY );
+		}
 	}
 
 	public function test_p4q_get_cart_cost_does_not_grow_with_lines(): void {

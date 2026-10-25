@@ -9,6 +9,8 @@ use Flexa\Commerce\Cart\CartPresenter;
 use Flexa\Commerce\Cart\CartService;
 use Flexa\Commerce\Cart\CartState;
 use Flexa\Commerce\Catalog\PostTypes;
+use Flexa\Commerce\Contracts\Money;
+use Flexa\Commerce\Contracts\Pricing\PriceResolution;
 use Flexa\Commerce\Pricing\PricingService;
 use Flexa\Commerce\Storefront\Assets;
 use Flexa\Commerce\Storefront\FormHandler;
@@ -39,7 +41,14 @@ final class CartTable {
 
 	private function markup( CartState $state ): string {
 		Assets::use_store();
-		wp_interactivity_state( 'flexacommerce/cart', [ 'cart' => $this->presenter->to_array( $state ) ] );
+		$data = $this->presenter->to_array( $state );
+		wp_interactivity_state( 'flexacommerce/cart', [ 'cart' => $data ] );
+		$shown = [];
+		foreach ( (array) $data['items'] as $item ) {
+			if ( is_array( $item ) ) {
+				$shown[ (string) $item['key'] ] = $item;
+			}
+		}
 
 		$html  = '<div class="fxc-cart" data-wp-interactive="flexacommerce/cart">';
 		$html .= FormHandler::notice_for( 0 );
@@ -69,21 +78,57 @@ final class CartTable {
 			. '<th scope="col"><span class="screen-reader-text">' . esc_html__( 'Remove', 'flexacommerce' ) . '</span></th>'
 			. '</tr></thead><tbody>';
 		foreach ( $state->items as $item ) {
-			$html .= $this->row( $item );
+			$html .= $this->row( $item, $shown[ $item->line->key ] ?? [] );
 		}
 		$html .= '</tbody></table>';
-
-		$html .= sprintf(
-			'<p class="fxc-cart__subtotal">%1$s <strong data-wp-text="state.cart.totals.subtotal.formatted">%2$s</strong></p>',
-			esc_html__( 'Subtotal:', 'flexacommerce' ),
-			esc_html( $this->presenter->money( $state->subtotal )['formatted'] )
-		);
+		$html .= self::totals( $data );
 		$html .= '<p class="fxc-cart__actions"><button type="submit" class="wp-element-button">' . esc_html__( 'Update cart', 'flexacommerce' ) . '</button></p>';
 		$html .= '<p class="fxc-cart__message" role="status" aria-live="polite" data-wp-text="state.message"></p>';
 		return $html . '</form></div>';
 	}
 
-	private function row( CartItem $item ): string {
+	/**
+	 * Subtotal, then the tax rows and the total when taxes are on (doc 02
+	 * §7.12.5). The rows bind to the cart state, so a quantity change
+	 * updates them from the `store/cart` response.
+	 *
+	 * @param array<string,mixed> $data
+	 */
+	private static function totals( array $data ): string {
+		$totals = (array) $data['totals'];
+		$html   = '<table class="fxc-cart__totals"><tbody>';
+		$html  .= sprintf(
+			'<tr class="fxc-cart__subtotal"><th scope="row">%1$s</th><td data-wp-text="state.cart.totals.subtotal.formatted">%2$s</td></tr>',
+			esc_html__( 'Subtotal', 'flexacommerce' ),
+			esc_html( (string) ( $totals['subtotal']['formatted'] ?? '' ) )
+		);
+		$tax    = is_array( $data['tax'] ?? null ) ? $data['tax'] : null;
+		if ( $tax === null ) {
+			return $html . '</tbody></table>';
+		}
+		if ( ! empty( $tax['pending'] ) ) {
+			return $html . '<tr class="fxc-cart__note"><td colspan="2">' . esc_html__( 'Tax and shipping are calculated at checkout.', 'flexacommerce' ) . '</td></tr></tbody></table>';
+		}
+		$rows = '';
+		foreach ( (array) $tax['lines'] as $line ) {
+			$rows .= ! empty( $tax['included'] )
+				? '<tr class="fxc-cart__tax fxc-cart__tax--included" data-wp-each-child><td colspan="2" data-wp-text="context.tax.text">' . esc_html( (string) $line['text'] ) . '</td></tr>'
+				: '<tr class="fxc-cart__tax" data-wp-each-child><th scope="row" data-wp-text="context.tax.label">' . esc_html( (string) $line['label'] ) . '</th><td data-wp-text="context.tax.amount.formatted">' . esc_html( (string) $line['amount']['formatted'] ) . '</td></tr>';
+		}
+		$template = ! empty( $tax['included'] )
+			? '<template data-wp-each--tax="state.cart.tax.lines"><tr class="fxc-cart__tax fxc-cart__tax--included"><td colspan="2" data-wp-text="context.tax.text"></td></tr></template>'
+			: '<template data-wp-each--tax="state.cart.tax.lines"><tr class="fxc-cart__tax"><th scope="row" data-wp-text="context.tax.label"></th><td data-wp-text="context.tax.amount.formatted"></td></tr></template>';
+		$total    = sprintf(
+			'<tr class="fxc-cart__total-row"><th scope="row">%1$s</th><td><strong data-wp-text="state.cart.totals.total.formatted">%2$s</strong></td></tr>',
+			esc_html__( 'Total', 'flexacommerce' ),
+			esc_html( (string) ( $totals['total']['formatted'] ?? '' ) )
+		);
+		$html    .= ! empty( $tax['included'] ) ? $total . $template . $rows : $template . $rows . $total;
+		return $html . '<tr class="fxc-cart__note"><td colspan="2">' . esc_html__( 'Shipping is calculated at checkout.', 'flexacommerce' ) . '</td></tr></tbody></table>';
+	}
+
+	/** @param array<string,mixed> $shown the item in the public cart shape, with display prices */
+	private function row( CartItem $item, array $shown ): string {
 		$line    = $item->line;
 		$product = $item->product;
 		$name    = $product !== null ? $product->title : __( 'Unavailable product', 'flexacommerce' );
@@ -104,7 +149,7 @@ final class CartTable {
 			. ( $link !== '' ? '<a href="' . esc_url( $link ) . '">' . esc_html( $name ) . '</a>' : esc_html( $name ) )
 			. ( $labels !== '' ? '<ul class="fxc-cart__attributes">' . $labels . '</ul>' : '' )
 			. '</td>';
-		$html .= '<td class="fxc-cart__price">' . ( $item->unit !== null ? ProductPrice::single( $this->pricing, $item->unit ) : '' ) . '</td>';
+		$html .= '<td class="fxc-cart__price">' . ( $item->unit !== null ? ProductPrice::single( $this->pricing, self::unit( $item, $shown ) ) : '' ) . '</td>';
 		$html .= sprintf(
 			'<td class="fxc-cart__quantity"><label class="screen-reader-text" for="%1$s">%2$s</label><input id="%1$s" type="number" name="quantities[%3$s]" value="%4$d" min="0" max="%5$d" step="1" inputmode="numeric" data-wp-on--change="actions.setLineQuantity"></td>',
 			esc_attr( $field ),
@@ -116,7 +161,7 @@ final class CartTable {
 		);
 		$html .= sprintf(
 			'<td class="fxc-cart__total" data-wp-text="state.lineTotal">%s</td>',
-			$item->total !== null ? esc_html( $this->presenter->money( $item->total )['formatted'] ) : ''
+			esc_html( (string) ( $shown['total']['formatted'] ?? '' ) )
 		);
 		$html .= sprintf(
 			'<td class="fxc-cart__remove"><button type="submit" class="fxc-cart__remove-button" name="remove" value="%1$s" aria-label="%2$s" data-wp-on--click="actions.removeLine">&times;</button></td>',
@@ -125,6 +170,22 @@ final class CartTable {
 			esc_attr( sprintf( __( 'Remove %s from the cart', 'flexacommerce' ), $name ) )
 		);
 		return $html . '</tr>';
+	}
+
+	/**
+	 * The unit price as the cart shows it: with tax display on, the price
+	 * comes from the public shape, which holds the tax-adjusted amounts.
+	 *
+	 * @param array<string,mixed> $shown
+	 */
+	private static function unit( CartItem $item, array $shown ): PriceResolution {
+		$unit   = $item->unit;
+		$prices = is_array( $shown['prices'] ?? null ) ? $shown['prices'] : null;
+		if ( $unit === null || $prices === null ) {
+			return $unit ?? new PriceResolution( Money::zero( 'USD' ), Money::zero( 'USD' ), false );
+		}
+		$currency = $unit->active->currency;
+		return new PriceResolution( new Money( (int) $prices['regular']['amount'], $currency ), new Money( (int) $prices['active']['amount'], $currency ), $unit->on_sale );
 	}
 
 	private function line_max( CartItem $item ): int {

@@ -10,9 +10,13 @@
  * counters as JSON to <result-file> at shutdown.
  *
  * Options: `method`, `body` (raw request body), `headers` (name => value),
- * `cookies`, `per_page` (posts_per_page), and `bare_types`: in "off" mode,
- * register a plain public `fxc_product` post type, so a catalog URL is
- * compared with a core archive or single post of the same posts.
+ * `cookies`, `per_page` (posts_per_page), `theme` ("classic" for the
+ * fixture classic theme in tests/fixtures/themes), `count` (a string;
+ * the result's `counted` is how often it occurs in the page), and
+ * `bare_types`: in
+ * "off" mode, register a plain public `fxc_product` post type, so a
+ * catalog URL is compared with a core archive or single post of the same
+ * posts.
  */
 
 declare(strict_types=1);
@@ -70,7 +74,14 @@ $fxc_add( 'wp_redirect', static fn (): bool => false );
 // renders nothing. Use the newest bundled theme so the page does real work.
 $fxc_themes = glob( ABSPATH . 'wp-content/themes/twenty*', GLOB_ONLYDIR ) ?: [];
 rsort( $fxc_themes );
-if ( $fxc_themes !== [] ) {
+if ( ( $fxc_options['theme'] ?? '' ) === 'classic' ) {
+	$fxc_root = dirname( __DIR__, 2 ) . '/fixtures/themes';
+	$fxc_add( 'setup_theme', static fn () => register_theme_directory( $fxc_root ), 0 );
+	foreach ( [ 'template', 'stylesheet' ] as $fxc_option ) {
+		$fxc_add( 'pre_option_' . $fxc_option, static fn (): string => 'fxc-classic' );
+		$fxc_add( 'pre_option_' . $fxc_option . '_root', static fn (): string => $fxc_root );
+	}
+} elseif ( $fxc_themes !== [] ) {
 	$fxc_theme = basename( $fxc_themes[0] );
 	$fxc_add( 'pre_option_template', static fn (): string => $fxc_theme );
 	$fxc_add( 'pre_option_stylesheet', static fn (): string => $fxc_theme );
@@ -103,7 +114,7 @@ if ( $fxc_mode === 'on' ) {
 }
 
 register_shutdown_function(
-	static function () use ( $fxc_start, $fxc_out, $fxc_classes, &$fxc_nocache, &$fxc_headers ): void {
+	static function () use ( $fxc_start, $fxc_out, $fxc_classes, $fxc_options, &$fxc_nocache, &$fxc_headers ): void {
 		$html = '';
 		while ( ob_get_level() > 0 ) {
 			$html .= (string) ob_get_clean();
@@ -132,7 +143,11 @@ register_shutdown_function(
 		);
 		sort( $own );
 
+		// Our files the page loads, with their gzip size (P8): the printed
+		// URLs (script modules and the import map included) and the styles
+		// WordPress inlined, whose URL is no longer in the page.
 		$assets = [];
+		$urls   = [];
 		foreach ( [ 'wp_scripts', 'wp_styles' ] as $registry ) {
 			$deps = $GLOBALS[ $registry ] ?? null;
 			if ( ! $deps instanceof WP_Dependencies ) {
@@ -142,8 +157,23 @@ register_shutdown_function(
 				$src = (string) ( $deps->registered[ $handle ]->src ?? '' );
 				if ( str_starts_with( (string) $handle, 'flexacommerce' ) || str_contains( $src, '/flexacommerce/' ) ) {
 					$assets[] = $registry . ':' . $handle;
+					$urls[]   = $src;
 				}
 			}
+		}
+		$bytes = [];
+		if ( defined( 'FLEXACOMMERCE_URL' ) ) {
+			preg_match_all( '#' . preg_quote( FLEXACOMMERCE_URL, '#' ) . '[^"\'?\s]+\.(?:js|css)#', str_replace( '\\/', '/', $html ), $found );
+			foreach ( array_merge( $urls, $found[0] ) as $url ) {
+				if ( ! str_starts_with( $url, FLEXACOMMERCE_URL ) ) {
+					continue;
+				}
+				$file = strtok( substr( $url, strlen( FLEXACOMMERCE_URL ) ), '?' );
+				if ( is_string( $file ) && ! isset( $bytes[ $file ] ) && is_readable( FLEXACOMMERCE_PATH . $file ) ) {
+					$bytes[ $file ] = strlen( (string) gzencode( (string) file_get_contents( FLEXACOMMERCE_PATH . $file ) ) );
+				}
+			}
+			ksort( $bytes );
 		}
 
 		$autoload = [];
@@ -175,6 +205,7 @@ register_shutdown_function(
 					'own'       => $own,
 					'callbacks' => $callbacks,
 					'assets'    => $assets,
+					'bytes'     => $bytes,
 					'autoload'  => $autoload,
 					'html'      => strlen( $html ),
 					'status'    => http_response_code(),
@@ -182,6 +213,8 @@ register_shutdown_function(
 					'nocache'   => $fxc_nocache,
 					'headers'   => $fxc_headers,
 					'rest'      => $rest,
+					'template'  => basename( (string) ( $GLOBALS['template'] ?? '' ) ),
+					'counted'   => isset( $fxc_options['count'] ) ? substr_count( $html, (string) $fxc_options['count'] ) : 0,
 				]
 			)
 		);
