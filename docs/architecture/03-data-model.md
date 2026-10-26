@@ -673,7 +673,7 @@ Tax classes are not a table; they live in `flexacommerce_settings.tax_classes` (
 
 ### 4.14 `fxc_coupons` and `fxc_coupon_uses`
 
-Added with coupons (ADR-021, doc 02 §7.13), `DB_VERSION` 4. `DB_VERSION` 5 adds `free_shipping`, `DB_VERSION` 6 adds `item_limit`.
+Added with coupons (ADR-021, doc 02 §7.13), `DB_VERSION` 4. `DB_VERSION` 5 adds `free_shipping`, `DB_VERSION` 6 adds `item_limit`, `DB_VERSION` 7 adds `automatic` (ADR-026).
 
 ```sql
 CREATE TABLE fxc_coupons (
@@ -694,12 +694,14 @@ CREATE TABLE fxc_coupons (
   individual_use tinyint(1) NOT NULL DEFAULT 0,
   exclude_sale_items tinyint(1) NOT NULL DEFAULT 0,
   free_shipping tinyint(1) NOT NULL DEFAULT 0,
+  automatic tinyint(1) NOT NULL DEFAULT 0,
   rules longtext NULL,
   created_at datetime NOT NULL,
   updated_at datetime NOT NULL,
   PRIMARY KEY  (id),
   UNIQUE KEY code (code),
-  KEY status_expires (status,expires_at)
+  KEY status_expires (status,expires_at),
+  KEY automatic_status (automatic,status)
 ) {charset_collate};
 
 CREATE TABLE fxc_coupon_uses (
@@ -722,6 +724,7 @@ CREATE TABLE fxc_coupon_uses (
 | `status` | `active` or `disabled`. Expired and used-up are computed, not stored. |
 | `type`, `amount` | `percent` or `buy_x_get_y` (hundredths of a percent, 1 to 10000), `fixed_cart` or `fixed_product` (minor units of the store currency). 0 only when `free_shipping` is set. |
 | `free_shipping` | 1 turns on the `free_shipping` methods that ask for a coupon (doc 02 §7.13.8). |
+| `automatic` | 1 applies the coupon to every cart it fits, with no code to type; `code` is then the name shoppers see (ADR-026). Allowed emails and the per-customer limit are always empty and 0. |
 | `starts_at`, `expires_at` | UTC, both optional; `expires_at` must be after `starts_at`. |
 | `min_subtotal`, `max_subtotal` | Minor units, on the cart subtotal before coupons; `NULL` = no bound. |
 | `item_limit` | Units a `percent` or `fixed_product` coupon discounts at most, the dearest first (doc 02 §7.13.1). 0 = every unit; always 0 for `fixed_cart` and `buy_x_get_y`. |
@@ -729,7 +732,7 @@ CREATE TABLE fxc_coupon_uses (
 | `rules` | JSON `{product_ids, exclude_product_ids, variant_ids, exclude_variant_ids, category_ids, exclude_category_ids, emails, buy_qty, get_qty, repeat_limit, get_product_ids, get_variant_ids, get_category_ids}` (product ids are post ids, variant ids are `fxc_variants` ids), each list at most 1,000 entries. The buy X get Y fields (doc 02 §7.13.1) are 0 and empty for other types; being in the JSON, they needed no DB_VERSION. Emails are lower-cased and may hold `*`. Bad JSON reads as no rules. The lists are only read with the coupon row, never searched, so they need no table of their own. |
 | `coupon_uses.user_id`, `email` | The customer of the order (`NULL` for a guest) and the billing email, lower-cased. The per-customer count matches either. |
 
-- **Queries.** Pricing reads the cart's codes in one `WHERE code IN (…)` and caches the rows per request; coupon rows change at checkout, so they are not in the object cache. The admin list filters by `status` and searches `code` and `description` with `LIKE`, paged; a store has hundreds of codes, not millions. The per-customer count uses `coupon_user` or `coupon_email`.
+- **Queries.** Pricing reads the cart's codes in one `WHERE code IN (…)` and caches the rows per request; when the autoloaded `flexacommerce_automatic_coupons` flag is on, it also reads the active automatic coupons through `automatic_status`, once per request; coupon rows change at checkout, so they are not in the object cache. The admin list filters by `status` and searches `code` and `description` with `LIKE`, paged; a store has hundreds of codes, not millions. The per-customer count uses `coupon_user` or `coupon_email`.
 - **Lifecycle.** Written by the Coupons screen and by migration (doc 05 §5.8), both through `CouponEditor`; migration also sets `usage_count`. `coupon_uses` is written by checkout and by order cancellation, and rebuilt by migration from imported orders (`INSERT IGNORE`, so existing rows stay). Deleting a coupon deletes its `coupon_uses` rows and keeps the orders' `discount` lines, which hold the `coupon_id` as a plain number. Uninstall drops both tables.
 
 ## 5. Query patterns and indexes

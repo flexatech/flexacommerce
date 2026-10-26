@@ -31,6 +31,8 @@ export interface Coupon {
     exclude_sale_items: boolean;
     /** Turns on the free shipping methods that ask for a coupon. */
     free_shipping: boolean;
+    /** Applies by itself to every cart it fits; `code` is then the name shoppers see. */
+    automatic: boolean;
     /** Product post ids; each covers every variation of the product. */
     product_ids: number[];
     exclude_product_ids: number[];

@@ -147,7 +147,17 @@ final class CutoverTest extends \WP_UnitTestCase {
 		$wc_id     = (string) $this->store->products['hoodie'];
 		$slug      = (string) get_post_field( 'post_name', $hoodie );
 
-		$this->assertSame( $link, $redirects->resolve( [ 'post_type' => 'product', 'p' => $wc_id ], '/', false ) );
+		$this->assertSame(
+			$link,
+			$redirects->resolve(
+				[
+					'post_type' => 'product',
+					'p'         => $wc_id,
+				],
+				'/',
+				false
+			)
+		);
 		$this->assertSame( $link, $redirects->resolve( [ 'p' => (string) $this->store->variations['red_large'] ], '/', true ) );
 		$this->assertSame( $link, $redirects->resolve( [ 'product' => $slug ], '/', true ) );
 		$this->assertSame( $link, $redirects->resolve( [], '/shop/shirts/' . $slug . '/', true ) );
@@ -167,7 +177,13 @@ final class CutoverTest extends \WP_UnitTestCase {
 			if ( $this->response !== null ) {
 				return $this->response;
 			}
-			foreach ( get_posts( [ 'post_type' => PostTypes::PRODUCT, 'numberposts' => -1, 'fields' => 'ids' ] ) as $id ) {
+			foreach ( get_posts(
+				[
+					'post_type'   => PostTypes::PRODUCT,
+					'numberposts' => -1,
+					'fields'      => 'ids',
+				]
+			) as $id ) {
 				if ( get_permalink( $id ) === $url ) {
 					return [
 						'status' => 200,
@@ -175,7 +191,12 @@ final class CutoverTest extends \WP_UnitTestCase {
 					];
 				}
 			}
-			foreach ( get_terms( [ 'taxonomy' => PostTypes::CATEGORY, 'hide_empty' => false ] ) as $term ) {
+			foreach ( get_terms(
+				[
+					'taxonomy'   => PostTypes::CATEGORY,
+					'hide_empty' => false,
+				]
+			) as $term ) {
 				if ( $term instanceof \WP_Term && get_term_link( $term ) === $url ) {
 					return [
 						'status' => 200,

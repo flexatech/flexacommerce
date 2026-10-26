@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { Pencil, Plus, Search, Sparkles, Trash2 } from "lucide-react";
 
 import { showToast } from "@/shared/components/showToast";
 import { Badge } from "@/shared/components/ui/badge";
@@ -55,7 +55,7 @@ export function CouponsPanel() {
     const debounced = useDebounced(search);
     const list = useCoupons(params);
     const remove = useDeleteCoupon();
-    const [editing, setEditing] = useState<{ coupon: Coupon | null } | null>(null);
+    const [editing, setEditing] = useState<{ coupon: Coupon | null; automatic?: boolean } | null>(null);
     const [deleting, setDeleting] = useState<Coupon | null>(null);
 
     useEffect(() => {
@@ -90,13 +90,19 @@ export function CouponsPanel() {
                         { value: "disabled", label: __("Disabled") },
                     ]}
                 />
-                <Button className="fxc:ms-auto" onClick={() => setEditing({ coupon: null })}>
+                <Button variant="outline" className="fxc:ms-auto" onClick={() => setEditing({ coupon: null, automatic: true })}>
+                    <Sparkles aria-hidden className="fxc:size-4" />
+                    {__("Add automatic discount")}
+                </Button>
+                <Button onClick={() => setEditing({ coupon: null })}>
                     <Plus aria-hidden className="fxc:size-4" />
                     {__("Add coupon")}
                 </Button>
             </div>
             <p className="fxc:text-muted-foreground fxc:text-sm">
-                {__("Discount codes shoppers enter in the cart. Coupons apply in the order they are added, each to what the earlier ones left.")}
+                {__(
+                    "Discount codes shoppers enter in the cart, and automatic discounts that apply by themselves. Codes apply in the order they are added, each to what the earlier ones left; automatic discounts come after them.",
+                )}
             </p>
 
             <Card className="fxc:overflow-x-auto">
@@ -128,7 +134,14 @@ export function CouponsPanel() {
                                 return (
                                     <tr key={coupon.id} className="fxc:hover:bg-muted/50 fxc:border-b fxc:last:border-b-0">
                                         <td className="fxc:px-5 fxc:py-3">
-                                            <div className="fxc:font-mono fxc:font-medium">{coupon.code}</div>
+                                            {coupon.automatic ? (
+                                                <div className="fxc:flex fxc:items-center fxc:gap-2 fxc:font-medium">
+                                                    {coupon.code}
+                                                    <Badge variant="muted">{__("Automatic")}</Badge>
+                                                </div>
+                                            ) : (
+                                                <div className="fxc:font-mono fxc:font-medium">{coupon.code}</div>
+                                            )}
                                             {coupon.description !== "" && (
                                                 <div className="fxc:text-muted-foreground fxc:max-w-xs fxc:truncate fxc:text-xs">{coupon.description}</div>
                                             )}
@@ -186,7 +199,12 @@ export function CouponsPanel() {
                 </div>
             )}
 
-            <CouponDialog open={editing !== null} coupon={editing?.coupon ?? null} onOpenChange={(open) => !open && setEditing(null)} />
+            <CouponDialog
+                open={editing !== null}
+                coupon={editing?.coupon ?? null}
+                automatic={editing?.automatic ?? false}
+                onOpenChange={(open) => !open && setEditing(null)}
+            />
 
             <Dialog open={deleting !== null} onOpenChange={(open) => !open && !remove.isPending && setDeleting(null)}>
                 <DialogContent className="fxc:max-w-md">

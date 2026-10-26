@@ -265,10 +265,18 @@ const { state, actions } = store( 'flexacommerce/cart', {
 			return state.cart?.coupons ?? [];
 		},
 		get hasDiscount() {
-			return !! state.cart?.totals?.discount;
+			return ( state.cart?.totals?.discount?.amount ?? 0 ) > 0;
 		},
 		get couponLabel() {
-			return ( i18n.coupon || '%s' ).replace( '%s', getContext().coupon.label );
+			const { coupon } = getContext();
+			return ( ( coupon.automatic ? i18n.discount : i18n.coupon ) || '%s' ).replace( '%s', () => coupon.label );
+		},
+		get nextLabel() {
+			const next = state.cart?.next_discount;
+			return next ? ( i18n.next || '%1$s %2$s' ).replace( '%1$s', () => next.remaining.formatted ).replace( '%2$s', () => next.label ) : '';
+		},
+		get nextWidth() {
+			return ( state.cart?.next_discount?.percent ?? 0 ) + '%';
 		},
 		get couponAmount() {
 			const { coupon } = getContext();

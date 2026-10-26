@@ -153,7 +153,7 @@ final class FileTransportTest extends \WP_UnitTestCase {
 		$same_site = $this->service->create( Direction::WC_TO_FXC, [ 'backup_confirmed' => true ], false, 1 );
 		$this->service->start( $same_site->id );
 		$this->service->run( $same_site->id );
-		$users  = count_users()['total_users'];
+		$users = count_users()['total_users'];
 
 		$file = $this->path();
 		$out  = Plugin::instance()->migration()->export( 'fxc', [], $file );
@@ -198,7 +198,15 @@ final class FileTransportTest extends \WP_UnitTestCase {
 	}
 
 	public function test_a_rest_request_cannot_point_a_job_at_a_file(): void {
-		$job = $this->service->create( Direction::WC_TO_FXC, [ 'file' => '/etc/passwd', 'id_system' => 'x' ], true, 1 );
+		$job = $this->service->create(
+			Direction::WC_TO_FXC,
+			[
+				'file'      => '/etc/passwd',
+				'id_system' => 'x',
+			],
+			true,
+			1
+		);
 		$this->assertFalse( $job->is_file() );
 		$this->assertSame( 'wc', $job->id_system() );
 	}

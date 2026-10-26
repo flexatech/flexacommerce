@@ -115,6 +115,10 @@ final class Assets {
 				'updated'     => __( 'Cart updated.', 'flexacommerce' ),
 				/* translators: %s: coupon code */
 				'coupon'      => __( 'Coupon: %s', 'flexacommerce' ),
+				/* translators: %s: the name of an automatic discount */
+				'discount'    => __( 'Discount: %s', 'flexacommerce' ),
+				/* translators: 1: an amount of money, 2: the name of an automatic discount */
+				'next'        => __( 'Spend %1$s more for this discount: %2$s.', 'flexacommerce' ),
 				'applied'     => __( 'Coupon applied.', 'flexacommerce' ),
 				'unapplied'   => __( 'Coupon removed.', 'flexacommerce' ),
 				'freeShip'    => __( 'Free shipping', 'flexacommerce' ),

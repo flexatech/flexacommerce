@@ -91,12 +91,12 @@ final class GoldenStore {
 			]
 		);
 
-		$shirts = wp_insert_term( 'Shirts', 'product_cat', [ 'slug' => 'shirts' ] );
-		$summer = wp_insert_term( 'Summer', 'product_tag', [ 'slug' => 'summer' ] );
+		$shirts                 = wp_insert_term( 'Shirts', 'product_cat', [ 'slug' => 'shirts' ] );
+		$summer                 = wp_insert_term( 'Summer', 'product_tag', [ 'slug' => 'summer' ] );
 		$store->terms['shirts'] = (int) $shirts['term_id'];
 		$store->terms['summer'] = (int) $summer['term_id'];
 
-		$store->products['tee'] = self::simple(
+		$store->products['tee']     = self::simple(
 			'Plain Tee',
 			'TEE-1',
 			'20',
@@ -111,7 +111,7 @@ final class GoldenStore {
 				$p->set_tag_ids( [ $store->terms['summer'] ] );
 			}
 		);
-		$store->products['sale'] = self::simple(
+		$store->products['sale']    = self::simple(
 			'Sale Mug',
 			'MUG-1',
 			'50',
@@ -131,7 +131,7 @@ final class GoldenStore {
 				$p->set_status( 'draft' );
 			}
 		);
-		$store->products['doomed'] = self::simple( 'Doomed Item', 'DOOM-1', '9', null );
+		$store->products['doomed']  = self::simple( 'Doomed Item', 'DOOM-1', '9', null );
 
 		$grouped = new \WC_Product_Grouped();
 		$grouped->set_name( 'Gift Set' );
@@ -139,8 +139,22 @@ final class GoldenStore {
 		$grouped->set_children( [ $store->products['tee'] ] );
 		$store->products['grouped'] = $grouped->save();
 
-		$color = self::attribute( 'Color', 'color', [ 'red' => 'Red', 'blue' => 'Blue' ] );
-		$size  = self::attribute( 'Size', 'size', [ 'large' => 'Large', 'medium' => 'Medium' ] );
+		$color = self::attribute(
+			'Color',
+			'color',
+			[
+				'red'  => 'Red',
+				'blue' => 'Blue',
+			]
+		);
+		$size  = self::attribute(
+			'Size',
+			'size',
+			[
+				'large'  => 'Large',
+				'medium' => 'Medium',
+			]
+		);
 
 		$hoodie = new \WC_Product_Variable();
 		$hoodie->set_name( 'Hoodie' );
@@ -184,7 +198,7 @@ final class GoldenStore {
 		$scarf->set_name( 'Scarf' );
 		$scarf->set_status( 'publish' );
 		$scarf->set_attributes( [ $material ] );
-		$store->products['scarf'] = $scarf->save();
+		$store->products['scarf']    = $scarf->save();
 		$store->variations['cotton'] = self::variation( $store->products['scarf'], [ 'material' => 'Cotton' ], 'SCARF-C', '12', 3 );
 		$store->variations['wool']   = self::variation( $store->products['scarf'], [ 'material' => 'Wool' ], 'SCARF-W', '18', 4 );
 		\WC_Product_Variable::sync( $store->products['scarf'] );
@@ -208,18 +222,59 @@ final class GoldenStore {
 		$california->add_location( 'US:CA', 'state' );
 		$california->add_location( '90*', 'postcode' );
 		$california->save();
-		self::method( $california, 'flat_rate', [ 'title' => 'Ground', 'tax_status' => 'taxable', 'cost' => '5 + 1.50 * [qty]' ] );
-		self::method( $california, 'free_shipping', [ 'title' => 'Free over 100', 'requires' => 'min_amount', 'min_amount' => '100' ] );
+		self::method(
+			$california,
+			'flat_rate',
+			[
+				'title'      => 'Ground',
+				'tax_status' => 'taxable',
+				'cost'       => '5 + 1.50 * [qty]',
+			]
+		);
+		self::method(
+			$california,
+			'free_shipping',
+			[
+				'title'      => 'Free over 100',
+				'requires'   => 'min_amount',
+				'min_amount' => '100',
+			]
+		);
 
 		$canada = new \WC_Shipping_Zone();
 		$canada->set_zone_name( 'Canada' );
 		$canada->set_zone_order( 2 );
 		$canada->add_location( 'CA', 'country' );
 		$canada->save();
-		self::method( $canada, 'local_pickup', [ 'title' => 'Pickup', 'tax_status' => 'none', 'cost' => '3' ] );
-		self::method( $canada, 'flat_rate', [ 'title' => 'Express', 'tax_status' => 'taxable', 'cost' => '25' ], false );
+		self::method(
+			$canada,
+			'local_pickup',
+			[
+				'title'      => 'Pickup',
+				'tax_status' => 'none',
+				'cost'       => '3',
+			]
+		);
+		self::method(
+			$canada,
+			'flat_rate',
+			[
+				'title'      => 'Express',
+				'tax_status' => 'taxable',
+				'cost'       => '25',
+			],
+			false
+		);
 
-		self::method( new \WC_Shipping_Zone( 0 ), 'flat_rate', [ 'title' => 'International', 'tax_status' => 'none', 'cost' => '2 * [qty]' ] );
+		self::method(
+			new \WC_Shipping_Zone( 0 ),
+			'flat_rate',
+			[
+				'title'      => 'International',
+				'tax_status' => 'none',
+				'cost'       => '2 * [qty]',
+			]
+		);
 		return [
 			'california' => (int) $california->get_id(),
 			'canada'     => (int) $canada->get_id(),
@@ -309,7 +364,7 @@ final class GoldenStore {
 			]
 		);
 
-		$out['guest_pending'] = self::order(
+		$out['guest_pending']   = self::order(
 			$store,
 			[ [ $store->variations['wool'], 2 ] ],
 			'pending',
@@ -318,8 +373,8 @@ final class GoldenStore {
 				$o->set_payment_method( '' );
 			}
 		);
-		$out['custom'] = self::order( $store, [ [ $store->variations['blue_any'], 1 ] ], substr( self::CUSTOM_STATUS, 3 ), null );
-		$out['cancelled'] = self::order( $store, [ [ $store->products['tee'], 1 ] ], 'cancelled', null );
+		$out['custom']          = self::order( $store, [ [ $store->variations['blue_any'], 1 ] ], substr( self::CUSTOM_STATUS, 3 ), null );
+		$out['cancelled']       = self::order( $store, [ [ $store->products['tee'], 1 ] ], 'cancelled', null );
 		$out['deleted_product'] = self::order( $store, [ [ $store->products['doomed'], 1 ] ], 'completed', null );
 		wc_get_product( $store->products['doomed'] )->delete( true );
 

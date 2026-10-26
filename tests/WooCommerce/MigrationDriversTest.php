@@ -23,7 +23,13 @@ final class MigrationDriversTest extends \WP_UnitTestCase {
 	}
 
 	public function test_admin_screen_polls_a_job_to_the_end(): void {
-		$created = $this->post( '/admin/migrations', [ 'direction' => Direction::WC_TO_FXC, 'dry_run' => false ] );
+		$created = $this->post(
+			'/admin/migrations',
+			[
+				'direction' => Direction::WC_TO_FXC,
+				'dry_run'   => false,
+			]
+		);
 		$this->assertSame( 201, $created->get_status() );
 		$id = $created->get_data()['id'];
 		$this->assertSame( JobStatus::READY, $created->get_data()['status'] );
@@ -62,7 +68,17 @@ final class MigrationDriversTest extends \WP_UnitTestCase {
 
 	public function test_background_driver_queues_batches_until_done(): void {
 		$service = Plugin::instance()->migration()->service();
-		$job     = $service->create( Direction::WC_TO_FXC, [ 'backup_confirmed' => true, 'batch_default' => 1, 'batch_products' => 2, 'batch_orders' => 2 ], false, 1 );
+		$job     = $service->create(
+			Direction::WC_TO_FXC,
+			[
+				'backup_confirmed' => true,
+				'batch_default'    => 1,
+				'batch_products'   => 2,
+				'batch_orders'     => 2,
+			],
+			false,
+			1
+		);
 		$service->start( $job->id );
 		$this->assertSame( 200, $this->post( "/admin/migrations/{$job->id}/background" )->get_status() );
 
@@ -83,7 +99,14 @@ final class MigrationDriversTest extends \WP_UnitTestCase {
 		$job     = $service->create( Direction::WC_TO_FXC, [ 'backup_confirmed' => true ], false, 1 );
 		$service->start( $job->id );
 		global $wpdb;
-		$wpdb->update( \Flexa\Commerce\Database\Schema::table( 'migration_jobs' ), [ 'lock_token' => 'other', 'locked_until' => '2999-01-01 00:00:00' ], [ 'id' => $job->id ] );
+		$wpdb->update(
+			\Flexa\Commerce\Database\Schema::table( 'migration_jobs' ),
+			[
+				'lock_token'   => 'other',
+				'locked_until' => '2999-01-01 00:00:00',
+			],
+			[ 'id' => $job->id ]
+		);
 
 		Plugin::instance()->migration()->background()->handle( $job->id );
 		$next = as_next_scheduled_action( BackgroundDriver::HOOK, [ $job->id ], BackgroundDriver::GROUP );

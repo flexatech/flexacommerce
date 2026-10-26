@@ -18,8 +18,14 @@ defined( 'ABSPATH' ) || exit;
 final class CouponRepository {
 	private const JSON_FLAGS = JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR;
 
+	/** Autoloaded; 1 while an active automatic coupon exists, so carts in a store without one skip the query. */
+	public const AUTOMATIC_OPTION = 'flexacommerce_automatic_coupons';
+
 	/** @var array<string,?Coupon> by normalized code, for this request */
 	private array $by_code = [];
+
+	/** @var list<Coupon>|null the active automatic coupons, for this request */
+	private ?array $automatic = null;
 
 	public function __construct( private readonly \wpdb $wpdb ) {}
 
@@ -56,6 +62,31 @@ final class CouponRepository {
 			$out[ $code ] = $this->by_code[ $code ] ?? null;
 		}
 		return $out;
+	}
+
+	/**
+	 * Active automatic coupons in the order they were made. Dates, limits
+	 * and the cart are checked by the caller.
+	 *
+	 * @return list<Coupon>
+	 */
+	public function automatic(): array {
+		if ( ! self::has_automatic() ) {
+			return [];
+		}
+		if ( $this->automatic === null ) {
+			$rows            = $this->wpdb->get_results(
+				$this->wpdb->prepare( 'SELECT * FROM %i WHERE automatic = 1 AND status = %s ORDER BY id', Schema::table( 'coupons' ), Coupon::ACTIVE ),
+				ARRAY_A
+			);
+			$this->automatic = array_map( [ Coupon::class, 'from_row' ], is_array( $rows ) ? $rows : [] );
+		}
+		return $this->automatic;
+	}
+
+	/** Read from the autoloaded options: no query. */
+	public static function has_automatic(): bool {
+		return (bool) get_option( self::AUTOMATIC_OPTION, false );
 	}
 
 	public function code_taken( string $code, int $except_id = 0 ): bool {
@@ -111,8 +142,9 @@ final class CouponRepository {
 		if ( $this->wpdb->insert( Schema::table( 'coupons' ), $row ) === false ) {
 			throw new QueryFailed( 'Could not save the coupon: ' . $this->wpdb->last_error );
 		}
-		$this->by_code = [];
-		return (int) $this->wpdb->insert_id;
+		$id = (int) $this->wpdb->insert_id;
+		$this->changed();
+		return $id;
 	}
 
 	/** @param array<string,mixed> $fields */
@@ -121,14 +153,24 @@ final class CouponRepository {
 		if ( $this->wpdb->update( Schema::table( 'coupons' ), $row, [ 'id' => $id ] ) === false ) {
 			throw new QueryFailed( 'Could not save the coupon: ' . $this->wpdb->last_error );
 		}
-		$this->by_code = [];
+		$this->changed();
 	}
 
 	/** Deletes the coupon and its use rows. Orders keep their discount lines. */
 	public function delete( int $id ): void {
 		$this->wpdb->delete( Schema::table( 'coupon_uses' ), [ 'coupon_id' => $id ], [ '%d' ] );
 		$this->wpdb->delete( Schema::table( 'coupons' ), [ 'id' => $id ], [ '%d' ] );
-		$this->by_code = [];
+		$this->changed();
+	}
+
+	/** Drops the request caches and resets the automatic flag after a coupon is written. */
+	private function changed(): void {
+		$this->by_code   = [];
+		$this->automatic = null;
+		$count           = (int) $this->wpdb->get_var(
+			$this->wpdb->prepare( 'SELECT COUNT(*) FROM %i WHERE automatic = 1 AND status = %s', Schema::table( 'coupons' ), Coupon::ACTIVE )
+		);
+		update_option( self::AUTOMATIC_OPTION, $count > 0 ? 1 : 0, true );
 	}
 
 	/** Orders that used the coupon by this account or this billing email. */
@@ -227,7 +269,8 @@ final class CouponRepository {
 	/** Sets the usage count of an imported coupon, which the editor never writes. */
 	public function set_usage_count( int $coupon_id, int $count ): void {
 		$this->wpdb->update( Schema::table( 'coupons' ), [ 'usage_count' => max( 0, $count ) ], [ 'id' => $coupon_id ], [ '%d' ], [ '%d' ] );
-		$this->by_code = [];
+		$this->by_code   = [];
+		$this->automatic = null;
 	}
 
 	/**
@@ -267,7 +310,7 @@ final class CouponRepository {
 		if ( array_key_exists( 'rules', $row ) ) {
 			$row['rules'] = wp_json_encode( $row['rules'], self::JSON_FLAGS );
 		}
-		foreach ( [ 'individual_use', 'exclude_sale_items', 'free_shipping' ] as $flag ) {
+		foreach ( [ 'individual_use', 'exclude_sale_items', 'free_shipping', 'automatic' ] as $flag ) {
 			if ( array_key_exists( $flag, $row ) ) {
 				$row[ $flag ] = $row[ $flag ] ? 1 : 0;
 			}

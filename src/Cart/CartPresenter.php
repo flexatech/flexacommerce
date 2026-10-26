@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Flexa\Commerce\Cart;
 
 use Flexa\Commerce\Contracts\Money;
+use Flexa\Commerce\Coupons\AppliedCoupon;
+use Flexa\Commerce\Coupons\Coupon;
 use Flexa\Commerce\Pricing\PricingService;
 
 defined( 'ABSPATH' ) || exit;
@@ -37,6 +39,7 @@ final class CartPresenter {
 		];
 		if ( $state->discounts !== null ) {
 			$data['coupons']            = $this->coupons( $state );
+			$data['next_discount']      = $this->next_discount( $state );
 			$data['totals']['discount'] = $this->money( $state->discount() );
 			$data['totals']['total']    = $this->money( $state->discounted_subtotal() );
 		}
@@ -56,25 +59,59 @@ final class CartPresenter {
 	/**
 	 * The codes in the order added; one that does not apply carries the
 	 * reason. `code` is the form to send back to remove it. `free_shipping`
-	 * is set when an applied coupon gives free shipping.
+	 * is set when an applied coupon gives free shipping. Automatic coupons
+	 * follow the codes with `automatic` set; they cannot be removed.
 	 *
-	 * @return list<array{code:string,label:string,valid:bool,message:string,discount:array{amount:int,formatted:string},free_shipping:bool}>
+	 * @return list<array{code:string,label:string,valid:bool,message:string,discount:array{amount:int,formatted:string},free_shipping:bool,automatic:bool}>
 	 */
 	public function coupons( CartState $state ): array {
 		$discounts = $state->discounts;
 		$rows      = [];
 		foreach ( $state->cart->coupons as $code ) {
 			$applied = $discounts?->find( $code );
-			$rows[]  = [
-				'code'          => $code,
-				'label'         => $applied !== null ? $applied->coupon->code : $code,
-				'valid'         => $applied !== null,
-				'message'       => (string) ( $discounts->rejected[ $code ] ?? '' ),
-				'discount'      => $this->money( new Money( $applied?->total() ?? 0, $state->subtotal->currency ) ),
-				'free_shipping' => $applied !== null && $applied->coupon->free_shipping,
-			];
+			if ( $applied !== null ? $applied->coupon->automatic : ! isset( $discounts->rejected[ $code ] ) ) {
+				continue;
+			}
+			$rows[] = $this->coupon_row( $state, $code, $applied, (string) ( $discounts->rejected[ $code ] ?? '' ) );
+		}
+		foreach ( $discounts->applied ?? [] as $applied ) {
+			if ( $applied->coupon->automatic ) {
+				$rows[] = $this->coupon_row( $state, Coupon::normalize( $applied->coupon->code ), $applied, '' );
+			}
 		}
 		return $rows;
+	}
+
+	/**
+	 * How far the cart is from the automatic coupon closest to applying:
+	 * the spend missing and the share already reached, in percent.
+	 *
+	 * @return array{label:string,remaining:array{amount:int,formatted:string},percent:int}|null
+	 */
+	public function next_discount( CartState $state ): ?array {
+		$next = $state->discounts?->next;
+		if ( $next === null ) {
+			return null;
+		}
+		$goal = max( 1, (int) $next['coupon']->min_subtotal );
+		return [
+			'label'     => $next['coupon']->code,
+			'remaining' => $this->money( new Money( $next['remaining'], $state->subtotal->currency ) ),
+			'percent'   => min( 99, intdiv( 100 * max( 0, $goal - $next['remaining'] ), $goal ) ),
+		];
+	}
+
+	/** @return array{code:string,label:string,valid:bool,message:string,discount:array{amount:int,formatted:string},free_shipping:bool,automatic:bool} */
+	private function coupon_row( CartState $state, string $code, ?AppliedCoupon $applied, string $message ): array {
+		return [
+			'code'          => $code,
+			'label'         => $applied !== null ? $applied->coupon->code : $code,
+			'valid'         => $applied !== null,
+			'message'       => $message,
+			'discount'      => $this->money( new Money( $applied?->total() ?? 0, $state->subtotal->currency ) ),
+			'free_shipping' => $applied !== null && $applied->coupon->free_shipping,
+			'automatic'     => $applied !== null && $applied->coupon->automatic,
+		];
 	}
 
 	/** @return array<string,mixed> */

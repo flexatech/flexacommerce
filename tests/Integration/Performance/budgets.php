@@ -32,10 +32,11 @@ return [
 		'classes' => [ 'Flexa\\Commerce\\Api\\Admin\\', 'Flexa\\Commerce\\Api\\Endpoint' ],
 	],
 	// Autoloaded options owned by FlexaCommerce, on any request: the
-	// settings and the badge, price rule and product option lists
-	// (empty here).
+	// settings, the badge, price rule and product option lists (empty
+	// here) and the automatic coupon flag (ADR-026: 2 B, saves carts a
+	// query in stores without automatic discounts).
 	'P10'         => [
-		'options' => 4,
+		'options' => 5,
 		'bytes'   => 10240,
 	],
 	// Product archive at 12 and 48 per page, against a core archive of the

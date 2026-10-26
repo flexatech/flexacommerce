@@ -98,6 +98,7 @@ final class FxcCouponWriter {
 			'individual_use'       => ! empty( $data['individual_use'] ),
 			'exclude_sale_items'   => ! empty( $data['exclude_sale_items'] ),
 			'free_shipping'        => $free_shipping,
+			'automatic'            => ! empty( $data['automatic'] ),
 			'product_ids'          => $products[0],
 			'exclude_product_ids'  => $excluded[0],
 			'variant_ids'          => $products[1],

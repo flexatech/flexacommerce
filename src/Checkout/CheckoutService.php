@@ -739,7 +739,7 @@ final class CheckoutService {
 					'type'         => $a->coupon->type,
 					'amount'       => $a->coupon->amount,
 					'discount_tax' => $tax[ $index ],
-				] + ( $a->coupon->free_shipping ? [ 'free_shipping' => true ] : [] )
+				] + ( $a->coupon->free_shipping ? [ 'free_shipping' => true ] : [] ) + ( $a->coupon->automatic ? [ 'automatic' => true ] : [] )
 			);
 		}
 		return $lines;

@@ -661,7 +661,7 @@ Discount codes the shopper enters in the cart. Module `Coupons` (§3.2), tables 
 
 #### 7.13.2 Order of application
 
-Codes apply in the order the shopper added them, each to what the earlier ones left of every line. With a 2000 cart, `TEN` (10 %) then `FIVE` (500 fixed) takes 200 then 500, total 700; in the other order it takes 500 then 150, total 650. The cart page and the admin screen state this. This matches WooCommerce's sequential mode; FlexaCommerce has no "apply all to the full price" mode.
+Codes apply in the order the shopper added them, each to what the earlier ones left of every line. With a 2000 cart, `TEN` (10 %) then `FIVE` (500 fixed) takes 200 then 500, total 700; in the other order it takes 500 then 150, total 650. The cart page and the admin screen state this. Automatic discounts follow the codes (§7.13.9). This matches WooCommerce's sequential mode; FlexaCommerce has no "apply all to the full price" mode.
 
 - `individual_use`: adding such a code replaces the codes already in the cart; adding another code while one is in the cart is refused.
 - At most 10 codes per cart. A code is stored in the cart normalized (trimmed, lower-cased); the shopper sees the code as saved by the admin.
@@ -680,14 +680,14 @@ A code is checked when it is added (and refused with the reason) and again on ev
 #### 7.13.5 Orders: redeem and release
 
 - Product lines store `discount_total` (net) and `total = subtotal - discount_total`; their taxes are on the discounted amount.
-- One `discount` line per applied code: `name` and `code` = the code, `total` = its net share, `meta` = `{coupon_id, type, amount, discount_tax}`, plus `free_shipping: true` for a free-shipping coupon (its line can have a total of 0). A snapshot: editing or deleting the coupon never changes an order.
+- One `discount` line per applied code: `name` and `code` = the code, `total` = its net share, `meta` = `{coupon_id, type, amount, discount_tax}`, plus `free_shipping: true` for a free-shipping coupon (its line can have a total of 0) and `automatic: true` for an automatic discount (§7.13.9). A snapshot: editing or deleting the coupon never changes an order.
 - Invariant asserted on insert: `orders.discount_total = Σ product lines.discount_total = Σ discount lines.total` (the last only when the order has discount lines).
 - **Redeem** runs inside the `place_order()` transaction after the order row exists: for each code, `take_use()` is one `UPDATE … SET usage_count = usage_count + 1 WHERE id = ? AND status = 'active' AND (usage_limit = 0 OR usage_count < usage_limit)`, which locks the row; the per-customer count read after it is exact; then a `coupon_uses` row is inserted. A failed step throws `InvalidCheckout` and the whole order rolls back, so two shoppers racing for the last use get one order and one clear message.
 - **Release:** when an order moves to `cancelled`, `OrderService` calls the release closure in the same transaction: the order's `coupon_uses` rows are deleted (`FOR UPDATE`) and each coupon's `usage_count` goes down by one. Refunds do not release a use (WooCommerce does the same).
 
 #### 7.13.6 Cost when unused
 
-A cart with no codes builds no coupon service and runs no coupon query: `CartState::$discounts` is `null`, and the public cart and checkout responses have no `coupons` field and no `totals.discount`. The performance budgets (doc 10) are unchanged. With codes, the coupons are read once per request (cached by code), plus term reads only for category rules.
+A cart with no codes, in a store with no active automatic discount (§7.13.9), builds no coupon service and runs no coupon query: `CartState::$discounts` is `null`, and the public cart and checkout responses have no `coupons` field and no `totals.discount`. The same holds when automatic discounts exist but none applies and none is close. The performance budgets (doc 10) are unchanged. With codes, the coupons are read once per request (cached by code), plus term reads only for category rules.
 
 #### 7.13.7 Surfaces and hooks
 
@@ -704,6 +704,15 @@ A cart with no codes builds no coupon service and runs no coupon query: `CartSta
 - The `free_shipping` method has a `requires` setting, the same choices as WooCommerce: empty (the minimum amount when one is set, the behaviour before the setting existed), `coupon`, `either` (a coupon or the minimum) and `both` (a coupon and the minimum). The minimum is compared with the contents total after coupons, as WooCommerce does by default. The `ignore_discounts` setting (off by default, WooCommerce's "Apply minimum order rule before coupon discount") compares it with the subtotal before coupons instead; `ShippingPackage::subtotal_before_discounts()` gives that amount, and it is part of the package hash.
 - A coupon that only gives free shipping still counts as used when the order is placed, and its rule checks (spend, dates, limits, products) apply as for any code. Its row in the cart, at checkout and on the confirmation page reads "Free shipping" instead of an amount; a coupon with an amount and free shipping shows the amount.
 - Free shipping comes from the method, never from the coupon: a store with no `free_shipping` method that asks for a coupon gives no free shipping, whatever the code says. The coupon form says so.
+
+#### 7.13.9 Automatic discounts
+
+A coupon with `automatic` set (ADR-026) applies to every cart it fits, with no code to type. The admin picks the method at the top of the coupon form (Discount code or Automatic discount; Promotions also has an Add automatic discount button). Its `code` becomes the name shoppers see; allowed emails and the per-customer limit are hidden in the form and stored empty and 0.
+
+- **Order.** After the shopper's codes, the active automatic coupons in id order, each on what the earlier ones left. One that does not fit drops out without a notice. An individual-use code keeps them all out; an individual-use automatic coupon applies only when nothing else did.
+- **Shown as** "Discount: <name>" in the cart, at checkout and on the confirmation page, with no remove button. Its order line is a normal `discount` line and it takes a use at checkout like a code. Typing the name as a code gives the unknown-code message.
+- **Nudge.** `next_discount` in the cart response (`{label, remaining, percent}`, or `null`) names the automatic coupon closest to applying when only its minimum spend is missing. The cart shows "Spend $30.00 more for this discount: Big basket." above the totals, with a bar that is decoration only.
+- **Cost.** `flexacommerce_automatic_coupons`, an autoloaded flag, is 1 while an active automatic coupon exists. With it off, a cart without codes costs nothing (§7.13.6). With it on, the cart reads the automatic coupons once per request.
 
 ## 8. Service contracts (internal, signatures illustrative)
 
@@ -852,7 +861,7 @@ Call rules:
 | Upgrades | `Database\Schema::DB_VERSION` (integer string), `maybe_upgrade()` on `admin_init` and WP-CLI `wp flexacommerce db upgrade`. Data migrations are numbered steps (`Upgrade_0003_backfill_payment_status`) run in batches and recorded in `flexacommerce_db_version`. Details in doc 03 §6. |
 | CPT/taxonomies | `fxc_product` (public, `has_archive`, rewrite base from settings, `show_in_rest` true, `capability_type` `fxc_product` with `map_meta_cap`), `fxc_product_cat` (hierarchical), `fxc_product_tag`, `fxc_attribute` (hierarchical, not public, `show_in_rest`). |
 | Capabilities | `manage_flexacommerce` (settings, migration), `view_fxc_orders`, `edit_fxc_orders`, `refund_fxc_orders`, plus CPT caps for `fxc_product`. Granted to `administrator` and to a new `fxc_store_manager` role. All checks go through `Support\Capabilities` with filters `flexacommerce.capabilities.*` (house rule). |
-| Admin menus | Top-level **FlexaCommerce**, grouped by task: Status (system report + logs), Orders, Customers, Products (CPT list), Categories, Tags, Attributes (with swatches, §7.2.1), Product options (ADR-025), Promotions (tabs: Coupons; pricing rules and badges to follow), Settings (General, Storefront, Payments, Shipping, Tax, Emails), Migration (only if WooCommerce active or a job exists). A page that moved keeps its old link: `Admin\Menu::MOVED` redirects it. |
+| Admin menus | Top-level **FlexaCommerce**, grouped by task: Status (system report + logs), Orders, Customers, Products (CPT list), Categories, Tags, Attributes (with swatches, §7.2.1), Product options (ADR-025), Promotions (tabs: Coupons, which also holds automatic discounts (ADR-026); pricing rules and badges to follow), Settings (General, Storefront, Payments, Shipping, Tax, Emails), Migration (only if WooCommerce active or a job exists). A page that moved keeps its old link: `Admin\Menu::MOVED` redirects it. |
 | REST | §6.1. |
 | Blocks | §6.3. Block category `flexacommerce`. |
 | Templates | §6.3. |

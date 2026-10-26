@@ -46,7 +46,14 @@ final class UploadTest extends \WP_UnitTestCase {
 
 	public function test_a_file_sent_in_chunks_becomes_a_file_job(): void {
 		$body  = (string) file_get_contents( $this->export );
-		$begin = $this->json( 'POST', '/admin/migrations/uploads', [ 'name' => 'shop export.jsonl', 'size' => strlen( $body ) ] );
+		$begin = $this->json(
+			'POST',
+			'/admin/migrations/uploads',
+			[
+				'name' => 'shop export.jsonl',
+				'size' => strlen( $body ),
+			]
+		);
 		$this->assertSame( 201, $begin->get_status() );
 		$token = $begin->get_data()['token'];
 		$this->assertMatchesRegularExpression( '/^[a-f0-9]{32}$/', $token );
@@ -109,7 +116,14 @@ final class UploadTest extends \WP_UnitTestCase {
 	public function test_a_broken_upload_is_deleted_and_no_job_is_made(): void {
 		$jobs  = count( Plugin::instance()->migration()->service()->recent( 50 ) );
 		$body  = '{"type":"product","id":"wc:product:1","data":{}}';
-		$token = $this->json( 'POST', '/admin/migrations/uploads', [ 'name' => 'x.jsonl', 'size' => strlen( $body ) ] )->get_data()['token'];
+		$token = $this->json(
+			'POST',
+			'/admin/migrations/uploads',
+			[
+				'name' => 'x.jsonl',
+				'size' => strlen( $body ),
+			]
+		)->get_data()['token'];
 		$this->chunk( $token, 0, $body );
 
 		$created = $this->json( 'POST', '/admin/migrations/import', [ 'upload' => $token ] );
@@ -120,7 +134,14 @@ final class UploadTest extends \WP_UnitTestCase {
 	}
 
 	public function test_an_upload_belongs_to_the_user_who_began_it(): void {
-		$token = $this->json( 'POST', '/admin/migrations/uploads', [ 'name' => 'x.jsonl', 'size' => 10 ] )->get_data()['token'];
+		$token = $this->json(
+			'POST',
+			'/admin/migrations/uploads',
+			[
+				'name' => 'x.jsonl',
+				'size' => 10,
+			]
+		)->get_data()['token'];
 		$this->assertSame( 400, $this->chunk( $token, 0, str_repeat( 'a', 11 ) )->get_status(), 'More than the announced size is refused.' );
 
 		wp_set_current_user( self::factory()->user->create( [ 'role' => 'administrator' ] ) );

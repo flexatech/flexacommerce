@@ -10,6 +10,7 @@ use Flexa\Commerce\Checkout\CheckoutRequest;
 use Flexa\Commerce\Checkout\CheckoutService;
 use Flexa\Commerce\Checkout\CheckoutServices;
 use Flexa\Commerce\Coupons\Coupon;
+use Flexa\Commerce\Coupons\CouponRepository;
 use Flexa\Commerce\Coupons\CouponService;
 use Flexa\Commerce\Coupons\CouponServices;
 use Flexa\Commerce\Database\Schema;
@@ -62,6 +63,7 @@ abstract class CouponTestCase extends TaxTestCase {
 		foreach ( [ 'coupon_uses', 'coupons' ] as $table ) {
 			$wpdb->query( 'DELETE FROM ' . Schema::table( $table ) ); // phpcs:ignore WordPress.DB
 		}
+		update_option( CouponRepository::AUTOMATIC_OPTION, 0, true );
 		$wpdb->query( 'COMMIT' ); // phpcs:ignore WordPress.DB
 	}
 

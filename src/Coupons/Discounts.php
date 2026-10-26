@@ -18,11 +18,13 @@ final class Discounts {
 	/**
 	 * @param list<AppliedCoupon>  $applied  in the order the codes were added
 	 * @param array<string,string> $rejected normalized code => message
+	 * @param array{coupon:Coupon,remaining:int}|null $next the automatic coupon the cart is closest to, with the spend still missing
 	 */
 	public function __construct(
 		public readonly string $currency,
 		public readonly array $applied = [],
 		public readonly array $rejected = [],
+		public readonly ?array $next = null,
 	) {}
 
 	/** Discount on one cart line, all coupons together. */

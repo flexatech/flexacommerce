@@ -45,7 +45,15 @@ final class MigrationTest extends \WP_UnitTestCase {
 		$this->assertSame( 9, $job->counter( 'orders', 'created' ) );
 		$this->assertSame( 0, $this->rows_in( 'orders' ) );
 		$this->assertSame( 0, $this->rows_in( 'id_map' ) );
-		$this->assertSame( [], get_posts( [ 'post_type' => 'fxc_product', 'post_status' => 'any' ] ) );
+		$this->assertSame(
+			[],
+			get_posts(
+				[
+					'post_type'   => 'fxc_product',
+					'post_status' => 'any',
+				]
+			)
+		);
 	}
 
 	public function test_real_run_needs_a_backup(): void {
@@ -93,7 +101,7 @@ final class MigrationTest extends \WP_UnitTestCase {
 	public function test_rerun_without_changes_writes_nothing(): void {
 		$first = $this->import();
 		$this->service->start( $first->id );
-		$again = $this->service->run( $first->id );
+		$again  = $this->service->run( $first->id );
 		$totals = $again->totals();
 		$this->assertArrayNotHasKey( 'created', $totals );
 		$this->assertArrayNotHasKey( 'updated', $totals );
@@ -131,7 +139,14 @@ final class MigrationTest extends \WP_UnitTestCase {
 
 		// A dead runner left its lease behind; it expired.
 		global $wpdb;
-		$wpdb->update( Schema::table( 'migration_jobs' ), [ 'lock_token' => 'dead', 'locked_until' => '2000-01-01 00:00:00' ], [ 'id' => $job->id ] );
+		$wpdb->update(
+			Schema::table( 'migration_jobs' ),
+			[
+				'lock_token'   => 'dead',
+				'locked_until' => '2000-01-01 00:00:00',
+			],
+			[ 'id' => $job->id ]
+		);
 		$this->service->start( $job->id );
 		$done = $this->service->run( $job->id );
 		$this->assertContains( $done->status, JobStatus::FINISHED );
@@ -144,7 +159,14 @@ final class MigrationTest extends \WP_UnitTestCase {
 		$job = $this->service->create( Direction::WC_TO_FXC, [ 'backup_confirmed' => true ], false, 1 );
 		$this->service->start( $job->id );
 		global $wpdb;
-		$wpdb->update( Schema::table( 'migration_jobs' ), [ 'lock_token' => 'other', 'locked_until' => '2999-01-01 00:00:00' ], [ 'id' => $job->id ] );
+		$wpdb->update(
+			Schema::table( 'migration_jobs' ),
+			[
+				'lock_token'   => 'other',
+				'locked_until' => '2999-01-01 00:00:00',
+			],
+			[ 'id' => $job->id ]
+		);
 		$result = $this->service->run_batch( $job->id );
 		$this->assertTrue( $result['locked'] );
 		$this->assertSame( 0, $result['processed'] );
@@ -171,7 +193,15 @@ final class MigrationTest extends \WP_UnitTestCase {
 
 	public function test_the_memory_budget_counts_growth_not_what_the_site_already_uses(): void {
 		// Smaller than what the loaded site uses: as an absolute cap it would end every batch after one entity.
-		$job = $this->service->create( Direction::WC_TO_FXC, [ 'backup_confirmed' => true, 'memory_budget' => intdiv( memory_get_usage(), 2 ) ], false, 1 );
+		$job = $this->service->create(
+			Direction::WC_TO_FXC,
+			[
+				'backup_confirmed' => true,
+				'memory_budget'    => intdiv( memory_get_usage(), 2 ),
+			],
+			false,
+			1
+		);
 		$this->service->start( $job->id );
 		$this->assertGreaterThan( 1, $this->service->run_batch( $job->id )['processed'] );
 	}
@@ -203,7 +233,15 @@ final class MigrationTest extends \WP_UnitTestCase {
 		$this->assertSame( 7, $result['product']['deleted'] );
 		$this->assertSame( 0, $this->rows_in( 'orders' ) );
 		$this->assertSame( 0, $this->rows_in( 'order_items' ) );
-		$this->assertSame( [], get_posts( [ 'post_type' => 'fxc_product', 'post_status' => 'any' ] ) );
+		$this->assertSame(
+			[],
+			get_posts(
+				[
+					'post_type'   => 'fxc_product',
+					'post_status' => 'any',
+				]
+			)
+		);
 	}
 
 	private function assert_products(): void {

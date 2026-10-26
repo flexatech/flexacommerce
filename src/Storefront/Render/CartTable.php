@@ -60,7 +60,9 @@ final class CartTable {
 			[
 				'cart'        => $data,
 				'hasItems'    => static fn (): bool => $shown !== [],
-				'hasDiscount' => static fn (): bool => isset( $data['totals']['discount'] ),
+				'hasDiscount' => static fn (): bool => (int) ( $data['totals']['discount']['amount'] ?? 0 ) > 0,
+				'nextLabel'   => static fn (): string => self::next_label( $data['next_discount'] ?? null ),
+				'nextWidth'   => static fn (): string => (int) ( $data['next_discount']['percent'] ?? 0 ) . '%',
 				'lineRemoved' => static fn (): bool => $line() === [],
 				'lineTotal'   => static fn (): string => (string) ( $line()['total']['formatted'] ?? '' ),
 			]
@@ -100,6 +102,7 @@ final class CartTable {
 			$html .= $this->row( $item, $shown[ $item->line->key ] ?? [] );
 		}
 		$html .= '</tbody></table>';
+		$html .= self::next_discount( $data['next_discount'] ?? null );
 		$html .= self::totals( $data );
 		$html .= '<p class="fxc-cart__actions"><button type="submit" class="wp-element-button">' . esc_html__( 'Update cart', 'flexacommerce' ) . '</button></p>';
 		$html .= '<p class="fxc-cart__message" role="status" aria-live="polite" data-wp-text="state.message"></p>';
@@ -123,21 +126,58 @@ final class CartTable {
 
 	/**
 	 * One row per code: the discount, or why the code does not apply. The
-	 * remove button posts the coupon form without JavaScript.
+	 * remove button posts the coupon form without JavaScript; an automatic
+	 * coupon has none.
 	 *
 	 * @param array<string,mixed> $coupon a CartPresenter coupon row
 	 */
 	private static function coupon_row( array $coupon, bool $child ): string {
 		$code = (string) ( $coupon['code'] ?? '' );
 		return sprintf(
-			'<tr class="fxc-cart__coupon-row"%1$s><th scope="row"><span data-wp-text="state.couponLabel">%2$s</span> <button type="submit" class="fxc-cart__remove-coupon" form="%3$s" name="remove_coupon" data-wp-bind--value="context.coupon.code" value="%4$s" aria-label="%5$s" data-wp-on--click="actions.removeCoupon">&times;</button></th><td data-wp-text="state.couponAmount">%6$s</td></tr>',
+			'<tr class="fxc-cart__coupon-row"%1$s><th scope="row"><span data-wp-text="state.couponLabel">%2$s</span> <button type="submit" class="fxc-cart__remove-coupon" form="%3$s" name="remove_coupon" data-wp-bind--value="context.coupon.code" data-wp-bind--hidden="context.coupon.automatic" value="%4$s" aria-label="%5$s" data-wp-on--click="actions.removeCoupon"%7$s>&times;</button></th><td data-wp-text="state.couponAmount">%6$s</td></tr>',
 			$child ? ' data-wp-each-child' : '',
-			/* translators: %s: coupon code */
-			esc_html( sprintf( __( 'Coupon: %s', 'flexacommerce' ), (string) ( $coupon['label'] ?? '' ) ) ),
+			esc_html( self::coupon_label( $coupon ) ),
 			self::COUPON_FORM,
 			esc_attr( $code ),
 			esc_attr__( 'Remove coupon', 'flexacommerce' ),
-			esc_html( ! empty( $coupon['valid'] ) ? CheckoutForm::coupon_amount( $coupon ) : (string) ( $coupon['message'] ?? '' ) )
+			esc_html( ! empty( $coupon['valid'] ) ? CheckoutForm::coupon_amount( $coupon ) : (string) ( $coupon['message'] ?? '' ) ),
+			empty( $coupon['automatic'] ) ? '' : ' hidden'
+		);
+	}
+
+	/** @param array<mixed> $coupon a CartPresenter coupon row */
+	private static function coupon_label( array $coupon ): string {
+		$label = (string) ( $coupon['label'] ?? '' );
+		return ! empty( $coupon['automatic'] )
+			/* translators: %s: the name of an automatic discount */
+			? sprintf( __( 'Discount: %s', 'flexacommerce' ), $label )
+			/* translators: %s: coupon code */
+			: sprintf( __( 'Coupon: %s', 'flexacommerce' ), $label );
+	}
+
+	/** "Spend $20.00 more for this discount: Spring sale." */
+	private static function next_label( mixed $next ): string {
+		if ( ! is_array( $next ) ) {
+			return '';
+		}
+		return sprintf(
+			/* translators: 1: an amount of money, 2: the name of an automatic discount */
+			__( 'Spend %1$s more for this discount: %2$s.', 'flexacommerce' ),
+			(string) ( $next['remaining']['formatted'] ?? '' ),
+			(string) ( $next['label'] ?? '' )
+		);
+	}
+
+	/**
+	 * How far the cart is from the next automatic discount, above the
+	 * totals. The bar is decoration; the sentence says the same.
+	 */
+	private static function next_discount( mixed $next ): string {
+		return sprintf(
+			'<div class="fxc-cart__next" data-wp-bind--hidden="!state.cart.next_discount"%1$s><p aria-live="polite" data-wp-text="state.nextLabel">%2$s</p><div class="fxc-cart__progress" aria-hidden="true"><span data-wp-style--width="state.nextWidth" style="width:%3$d%%"></span></div></div>',
+			is_array( $next ) ? '' : ' hidden',
+			esc_html( self::next_label( $next ) ),
+			is_array( $next ) ? (int) ( $next['percent'] ?? 0 ) : 0
 		);
 	}
 
@@ -165,7 +205,7 @@ final class CartTable {
 			// Without taxes the total row only shows once a coupon takes something off.
 			$html .= sprintf(
 				'<tr class="fxc-cart__total-row" data-wp-bind--hidden="!state.hasDiscount"%1$s><th scope="row">%2$s</th><td><strong data-wp-text="state.cart.totals.total.formatted">%3$s</strong></td></tr>',
-				isset( $totals['discount'] ) ? '' : ' hidden',
+				(int) ( $totals['discount']['amount'] ?? 0 ) > 0 ? '' : ' hidden',
 				esc_html__( 'Total', 'flexacommerce' ),
 				esc_html( (string) ( $totals['total']['formatted'] ?? '' ) )
 			);

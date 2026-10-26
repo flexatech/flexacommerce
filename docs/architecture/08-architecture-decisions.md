@@ -338,3 +338,21 @@ Status of every ADR: **Accepted** (plan approved 2026-10-24) unless it says othe
 **Consequences.** No DB_VERSION. Activation and `maybe_upgrade()` create the list empty and autoloaded; P10 now counts four autoloaded options. A deleted field adds nothing to lines already in a cart, although the line keeps its label. A set that is turned off still charges items already in a cart, since the shopper saw that price. File uploads, date pickers, color pickers and per-variation option sets are left out.
 
 **Revisit when.** A store needs file uploads, more than 30 sets, or option prices that follow tax display settings.
+
+
+## ADR-026: Automatic discounts as coupons without a code
+
+**Context.** Item 1 after the flexa-extra port (2026-10-27): a discount the shopper does not have to type, such as 10% off orders over $100, and a line in the cart that says how much more to spend to get it. ADR-024 left cart-level rules out of pricing rules. Coupons already have everything such a discount needs: a minimum spend, product and category limits, dates, usage limits, free shipping, buy X get Y, the order discount lines, the usage count and the tax split.
+
+**Decision.**
+1. **A coupon with `automatic = 1`.** Its `code` is the name shoppers see in the cart ("Discount: Spring sale"). The editor asks for a name instead of a code, and forces the allowed emails empty and the per-customer limit to 0, because the cart has no billing email to check them against before checkout.
+2. **Applied after the shopper's codes.** `CouponService::discounts()` reads the active automatic coupons in id order and applies each one that passes the usual checks, on what the codes left. One that does not fit drops out without a notice. An individual-use code keeps every automatic coupon out. An individual-use automatic coupon applies only when nothing else did, and then stops the list.
+3. **Its name is not a code.** Typing it in the coupon field gives the unknown-code message. A code already in a cart whose coupon later turned automatic is skipped in the code pass and applied once by the automatic pass.
+4. **The nudge.** Among the automatic coupons that only miss their minimum spend (checked by running the rules again with the subtotal at that minimum), the one closest to applying goes to the cart response as `next_discount`: its name, the amount missing and the share reached, in percent, capped at 99. The cart shows a sentence ("Spend $30.00 more for this discount: Big basket.") and a bar; the bar is `aria-hidden` and the sentence is in a polite live region.
+5. **No cost for stores without one.** `flexacommerce_automatic_coupons` is an autoloaded flag, 1 while an active automatic coupon exists, written after every coupon insert, update and delete. With the flag off, a cart without codes never builds the coupon service, as before. With it on, the cart reads the automatic coupons in one indexed query (`automatic_status`) per request.
+
+**Alternatives.** A cart rule in pricing rules (ADR-024): it would need its own order lines, usage counts, tax split and checkout checks, all of which coupons already have. Applying the automatic coupons before the codes: a percent code would then shrink with each automatic discount, which reads oddly in the cart. A plain query on every cart without the flag: one query per cart request in every store, most of which have no automatic discount.
+
+**Consequences.** `DB_VERSION` 7 adds the `automatic` column and the `automatic_status` key (dbDelta, no upgrade step). P10 counts five autoloaded options. A store with automatic discounts pays one query on cart requests (P4q is measured without them). The flag counts disabled coupons as off but expired and used-up ones as on, which only costs that query. WooCommerce has no automatic coupons, so migration back to WooCommerce refuses them (`unsupported_coupon`), as it refuses buy X get Y. Shoppers cannot remove an automatic discount from the cart.
+
+**Revisit when.** A store needs an automatic discount limited by customer email or account, more than a few dozen active ones, or a choice between stacking and best-of.

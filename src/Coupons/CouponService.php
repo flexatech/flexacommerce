@@ -38,7 +38,11 @@ final class CouponService {
 
 	/**
 	 * The discounts of a resolved cart. Codes that do not apply are kept in
-	 * `rejected` with the reason.
+	 * `rejected` with the reason. Automatic coupons (ADR-026) come after the
+	 * codes and drop out without a message when they do not fit; an
+	 * individual-use code keeps them out, and an individual-use automatic
+	 * coupon only applies alone. `next` is the automatic coupon closest to
+	 * applying when only its minimum spend is missing.
 	 *
 	 * @param list<string>   $codes normalized, in the order added
 	 * @param list<CartItem> $items
@@ -50,6 +54,10 @@ final class CouponService {
 		$exclusive = false;
 		foreach ( $codes as $code ) {
 			$coupon = $found[ $code ] ?? null;
+			if ( $coupon?->automatic === true ) {
+				// Turned automatic while in the cart: the pass below applies it.
+				continue;
+			}
 			if ( $coupon === null ) {
 				$rejected[ $code ] = self::unknown( $code );
 				continue;
@@ -66,7 +74,28 @@ final class CouponService {
 			$accepted[] = $coupon;
 			$exclusive  = $coupon->individual_use;
 		}
-		return new Discounts( $subtotal->currency, $this->calculate( $accepted, $items ), $rejected );
+		$next = null;
+		foreach ( $exclusive ? [] : $this->coupons->automatic() as $coupon ) {
+			if ( $coupon->individual_use && $accepted !== [] ) {
+				continue;
+			}
+			if ( $this->check( $coupon, $items, $subtotal, $user_id ) === null ) {
+				$accepted[] = $coupon;
+				if ( $coupon->individual_use ) {
+					break;
+				}
+				continue;
+			}
+			$missing = $coupon->min_subtotal !== null ? $coupon->min_subtotal - $subtotal->amount : 0;
+			if ( $missing > 0 && ( $next === null || $missing < $next['remaining'] )
+				&& $this->check( $coupon, $items, new Money( $coupon->min_subtotal ?? 0, $subtotal->currency ), $user_id ) === null ) {
+				$next = [
+					'coupon'    => $coupon,
+					'remaining' => $missing,
+				];
+			}
+		}
+		return new Discounts( $subtotal->currency, $this->calculate( $accepted, $items ), $rejected, $next );
 	}
 
 	/**
@@ -89,7 +118,11 @@ final class CouponService {
 		}
 		$found  = $this->coupons->by_codes( [ ...$current, $code ] );
 		$coupon = $found[ $code ] ?? null;
-		$error  = $coupon !== null ? $this->check( $coupon, $items, $subtotal, $user_id ) : self::unknown( $code );
+		if ( $coupon?->automatic === true ) {
+			// Its name is not a code a shopper can type.
+			$coupon = null;
+		}
+		$error = $coupon !== null ? $this->check( $coupon, $items, $subtotal, $user_id ) : self::unknown( $code );
 		if ( $coupon === null || $error !== null ) {
 			throw new InvalidCartRequest( $error ?? self::unknown( $code ), 'code', 'coupon_invalid' );
 		}

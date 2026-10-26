@@ -74,8 +74,12 @@ final class OrderConfirmation {
 		$coupons  = [];
 		foreach ( $order->items as $item ) {
 			if ( $item->type === OrderItem::DISCOUNT ) {
-				/* translators: %s: coupon code */
-				$coupons[] = [ sprintf( __( 'Coupon: %s', 'flexacommerce' ), $item->name ), $item->total === 0 && ! empty( $item->meta['free_shipping'] ) ? __( 'Free shipping', 'flexacommerce' ) : -$item->total ];
+				$label = ! empty( $item->meta['automatic'] )
+					/* translators: %s: the name of an automatic discount */
+					? sprintf( __( 'Discount: %s', 'flexacommerce' ), $item->name )
+					/* translators: %s: coupon code */
+					: sprintf( __( 'Coupon: %s', 'flexacommerce' ), $item->name );
+				$coupons[] = [ $label, $item->total === 0 && ! empty( $item->meta['free_shipping'] ) ? __( 'Free shipping', 'flexacommerce' ) : -$item->total ];
 				continue;
 			}
 			if ( $item->type === OrderItem::SHIPPING ) {

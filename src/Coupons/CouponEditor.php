@@ -86,16 +86,17 @@ final class CouponEditor {
 	 * @throws InvalidCoupon
 	 */
 	private function fields( array $in, int $id ): array {
-		$code = trim( self::text( $in['code'] ?? '' ) );
+		$automatic = ! empty( $in['automatic'] );
+		$code      = trim( self::text( $in['code'] ?? '' ) );
 		if ( $code === '' ) {
-			throw new InvalidCoupon( __( 'Enter a code.', 'flexacommerce' ), 'code' );
+			throw new InvalidCoupon( $automatic ? __( 'Enter a name.', 'flexacommerce' ) : __( 'Enter a code.', 'flexacommerce' ), 'code' );
 		}
 		if ( mb_strlen( $code ) > Coupon::MAX_CODE_LENGTH ) {
 			/* translators: %d: maximum number of characters */
 			throw new InvalidCoupon( sprintf( __( 'A code can have at most %d characters.', 'flexacommerce' ), Coupon::MAX_CODE_LENGTH ), 'code' );
 		}
 		if ( $this->coupons->code_taken( $code, $id ) ) {
-			throw new InvalidCoupon( __( 'Another coupon already uses this code.', 'flexacommerce' ), 'code' );
+			throw new InvalidCoupon( $automatic ? __( 'Another coupon already uses this name.', 'flexacommerce' ) : __( 'Another coupon already uses this code.', 'flexacommerce' ), 'code' );
 		}
 
 		$type = self::text( $in['type'] ?? '' );
@@ -154,7 +155,8 @@ final class CouponEditor {
 		foreach ( self::ID_LISTS as $field ) {
 			$rules[ $field ] = self::ids( $in[ $field ] ?? [], $field );
 		}
-		$rules['emails'] = self::emails( $in['emails'] ?? [] );
+		// An automatic coupon applies before the shopper gives an email, so it has no email rules.
+		$rules['emails'] = $automatic ? [] : self::emails( $in['emails'] ?? [] );
 		$rules          += $bogo ? self::set( $in ) : [
 			'buy_qty'          => 0,
 			'get_qty'          => 0,
@@ -175,12 +177,13 @@ final class CouponEditor {
 			'min_subtotal'       => $min,
 			'max_subtotal'       => $max,
 			'usage_limit'        => $limits['usage_limit'],
-			'per_customer_limit' => $limits['per_customer_limit'],
+			'per_customer_limit' => $automatic ? 0 : $limits['per_customer_limit'],
 			// A cart discount is split over the lines; an item limit has nothing to count there.
 			'item_limit'         => $type === Coupon::FIXED_CART || $bogo ? 0 : $limits['item_limit'],
 			'individual_use'     => ! empty( $in['individual_use'] ),
 			'exclude_sale_items' => ! empty( $in['exclude_sale_items'] ),
 			'free_shipping'      => $free_shipping,
+			'automatic'          => $automatic,
 			'rules'              => $rules,
 		];
 	}

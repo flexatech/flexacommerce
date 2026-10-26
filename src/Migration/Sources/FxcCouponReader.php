@@ -62,6 +62,7 @@ final class FxcCouponReader {
 				'individual_use'     => $coupon->individual_use,
 				'exclude_sale_items' => $coupon->exclude_sale_items,
 				'free_shipping'      => $coupon->free_shipping,
+				'automatic'          => $coupon->automatic,
 				'products'           => $products,
 				'exclude_products'   => $excluded,
 				'categories'         => $cats,

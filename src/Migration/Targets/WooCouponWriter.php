@@ -31,6 +31,9 @@ final class WooCouponWriter {
 		if ( ! in_array( $type, self::TYPES, true ) ) {
 			throw new Rejected( 'unsupported_coupon', sprintf( 'The coupon "%1$s" has the discount type "%2$s", which WooCommerce does not support.', $code, $type ), [ 'type' => $type ] );
 		}
+		if ( ! empty( $data['automatic'] ) ) {
+			throw new Rejected( 'unsupported_coupon', sprintf( 'The discount "%s" applies without a code, which WooCommerce does not support.', $code ), [ 'automatic' => true ] );
+		}
 		$source = strtoupper( (string) ( $data['currency'] ?? '' ) );
 		if ( $source !== '' && $source !== get_woocommerce_currency() && $type !== 'percent' ) {
 			$this->problems[] = Problem::warning( 'coupon_currency', sprintf( 'The coupon "%1$s" is in %2$s and WooCommerce uses %3$s. The amounts are copied as they are.', $code, $source, get_woocommerce_currency() ) );

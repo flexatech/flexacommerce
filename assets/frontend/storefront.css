@@ -153,6 +153,12 @@
 .fxc-cart__coupon-message { flex-basis: 100%; text-align: end; }
 .fxc-cart__coupon-message:empty { display: none; }
 .fxc-cart__remove-coupon { padding: 0 .3em; border: 0; background: none; color: inherit; cursor: pointer; }
+.fxc-cart__remove-coupon[hidden] { display: none; }
+.fxc-cart__next { margin-block: 1rem; margin-inline-start: auto; max-width: 24rem; }
+.fxc-cart__next[hidden] { display: none; }
+.fxc-cart__next p { margin: 0 0 .4rem; }
+.fxc-cart__progress { height: .5rem; border-radius: 1rem; background: color-mix(in srgb, currentColor 15%, transparent); overflow: hidden; }
+.fxc-cart__progress span { display: block; height: 100%; border-radius: inherit; background: currentColor; transition: width .3s; }
 
 .fxc-mini-cart { display: inline-flex; align-items: center; gap: .35rem; text-decoration: none; }
 .fxc-mini-cart__count:empty { display: none; }

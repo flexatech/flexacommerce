@@ -8,6 +8,7 @@ import { Label } from "@/shared/components/ui/label";
 import { Select } from "@/shared/components/ui/select";
 import { Textarea } from "@/shared/components/ui/textarea";
 import { ApiError, getPluginGlobal } from "@/shared/lib/api";
+import { cn } from "@/shared/lib/cn";
 import { __, sprintf } from "@/shared/lib/i18n";
 import { inputToMinor, minorToInput, parseDecimal } from "@/shared/lib/units";
 import { MoneyInput } from "../../components/MoneyInput";
@@ -16,6 +17,7 @@ import { isPercentType, useSaveCoupon, type Coupon, type CouponInput, type Coupo
 
 /** What the form edits; dates are `datetime-local` text in the browser's time zone. */
 interface Draft {
+    automatic: boolean;
     code: string;
     type: CouponType;
     percent: string;
@@ -69,6 +71,7 @@ const idsOf = (list: Pick[], type: Pick["type"]): number[] => list.filter((p) =>
 function draftOf(coupon: Coupon | null): Draft {
     const bogo = coupon?.type === "buy_x_get_y";
     return {
+        automatic: coupon?.automatic ?? false,
         code: coupon?.code ?? "",
         type: coupon?.type ?? "percent",
         percent: coupon !== null && isPercentType(coupon.type) ? String(coupon.amount / 100) : "",
@@ -102,6 +105,7 @@ function inputOf(draft: Draft): CouponInput {
     const percent = parseDecimal(draft.percent);
     const bogo = draft.type === "buy_x_get_y";
     return {
+        automatic: draft.automatic,
         code: draft.code.trim(),
         type: draft.type,
         amount: isPercentType(draft.type) ? (percent === null || Number.isNaN(percent) ? 0 : Math.round(percent * 100)) : draft.amount,
@@ -112,7 +116,7 @@ function inputOf(draft: Draft): CouponInput {
         min_subtotal: draft.min_subtotal,
         max_subtotal: draft.max_subtotal,
         usage_limit: Number(draft.usage_limit) || 0,
-        per_customer_limit: Number(draft.per_customer_limit) || 0,
+        per_customer_limit: draft.automatic ? 0 : Number(draft.per_customer_limit) || 0,
         item_limit: draft.type === "fixed_cart" || bogo ? 0 : Number(draft.item_limit) || 0,
         individual_use: draft.individual_use,
         exclude_sale_items: draft.exclude_sale_items,
@@ -123,10 +127,12 @@ function inputOf(draft: Draft): CouponInput {
         exclude_variant_ids: idsOf(draft.exclude_products, "variant"),
         category_ids: idsOf(draft.categories, "category"),
         exclude_category_ids: idsOf(draft.exclude_categories, "category"),
-        emails: draft.emails
-            .split(/[\s,]+/)
-            .map((e) => e.trim())
-            .filter(Boolean),
+        emails: draft.automatic
+            ? []
+            : draft.emails
+                  .split(/[\s,]+/)
+                  .map((e) => e.trim())
+                  .filter(Boolean),
         buy_qty: bogo ? Number(draft.buy_qty) || 0 : 0,
         get_qty: bogo ? Number(draft.get_qty) || 0 : 0,
         repeat_limit: bogo ? Number(draft.repeat_limit) || 0 : 0,
@@ -180,13 +186,52 @@ function Check({ checked, onChange, label, help }: { checked: boolean; onChange:
     );
 }
 
+/** Code or automatic: a pair of radio cards at the top of the form. */
+function Method({ automatic, onChange }: { automatic: boolean; onChange: (automatic: boolean) => void }) {
+    const name = useId();
+    const options = [
+        { value: false, label: __("Discount code"), help: __("Shoppers type the code in the cart.") },
+        { value: true, label: __("Automatic discount"), help: __("Applies by itself to every cart that fits the rules.") },
+    ];
+    return (
+        <fieldset>
+            <legend className="fxc:mb-2 fxc:text-sm fxc:font-medium">{__("Method")}</legend>
+            <div className="fxc:grid fxc:gap-3 fxc:sm:grid-cols-2">
+                {options.map((option) => (
+                    <label
+                        key={String(option.value)}
+                        className={cn(
+                            "fxc:flex fxc:cursor-pointer fxc:items-start fxc:gap-2 fxc:rounded-md fxc:border fxc:px-3 fxc:py-2 fxc:text-sm",
+                            automatic === option.value && "fxc:border-primary fxc:bg-muted/50",
+                        )}
+                    >
+                        <input
+                            type="radio"
+                            name={name}
+                            checked={automatic === option.value}
+                            onChange={() => onChange(option.value)}
+                            className="flexacommerce-check fxc:mt-0.5"
+                        />
+                        <span>
+                            <span className="fxc:block fxc:font-medium">{option.label}</span>
+                            <span className="fxc:text-muted-foreground fxc:block fxc:text-xs">{option.help}</span>
+                        </span>
+                    </label>
+                ))}
+            </div>
+        </fieldset>
+    );
+}
+
 interface Props {
     open: boolean;
     coupon: Coupon | null;
+    /** For a new one: start as an automatic discount. */
+    automatic?: boolean;
     onOpenChange: (open: boolean) => void;
 }
 
-export function CouponDialog({ open, coupon, onOpenChange }: Props) {
+export function CouponDialog({ open, coupon, automatic = false, onOpenChange }: Props) {
     const { currency } = getPluginGlobal();
     const [draft, setDraft] = useState<Draft>(() => draftOf(coupon));
     const [errors, setErrors] = useState<Record<string, string>>({});
@@ -194,10 +239,10 @@ export function CouponDialog({ open, coupon, onOpenChange }: Props) {
 
     useEffect(() => {
         if (open) {
-            setDraft(draftOf(coupon));
+            setDraft(coupon === null ? { ...draftOf(null), automatic } : draftOf(coupon));
             setErrors({});
         }
-    }, [open, coupon]);
+    }, [open, coupon, automatic]);
 
     const set = <K extends keyof Draft>(key: K, value: Draft[K]) => setDraft((d) => ({ ...d, [key]: value }));
 
@@ -212,7 +257,13 @@ export function CouponDialog({ open, coupon, onOpenChange }: Props) {
             { id: coupon?.id ?? 0, input: body },
             {
                 onSuccess: (saved) => {
-                    showToast.success(coupon !== null ? __("Coupon saved.") : sprintf(__("Coupon %s created."), saved.code));
+                    showToast.success(
+                        coupon !== null
+                            ? __("Coupon saved.")
+                            : saved.automatic
+                              ? sprintf(__("Automatic discount %s created."), saved.code)
+                              : sprintf(__("Coupon %s created."), saved.code),
+                    );
                     onOpenChange(false);
                 },
                 onError: (error) => {
@@ -233,9 +284,19 @@ export function CouponDialog({ open, coupon, onOpenChange }: Props) {
         <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
             <DialogContent className="fxc:max-h-[90vh] fxc:max-w-2xl fxc:overflow-y-auto">
                 <DialogHeader>
-                    <DialogTitle>{coupon !== null ? __("Edit coupon") : __("New coupon")}</DialogTitle>
+                    <DialogTitle>
+                        {coupon !== null
+                            ? draft.automatic
+                                ? __("Edit automatic discount")
+                                : __("Edit coupon")
+                            : draft.automatic
+                              ? __("New automatic discount")
+                              : __("New coupon")}
+                    </DialogTitle>
                     <DialogDescription>
-                        {__("Shoppers enter the code in the cart. Codes are not case sensitive. Dates use your browser's time zone.")}
+                        {draft.automatic
+                            ? __("Applies to every cart that meets the rules, after any codes the shopper entered. Set a minimum spend and the cart tells shoppers how much more they need. Dates use your browser's time zone.")
+                            : __("Shoppers enter the code in the cart. Codes are not case sensitive. Dates use your browser's time zone.")}
                     </DialogDescription>
                 </DialogHeader>
 
@@ -247,8 +308,14 @@ export function CouponDialog({ open, coupon, onOpenChange }: Props) {
                         submit();
                     }}
                 >
+                    <Method automatic={draft.automatic} onChange={(v) => set("automatic", v)} />
+
                     <div className="fxc:grid fxc:gap-4 fxc:sm:grid-cols-2">
-                        <Field label={__("Code")} error={errors.code}>
+                        <Field
+                            label={draft.automatic ? __("Name") : __("Code")}
+                            help={draft.automatic ? __("Shoppers see this name in the cart, as in Spring sale.") : undefined}
+                            error={errors.code}
+                        >
                             {(id) => <Input id={id} value={draft.code} maxLength={100} required onChange={(e) => set("code", e.target.value)} />}
                         </Field>
                         <Field label={__("Status")} error={errors.status}>
@@ -329,22 +396,24 @@ export function CouponDialog({ open, coupon, onOpenChange }: Props) {
                                 <Input id={id} type="number" min={0} step={1} value={draft.usage_limit} onChange={(e) => set("usage_limit", e.target.value)} />
                             )}
                         </Field>
-                        <Field
-                            label={__("Limit per customer")}
-                            help={__("Counted by account and by billing email. Empty: no limit.")}
-                            error={errors.per_customer_limit}
-                        >
-                            {(id) => (
-                                <Input
-                                    id={id}
-                                    type="number"
-                                    min={0}
-                                    step={1}
-                                    value={draft.per_customer_limit}
-                                    onChange={(e) => set("per_customer_limit", e.target.value)}
-                                />
-                            )}
-                        </Field>
+                        {!draft.automatic && (
+                            <Field
+                                label={__("Limit per customer")}
+                                help={__("Counted by account and by billing email. Empty: no limit.")}
+                                error={errors.per_customer_limit}
+                            >
+                                {(id) => (
+                                    <Input
+                                        id={id}
+                                        type="number"
+                                        min={0}
+                                        step={1}
+                                        value={draft.per_customer_limit}
+                                        onChange={(e) => set("per_customer_limit", e.target.value)}
+                                    />
+                                )}
+                            </Field>
+                        )}
                         {draft.type !== "fixed_cart" && draft.type !== "buy_x_get_y" && (
                             <Field
                                 label={__("Limit to items")}
@@ -444,7 +513,11 @@ export function CouponDialog({ open, coupon, onOpenChange }: Props) {
                             checked={draft.individual_use}
                             onChange={(v) => set("individual_use", v)}
                             label={__("Use on its own")}
-                            help={__("Applying it removes the other coupons in the cart, and no other coupon can be added with it.")}
+                            help={
+                                draft.automatic
+                                    ? __("Applies only when the cart has no other discount.")
+                                    : __("Applying it removes the other coupons in the cart, and no other coupon can be added with it.")
+                            }
                         />
                         <Check
                             checked={draft.exclude_sale_items}
@@ -512,13 +585,15 @@ export function CouponDialog({ open, coupon, onOpenChange }: Props) {
                                 )}
                             </Field>
                         </div>
-                        <Field
-                            label={__("Allowed emails")}
-                            help={__("Billing emails that may use it, comma separated; * matches anything, as in *@example.com. Empty: everyone.")}
-                            error={errors.emails}
-                        >
-                            {(id) => <Textarea id={id} rows={2} value={draft.emails} onChange={(e) => set("emails", e.target.value)} />}
-                        </Field>
+                        {!draft.automatic && (
+                            <Field
+                                label={__("Allowed emails")}
+                                help={__("Billing emails that may use it, comma separated; * matches anything, as in *@example.com. Empty: everyone.")}
+                                error={errors.emails}
+                            >
+                                {(id) => <Textarea id={id} rows={2} value={draft.emails} onChange={(e) => set("emails", e.target.value)} />}
+                            </Field>
+                        )}
                     </fieldset>
 
                     <Field label={__("Description")} help={__("For your team; shoppers do not see it.")} error={errors.description}>
@@ -531,7 +606,7 @@ export function CouponDialog({ open, coupon, onOpenChange }: Props) {
                         {__("Cancel")}
                     </Button>
                     <Button type="submit" form="fxc-coupon-form" disabled={busy}>
-                        {busy ? __("Saving…") : coupon !== null ? __("Save coupon") : __("Create coupon")}
+                        {busy ? __("Saving…") : coupon !== null ? (draft.automatic ? __("Save discount") : __("Save coupon")) : draft.automatic ? __("Create discount") : __("Create coupon")}
                     </Button>
                 </DialogFooter>
             </DialogContent>

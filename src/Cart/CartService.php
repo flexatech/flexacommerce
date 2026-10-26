@@ -20,6 +20,7 @@ use Flexa\Commerce\Contracts\Shipping\PackageLine;
 use Flexa\Commerce\Contracts\Shipping\ShippingPackage;
 use Flexa\Commerce\Contracts\ValidationResult;
 use Flexa\Commerce\Coupons\Coupon;
+use Flexa\Commerce\Coupons\CouponRepository;
 use Flexa\Commerce\Coupons\CouponService;
 use Flexa\Commerce\Inventory\StockService;
 use Flexa\Commerce\Options\ProductOptions;
@@ -439,9 +440,13 @@ final class CartService {
 
 		$subtotal  = $this->pricing->sum( $totals );
 		$discounts = null;
-		if ( $cart->coupons !== [] && $items !== [] && $this->coupons !== null ) {
+		// With no codes the coupons are still read when an automatic one may fit.
+		if ( $items !== [] && $this->coupons !== null && ( $cart->coupons !== [] || CouponRepository::has_automatic() ) ) {
 			$discounts = $this->coupons()->discounts( $cart->coupons, $items, $subtotal, $user_id );
-			foreach ( $discounts->rejected as $message ) {
+			if ( $cart->coupons === [] && $discounts->applied === [] && $discounts->next === null ) {
+				$discounts = null;
+			}
+			foreach ( $discounts->rejected ?? [] as $message ) {
 				$notices[] = [
 					'code'    => 'coupon_invalid',
 					'message' => $message,

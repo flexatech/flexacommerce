@@ -210,6 +210,23 @@ final class CouponMigrationTest extends \WP_UnitTestCase {
 		$this->assertContains( 'unsupported_coupon', array_column( $this->service->log( $job->id )['rows'], 'code' ) );
 	}
 
+	public function test_an_automatic_discount_stays_in_flexacommerce(): void {
+		$this->run_job( Direction::WC_TO_FXC );
+		$this->fxc_editor()->save(
+			[
+				'code'      => 'Spring sale',
+				'type'      => Coupon::PERCENT,
+				'amount'    => 1000,
+				'automatic' => true,
+			]
+		);
+
+		$job = $this->run_job( Direction::FXC_TO_WC );
+		$this->assertSame( 1, $job->counter( 'coupons', 'rejected' ) );
+		$this->assertSame( 0, wc_get_coupon_id_by_code( 'spring sale' ), 'A typed code would let anyone use it by name.' );
+		$this->assertContains( 'unsupported_coupon', array_column( $this->service->log( $job->id )['rows'], 'code' ) );
+	}
+
 	/** @param (callable(\WC_Coupon):mixed)|null $edit */
 	private static function wc_coupon( string $code, string $type, string $amount, ?callable $edit = null ): int {
 		$coupon = new \WC_Coupon();

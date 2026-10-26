@@ -15,6 +15,8 @@ defined( 'ABSPATH' ) || exit;
  * A percent or per-product coupon may be limited to a number of items, the
  * dearest first. A buy X get Y coupon takes a percentage (its amount) off
  * the cheapest units the shopper gets for each X units they buy.
+ * An automatic coupon (ADR-026) has no code to type: it applies to every
+ * cart it fits, and its code is the name the shopper sees.
  */
 final class Coupon {
 	public const PERCENT       = 'percent';
@@ -81,6 +83,7 @@ final class Coupon {
 		public readonly array $get_product_ids = [],
 		public readonly array $get_variant_ids = [],
 		public readonly array $get_category_ids = [],
+		public readonly bool $automatic = false,
 	) {}
 
 	/** The form a shopper's code is compared in: trimmed, lower case. */
@@ -125,6 +128,7 @@ final class Coupon {
 			get_product_ids: self::ids( $rules['get_product_ids'] ?? [] ),
 			get_variant_ids: self::ids( $rules['get_variant_ids'] ?? [] ),
 			get_category_ids: self::ids( $rules['get_category_ids'] ?? [] ),
+			automatic: (bool) ( $row['automatic'] ?? false ),
 		);
 	}
 
@@ -208,6 +212,7 @@ final class Coupon {
 			'individual_use'     => $this->individual_use,
 			'exclude_sale_items' => $this->exclude_sale_items,
 			'free_shipping'      => $this->free_shipping,
+			'automatic'          => $this->automatic,
 			'created_at'         => $this->created_at,
 			'updated_at'         => $this->updated_at,
 		] + $this->rules();

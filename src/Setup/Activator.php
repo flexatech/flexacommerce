@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Flexa\Commerce\Setup;
 
 use Flexa\Commerce\Badges\BadgeRepository;
+use Flexa\Commerce\Coupons\CouponRepository;
 use Flexa\Commerce\Database\Schema;
 use Flexa\Commerce\Maintenance\Cron;
 use Flexa\Commerce\Options\ProductOptions;
@@ -65,7 +66,8 @@ final class Activator {
 	}
 
 	/**
-	 * Badges, pricing rules and product options are read on storefront pages. An empty list
+	 * Badges, pricing rules and product options are read on storefront pages, and
+	 * the automatic coupon flag by every cart. An empty list
 	 * that exists rides in the autoloaded options; a missing one costs a
 	 * query on every page without a persistent object cache.
 	 */
@@ -73,6 +75,7 @@ final class Activator {
 		add_option( BadgeRepository::OPTION, [], '', true );
 		add_option( PricingService::RULES_OPTION, [], '', true );
 		add_option( ProductOptions::OPTION, [], '', true );
+		add_option( CouponRepository::AUTOMATIC_OPTION, 0, '', true );
 	}
 
 	/** New site on a network where the plugin is network-active. */

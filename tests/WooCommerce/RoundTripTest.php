@@ -88,7 +88,16 @@ final class RoundTripTest extends \WP_UnitTestCase {
 		$this->assertSame( 9, $again->counter( 'orders', 'updated' ) );
 		$this->assertSame( $products, $this->id_map()['product'], 'Products keep their WooCommerce ids.' );
 		$this->assertSame( $orders, $this->id_map()['order'], 'Orders keep their WooCommerce ids.' );
-		$this->assertCount( 7, wc_get_products( [ 'limit' => -1, 'status' => [ 'publish', 'draft' ], 'return' => 'ids' ] ) );
+		$this->assertCount(
+			7,
+			wc_get_products(
+				[
+					'limit'  => -1,
+					'status' => [ 'publish', 'draft' ],
+					'return' => 'ids',
+				]
+			)
+		);
 		$hoodie = wc_get_product( (int) array_search( $this->fxc_id( 'product', $this->store->products['hoodie'] ), $products, true ) );
 		$this->assertInstanceOf( \WC_Product_Variable::class, $hoodie );
 		$this->assertCount( 2, $hoodie->get_children(), (string) wp_json_encode( $this->service->log( $again->id ) ) );
