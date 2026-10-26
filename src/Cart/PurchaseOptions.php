@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace Flexa\Commerce\Cart;
 
+use Flexa\Commerce\Catalog\AttributeRepository;
 use Flexa\Commerce\Catalog\Product;
 use Flexa\Commerce\Catalog\Variant;
 use Flexa\Commerce\Inventory\StockService;
 use Flexa\Commerce\Pricing\PricingService;
+use Flexa\Commerce\Support\Settings;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -20,6 +22,11 @@ defined( 'ABSPATH' ) || exit;
  * returns the same shape. Term labels cost one query for the whole product.
  * `max` is null when stock is not limited.
  *
+ * `swatch` says how the product page shows an attribute (ADR-022): '' for
+ * a dropdown, or color, image or button. A colour or image swatch falls
+ * back to a button for a value that has neither.
+ *
+ * @phpstan-type AttributeChoice array{key:string,name:string,swatch:string,options:list<array{key:string,label:string,color:string,image:string}>}
  * @phpstan-type VariantOption array{id:int,attributes:object,sku:?string,image_id:?int,in_stock:bool,max:?int,price:string,regular:string,suffix:string}
  */
 final class PurchaseOptions {
@@ -34,7 +41,7 @@ final class PurchaseOptions {
 	/**
 	 * @return array{
 	 *   product_id:int, type:string, purchasable:bool, in_stock:bool, max_quantity:int,
-	 *   attributes:list<array{key:string,name:string,options:list<array{key:string,label:string}>}>,
+	 *   attributes:list<AttributeChoice>,
 	 *   variants:list<VariantOption>
 	 * }
 	 */
@@ -88,7 +95,7 @@ final class PurchaseOptions {
 		];
 	}
 
-	/** @return list<array{key:string,name:string,options:list<array{key:string,label:string}>}> */
+	/** @return list<AttributeChoice> */
 	private function attributes( Product $product ): array {
 		$term_ids = [];
 		foreach ( $product->variation_attributes() as $definition ) {
@@ -98,34 +105,43 @@ final class PurchaseOptions {
 			}
 		}
 		if ( $term_ids !== [] ) {
-			_prime_term_caches( array_values( array_unique( $term_ids ) ), false );
+			_prime_term_caches( array_values( array_unique( $term_ids ) ) );
 		}
 
 		$out = [];
 		foreach ( $product->variation_attributes() as $definition ) {
 			if ( $definition->is_global() ) {
 				$term    = get_term( $definition->attribute_term_id );
+				$swatch  = AttributeRepository::swatch_of( $definition->attribute_term_id );
 				$options = [];
 				foreach ( $definition->value_term_ids as $id ) {
 					$value     = get_term( $id );
+					$look      = $swatch !== AttributeRepository::DROPDOWN ? AttributeRepository::look( $id ) : null;
+					$image     = $swatch === AttributeRepository::IMAGE && $look !== null && $look['image_id'] > 0 ? wp_get_attachment_image_url( $look['image_id'], 'thumbnail' ) : false;
 					$options[] = [
 						'key'   => (string) $id,
 						'label' => $value instanceof \WP_Term ? $value->name : (string) $id,
+						'color' => $swatch === AttributeRepository::COLOR && $look !== null ? $look['color'] : '',
+						'image' => is_string( $image ) ? $image : '',
 					];
 				}
 				$out[] = [
 					'key'     => $definition->key,
 					'name'    => $term instanceof \WP_Term ? $term->name : '',
+					'swatch'  => $swatch,
 					'options' => $options,
 				];
 			} else {
 				$out[] = [
 					'key'     => $definition->key,
 					'name'    => $definition->name,
+					'swatch'  => Settings::string( 'swatch_custom' ) === 'button' ? AttributeRepository::BUTTON : AttributeRepository::DROPDOWN,
 					'options' => array_map(
 						static fn ( string $key ): array => [
 							'key'   => $key,
 							'label' => (string) $definition->local_label( $key ),
+							'color' => '',
+							'image' => '',
 						],
 						$definition->value_keys()
 					),

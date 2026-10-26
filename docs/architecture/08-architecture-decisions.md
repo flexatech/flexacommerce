@@ -270,3 +270,36 @@ Status of every ADR: **Accepted** (plan approved 2026-10-24) unless it says othe
 **Consequences.** DB_VERSION 4 adds two tables. Cart, Checkout and Orders get optional coupon closures, so code that builds them without coupons keeps working. Order lines carry the discount per product line and one `discount` line per code, so reports and refunds read the order alone. WooCommerce coupon migration and the discount lines in the order export reader followed (doc 05 §5.8). Free-shipping coupons followed with DB_VERSION 5 (doc 02 §7.13.8): a `free_shipping` flag on the coupon and a `requires` setting on the free shipping method, as in WooCommerce. The admin screen then got a product and category picker (`admin/coupons/targets`), and variation rules moved to their own `variant_ids` lists so a variant id is never read as a product id. The rules live in the JSON column, so this needed no DB_VERSION. DB_VERSION 6 adds `item_limit` (WooCommerce's "Limit usage to X items"), so those coupons import active instead of disabled. Buy X get Y coupons followed as a fourth type with their fields in the rules JSON; WooCommerce has no such type, so they stay in FlexaCommerce when migrating back.
 
 **Revisit when.** A store needs buy-X-get-Y rules, an add-on needs to change a discount amount (a filter would have to run in the cart, the quote and the order with the same input), or a store has more than about 10,000 codes (the admin search uses `LIKE`).
+
+## ADR-022: Swatches as radio groups, set in the Attributes screen
+
+**Context.** The user asked for the features of the flexa-extra plugin inside FlexaCommerce (2026-10-26), starting with variation swatches. flexa-extra keeps a hidden `<select>` for WooCommerce and draws swatches next to it with JavaScript, with the type stored per taxonomy in an option and the colour or image in term meta on `pa_*` terms. FlexaCommerce has no WooCommerce form to stay compatible with, and its global attributes are child terms of one `fxc_attribute` taxonomy (ADR-006).
+
+**Decision.**
+1. **Term meta, not an option.** The swatch type lives on the attribute term and the colour or image on the value term (doc 03 §3.2). Deleting a term removes its look, and an import that keeps term ids keeps it too.
+2. **Radio inputs, not a hidden select.** A swatch attribute renders as a fieldset of radios posting `attributes[{key}]`. Without JavaScript the form still posts; the Interactivity store treats a radio change like a select change. Nothing has to keep a hidden control in sync.
+3. **Edited where the values are.** The Attributes screen has a "shown as" select per attribute and a swatch button on each value chip. A colour opens a small dialog with a picker and a hex field; an image opens the media library directly, and the dialog only changes or removes it, because the media modal cannot open above our dialog.
+4. **Display options in Settings > Storefront** (doc 02 §7.2.1), with a preview.
+
+**Alternatives.** Keep flexa-extra's option map per taxonomy: one option for all attributes, but it outlives deleted attributes and needs its own cleanup. A hidden select with swatches drawn by JavaScript: two controls to keep in step, and no swatches at all without JavaScript.
+
+**Consequences.** No DB_VERSION. `PurchaseOptions` attributes gain `swatch` and each option `color` and `image`. Swatches in product lists, per-swatch stock counts and a "+N more" limit are left for later. Gallery and badges (the rest of flexa-extra's storefront features) come next, then pricing rules and product options.
+
+**Revisit when.** A store needs a swatch type per product rather than per attribute, or custom attributes need colours (they would need per-product meta, since they have no terms).
+
+## ADR-023: Badges as one ordered option, gallery options in Settings
+
+**Context.** Step 3 of the flexa-extra port (2026-10-26): product badges and the product gallery. flexa-extra stores each badge as a post of a private type and draws them with JavaScript after the page loads; its gallery is a slider library. FlexaCommerce renders the product page and the archive on the server and keeps the storefront free of scripts it does not need (doc 10).
+
+**Decision.**
+1. **One option, `flexacommerce_badges`, autoloaded.** It holds an ordered list of at most 50 badges, each a small row (text, colours, corner, shape, condition, products or categories, excluded products, places, start and end). The list is read on every product image, so it must cost no query; a post type would cost one per page. Order in the list is display order inside a corner. Ids are the largest kept id plus one. The option starts with `flexacommerce_`, so uninstall erases it.
+2. **Server-rendered overlay.** `BadgeOverlay` puts a `div.fxc-badges` inside the gallery figure, the archive card image, related products and the core featured-image block when it shows a product. The filter for that block is added at the first product image of a page, so other pages carry no extra callback. Conditions only read the product (sale price, post date, featured flag, stock, categories) and never the shopper, so pages stay cacheable. `{percent}` in the text becomes the largest variant discount, rounded down.
+3. **Gallery options are settings, not a library.** `gallery_thumbs` (bottom, left, dots), `gallery_aspect`, `gallery_arrows`, `gallery_zoom` and `gallery_lightbox` are keys of `flexacommerce_settings` (Settings > Storefront, with a preview). Arrows, swipe, hover zoom and the full-screen view are handlers in the existing `flexacommerce/cart` store; the full-screen view is a native `<dialog>`. Without scripts the main image and thumbnails still link to the full images.
+4. **Edited under Promotions > Badges**, next to coupons, because both are about selling. A badge is created from a preset (sale, new, featured, low stock, out of stock, custom) and the dialog shows a live preview.
+
+**Alternatives.** A badge post type with meta: free revisions and per-badge capabilities, but a query on every page and a screen the merchant has to leave the Promotions page for. A JavaScript slider: more effects, but a dependency, layout shift and no gallery before the script runs.
+
+**Consequences.** No DB_VERSION. A single image is now interactive by default because the full-screen view is on; turning it and zoom off gives the old script-free markup. Customer or role conditions are left out on purpose; adding one would need `Vary` handling or client-side rendering.
+
+**Revisit when.** A store needs more than 50 badges, badges per customer group, or video in the gallery.
+

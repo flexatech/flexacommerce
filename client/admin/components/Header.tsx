@@ -8,8 +8,8 @@ import type { AdminPage } from "@/shared/types/global";
 const NAV: { page: AdminPage; label: string; icon: typeof Activity }[] = [
     { page: "flexacommerce-orders", label: __("Orders"), icon: Receipt },
     { page: "flexacommerce-customers", label: __("Customers"), icon: Users },
-    { page: "flexacommerce-coupons", label: __("Coupons"), icon: TicketPercent },
     { page: "flexacommerce-attributes", label: __("Attributes"), icon: Tags },
+    { page: "flexacommerce-promotions", label: __("Promotions"), icon: TicketPercent },
     { page: "flexacommerce", label: __("Status"), icon: Activity },
     { page: "flexacommerce-settings", label: __("Settings"), icon: Settings },
     { page: "flexacommerce-migration", label: __("Migration"), icon: ArrowLeftRight },

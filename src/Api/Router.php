@@ -30,6 +30,7 @@ final class Router {
 			( new Admin\ShippingEndpoint() )->register_routes();
 			( new Admin\TaxesEndpoint() )->register_routes();
 			( new Admin\CouponsEndpoint() )->register_routes();
+			( new Admin\BadgesEndpoint() )->register_routes();
 			( new Admin\EmailsEndpoint() )->register_routes();
 			( new Admin\MigrationsEndpoint() )->register_routes();
 			( new Admin\CutoverEndpoint() )->register_routes();

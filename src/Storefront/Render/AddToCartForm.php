@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace Flexa\Commerce\Storefront\Render;
 
 use Flexa\Commerce\Cart\PurchaseOptions;
+use Flexa\Commerce\Catalog\AttributeRepository;
 use Flexa\Commerce\Catalog\Product;
 use Flexa\Commerce\Storefront\Assets;
 use Flexa\Commerce\Storefront\FormHandler;
+use Flexa\Commerce\Support\Settings;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -138,10 +140,14 @@ final class AddToCartForm {
 		return $html . '</form>';
 	}
 
-	/** @param list<array{key:string,name:string,options:list<array{key:string,label:string}>}> $attributes */
+	/** @param list<array{key:string,name:string,swatch:string,options:list<array{key:string,label:string,color:string,image:string}>}> $attributes */
 	private static function selectors( array $attributes ): string {
 		$html = '';
 		foreach ( $attributes as $attribute ) {
+			if ( $attribute['swatch'] !== AttributeRepository::DROPDOWN ) {
+				$html .= self::swatches( $attribute );
+				continue;
+			}
 			$id    = wp_unique_id( 'fxc-attr-' );
 			$html .= '<p class="fxc-add-to-cart__option" ' . wp_interactivity_data_wp_context( [ 'attribute' => $attribute['key'] ] ) . '>';
 			$html .= sprintf( '<label for="%1$s">%2$s</label> ', esc_attr( $id ), esc_html( $attribute['name'] ) );
@@ -161,5 +167,69 @@ final class AddToCartForm {
 			$html .= '</select></p>';
 		}
 		return $html;
+	}
+
+	/**
+	 * A group of radio buttons drawn as colours, images or buttons (ADR-022).
+	 * They post the same `attributes[key]` field as the dropdown, so the
+	 * form works without JavaScript; keyboard and screen readers get a plain
+	 * radio group.
+	 *
+	 * @param array{key:string,name:string,swatch:string,options:list<array{key:string,label:string,color:string,image:string}>} $attribute
+	 */
+	private static function swatches( array $attribute ): string {
+		$classes = [
+			'fxc-add-to-cart__option',
+			'fxc-swatches',
+			'fxc-swatches--' . $attribute['swatch'],
+			'fxc-swatches--' . Settings::string( 'swatch_shape' ),
+		];
+		if ( Settings::string( 'swatch_unavailable' ) === 'hide' ) {
+			$classes[] = 'fxc-swatches--hide-unavailable';
+		}
+		$labels = [];
+		foreach ( $attribute['options'] as $option ) {
+			$labels[ $option['key'] ] = $option['label'];
+		}
+
+		$html  = sprintf(
+			'<fieldset class="%1$s" style="--fxc-swatch-size:%2$dpx" %3$s>',
+			esc_attr( implode( ' ', $classes ) ),
+			Settings::int( 'swatch_size' ),
+			wp_interactivity_data_wp_context(
+				[
+					'attribute' => $attribute['key'],
+					'labels'    => (object) $labels,
+				]
+			)
+		);
+		$html .= '<legend class="fxc-swatches__legend">' . esc_html( $attribute['name'] );
+		if ( Settings::bool( 'swatch_show_choice' ) ) {
+			$html .= '<span class="fxc-swatches__chosen" data-wp-text="state.chosenLabel"></span>';
+		}
+		$html .= '</legend><div class="fxc-swatches__list">';
+		foreach ( $attribute['options'] as $option ) {
+			if ( $option['image'] !== '' ) {
+				$face = sprintf( '<img src="%s" alt="" loading="lazy" decoding="async">', esc_url( $option['image'] ) );
+				$kind = 'image';
+			} elseif ( $option['color'] !== '' ) {
+				$face = '';
+				$kind = 'color';
+			} else {
+				$face = esc_html( $option['label'] );
+				$kind = 'button';
+			}
+			$html .= sprintf(
+				'<label class="fxc-swatch fxc-swatch--%1$s"%2$s><input class="fxc-swatch__input" type="radio" name="attributes[%3$s]" value="%4$s" required data-wp-on--change="actions.choose" data-wp-bind--disabled="state.optionUnavailable"><span class="fxc-swatch__face"%5$s>%6$s</span>%7$s</label>',
+				esc_attr( $kind ),
+				$kind !== 'button' ? ' title="' . esc_attr( $option['label'] ) . '"' : '',
+				esc_attr( $attribute['key'] ),
+				esc_attr( $option['key'] ),
+				$kind === 'color' ? ' style="--fxc-swatch-color:' . esc_attr( $option['color'] ) . '"' : '',
+				$face,
+				$kind !== 'button' ? '<span class="screen-reader-text">' . esc_html( $option['label'] ) . '</span>' : ''
+			);
+		}
+		return $html . '</div></fieldset>';
 	}
 }

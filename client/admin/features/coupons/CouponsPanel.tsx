@@ -9,8 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/shared/components/ui/input";
 import { __, sprintf } from "@/shared/lib/i18n";
 import { useDebounced } from "@/shared/lib/useDebounced";
-import { PageTitle } from "../../components/PageTitle";
-import { Tabs } from "../../components/Tabs";
+import { Select } from "@/shared/components/ui/select";
 import { formatDate, orderMoney } from "../orders/format";
 import { CouponDialog } from "./CouponDialog";
 import { useCoupons, useDeleteCoupon, type Coupon, type CouponListParams } from "./useCoupons";
@@ -49,7 +48,8 @@ function stateOf(coupon: Coupon): { label: string; tone: "success" | "muted" | "
     return { label: __("Active"), tone: "success" };
 }
 
-export function CouponsPage() {
+/** The Coupons tab of Promotions. */
+export function CouponsPanel() {
     const [params, setParams] = useState<CouponListParams>({ status: "", search: "", page: 1 });
     const [search, setSearch] = useState("");
     const debounced = useDebounced(search);
@@ -68,27 +68,7 @@ export function CouponsPage() {
 
     return (
         <div className="fxc:space-y-4">
-            <PageTitle
-                title={__("Coupons")}
-                description={__("Discount codes shoppers enter in the cart. Coupons apply in the order they are added, each to what the earlier ones left.")}
-                actions={
-                    <Button onClick={() => setEditing({ coupon: null })}>
-                        <Plus aria-hidden className="fxc:size-4" />
-                        {__("Add coupon")}
-                    </Button>
-                }
-            />
-
-            <div className="fxc:flex fxc:flex-wrap fxc:items-end fxc:justify-between fxc:gap-3">
-                <Tabs
-                    value={params.status}
-                    onChange={(status: CouponListParams["status"]) => setParams({ ...params, status, page: 1 })}
-                    items={[
-                        { value: "", label: __("All") },
-                        { value: "active", label: __("Active") },
-                        { value: "disabled", label: __("Disabled") },
-                    ]}
-                />
+            <div className="fxc:flex fxc:flex-wrap fxc:items-center fxc:gap-3">
                 <div className="fxc:relative fxc:w-64">
                     <Search aria-hidden className="fxc:text-muted-foreground fxc:pointer-events-none fxc:absolute fxc:top-2.5 fxc:left-3 fxc:size-4" />
                     <Input
@@ -99,7 +79,25 @@ export function CouponsPage() {
                         className="fxc:pl-9!"
                     />
                 </div>
+                <Select
+                    aria-label={__("Status")}
+                    className="fxc:w-40"
+                    value={params.status}
+                    onChange={(e) => setParams({ ...params, status: e.target.value as CouponListParams["status"], page: 1 })}
+                    options={[
+                        { value: "", label: __("All statuses") },
+                        { value: "active", label: __("Active") },
+                        { value: "disabled", label: __("Disabled") },
+                    ]}
+                />
+                <Button className="fxc:ms-auto" onClick={() => setEditing({ coupon: null })}>
+                    <Plus aria-hidden className="fxc:size-4" />
+                    {__("Add coupon")}
+                </Button>
             </div>
+            <p className="fxc:text-muted-foreground fxc:text-sm">
+                {__("Discount codes shoppers enter in the cart. Coupons apply in the order they are added, each to what the earlier ones left.")}
+            </p>
 
             <Card className="fxc:overflow-x-auto">
                 {list.isPending ? (

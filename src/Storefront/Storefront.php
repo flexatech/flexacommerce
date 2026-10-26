@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace Flexa\Commerce\Storefront;
 
+use Flexa\Commerce\Badges\Badge;
+use Flexa\Commerce\Badges\BadgeMatcher;
 use Flexa\Commerce\Catalog\PostTypes;
 use Flexa\Commerce\Catalog\Product;
 use Flexa\Commerce\Concerns\HasInstance;
 use Flexa\Commerce\Plugin;
 use Flexa\Commerce\Storefront\Render\AddToCartForm;
+use Flexa\Commerce\Storefront\Render\BadgeOverlay;
 use Flexa\Commerce\Storefront\Render\Breadcrumbs;
 use Flexa\Commerce\Storefront\Render\CartTable;
 use Flexa\Commerce\Storefront\Render\Gallery;
@@ -64,6 +67,8 @@ final class Storefront {
 	private ?ShopControls $controls = null;
 
 	private ?RelatedProducts $related = null;
+
+	private ?BadgeOverlay $badges = null;
 
 	public function register_blocks(): void {
 		if ( $this->blocks ) {
@@ -150,17 +155,26 @@ final class Storefront {
 	/**
 	 * One piece of a classic template: the markup of one of our blocks, by
 	 * name, for the current product or `$product_id`; `card` is the price
-	 * and button of a product in a list.
+	 * and button of a product in a list, `badges` the badges over its image.
 	 */
 	public function part( string $name, int $product_id = 0 ): string {
-		if ( $name === 'card' ) {
+		if ( $name === 'card' || $name === 'badges' ) {
 			$product = $this->product( $product_id > 0 ? $product_id : (int) get_the_ID() );
-			return $product === null ? '' : $this->card( $product );
+			if ( $product === null ) {
+				return '';
+			}
+			return $name === 'card' ? $this->card( $product ) : $this->badges()->html( $product, Badge::LOOP );
 		}
 		if ( ! in_array( $name, self::BLOCKS, true ) ) {
 			return '';
 		}
 		return $this->block_html( $name, $product_id > 0 ? [ 'productId' => $product_id ] : [], null );
+	}
+
+	/** A featured image block of a product in a list, with its badges. */
+	public function with_badges( string $html, int $product_id ): string {
+		$product = $this->product( $product_id );
+		return $product === null ? $html : $this->badges()->inside( $html, $product, is_singular( PostTypes::PRODUCT ) && get_queried_object_id() === $product_id ? Badge::SINGLE : Badge::LOOP );
 	}
 
 	/** @param array<string,mixed> $attributes */
@@ -336,7 +350,7 @@ final class Storefront {
 	}
 
 	private function gallery(): Gallery {
-		return $this->gallery ??= new Gallery();
+		return $this->gallery ??= new Gallery( $this->badges() );
 	}
 
 	private function controls(): ShopControls {
@@ -347,8 +361,13 @@ final class Storefront {
 		return $this->related ??= new RelatedProducts(
 			Plugin::instance()->catalog()->products(),
 			fn ( int $id ): ?Product => $this->product( $id ),
-			fn ( Product $product ): string => $this->card( $product )
+			fn ( Product $product ): string => $this->card( $product ),
+			fn ( Product $product ): string => $this->badges()->html( $product, Badge::LOOP )
 		);
+	}
+
+	private function badges(): BadgeOverlay {
+		return $this->badges ??= new BadgeOverlay( new BadgeMatcher( Plugin::instance()->badges() ) );
 	}
 
 	/** Price and the list add-to-cart button. */

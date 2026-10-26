@@ -33,6 +33,16 @@ export interface Settings {
     price_display_suffix: string;
     tax_total_display: "itemized" | "single";
     tax_markets: TaxMarket[];
+    swatch_size: number;
+    swatch_shape: "round" | "square";
+    swatch_show_choice: boolean;
+    swatch_unavailable: "dim" | "hide";
+    swatch_custom: "dropdown" | "button";
+    gallery_thumbs: "bottom" | "left" | "dots";
+    gallery_aspect: "original" | "square" | "portrait" | "landscape";
+    gallery_arrows: boolean;
+    gallery_zoom: boolean;
+    gallery_lightbox: boolean;
 }
 
 export interface SettingsPayload {

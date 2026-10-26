@@ -12,23 +12,109 @@ defined( 'ABSPATH' ) || exit;
  * Global attributes are top-level `fxc_attribute` terms and their values
  * are child terms (ADR-006). Order is kept in the `_fxc_position` term meta.
  * Everything goes through the terms API, so no SQL lives here.
+ *
+ * Swatches (ADR-022): an attribute term keeps how the product page shows it
+ * in `_fxc_swatch`, and a value term its colour or image.
  */
 final class AttributeRepository {
 	public const POSITION_META = '_fxc_position';
+	public const SWATCH_META   = '_fxc_swatch';
+	public const COLOR_META    = '_fxc_color';
+	public const IMAGE_META    = '_fxc_image_id';
+
+	/** How an attribute is shown on the product page; '' is the dropdown. */
+	public const DROPDOWN = '';
+	public const COLOR    = 'color';
+	public const IMAGE    = 'image';
+	public const BUTTON   = 'button';
+	public const SWATCHES = [ self::DROPDOWN, self::COLOR, self::IMAGE, self::BUTTON ];
 
 	/** @var array<int,\WP_Term|null> */
 	private array $terms = [];
 
-	/** @return list<array{id:int,name:string,slug:string,position:int,values:list<array{id:int,name:string,slug:string,position:int}>}> */
+	/** @return list<array{id:int,name:string,slug:string,position:int,swatch:string,values:list<array{id:int,name:string,slug:string,position:int,color:string,image_id:int,image_url:string}>}> */
 	public function all(): array {
 		$parents = $this->query( 0 );
 		$values  = $this->query( null );
 		$out     = [];
 		foreach ( $parents as $parent ) {
 			$children = array_values( array_filter( $values, static fn ( \WP_Term $t ): bool => (int) $t->parent === (int) $parent->term_id ) );
-			$out[]    = $this->shape( $parent ) + [ 'values' => array_map( [ $this, 'shape' ], $children ) ];
+			$out[]    = self::shape( $parent ) + [
+				'swatch' => self::swatch_of( (int) $parent->term_id ),
+				'values' => array_map(
+					static function ( \WP_Term $term ): array {
+						$look = self::look( (int) $term->term_id );
+						$url  = $look['image_id'] > 0 ? wp_get_attachment_image_url( $look['image_id'], 'thumbnail' ) : false;
+						return self::shape( $term ) + $look + [ 'image_url' => is_string( $url ) ? $url : '' ];
+					},
+					$children
+				),
+			];
 		}
 		return $out;
+	}
+
+	/** How the attribute is shown on the product page: one of SWATCHES. */
+	public static function swatch_of( int $attribute_id ): string {
+		$type = get_term_meta( $attribute_id, self::SWATCH_META, true );
+		return is_string( $type ) && in_array( $type, self::SWATCHES, true ) ? $type : self::DROPDOWN;
+	}
+
+	/**
+	 * The colour (`#rrggbb` or '') and image (attachment id or 0) of a value.
+	 *
+	 * @return array{color:string,image_id:int}
+	 */
+	public static function look( int $value_id ): array {
+		$color = get_term_meta( $value_id, self::COLOR_META, true );
+		$image = get_term_meta( $value_id, self::IMAGE_META, true );
+		return [
+			'color'    => is_string( $color ) ? (string) sanitize_hex_color( $color ) : '',
+			'image_id' => is_numeric( $image ) ? max( 0, (int) $image ) : 0,
+		];
+	}
+
+	public function set_swatch( int $attribute_id, string $type ): void {
+		if ( $this->attribute( $attribute_id ) === null ) {
+			throw new InvalidAttribute( __( 'Attribute not found.', 'flexacommerce' ) );
+		}
+		if ( ! in_array( $type, self::SWATCHES, true ) ) {
+			throw new InvalidAttribute( __( 'Choose how the attribute is shown.', 'flexacommerce' ) );
+		}
+		if ( $type === self::DROPDOWN ) {
+			delete_term_meta( $attribute_id, self::SWATCH_META );
+		} else {
+			update_term_meta( $attribute_id, self::SWATCH_META, $type );
+		}
+	}
+
+	/** Sets the colour ('' clears it), the image (0 clears it), or both; null leaves one as it is. */
+	public function set_look( int $value_id, ?string $color, ?int $image_id ): void {
+		$term = $this->term( $value_id );
+		if ( $term === null || (int) $term->parent === 0 ) {
+			throw new InvalidAttribute( __( 'Value not found.', 'flexacommerce' ) );
+		}
+		if ( $color !== null ) {
+			$clean = (string) sanitize_hex_color( strtolower( trim( $color ) ) );
+			if ( $clean === '' && trim( $color ) !== '' ) {
+				throw new InvalidAttribute( __( 'Enter a colour as #rrggbb.', 'flexacommerce' ) );
+			}
+			if ( $clean === '' ) {
+				delete_term_meta( $value_id, self::COLOR_META );
+			} else {
+				update_term_meta( $value_id, self::COLOR_META, $clean );
+			}
+		}
+		if ( $image_id !== null ) {
+			if ( $image_id > 0 && ! wp_attachment_is_image( $image_id ) ) {
+				throw new InvalidAttribute( __( 'Choose an image from the media library.', 'flexacommerce' ) );
+			}
+			if ( $image_id > 0 ) {
+				update_term_meta( $value_id, self::IMAGE_META, $image_id );
+			} else {
+				delete_term_meta( $value_id, self::IMAGE_META );
+			}
+		}
 	}
 
 	/** A top-level attribute term, or null. */
@@ -185,7 +271,7 @@ final class AttributeRepository {
 	}
 
 	/** @return array{id:int,name:string,slug:string,position:int} */
-	private function shape( \WP_Term $term ): array {
+	private static function shape( \WP_Term $term ): array {
 		$position = self::position( $term );
 		return [
 			'id'       => (int) $term->term_id,

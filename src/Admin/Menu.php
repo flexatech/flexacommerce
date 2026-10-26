@@ -24,14 +24,19 @@ final class Menu {
 	private const ORDER = [
 		self::SLUG . '-orders',
 		self::SLUG . '-customers',
-		self::SLUG . '-coupons',
 		'edit.php?post_type=' . PostTypes::PRODUCT,
 		'edit-tags.php?taxonomy=' . PostTypes::CATEGORY . '&post_type=' . PostTypes::PRODUCT,
 		'edit-tags.php?taxonomy=' . PostTypes::TAG . '&post_type=' . PostTypes::PRODUCT,
 		self::SLUG . '-attributes',
+		self::SLUG . '-promotions',
 		self::SLUG . '-settings',
 		self::SLUG . '-migration',
 		self::SLUG,
+	];
+
+	/** Pages that moved, old slug => the query args of the page they moved to. */
+	private const MOVED = [
+		self::SLUG . '-coupons' => [ 'page' => self::SLUG . '-promotions' ],
 	];
 
 	/** @var array<string,string> page slug => hook suffix */
@@ -40,6 +45,7 @@ final class Menu {
 	public function register(): void {
 		add_action( 'admin_menu', [ $this, 'register_menu' ] );
 		add_action( 'admin_menu', [ $this, 'order_menu' ], 999 );
+		add_action( 'admin_init', [ $this, 'redirect_moved' ] );
 		add_filter( 'admin_body_class', [ $this, 'admin_body_class' ] );
 		add_filter( 'parent_file', [ $this, 'parent_file' ] );
 		add_filter( 'submenu_file', [ $this, 'submenu_file' ] );
@@ -92,13 +98,13 @@ final class Menu {
 			)
 		);
 		$this->add(
-			self::SLUG . '-coupons',
+			self::SLUG . '-promotions',
 			(string) add_submenu_page(
 				self::SLUG,
-				__( 'Coupons', 'flexacommerce' ),
-				__( 'Coupons', 'flexacommerce' ),
+				__( 'Promotions', 'flexacommerce' ),
+				__( 'Promotions', 'flexacommerce' ),
 				Capabilities::MANAGE,
-				self::SLUG . '-coupons',
+				self::SLUG . '-promotions',
 				[ $this, 'render_page' ]
 			)
 		);
@@ -147,6 +153,16 @@ final class Menu {
 				[ $this, 'render_page' ]
 			)
 		);
+	}
+
+	/** An old bookmark (the Coupons page before Promotions) opens the page it moved to. */
+	public function redirect_moved(): void {
+		$page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- a page link, no state change.
+		if ( ! isset( self::MOVED[ $page ] ) ) {
+			return;
+		}
+		wp_safe_redirect( add_query_arg( self::MOVED[ $page ], admin_url( 'admin.php' ) ) );
+		exit;
 	}
 
 	/** Orders first: the top-level item links to the first submenu entry. */

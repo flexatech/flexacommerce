@@ -43,6 +43,8 @@ final class Plugin {
 
 	private ?Coupons\CouponServices $coupons = null;
 
+	private ?Badges\BadgeRepository $badges = null;
+
 	private ?Migration\MigrationServices $migration = null;
 
 	private ?Notifications\NotificationServices $notifications = null;
@@ -156,6 +158,11 @@ final class Plugin {
 	/** @internal Coupon codes, built the first time a cart holds one or the Coupons screen is opened. */
 	public function coupons(): Coupons\CouponServices {
 		return $this->coupons ??= new Coupons\CouponServices( $this->services(), $this->cart()->pricing() );
+	}
+
+	/** The labels drawn over product images (ADR-023). */
+	public function badges(): Badges\BadgeRepository {
+		return $this->badges ??= new Badges\BadgeRepository();
 	}
 
 	/**
@@ -289,7 +296,26 @@ final class Plugin {
 		if ( $parent === null && self::has_own_block( $parsed ) ) {
 			$this->register_blocks();
 		}
+		// Added at the first product image (a Query Loop sets the post), so other pages carry no extra callback.
+		if ( ( $parsed['blockName'] ?? null ) === 'core/post-featured-image' && get_post_type( (int) ( $parent->context['postId'] ?? get_the_ID() ) ) === Catalog\PostTypes::PRODUCT && ! has_filter( 'render_block_core/post-featured-image', [ $this, 'on_featured_image' ] ) ) {
+			add_filter( 'render_block_core/post-featured-image', [ $this, 'on_featured_image' ], 10, 3 );
+		}
 		return $pre;
+	}
+
+	/**
+	 * Badges on the image of a product in a Query Loop. Other posts, and
+	 * stores without badges, pass through without loading the storefront.
+	 *
+	 * @param array<string,mixed> $parsed
+	 */
+	public function on_featured_image( string $html, array $parsed, ?\WP_Block $block = null ): string {
+		unset( $parsed );
+		$id = $block !== null && isset( $block->context['postId'] ) ? (int) $block->context['postId'] : (int) get_the_ID();
+		if ( $html === '' || $id <= 0 || get_post_type( $id ) !== Catalog\PostTypes::PRODUCT || get_option( Badges\BadgeRepository::OPTION, [] ) === [] ) {
+			return $html;
+		}
+		return Storefront\Storefront::instance()->with_badges( $html, $id );
 	}
 
 	/** @param array<string,mixed> $parsed */

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Flexa\Commerce\Api\Admin;
 
 use Flexa\Commerce\Api\Endpoint;
+use Flexa\Commerce\Catalog\AttributeRepository;
 use Flexa\Commerce\Contracts\CommerceException;
 use Flexa\Commerce\Contracts\Exceptions\InvalidAttribute;
 use Flexa\Commerce\Plugin;
@@ -79,9 +80,23 @@ final class AttributesEndpoint extends Endpoint {
 			[
 				[
 					'methods'             => WP_REST_Server::EDITABLE,
-					'callback'            => [ $this, 'rename' ],
+					'callback'            => [ $this, 'update' ],
 					'permission_callback' => [ $this, 'manage_product_terms_permission' ],
-					'args'                => $id + $name,
+					'args'                => $id + [
+						'name'     => [
+							'type'              => 'string',
+							'sanitize_callback' => 'sanitize_text_field',
+						],
+						'swatch'   => [
+							'type' => 'string',
+							'enum' => AttributeRepository::SWATCHES,
+						],
+						'color'    => [ 'type' => 'string' ],
+						'image_id' => [
+							'type'    => 'integer',
+							'minimum' => 0,
+						],
+					],
 				],
 				[
 					'methods'             => WP_REST_Server::DELETABLE,
@@ -128,8 +143,13 @@ final class AttributesEndpoint extends Endpoint {
 		);
 	}
 
-	/** @param WP_REST_Request<array<string,mixed>> $request */
-	public function rename( WP_REST_Request $request ): WP_REST_Response|WP_Error {
+	/**
+	 * Renames a term, sets how an attribute is shown (`swatch`), or sets
+	 * the colour or image of a value. Only the fields sent change.
+	 *
+	 * @param WP_REST_Request<array<string,mixed>> $request
+	 */
+	public function update( WP_REST_Request $request ): WP_REST_Response|WP_Error {
 		return $this->attempt(
 			static function () use ( $request ): void {
 				$repository = Plugin::instance()->catalog()->attributes();
@@ -137,7 +157,17 @@ final class AttributesEndpoint extends Endpoint {
 				if ( $repository->name( $id ) === '' ) {
 					throw new InvalidAttribute( __( 'Attribute not found.', 'flexacommerce' ) );
 				}
-				$repository->rename( $id, (string) $request->get_param( 'name' ) );
+				if ( $request->has_param( 'name' ) ) {
+					$repository->rename( $id, (string) $request->get_param( 'name' ) );
+				}
+				if ( $request->has_param( 'swatch' ) ) {
+					$repository->set_swatch( $id, (string) $request->get_param( 'swatch' ) );
+				}
+				$color = $request->has_param( 'color' ) ? (string) $request->get_param( 'color' ) : null;
+				$image = $request->has_param( 'image_id' ) ? (int) $request->get_param( 'image_id' ) : null;
+				if ( $color !== null || $image !== null ) {
+					$repository->set_look( $id, $color, $image );
+				}
 			}
 		);
 	}

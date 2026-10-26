@@ -8,6 +8,7 @@ import { getPluginGlobal } from "@/shared/lib/api";
 import { cn } from "@/shared/lib/cn";
 import { __, _n, sprintf } from "@/shared/lib/i18n";
 import { formatMoney } from "@/shared/lib/units";
+import { canPickImage, pickImage } from "../../components/pickImage";
 import { combinationLabel, newVariation } from "./draft";
 import { Field, IntInput, MoneyInput, Toggle } from "./fields";
 import { InventoryFields, PricingFields, ShippingFields, TaxFields, type FieldErrors } from "./RowFields";
@@ -314,37 +315,17 @@ function VariationEditor({
     );
 }
 
-interface MediaFrame {
-    on(event: "select", callback: () => void): void;
-    open(): void;
-    state(): { get(key: "selection"): { first(): { id: number; get(key: string): unknown } | undefined } };
-}
-
-declare global {
-    interface WpGlobal {
-        media?: (options: Record<string, unknown>) => MediaFrame;
-    }
-}
-
 function ImagePicker({ imageId, onChange }: { imageId: number | null; onChange: (id: number | null) => void }) {
     const [preview, setPreview] = useState<string | null>(null);
-    const media = window.wp?.media;
-    if (!media) {
+    if (!canPickImage()) {
         return null;
     }
 
-    const choose = () => {
-        const frame = media({ title: __("Variation image"), multiple: false, library: { type: "image" } });
-        frame.on("select", () => {
-            const attachment = frame.state().get("selection").first();
-            if (attachment) {
-                const sizes = attachment.get("sizes") as Record<string, { url: string }> | undefined;
-                setPreview(sizes?.thumbnail?.url ?? (attachment.get("url") as string));
-                onChange(attachment.id);
-            }
+    const choose = () =>
+        pickImage(__("Variation image"), (image) => {
+            setPreview(image.url);
+            onChange(image.id);
         });
-        frame.open();
-    };
 
     return (
         <div className="fxc:flex fxc:items-center fxc:gap-2">

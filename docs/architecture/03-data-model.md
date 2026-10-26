@@ -20,7 +20,7 @@ Status: **Approved 2026-10-24**. All table names below are shown without `{$wpdb
 | Plugin log | `fxc_logs` | Filterable by channel and level, pruned by cron (§4.12). |
 | Migration | `fxc_id_map`, `fxc_migration_jobs`, `fxc_migration_log` | Idempotency and resumability (doc 05). |
 | Customers | `wp_users` + user options `fxc_billing`, `fxc_shipping` (JSON, site-prefixed meta keys) | No separate customer table (§7). |
-| Settings | `wp_options`: `flexacommerce_settings` (autoload), `flexacommerce_shipping_zones`, `flexacommerce_gateway_{id}`, `flexacommerce_email_{id}` (no autoload) | Small configuration data. |
+| Settings | `wp_options`: `flexacommerce_settings` (autoload), `flexacommerce_badges` (autoload, ordered list of up to 50 badges, ADR-023), `flexacommerce_shipping_zones`, `flexacommerce_gateway_{id}`, `flexacommerce_email_{id}` (no autoload) | Small configuration data. |
 | Media | Media Library attachments | Product meta and variants store attachment IDs only. |
 
 ## 2. Cross-cutting rules
@@ -107,6 +107,7 @@ fxc_product (post)
 - `combination_hash = sha1( canonical string )`, `UNIQUE( product_id, combination_hash )`. Two variations with the same exact combination cannot exist. Overlapping wildcard rows (`g:12=*` and `g:12=31`) are allowed, as in WooCommerce, and resolved by `VariantMatcher`: exact match beats wildcard, fewer wildcards win, then `menu_order`, then id. The admin editor shows an "overlapping variations" warning.
 - Only attributes flagged `variation: true` may appear in combinations. When a save removes an attribute or a value, stored variations that used it become stale: deleted when they hold no stock, otherwise disabled. Dropping a whole axis can make two stored rows identical; the later one is treated as stale the same way. A row whose combination is sent explicitly in the save must only use offered values, or the save fails with `InvalidProduct`, so a merchant's own edit is never silently dropped. The editor sends a variation's combination only when the merchant changed it.
 - A store attribute or value deleted from the Attributes screen is dropped from every product the next time the product is read, so later saves do not fail on a missing term.
+- Swatch term meta (ADR-022): `_fxc_swatch` on an attribute term (`color`, `image` or `button`; absent means dropdown), `_fxc_color` (`#rrggbb`) and `_fxc_image_id` (attachment id) on a value term. No meta is written for a dropdown or an empty colour or image. Deleting a term deletes its meta with it.
 
 ### 3.3 Price resolution
 

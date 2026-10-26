@@ -29,6 +29,9 @@ final class Enqueue {
 	public function enqueue_admin( string $hook_suffix ): void {
 		$page = Menu::instance()->page_for( $hook_suffix );
 		if ( $page !== '' ) {
+			if ( $page === Menu::SLUG . '-attributes' ) {
+				wp_enqueue_media(); // Image swatches pick from the media library.
+			}
 			$this->enqueue_entry( self::HANDLE, self::ENTRY, $page );
 		}
 	}

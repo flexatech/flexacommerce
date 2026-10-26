@@ -23,11 +23,13 @@ import { __ } from "@/shared/lib/i18n";
 import { PageTitle } from "../../components/PageTitle";
 import { SettingRow } from "../../components/SettingRow";
 import { Tabs } from "../../components/Tabs";
+import { useUrlTab } from "../../components/useUrlTab";
 import { EmailsPanel } from "../emails/EmailsPanel";
 import { PaymentsPanel } from "../payments/PaymentsPanel";
 import { ShippingPanel } from "../shipping/ShippingPanel";
 import { TaxPanel } from "../taxes/TaxPanel";
 import { DataRemoval } from "./DataRemoval";
+import { StorefrontPanel } from "./StorefrontPanel";
 import { useSaveSettings, useSettings, type Settings } from "./useSettings";
 
 type Draft = Omit<Settings, "remove_data_on_uninstall">;
@@ -47,32 +49,11 @@ function toInt(value: string): number {
     return Number.isFinite(n) ? n : 0;
 }
 
-type Tab = "general" | "payments" | "shipping" | "tax" | "emails";
-
-function readTab(): Tab {
-    const tab = new URLSearchParams(window.location.search).get("tab");
-    return tab === "payments" || tab === "shipping" || tab === "tax" || tab === "emails" ? tab : "general";
-}
+const TABS = ["general", "storefront", "payments", "shipping", "tax", "emails"] as const;
+type Tab = (typeof TABS)[number];
 
 export function SettingsPage() {
-    const [tab, setTab] = useState<Tab>(readTab);
-
-    useEffect(() => {
-        const onPop = () => setTab(readTab());
-        window.addEventListener("popstate", onPop);
-        return () => window.removeEventListener("popstate", onPop);
-    }, []);
-
-    const select = (next: Tab) => {
-        const url = new URL(window.location.href);
-        if (next === "general") {
-            url.searchParams.delete("tab");
-        } else {
-            url.searchParams.set("tab", next);
-        }
-        window.history.pushState(null, "", url.toString());
-        setTab(next);
-    };
+    const [tab, select] = useUrlTab<Tab>(TABS);
 
     return (
         <div>
@@ -83,6 +64,7 @@ export function SettingsPage() {
                     onChange={select}
                     items={[
                         { value: "general", label: __("General") },
+                        { value: "storefront", label: __("Storefront") },
                         { value: "payments", label: __("Payments") },
                         { value: "shipping", label: __("Shipping") },
                         { value: "tax", label: __("Tax") },
@@ -90,7 +72,9 @@ export function SettingsPage() {
                     ]}
                 />
             </div>
-            {tab === "payments" ? (
+            {tab === "storefront" ? (
+                <StorefrontPanel />
+            ) : tab === "payments" ? (
                 <PaymentsPanel />
             ) : tab === "shipping" ? (
                 <ShippingPanel />

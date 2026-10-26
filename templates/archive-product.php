@@ -38,7 +38,7 @@ get_header();
 			?>
 			<li <?php post_class( 'fxc-products__item' ); ?>>
 				<?php if ( has_post_thumbnail() ) : ?>
-					<a class="fxc-products__image" href="<?php the_permalink(); ?>" tabindex="-1" aria-hidden="true"><?php the_post_thumbnail( 'medium', [ 'loading' => 'lazy' ] ); ?></a>
+					<a class="fxc-products__image" href="<?php the_permalink(); ?>" tabindex="-1" aria-hidden="true"><?php the_post_thumbnail( 'medium', [ 'loading' => 'lazy' ] ); ?><?php echo $fxc->part( 'badges' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped markup. ?></a>
 				<?php endif; ?>
 				<h2 class="fxc-products__name"><a href="<?php the_permalink(); ?>"><?php the_title(); ?></a></h2>
 				<?php echo $fxc->part( 'card' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped markup. ?>

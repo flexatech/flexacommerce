@@ -16,8 +16,13 @@ final class ProductBlocksTest extends CartTestCase {
 	public function tear_down(): void {
 		Settings::update(
 			[
-				'weight_unit'    => 'kg',
-				'dimension_unit' => 'cm',
+				'weight_unit'      => 'kg',
+				'dimension_unit'   => 'cm',
+				'gallery_thumbs'   => 'bottom',
+				'gallery_aspect'   => 'original',
+				'gallery_arrows'   => true,
+				'gallery_zoom'     => false,
+				'gallery_lightbox' => true,
 			]
 		);
 		parent::tear_down();
@@ -135,7 +140,10 @@ final class ProductBlocksTest extends CartTestCase {
 	public function test_gallery_markup(): void {
 		$id    = $this->simple();
 		$first = $this->image( $id );
-		self::assertStringNotContainsString( 'data-wp-interactive', $this->block( 'product-gallery', $id ), 'one image needs no script' );
+		self::assertStringContainsString( '<dialog class="fxc-lightbox"', $this->block( 'product-gallery', $id ), 'one image still opens full screen' );
+		Settings::update( [ 'gallery_lightbox' => false ] );
+		self::assertStringNotContainsString( 'data-wp-interactive', $this->block( 'product-gallery', $id ), 'one image without a full-screen view needs no script' );
+		Settings::update( [ 'gallery_lightbox' => true ] );
 
 		$second = $this->image( $id, false );
 		$this->save( $id, [ 'gallery_ids' => [ $second ] ] );
@@ -146,6 +154,28 @@ final class ProductBlocksTest extends CartTestCase {
 		self::assertSame( 1, substr_count( $html, 'aria-current="true"' ) );
 		self::assertStringContainsString( 'data-image="' . $first . '"', $html );
 		self::assertStringContainsString( 'Show image 2 of 2', $html );
+		self::assertStringContainsString( 'class="fxc-gallery fxc-gallery--thumbs-bottom fxc-gallery--aspect-original ', $html );
+		self::assertSame( 2, substr_count( $html, 'data-wp-on--click="actions.galleryNext"' ), 'arrows on the image and in the full-screen view' );
+		self::assertStringContainsString( 'data-wp-on--click="actions.openLightbox"', $html );
+		self::assertStringContainsString( 'data-wp-text="state.galleryCount"', $html );
+		self::assertStringNotContainsString( 'actions.zoom', $html );
+
+		Settings::update(
+			[
+				'gallery_thumbs'   => 'dots',
+				'gallery_aspect'   => 'square',
+				'gallery_arrows'   => false,
+				'gallery_zoom'     => true,
+				'gallery_lightbox' => false,
+			]
+		);
+		$html = $this->block( 'product-gallery', $id );
+		self::assertStringContainsString( 'fxc-gallery--thumbs-dots fxc-gallery--aspect-square fxc-gallery--zoom', $html );
+		self::assertStringContainsString( 'data-wp-on-async--mousemove="actions.zoom"', $html );
+		self::assertStringContainsString( 'data-wp-style--transform-origin="context.origin"', $html );
+		self::assertStringNotContainsString( 'galleryNext', $html );
+		self::assertStringNotContainsString( '<dialog', $html );
+		self::assertStringNotContainsString( '<img', substr( $html, (int) strpos( $html, 'fxc-gallery__thumbs' ) ), 'dots draw no thumbnails' );
 	}
 
 	public function test_breadcrumbs_of_a_product_and_the_filter(): void {
@@ -173,7 +203,7 @@ final class ProductBlocksTest extends CartTestCase {
 
 		$filter = static fn ( array $crumbs ): array => array_merge( $crumbs, [ 'junk', [ 'Extra', '' ] ] );
 		add_filter( 'flexacommerce.breadcrumbs', $filter );
-		$html = do_blocks( '<!-- wp:flexacommerce/breadcrumbs /-->' );
+		$html   = do_blocks( '<!-- wp:flexacommerce/breadcrumbs /-->' );
 		remove_filter( 'flexacommerce.breadcrumbs', $filter );
 		self::assertStringContainsString( '<span aria-current="page">Extra</span>', $html );
 		self::assertStringNotContainsString( 'junk', $html );

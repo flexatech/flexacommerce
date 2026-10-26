@@ -20,6 +20,8 @@ interface Props {
     onChange: (value: Pick[]) => void;
     placeholder: string;
     describedBy?: string;
+    /** False lists whole products only, without their variations. */
+    variants?: boolean;
 }
 
 /**
@@ -27,7 +29,7 @@ interface Props {
  * categories. Picks show as removable chips; the names of the ids a coupon
  * already holds are looked up once when the form opens.
  */
-export function TargetPicker({ id, kind, value, onChange, placeholder, describedBy }: Props) {
+export function TargetPicker({ id, kind, value, onChange, placeholder, describedBy, variants = true }: Props) {
     const [text, setText] = useState("");
     const [open, setOpen] = useState(false);
     const [active, setActive] = useState(0);
@@ -35,7 +37,10 @@ export function TargetPicker({ id, kind, value, onChange, placeholder, described
     const input = useRef<HTMLInputElement>(null);
     const search = useDebounced(text.trim(), 250);
     const results = useTargetSearch(kind, search, open);
-    const rows = useMemo(() => results.data ?? [], [results.data]);
+    const rows = useMemo(
+        () => (results.data ?? []).filter((row) => variants || row.type !== "variant"),
+        [results.data, variants],
+    );
 
     // Names of picks the screen has not seen (the ones the coupon came with); a pick from the results is known already.
     const unknown = value.filter((p) => !known.has(keyOf(p)));

@@ -143,6 +143,18 @@ function applyCart( data ) {
 	state.count = data.item_count;
 }
 
+/** Shows the image `delta` places away in the gallery, wrapping at the ends. */
+function step( delta ) {
+	const context = getContext();
+	const order = context.order || [];
+	if ( order.length < 2 ) {
+		return;
+	}
+	const at = order.indexOf( state.gallery[ context.productId ] ?? context.main );
+	const next = at < 0 ? ( delta > 0 ? 0 : order.length - 1 ) : ( at + delta + order.length ) % order.length;
+	state.gallery[ context.productId ] = order[ next ];
+}
+
 const { state, actions } = store( 'flexacommerce/cart', {
 	state: {
 		products: {},
@@ -196,6 +208,15 @@ const { state, actions } = store( 'flexacommerce/cart', {
 				context.images[ state.gallery[ context.productId ] ] || context.images[ context.main ];
 			return { ...image, alt: image.alt || context.title };
 		},
+		/** False once the store runs, so the arrows that need it show. */
+		get galleryStatic() {
+			return false;
+		},
+		get galleryCount() {
+			const context = getContext();
+			const at = context.order.indexOf( state.gallery[ context.productId ] ?? context.main );
+			return at < 0 ? '' : `${ at + 1 } / ${ context.order.length }`;
+		},
 		get galleryCurrent() {
 			const context = getContext();
 			const shown = String( state.gallery[ context.productId ] ?? context.main );
@@ -204,6 +225,12 @@ const { state, actions } = store( 'flexacommerce/cart', {
 		get cannotAdd() {
 			const context = getContext();
 			return context.busy || ! context.ready || context.variantId <= 0;
+		},
+		/** The name of the value picked in a swatch group, for its legend. */
+		get chosenLabel() {
+			const { selection, attribute, labels } = getContext();
+			const value = selection?.[ attribute ];
+			return value && labels ? labels[ value ] ?? '' : '';
 		},
 		get optionUnavailable() {
 			const context = getContext();
@@ -315,6 +342,65 @@ const { state, actions } = store( 'flexacommerce/cart', {
 			event.preventDefault();
 			state.gallery[ context.productId ] = id;
 		} ),
+		galleryPrev() {
+			step( -1 );
+		},
+		galleryNext() {
+			step( 1 );
+		},
+		openLightbox: withSyncEvent( ( event ) => {
+			const dialog = getElement().ref.closest( '.fxc-gallery' )?.querySelector( '.fxc-lightbox' );
+			if ( ! dialog || typeof dialog.showModal !== 'function' ) {
+				return;
+			}
+			event.preventDefault();
+			getContext().zoomed = false;
+			dialog.showModal();
+		} ),
+		closeLightbox() {
+			getElement().ref.closest( 'dialog' )?.close();
+		},
+		lightboxBackdrop( event ) {
+			if ( event.target === getElement().ref ) {
+				getElement().ref.close();
+			}
+		},
+		lightboxKey: withSyncEvent( ( event ) => {
+			if ( event.key === 'ArrowLeft' || event.key === 'ArrowRight' ) {
+				event.preventDefault();
+				step( event.key === 'ArrowLeft' ? -1 : 1 );
+			}
+		} ),
+		swipeStart( event ) {
+			getContext().touchX = event.touches[ 0 ]?.clientX ?? null;
+		},
+		swipeEnd( event ) {
+			const context = getContext();
+			const end = event.changedTouches[ 0 ]?.clientX;
+			if ( context.touchX == null || end === undefined ) {
+				return;
+			}
+			const distance = end - context.touchX;
+			context.touchX = null;
+			if ( Math.abs( distance ) > 40 ) {
+				step( distance > 0 ? -1 : 1 );
+			}
+		},
+		/** Hover zoom: the image scales from the point under the pointer. */
+		zoom( event ) {
+			const context = getContext();
+			const box = getElement().ref.getBoundingClientRect();
+			if ( ! box.width || ! box.height ) {
+				return;
+			}
+			const x = Math.min( 100, Math.max( 0, ( ( event.clientX - box.left ) / box.width ) * 100 ) );
+			const y = Math.min( 100, Math.max( 0, ( ( event.clientY - box.top ) / box.height ) * 100 ) );
+			context.origin = `${ x.toFixed( 1 ) }% ${ y.toFixed( 1 ) }%`;
+			context.zoomed = true;
+		},
+		unzoom() {
+			getContext().zoomed = false;
+		},
 		setQuantity( event ) {
 			const context = getContext();
 			const value = parseInt( event.target.value, 10 );

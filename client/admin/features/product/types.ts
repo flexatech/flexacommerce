@@ -117,7 +117,19 @@ export interface AttributeTerm {
     position: number;
 }
 
+/** How the product page shows an attribute; "" is the dropdown. */
+export type SwatchType = "" | "color" | "image" | "button";
+
+export interface AttributeValueTerm extends AttributeTerm {
+    /** `#rrggbb`, or "" when none is set. */
+    color: string;
+    image_id: number;
+    /** Thumbnail URL of `image_id`, "" when none. */
+    image_url: string;
+}
+
 export interface StoreAttribute extends AttributeTerm {
-    values: AttributeTerm[];
+    swatch: SwatchType;
+    values: AttributeValueTerm[];
     usage: number;
 }

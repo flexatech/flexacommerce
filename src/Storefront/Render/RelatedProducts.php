@@ -22,11 +22,13 @@ final class RelatedProducts {
 	/**
 	 * @param \Closure(int):?Product $find  the storefront's published-product lookup
 	 * @param \Closure(Product):string $card price and button of one card
+	 * @param \Closure(Product):string|null $badges the badges over its image
 	 */
 	public function __construct(
 		private readonly ProductRepository $products,
 		private readonly \Closure $find,
 		private readonly \Closure $card,
+		private readonly ?\Closure $badges = null,
 	) {}
 
 	public function html( Product $product, int $count ): string {
@@ -55,7 +57,7 @@ final class RelatedProducts {
 					$image  = get_the_post_thumbnail( $id, 'medium', [ 'loading' => 'lazy' ] );
 					$cards .= sprintf(
 						'<li class="fxc-related__item">%1$s<h3 class="fxc-related__name"><a href="%2$s">%3$s</a></h3>%4$s</li>',
-						$image !== '' ? '<a class="fxc-related__image" href="' . esc_url( $link ) . '" tabindex="-1" aria-hidden="true">' . $image . '</a>' : '',
+						$image !== '' ? '<a class="fxc-related__image" href="' . esc_url( $link ) . '" tabindex="-1" aria-hidden="true">' . $image . ( $this->badges !== null ? ( $this->badges )( $related ) : '' ) . '</a>' : '',
 						esc_url( $link ),
 						esc_html( $related->title ),
 						( $this->card )( $related )
