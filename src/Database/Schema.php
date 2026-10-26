@@ -17,7 +17,7 @@ defined( 'ABSPATH' ) || exit;
  */
 // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- schema DDL on plugin-owned tables, no user input.
 final class Schema {
-	public const DB_VERSION        = '2';
+	public const DB_VERSION        = '3';
 	public const DB_VERSION_OPTION = 'flexacommerce_db_version';
 	public const OPTION_PREFIX     = 'flexacommerce_';
 
@@ -276,7 +276,7 @@ final class Schema {
 			'migration_jobs'     => "CREATE TABLE {$p}migration_jobs (
 				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 				direction varchar(16) NOT NULL,
-				status varchar(20) NOT NULL DEFAULT 'draft',
+				status varchar(32) NOT NULL DEFAULT 'draft',
 				dry_run tinyint(1) NOT NULL DEFAULT 0,
 				format_version varchar(10) NOT NULL,
 				options longtext NOT NULL,

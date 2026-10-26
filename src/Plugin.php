@@ -41,6 +41,8 @@ final class Plugin {
 
 	private ?Tax\TaxServices $tax = null;
 
+	private ?Migration\MigrationServices $migration = null;
+
 	private ?Notifications\NotificationServices $notifications = null;
 
 	private ?Extensions $extensions = null;
@@ -89,6 +91,10 @@ final class Plugin {
 			add_filter( 'the_posts', [ $this, 'on_the_posts' ] );
 			add_action( 'pre_get_posts', [ $this, 'on_pre_get_posts' ] );
 			add_action( 'template_redirect', [ $this, 'on_template_redirect' ] );
+			// A settings key, so the check needs no query and loads no class (doc 10 F1).
+			if ( Support\Settings::bool( 'cutover_redirects' ) ) {
+				add_action( 'template_redirect', [ Migration\Redirects::class, 'handle' ], 1 );
+			}
 		}
 
 		if ( defined( 'WP_CLI' ) && constant( 'WP_CLI' ) ) {
@@ -96,6 +102,7 @@ final class Plugin {
 			Setup\Activator::maybe_upgrade();
 			Cli\ShopCommand::register();
 			Cli\DbCommand::register();
+			Cli\MigrateCommand::register();
 		}
 
 		add_action( 'plugins_loaded', [ $this, 'announce' ], 20 );
@@ -189,6 +196,11 @@ final class Plugin {
 
 	public function tax(): Tax\TaxServices {
 		return $this->tax ??= new Tax\TaxServices( $this->services() );
+	}
+
+	/** @internal Migration jobs, built only when a job is touched. */
+	public function migration(): Migration\MigrationServices {
+		return $this->migration ??= new Migration\MigrationServices( $this->services(), $this->catalog(), $this->tax() );
 	}
 
 	/**

@@ -544,7 +544,7 @@ CREATE TABLE fxc_id_map (
 CREATE TABLE fxc_migration_jobs (
   id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
   direction varchar(16) NOT NULL,
-  status varchar(20) NOT NULL DEFAULT 'draft',
+  status varchar(32) NOT NULL DEFAULT 'draft',
   dry_run tinyint(1) NOT NULL DEFAULT 0,
   format_version varchar(10) NOT NULL,
   options longtext NOT NULL,

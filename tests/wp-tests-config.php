@@ -17,7 +17,7 @@ define( 'DB_HOST', getenv( 'WP_TESTS_DB_HOST' ) ?: '127.0.0.1' );
 define( 'DB_CHARSET', 'utf8mb4' );
 define( 'DB_COLLATE', '' );
 
-$table_prefix = 'wptests_'; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited
+$table_prefix = getenv( 'WP_TESTS_TABLE_PREFIX' ) ?: 'wptests_'; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited
 
 define( 'WP_TESTS_DOMAIN', 'example.org' );
 define( 'WP_TESTS_EMAIL', 'admin@example.org' );

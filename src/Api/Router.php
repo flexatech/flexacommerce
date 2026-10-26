@@ -29,6 +29,9 @@ final class Router {
 			( new Admin\ShippingEndpoint() )->register_routes();
 			( new Admin\TaxesEndpoint() )->register_routes();
 			( new Admin\EmailsEndpoint() )->register_routes();
+			( new Admin\MigrationsEndpoint() )->register_routes();
+			( new Admin\CutoverEndpoint() )->register_routes();
+
 			( new Store\CartEndpoint() )->register_routes();
 			( new Store\CheckoutEndpoint() )->register_routes();
 			( new Store\ProductsEndpoint() )->register_routes();

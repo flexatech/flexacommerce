@@ -25,6 +25,9 @@ final class Cron {
 
 	public const SEND_EMAIL = 'flexacommerce.cron.send_email';
 
+	/** Same value as Migration\BackgroundDriver::HOOK, kept literal so page views do not load migration code. */
+	public const MIGRATION_BATCH = 'flexacommerce.migration.batch';
+
 	public const INTERVAL = 'flexacommerce_five_minutes';
 
 	public function register(): void {
@@ -34,6 +37,10 @@ final class Cron {
 		// Single events only ever run from cron, so page views skip this callback (P1 budget).
 		if ( wp_doing_cron() || ( defined( 'WP_CLI' ) && WP_CLI ) ) {
 			add_action( self::SEND_EMAIL, [ $this, 'send_email' ] );
+		}
+		// Action Scheduler also runs queues from its async admin-ajax request.
+		if ( wp_doing_cron() || wp_doing_ajax() || ( defined( 'WP_CLI' ) && WP_CLI ) ) {
+			add_action( self::MIGRATION_BATCH, [ $this, 'migration_batch' ] );
 		}
 		// Only cron runs reschedule events; admin tools list the schedules.
 		if ( wp_doing_cron() || is_admin() || ( defined( 'WP_CLI' ) && WP_CLI ) ) {
@@ -104,6 +111,12 @@ final class Cron {
 		$cancelled = Plugin::instance()->orders()->service()->expire_pending();
 
 		do_action( 'flexacommerce.cron.expire_done', $cancelled );
+	}
+
+	public function migration_batch( mixed $job_id ): void {
+		if ( is_numeric( $job_id ) ) {
+			Plugin::instance()->migration()->background()->handle( (int) $job_id );
+		}
 	}
 
 	public function send_email( mixed $queue_id ): void {

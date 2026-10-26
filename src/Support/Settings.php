@@ -87,10 +87,11 @@ final class Settings {
 		'tax_total_display'        => [ 'enum:itemized|single', 'itemized' ],
 		'tax_markets'              => [ 'tax_markets', [] ],
 		'tax_base_rates'           => [ 'tax_rates', [] ],
+		'cutover_redirects'        => [ 'bool', false ],
 	];
 
 	/** Written by the plugin, never by the settings screen: sanitize() drops them. */
-	public const INTERNAL = [ 'tax_base_rates' ];
+	public const INTERNAL = [ 'tax_base_rates', 'cutover_redirects' ];
 
 	/** @var array<string,mixed>|null coerced copy of the last stored value seen */
 	private static ?array $memo = null;

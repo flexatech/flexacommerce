@@ -21,3 +21,5 @@ parameters:
         - phpstan-bootstrap.php
     scanFiles:
         - vendor/php-stubs/woocommerce-stubs/woocommerce-stubs.php
+        # Action Scheduler, used by the migration background driver.
+        - vendor/php-stubs/woocommerce-stubs/woocommerce-packages-stubs.php

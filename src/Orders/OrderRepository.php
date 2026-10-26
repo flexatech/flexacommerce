@@ -51,14 +51,20 @@ final class OrderRepository {
 		return is_array( $row ) ? $this->hydrate( $row ) : null;
 	}
 
-	/** @return list<Order> without items */
+	/**
+	 * Pending orders past the expiry, imported ones excluded (doc 05 §5.6).
+	 *
+	 * @return list<Order> without items
+	 */
 	public function stale_pending( string $older_than, int $limit ): array {
 		$rows = $this->wpdb->get_results(
 			$this->wpdb->prepare(
-				'SELECT * FROM %i WHERE status = %s AND created_at < %s AND deleted_at IS NULL ORDER BY created_at, id LIMIT %d',
+				'SELECT * FROM %i o WHERE status = %s AND created_at < %s AND deleted_at IS NULL AND NOT EXISTS ( SELECT 1 FROM %i m WHERE m.order_id = o.id AND m.meta_key = %s ) ORDER BY created_at, id LIMIT %d',
 				Schema::table( 'orders' ),
 				OrderStatus::PENDING,
 				$older_than,
+				Schema::table( 'order_meta' ),
+				'_fxc_import_job',
 				$limit
 			),
 			ARRAY_A

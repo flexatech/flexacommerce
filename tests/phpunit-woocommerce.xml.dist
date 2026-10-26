@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Migration tests against a real WooCommerce (doc 05 §11). Run once per
+    order storage: FXC_WC_STORAGE=legacy|hpos|sync (composer test:woocommerce
+    runs all three). tools/fetch-woocommerce.sh downloads WooCommerce first.
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="../vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="bootstrap-woocommerce.php"
+         colors="true"
+         failOnWarning="true"
+         failOnRisky="true">
+    <testsuites>
+        <testsuite name="woocommerce">
+            <directory suffix="Test.php">WooCommerce</directory>
+        </testsuite>
+    </testsuites>
+</phpunit>

@@ -22,3 +22,6 @@ node_modules/
 Thumbs.db
 .idea/
 .vscode/
+
+# WooCommerce copy for the migration tests (tools/fetch-woocommerce.sh)
+/tests/.cache/
