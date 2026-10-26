@@ -44,14 +44,27 @@ final class CartTable {
 
 	private function markup( CartState $state ): string {
 		Assets::use_store();
-		$data = $this->presenter->to_array( $state );
-		wp_interactivity_state( 'flexacommerce/cart', [ 'cart' => $data ] );
+		$data  = $this->presenter->to_array( $state );
 		$shown = [];
 		foreach ( (array) $data['items'] as $item ) {
 			if ( is_array( $item ) ) {
 				$shown[ (string) $item['key'] ] = $item;
 			}
 		}
+		// The getters of cart.js, for the server render: without them the
+		// directives read null, so a page without scripts showed an empty
+		// cart. Closures make the client keep its own getters.
+		$line = static fn (): array => $shown[ (string) ( wp_interactivity_get_context()['key'] ?? '' ) ] ?? [];
+		wp_interactivity_state(
+			'flexacommerce/cart',
+			[
+				'cart'        => $data,
+				'hasItems'    => static fn (): bool => $shown !== [],
+				'hasDiscount' => static fn (): bool => isset( $data['totals']['discount'] ),
+				'lineRemoved' => static fn (): bool => $line() === [],
+				'lineTotal'   => static fn (): string => (string) ( $line()['total']['formatted'] ?? '' ),
+			]
+		);
 
 		$html  = '<div class="fxc-cart" data-wp-interactive="flexacommerce/cart">';
 		$html .= FormHandler::notice_for( 0 );
@@ -73,6 +86,9 @@ final class CartTable {
 
 		$html .= '<form class="fxc-cart__form" method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '" data-wp-bind--hidden="!state.hasItems">';
 		$html .= FormHandler::hidden_fields( 'update' );
+		// Enter in a field submits the form through its first submit button,
+		// which would otherwise be the first line's remove button.
+		$html .= '<button type="submit" class="fxc-cart__default" tabindex="-1" aria-hidden="true" data-wp-on--click="actions.submitCart">' . esc_html__( 'Update cart', 'flexacommerce' ) . '</button>';
 		$html .= '<table class="fxc-cart__table"><thead><tr>'
 			. '<th scope="col">' . esc_html__( 'Product', 'flexacommerce' ) . '</th>'
 			. '<th scope="col">' . esc_html__( 'Price', 'flexacommerce' ) . '</th>'

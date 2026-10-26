@@ -376,6 +376,11 @@ const { state, actions } = store( 'flexacommerce/cart', {
 				state.couponMessage = error.message || i18n.failed;
 			}
 		} ),
+		// Enter in a quantity field: its change event already sent the new
+		// quantity, so the page does not post the form as well.
+		submitCart: withSyncEvent( ( event ) => {
+			event.preventDefault();
+		} ),
 		removeLine: withSyncEvent( function* ( event ) {
 			event.preventDefault();
 			const { key } = getContext();

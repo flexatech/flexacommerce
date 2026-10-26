@@ -24,6 +24,17 @@ test.describe( 'scripts off', () => {
 		await expect( page.locator( '.fxc-order' ) ).toBeVisible();
 		await expect( page.locator( '.fxc-order__overview' ) ).toContainText( money( store.simple.price + 500 ) );
 	} );
+
+	test( 'Enter in a quantity field updates the cart', async ( { page } ) => {
+		await page.goto( store.simple.url );
+		await page.locator( 'form.fxc-add-to-cart--single' ).getByRole( 'button', { name: 'Add to cart' } ).click();
+		await page.goto( store.cart );
+		const quantity = page.locator( '.fxc-cart__line' ).getByLabel( `Quantity of ${ store.simple.name }` );
+		await quantity.fill( '2' );
+		await quantity.press( 'Enter' );
+		await expect( page.locator( '.fxc-cart__line' ) ).toHaveCount( 1 );
+		await expect( quantity ).toHaveValue( '2' );
+	} );
 } );
 
 test( 'scripts that fail to load: the server renders the error summary', async ( { page }, info ) => {

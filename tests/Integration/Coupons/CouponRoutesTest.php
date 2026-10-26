@@ -82,12 +82,31 @@ final class CouponRoutesTest extends CouponTestCase {
 		self::assertStringContainsString( 'fxc-cart__coupon-row', $html );
 		self::assertStringContainsString( 'name="remove_coupon"', $html );
 		self::assertStringContainsString( 'TEN', $html );
+		$default = strpos( $html, 'class="fxc-cart__default"' );
+		self::assertIsInt( $default );
+		self::assertLessThan( (int) strpos( $html, 'name="remove"' ), $default, 'Enter in a quantity field updates the cart, it does not remove the first line' );
 
 		self::assertSame( 'coupon_removed', $this->form( [ 'remove_coupon' => 'ten' ] ) );
 		self::assertSame( [], Plugin::instance()->cart()->cart()->state( 0 )->cart->coupons );
 		$_GET[ FormHandler::RESULT ] = 'coupon_applied';
 		self::assertStringContainsString( 'Coupon applied', FormHandler::notice_for( 0 ) );
 		$_GET = [];
+	}
+
+	public function test_the_server_render_matches_the_cart_without_scripts(): void {
+		$this->coupon( 'TEN', Coupon::PERCENT, 1000 );
+		$cart = Plugin::instance()->cart()->cart();
+		$cart->add( 0, $id = $this->simple( 1000 ), $this->service()->get( $id )->base->id, 2 );
+		$cart->apply_coupon( 0, 'ten' );
+
+		// do_blocks runs the directives, as the page does.
+		$html = (string) preg_replace( '/>\s*</', '><', do_blocks( '<!-- wp:flexacommerce/cart /-->' ) );
+		self::assertMatchesRegularExpression( '/<div class="fxc-cart__empty"[^>]*\shidden>/', $html );
+		self::assertMatchesRegularExpression( '/<form class="fxc-cart__form"(?![^>]*\shidden[\s>])[^>]*>/', $html, 'the form is shown' );
+		self::assertMatchesRegularExpression( '/<tr class="fxc-cart__line"(?![^>]*\shidden[\s>])[^>]*>/', $html );
+		self::assertStringContainsString( 'data-wp-text="state.lineTotal">$20.00</td>', $html );
+		self::assertMatchesRegularExpression( '/<tr class="fxc-cart__total-row"(?![^>]*\shidden[\s>])[^>]*>/', $html, 'the total row shows the discount' );
+		self::assertStringContainsString( '$18.00', $html );
 	}
 
 	public function test_admin_crud_with_validation(): void {

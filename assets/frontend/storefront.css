@@ -61,6 +61,7 @@
 .fxc-cart__total-row { font-size: 1.125em; border-block-start: 1px solid rgba(0, 0, 0, .1); }
 .fxc-cart__tax--included td, .fxc-cart__note td { font-size: .875em; }
 .fxc-cart__actions { text-align: end; }
+.fxc-cart__default { position: absolute; inset-inline-start: -9999px; }
 .fxc-cart__coupon { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .5rem; margin-block: 1rem; }
 .fxc-cart__coupon input { min-width: 0; max-width: 14rem; }
 .fxc-cart__coupon-message { flex-basis: 100%; text-align: end; }

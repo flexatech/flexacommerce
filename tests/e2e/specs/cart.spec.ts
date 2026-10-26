@@ -19,3 +19,15 @@ test( 'cart: change the quantity, then remove the line', async ( { page }, info 
 	await expect( page.getByText( 'Your cart is empty.' ) ).toBeVisible();
 	await expectAccessible( page, info, 'empty cart' );
 } );
+
+test( 'cart: Enter in the quantity field updates the line', async ( { page } ) => {
+	await addSimple( page );
+	await page.goto( store.cart );
+	const quantity = page.locator( '.fxc-cart__line' ).getByLabel( `Quantity of ${ store.simple.name }` );
+	await quantity.fill( '2' );
+	await quantity.press( 'Enter' );
+	await expect( page.locator( '.fxc-cart__total' ).first() ).toContainText( money( store.simple.price * 2 ) );
+	await page.reload();
+	await expect( page.locator( '.fxc-cart__line' ) ).toHaveCount( 1 );
+	await expect( quantity ).toHaveValue( '2' );
+} );
