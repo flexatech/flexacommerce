@@ -36,11 +36,12 @@ final class DependencyRulesTest extends TestCase {
 		'Shipping'  => [ 'Support' ],
 		'Tax'       => [ 'Support', 'Database' ],
 		'Payments'  => [ 'Orders', 'Database', 'Support' ],
-		'Cart'      => [ 'Catalog', 'Pricing', 'Inventory', 'Shipping', 'Coupons', 'Support', 'Database' ],
+		'Cart'      => [ 'Catalog', 'Pricing', 'Inventory', 'Shipping', 'Coupons', 'Options', 'Support', 'Database' ],
 		// Coupons reads cart lines (CartItem) to price a discount; Cart asks
 		// Coupons for the discount. CartItem is a plain value, so the cycle
 		// is only in types.
 		'Coupons'   => [ 'Cart', 'Catalog', 'Pricing', 'Support', 'Database' ],
+		'Options'   => [ 'Catalog', 'Support' ],
 		'Customers' => [ 'Support' ],
 		'Checkout'  => [ 'Cart', 'Coupons', 'Pricing', 'Inventory', 'Shipping', 'Tax', 'Orders', 'Payments', 'Customers', 'Support', 'Database' ],
 	];

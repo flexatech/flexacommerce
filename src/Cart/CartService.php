@@ -14,6 +14,7 @@ use Flexa\Commerce\Contracts\Exceptions\InvalidCartRequest;
 use Flexa\Commerce\Contracts\Exceptions\NotPurchasable;
 use Flexa\Commerce\Contracts\Exceptions\RateLimited;
 use Flexa\Commerce\Contracts\Money;
+use Flexa\Commerce\Contracts\Pricing\PriceResolution;
 use Flexa\Commerce\Contracts\Shipping\Destination;
 use Flexa\Commerce\Contracts\Shipping\PackageLine;
 use Flexa\Commerce\Contracts\Shipping\ShippingPackage;
@@ -21,6 +22,7 @@ use Flexa\Commerce\Contracts\ValidationResult;
 use Flexa\Commerce\Coupons\Coupon;
 use Flexa\Commerce\Coupons\CouponService;
 use Flexa\Commerce\Inventory\StockService;
+use Flexa\Commerce\Options\ProductOptions;
 use Flexa\Commerce\Pricing\PricingService;
 use Flexa\Commerce\Support\Clock;
 use Flexa\Commerce\Support\Settings;
@@ -36,7 +38,10 @@ defined( 'ABSPATH' ) || exit;
 final class CartService {
 	public const WRITES_PER_MINUTE = 60;
 
-	/** @param ?\Closure():CouponService $coupons built only when a cart holds a code */
+	/**
+	 * @param ?\Closure():CouponService  $coupons built only when a cart holds a code
+	 * @param ?\Closure():ProductOptions $options built only when the store has option sets
+	 */
 	public function __construct(
 		private readonly SessionStore $sessions,
 		private readonly ProductRepository $products,
@@ -45,6 +50,7 @@ final class CartService {
 		private readonly StockService $stock,
 		private readonly Clock $clock,
 		private readonly ?\Closure $coupons = null,
+		private readonly ?\Closure $options = null,
 	) {}
 
 	/** The cart without a session lookup when no cookie is present (P11). */
@@ -63,10 +69,11 @@ final class CartService {
 	}
 
 	/**
-	 * @param array<string,string> $attributes selection, attribute key => value key
+	 * @param array<string,string>   $attributes selection, attribute key => value key
+	 * @param array<array-key,mixed> $options    product option values as posted, key => value (ADR-025)
 	 * @throws InvalidCartRequest|NotPurchasable|InsufficientStock|RateLimited
 	 */
-	public function add( int $user_id, int $product_id, int $variant_id, int $quantity, array $attributes = [] ): CartState {
+	public function add( int $user_id, int $product_id, int $variant_id, int $quantity, array $attributes = [], array $options = [] ): CartState {
 		$product = $this->products->find( $product_id );
 		if ( $product === null ) {
 			throw new NotPurchasable( $variant_id, __( 'This product does not exist.', 'flexacommerce' ) );
@@ -81,19 +88,28 @@ final class CartService {
 				'quantity'
 			);
 		}
-		$labels = $this->labels( $product, $selection );
+		$chosen = [
+			'values' => [],
+			'labels' => [],
+		];
+		if ( $this->options !== null && ProductOptions::in_use() ) {
+			$chosen = ( $this->options )()->accept( $product, $options );
+		}
+		$labels = [ ...$this->labels( $product, $selection ), ...$chosen['labels'] ];
+		$values = $chosen['values'];
 
 		return $this->mutate(
 			$user_id,
-			function ( Cart $cart ) use ( $product, $variant, $selection, $quantity, $labels, $max, $user_id ): Cart {
+			function ( Cart $cart ) use ( $product, $variant, $selection, $values, $quantity, $labels, $max, $user_id ): Cart {
 				$line     = new CartLine(
-					key: CartLine::key_for( $variant->id, $selection ),
+					key: CartLine::key_for( $variant->id, $selection, $values ),
 					product_id: $product->id,
 					variant_id: $variant->id,
 					quantity: $quantity,
 					attributes: $selection,
 					labels: $labels,
 					added_at: $this->clock->db_now(),
+					options: $values,
 				);
 				$existing = $cart->line( $line->key );
 				if ( $existing === null && count( $cart->lines ) >= Cart::MAX_LINES ) {
@@ -393,7 +409,10 @@ final class CartService {
 			$owner_total  = $this->owner_quantity( $cart, $product, $variant );
 			$status       = $availability->allows( $owner_total ) ? CartItem::OK : CartItem::INSUFFICIENT_STOCK;
 			$unit         = $this->pricing->unit_price( $product, $variant, $line->quantity, $user_id, product_quantity: $units[ $line->product_id ] );
-			$total        = $unit !== null ? $this->pricing->line_total( $unit, $line->quantity ) : null;
+			if ( $unit !== null && $line->options !== [] && $this->options !== null ) {
+				$unit = self::with_extra( $unit, ( $this->options )()->extra( $line->options, $unit->active->amount ) );
+			}
+			$total = $unit !== null ? $this->pricing->line_total( $unit, $line->quantity ) : null;
 			if ( $total !== null ) {
 				$totals[] = $total;
 			}
@@ -431,6 +450,15 @@ final class CartService {
 		}
 
 		return new CartState( $cart, $items, $subtotal, $notices, $has_session, $discounts );
+	}
+
+	/** The unit price with what the product options add to it. */
+	private static function with_extra( PriceResolution $unit, int $extra ): PriceResolution {
+		if ( $extra <= 0 ) {
+			return $unit;
+		}
+		$add = new Money( $extra, $unit->active->currency );
+		return new PriceResolution( $unit->regular->add( $add ), $unit->active->add( $add ), $unit->on_sale );
 	}
 
 	/**

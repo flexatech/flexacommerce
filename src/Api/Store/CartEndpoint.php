@@ -7,6 +7,7 @@ namespace Flexa\Commerce\Api\Store;
 use Flexa\Commerce\Cart\CartState;
 use Flexa\Commerce\Contracts\CommerceException;
 use Flexa\Commerce\Coupons\Coupon;
+use Flexa\Commerce\Options\ProductOptions;
 use Flexa\Commerce\Plugin;
 use WP_Error;
 use WP_REST_Request;
@@ -66,6 +67,11 @@ final class CartEndpoint extends StoreEndpoint {
 							'type'                 => 'object',
 							'default'              => [],
 							'additionalProperties' => [ 'type' => [ 'string', 'integer' ] ],
+						],
+						// Product option values; ProductOptions checks each one for its field.
+						'options'    => [
+							'type'    => 'object',
+							'default' => [],
 						],
 					],
 				],
@@ -143,13 +149,15 @@ final class CartEndpoint extends StoreEndpoint {
 				$attributes[ sanitize_text_field( (string) $key ) ] = sanitize_text_field( (string) $value );
 			}
 		}
+		$options = $request->get_param( 'options' );
 		return $this->run(
 			static fn (): CartState => Plugin::instance()->cart()->cart()->add(
 				get_current_user_id(),
 				(int) $request->get_param( 'product_id' ),
 				(int) $request->get_param( 'variant_id' ),
 				(int) $request->get_param( 'quantity' ),
-				$attributes
+				$attributes,
+				is_array( $options ) && $options !== [] ? ProductOptions::posted( $options ) : []
 			),
 			201
 		);

@@ -9,6 +9,7 @@ use Flexa\Commerce\Badges\BadgeMatcher;
 use Flexa\Commerce\Catalog\PostTypes;
 use Flexa\Commerce\Catalog\Product;
 use Flexa\Commerce\Concerns\HasInstance;
+use Flexa\Commerce\Options\ProductOptions;
 use Flexa\Commerce\Plugin;
 use Flexa\Commerce\Storefront\Render\AddToCartForm;
 use Flexa\Commerce\Storefront\Render\BadgeOverlay;
@@ -333,7 +334,11 @@ final class Storefront {
 	}
 
 	private function form(): AddToCartForm {
-		return $this->form ??= new AddToCartForm( Plugin::instance()->cart()->purchase_options(), Plugin::instance()->cart()->pricing() );
+		return $this->form ??= new AddToCartForm(
+			Plugin::instance()->cart()->purchase_options(),
+			Plugin::instance()->cart()->pricing(),
+			static fn (): ProductOptions => Plugin::instance()->product_options()
+		);
 	}
 
 	private function table(): CartTable {

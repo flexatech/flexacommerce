@@ -49,6 +49,6 @@ final class SchemaTest extends \WP_UnitTestCase {
 			)
 		);
 		sort( $autoloaded );
-		self::assertSame( [ 'flexacommerce_badges', 'flexacommerce_price_rules', 'flexacommerce_settings' ], $autoloaded );
+		self::assertSame( [ 'flexacommerce_badges', 'flexacommerce_price_rules', 'flexacommerce_product_options', 'flexacommerce_settings' ], $autoloaded );
 	}
 }

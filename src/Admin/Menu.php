@@ -28,6 +28,7 @@ final class Menu {
 		'edit-tags.php?taxonomy=' . PostTypes::CATEGORY . '&post_type=' . PostTypes::PRODUCT,
 		'edit-tags.php?taxonomy=' . PostTypes::TAG . '&post_type=' . PostTypes::PRODUCT,
 		self::SLUG . '-attributes',
+		self::SLUG . '-product-options',
 		self::SLUG . '-promotions',
 		self::SLUG . '-settings',
 		self::SLUG . '-migration',
@@ -128,6 +129,17 @@ final class Menu {
 				__( 'Attributes', 'flexacommerce' ),
 				Capabilities::MANAGE_PRODUCT_TERMS,
 				self::SLUG . '-attributes',
+				[ $this, 'render_page' ]
+			)
+		);
+		$this->add(
+			self::SLUG . '-product-options',
+			(string) add_submenu_page(
+				self::SLUG,
+				__( 'Product options', 'flexacommerce' ),
+				__( 'Product options', 'flexacommerce' ),
+				Capabilities::MANAGE,
+				self::SLUG . '-product-options',
 				[ $this, 'render_page' ]
 			)
 		);

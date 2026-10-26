@@ -7,6 +7,18 @@
 .fxc-add-to-cart__option label { min-width: 6rem; }
 .fxc-add-to-cart__variant { flex-basis: 100%; }
 .fxc-add-to-cart__variant p { margin: 0 0 .25rem; }
+.fxc-options { flex-basis: 100%; display: grid; gap: .75rem; }
+.fxc-options__set { display: grid; gap: .75rem; }
+.fxc-option { display: grid; gap: .25rem; margin: 0; padding: 0; border: 0; min-width: 0; }
+.fxc-option[hidden] { display: none; }
+.fxc-option legend { padding: 0; margin-bottom: .25rem; }
+.fxc-option input[type="text"], .fxc-option input[type="number"], .fxc-option select, .fxc-option textarea { width: 100%; max-width: 28rem; padding: .5rem; box-sizing: border-box; font: inherit; }
+.fxc-option__choice { display: flex; align-items: center; gap: .5rem; }
+.fxc-option__heading { margin: .5rem 0 0; font-weight: 600; }
+.fxc-option__help { margin: 0; font-size: .875em; opacity: .75; }
+.fxc-option__price { opacity: .75; }
+.fxc-option__required { color: #b32d2e; }
+.fxc-options__total { margin: 0; font-weight: 600; }
 .fxc-add-to-cart__quantity { width: 4.5rem; padding: .5rem; }
 .fxc-tiers { flex-basis: 100%; border-collapse: collapse; font-size: .875em; }
 .fxc-tiers caption { text-align: start; font-weight: 600; padding-block-end: .25rem; }

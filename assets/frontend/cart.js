@@ -135,6 +135,101 @@ function stockText( variant ) {
 	return variant.max !== null ? i18n.left.replace( '%d', variant.max ) : i18n.inStock;
 }
 
+/** An amount in minor units as the store writes it (StoreMoneyFactory::format). */
+function formatMoney( minor ) {
+	const money = config.money;
+	if ( ! money ) {
+		return '';
+	}
+	const [ whole, fraction ] = ( minor / 10 ** money.decimals ).toFixed( money.decimals ).split( '.' );
+	const grouped = whole.replace( /\B(?=(\d{3})+(?!\d))/g, money.thousand );
+	const amount = fraction ? grouped + money.decimal + fraction : grouped;
+	switch ( money.position ) {
+		case 'right':
+			return amount + money.symbol;
+		case 'left_space':
+			return money.symbol + ' ' + amount;
+		case 'right_space':
+			return amount + ' ' + money.symbol;
+		default:
+			return money.symbol + amount;
+	}
+}
+
+/** The value of a product option field: text, a choice id, or a list of them. */
+function optionValue( element, type ) {
+	if ( type === 'checkboxes' ) {
+		return [ ...element.querySelectorAll( 'input:checked' ) ].map( ( input ) => input.value );
+	}
+	if ( type === 'radio' ) {
+		return element.querySelector( 'input:checked' )?.value ?? '';
+	}
+	const input = element.querySelector( 'input, select, textarea' );
+	return input ? input.value.trim() : '';
+}
+
+/** Same rule as OptionField::visible(). */
+function optionVisible( logic, seen ) {
+	if ( ! logic || ! logic.rules.length ) {
+		return true;
+	}
+	const any = logic.match === 'any';
+	const hit = ( rule ) => {
+		const value = seen[ rule.field ] ?? '';
+		const empty = value === '' || value.length === 0;
+		const is = Array.isArray( value ) ? value.includes( rule.value ) : value === rule.value;
+		return { is_not: ! is, empty, not_empty: ! empty }[ rule.op ] ?? is;
+	};
+	const met = any ? logic.rules.some( hit ) : logic.rules.every( hit );
+	return logic.action === 'show' ? met : ! met;
+}
+
+/** What a price adds to one unit; NaN for a percent before the unit price is known. */
+function charge( [ mode, amount ], base ) {
+	if ( mode === 'fixed' ) {
+		return amount;
+	}
+	return base === null || base === undefined ? NaN : Math.round( ( base * Math.min( amount, 10000 ) ) / 10000 );
+}
+
+/**
+ * Shows and hides the option fields of a form per their logic (a hidden
+ * field's inputs are disabled, so the no-JS post skips them too), and
+ * returns the values to send and what they add to one unit.
+ */
+function readOptions( form, context ) {
+	const values = {};
+	const seen = {};
+	const base = context.base ?? state.chosen[ context.productId ]?.amount;
+	let extra = 0;
+	for ( const field of context.fields ) {
+		const element = form.querySelector( `[data-option="${ field.key }"]` );
+		if ( ! element ) {
+			continue;
+		}
+		seen[ field.set ] ??= {};
+		const visible = optionVisible( field.logic, seen[ field.set ] );
+		element.hidden = ! visible;
+		for ( const input of element.querySelectorAll( 'input, select, textarea' ) ) {
+			input.disabled = ! visible;
+		}
+		const value = visible && field.type !== 'heading' ? optionValue( element, field.type ) : '';
+		if ( value.length === 0 ) {
+			continue;
+		}
+		seen[ field.set ][ field.id ] = value;
+		values[ field.key ] = value;
+		if ( field.prices ) {
+			for ( const id of [].concat( value ) ) {
+				extra += field.prices[ id ] ? charge( field.prices[ id ], base ) : 0;
+			}
+		} else if ( field.price ) {
+			extra += charge( field.price, base );
+		}
+	}
+	return { values, extra };
+}
+
 function applyCart( data ) {
 	if ( ! data ) {
 		return;
@@ -259,12 +354,19 @@ const { state, actions } = store( 'flexacommerce/cart', {
 			}
 			context.busy = true;
 			context.message = '';
+			const body = {
+				product_id: context.productId,
+				variant_id: context.variantId,
+				quantity: context.quantity,
+			};
+			if ( Object.keys( context.selection ).length ) {
+				body.attributes = { ...context.selection };
+			}
+			if ( context.fields ) {
+				body.options = readOptions( getElement().ref, context ).values;
+			}
 			try {
-				const data = yield request( 'cart/items', 'POST', {
-					product_id: context.productId,
-					variant_id: context.variantId,
-					quantity: context.quantity,
-				} );
+				const data = yield request( 'cart/items', 'POST', body );
 				applyCart( data );
 				context.message = i18n.added;
 				context.failed = false;
@@ -322,6 +424,19 @@ const { state, actions } = store( 'flexacommerce/cart', {
 			context.max = variant.max !== null ? Math.min( variant.max, context.limit ) : context.limit;
 			context.quantity = Math.max( 1, Math.min( context.quantity, context.max ) );
 			context.ready = true;
+			if ( context.fields ) {
+				actions.options();
+			}
+		},
+		/** Product option fields: which show, and the total they add. */
+		options() {
+			const context = getContext();
+			const form = getElement().ref?.closest( 'form' );
+			if ( ! context.fields || ! form ) {
+				return;
+			}
+			const { extra } = readOptions( form, context );
+			context.extra = extra > 0 ? '+' + formatMoney( extra ) : '';
 		},
 		/** Tells the SKU and gallery blocks of the product which variation is chosen. */
 		pick( productId, variant ) {

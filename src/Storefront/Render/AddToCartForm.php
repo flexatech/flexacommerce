@@ -7,9 +7,12 @@ namespace Flexa\Commerce\Storefront\Render;
 use Flexa\Commerce\Cart\PurchaseOptions;
 use Flexa\Commerce\Catalog\AttributeRepository;
 use Flexa\Commerce\Catalog\Product;
+use Flexa\Commerce\Options\OptionSet;
+use Flexa\Commerce\Options\ProductOptions;
 use Flexa\Commerce\Pricing\PricingService;
 use Flexa\Commerce\Storefront\Assets;
 use Flexa\Commerce\Storefront\FormHandler;
+use Flexa\Commerce\Support\Currency;
 use Flexa\Commerce\Support\Settings;
 
 defined( 'ABSPATH' ) || exit;
@@ -21,16 +24,19 @@ defined( 'ABSPATH' ) || exit;
  * matches against the inlined matrix, disables options with no stock and
  * posts to `store/cart/items`.
  *
- * In a product list ("loop") a simple product gets a one-click button and a
- * variable product a link to its page.
+ * In a product list ("loop") a simple product gets a one-click button; a
+ * variable product, or one with option fields to fill in, a link to its
+ * page.
  */
 final class AddToCartForm {
 	public const LOOP   = 'loop';
 	public const SINGLE = 'single';
 
+	/** @param ?\Closure():ProductOptions $product_options built only when the store has option sets */
 	public function __construct(
 		private readonly PurchaseOptions $options,
 		private readonly ?PricingService $pricing = null,
+		private readonly ?\Closure $product_options = null,
 	) {}
 
 	public function html( Product $product, string $mode = self::SINGLE, int $user_id = 0 ): string {
@@ -45,7 +51,8 @@ final class AddToCartForm {
 	}
 
 	private function markup( Product $product, string $mode, int $user_id ): string {
-		if ( $mode === self::LOOP && $product->is_variable() ) {
+		$sets = $this->option_sets( $product, $mode );
+		if ( $mode === self::LOOP && ( $product->is_variable() || $sets !== [] ) ) {
 			return sprintf(
 				'<p class="fxc-add-to-cart fxc-add-to-cart--loop"><a class="wp-element-button" href="%1$s" aria-label="%2$s">%3$s</a></p>',
 				esc_url( (string) get_permalink( $product->id ) ),
@@ -67,14 +74,22 @@ final class AddToCartForm {
 		$inline   = count( $options['variants'] ) <= PurchaseOptions::INLINE_LIMIT;
 		$variable = $product->is_variable();
 		$simple   = $variable ? null : $options['variants'][0];
+		$percent  = $sets !== [] && $this->pricing !== null && OptionFields::has_percent( $sets );
 		if ( $variable && $inline ) {
+			$variants = $options['variants'];
+			if ( $percent ) {
+				// What a percent option is taken of; only products with one carry it (P3b).
+				foreach ( $variants as $i => $row ) {
+					$variants[ $i ]['amount'] = $this->amount( $product, $row['id'], $user_id );
+				}
+			}
 			wp_interactivity_state(
 				'flexacommerce/cart',
 				[
 					'products' => [
 						(string) $product->id => [
 							'attributes' => array_column( $options['attributes'], 'key' ),
-							'variants'   => $options['variants'],
+							'variants'   => $variants,
 						],
 					],
 				]
@@ -100,6 +115,12 @@ final class AddToCartForm {
 			'message'   => '',
 			'failed'    => false,
 		];
+		if ( $sets !== [] ) {
+			$context['fields'] = OptionFields::spec( $sets );
+			$context['base']   = $simple !== null && $percent ? $this->amount( $product, $simple['id'], $user_id ) : null;
+			$context['extra']  = '';
+			self::money_config();
+		}
 
 		$html  = sprintf(
 			'<form class="fxc-add-to-cart fxc-add-to-cart--%1$s" method="post" action="%2$s" data-wp-interactive="flexacommerce/cart" %3$s data-wp-on--submit="actions.add">',
@@ -120,6 +141,10 @@ final class AddToCartForm {
 			$html .= '<p class="fxc-price"><del data-wp-bind--hidden="!context.regular" data-wp-text="context.regular" hidden></del> <span class="fxc-price__amount" data-wp-text="context.price"></span> <small class="fxc-price__suffix" data-wp-bind--hidden="!context.suffix" data-wp-text="context.suffix" hidden></small></p>';
 			$html .= '<p class="fxc-stock" data-wp-text="context.stock"></p>';
 			$html .= '</div>';
+		}
+
+		if ( $sets !== [] && $this->pricing !== null ) {
+			$html .= OptionFields::html( $sets, $this->pricing );
 		}
 
 		if ( $mode === self::SINGLE ) {
@@ -145,6 +170,45 @@ final class AddToCartForm {
 		$html .= '<p class="fxc-add-to-cart__message" role="status" aria-live="polite" data-wp-text="context.message" data-wp-class--is-error="context.failed"></p>';
 		$html .= FormHandler::notice_for( $product->id );
 		return $html . '</form>';
+	}
+
+	/**
+	 * The option sets shown on this product. In a list only a simple
+	 * product needs to know: a variable one links to its page anyway.
+	 *
+	 * @return list<OptionSet>
+	 */
+	private function option_sets( Product $product, string $mode ): array {
+		if ( $this->product_options === null || ( $mode === self::LOOP && $product->is_variable() ) || get_option( ProductOptions::OPTION, [] ) === [] ) {
+			return [];
+		}
+		return ( $this->product_options )()->sets_for( $product );
+	}
+
+	/** The unit price of one row before options, in minor units; null without a price. */
+	private function amount( Product $product, int $variant_id, int $user_id ): ?int {
+		$variant = $product->sellable( $variant_id );
+		if ( $variant === null || $this->pricing === null ) {
+			return null;
+		}
+		return $this->pricing->unit_price( $product, $variant, 1, $user_id )?->active->amount;
+	}
+
+	/** How the store writes an amount, for the options total. */
+	private static function money_config(): void {
+		$currency = Settings::string( 'currency' );
+		wp_interactivity_config(
+			'flexacommerce/cart',
+			[
+				'money' => [
+					'symbol'   => html_entity_decode( Currency::symbol( $currency ), ENT_QUOTES ),
+					'position' => Settings::string( 'currency_position' ),
+					'decimals' => Currency::exponent( $currency ),
+					'thousand' => Settings::string( 'thousand_separator' ),
+					'decimal'  => Settings::string( 'decimal_separator' ),
+				],
+			]
+		);
 	}
 
 	/** @param list<array{key:string,name:string,swatch:string,options:list<array{key:string,label:string,color:string,image:string}>}> $attributes */

@@ -46,6 +46,8 @@ final class Plugin {
 	private ?Badges\BadgeRepository $badges                           = null;
 	private ?Pricing\Rules\PriceRuleRepository $price_rule_repository = null;
 	private ?Pricing\Rules\PriceRules $price_rules                    = null;
+	private ?Options\OptionSetRepository $option_sets                 = null;
+	private ?Options\ProductOptions $product_options                  = null;
 
 	private ?Migration\MigrationServices $migration = null;
 
@@ -155,6 +157,7 @@ final class Plugin {
 			totals: fn ( array $data, Cart\CartState $state ): array => $this->cart_totals( $data, $state ),
 			coupons: fn (): Coupons\CouponService => $this->coupons()->service(),
 			rules: fn (): Pricing\Rules\PriceRules => $this->price_rules(),
+			product_options: fn (): Options\ProductOptions => $this->product_options(),
 		);
 	}
 
@@ -171,6 +174,16 @@ final class Plugin {
 	/** Applies the pricing rules to unit prices (ADR-024). */
 	public function price_rules(): Pricing\Rules\PriceRules {
 		return $this->price_rules ??= new Pricing\Rules\PriceRules( $this->price_rule_repository() );
+	}
+
+	/** The stored option sets (ADR-025). */
+	public function option_sets(): Options\OptionSetRepository {
+		return $this->option_sets ??= new Options\OptionSetRepository();
+	}
+
+	/** Checks and prices the product options of cart items (ADR-025). */
+	public function product_options(): Options\ProductOptions {
+		return $this->product_options ??= new Options\ProductOptions( $this->option_sets() );
 	}
 
 	/** The labels drawn over product images (ADR-023). */

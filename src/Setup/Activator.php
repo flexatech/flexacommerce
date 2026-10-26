@@ -7,6 +7,7 @@ namespace Flexa\Commerce\Setup;
 use Flexa\Commerce\Badges\BadgeRepository;
 use Flexa\Commerce\Database\Schema;
 use Flexa\Commerce\Maintenance\Cron;
+use Flexa\Commerce\Options\ProductOptions;
 use Flexa\Commerce\Pricing\PricingService;
 use Flexa\Commerce\Support\Settings;
 
@@ -64,13 +65,14 @@ final class Activator {
 	}
 
 	/**
-	 * Badges and pricing rules are read on storefront pages. An empty list
+	 * Badges, pricing rules and product options are read on storefront pages. An empty list
 	 * that exists rides in the autoloaded options; a missing one costs a
 	 * query on every page without a persistent object cache.
 	 */
 	private static function seed_lists(): void {
 		add_option( BadgeRepository::OPTION, [], '', true );
 		add_option( PricingService::RULES_OPTION, [], '', true );
+		add_option( ProductOptions::OPTION, [], '', true );
 	}
 
 	/** New site on a network where the plugin is network-active. */

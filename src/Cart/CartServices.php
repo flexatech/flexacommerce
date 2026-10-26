@@ -17,7 +17,8 @@ defined( 'ABSPATH' ) || exit;
  * resolves the tax service for catalog display prices, and `$totals` adds
  * the tax rows to the public cart shape; Cart never calls either itself.
  * `$coupons` resolves the coupon service, called only for a cart with a code;
- * `$rules` the pricing rules, called only when the store has some.
+ * `$rules` the pricing rules, called only when the store has some;
+ * `$product_options` the product options, called only when the store has option sets.
  */
 final class CartServices {
 	private ?PricingService $pricing  = null;
@@ -38,6 +39,7 @@ final class CartServices {
 		private readonly ?\Closure $totals = null,
 		private readonly ?\Closure $coupons = null,
 		private readonly ?\Closure $rules = null,
+		private readonly ?\Closure $product_options = null,
 	) {
 		$this->token_store = $tokens;
 	}
@@ -87,6 +89,7 @@ final class CartServices {
 			$this->stock(),
 			$this->services->clock(),
 			$this->coupons,
+			$this->product_options,
 		);
 	}
 

@@ -4,6 +4,7 @@ import { Header } from "./components/Header";
 import { AttributesPage } from "./features/attributes/AttributesPage";
 import { CustomersPage } from "./features/customers/CustomersPage";
 import { MigrationPage } from "./features/migration/MigrationPage";
+import { OptionSetsPage } from "./features/options/OptionSetsPage";
 import { OrdersPage } from "./features/orders/OrdersPage";
 import { PromotionsPage } from "./features/promotions/PromotionsPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
@@ -27,6 +28,8 @@ export function App({ page }: { page: AdminPage }) {
                     <MigrationPage />
                 ) : page === "flexacommerce-attributes" ? (
                     <AttributesPage />
+                ) : page === "flexacommerce-product-options" ? (
+                    <OptionSetsPage />
                 ) : (
                     <StatusPage />
                 )}

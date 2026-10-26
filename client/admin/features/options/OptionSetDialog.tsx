@@ -1,0 +1,807 @@
+import { useEffect, useId, useState, type ReactNode } from "react";
+import { AlignLeft, ArrowDown, ArrowUp, ChevronsUpDown, CircleDot, Hash, Heading, Plus, SquareCheck, Trash2, Type, X } from "lucide-react";
+
+import { showToast } from "@/shared/components/showToast";
+import { Button } from "@/shared/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/components/ui/dialog";
+import { Input } from "@/shared/components/ui/input";
+import { Label } from "@/shared/components/ui/label";
+import { Select } from "@/shared/components/ui/select";
+import { ApiError, getPluginGlobal } from "@/shared/lib/api";
+import { cn } from "@/shared/lib/cn";
+import { __, sprintf } from "@/shared/lib/i18n";
+import { parseDecimal } from "@/shared/lib/units";
+import { MoneyInput } from "../../components/MoneyInput";
+import { TargetPicker, type Pick as Target } from "../coupons/TargetPicker";
+import {
+    CHOICE_TYPES,
+    useSaveOptionSet,
+    type Choice,
+    type FieldType,
+    type LogicOp,
+    type LogicRule,
+    type OptionField,
+    type OptionSet,
+    type OptionSetInput,
+    type PriceMode,
+    type SetScope,
+} from "./useOptionSets";
+
+export const FIELD_TYPES: { value: FieldType; label: string; icon: typeof Type }[] = [
+    { value: "text", label: __("Short text"), icon: Type },
+    { value: "textarea", label: __("Long text"), icon: AlignLeft },
+    { value: "number", label: __("Number"), icon: Hash },
+    { value: "select", label: __("Dropdown"), icon: ChevronsUpDown },
+    { value: "radio", label: __("Radio buttons"), icon: CircleDot },
+    { value: "checkboxes", label: __("Checkboxes"), icon: SquareCheck },
+    { value: "heading", label: __("Heading"), icon: Heading },
+];
+
+export const typeOf = (type: FieldType) => FIELD_TYPES.find((t) => t.value === type) ?? FIELD_TYPES[0];
+
+const isChoice = (type: FieldType) => CHOICE_TYPES.includes(type);
+
+function blankField(id: number, type: FieldType): OptionField {
+    return {
+        id,
+        type,
+        label: "",
+        help: "",
+        required: false,
+        placeholder: "",
+        max_length: 0,
+        min: null,
+        max: null,
+        step: null,
+        price_mode: "none",
+        price: 0,
+        choices: isChoice(type) ? [blankChoice(1), blankChoice(2)] : [],
+        logic: null,
+    };
+}
+
+function blankChoice(id: number): Choice {
+    return { id, label: "", price_mode: "none", price: 0, default: false };
+}
+
+const nextId = (list: { id: number }[]) => list.reduce((max, item) => Math.max(max, item.id), 0) + 1;
+
+export interface SetPreset {
+    key: string;
+    name: string;
+    description: string;
+    fields: () => OptionField[];
+}
+
+const unit = () => 10 ** getPluginGlobal().currency.exponent;
+
+export const SET_PRESETS: SetPreset[] = [
+    {
+        key: "gift",
+        name: __("Gift wrap"),
+        description: __("A paid gift wrap box, and a message field that shows once it is ticked."),
+        fields: () => [
+            {
+                ...blankField(1, "checkboxes"),
+                label: __("Gift wrap"),
+                choices: [{ ...blankChoice(1), label: __("Wrap it as a gift"), price_mode: "fixed", price: 5 * unit() }],
+            },
+            {
+                ...blankField(2, "textarea"),
+                label: __("Gift message"),
+                max_length: 200,
+                logic: { action: "show", match: "all", rules: [{ field: 1, op: "not_empty", value: "" }] },
+            },
+        ],
+    },
+    {
+        key: "engraving",
+        name: __("Engraving"),
+        description: __("A short text to engrave, for a fixed extra charge."),
+        fields: () => [{ ...blankField(1, "text"), label: __("Engraving text"), help: __("Up to 20 characters."), max_length: 20, price_mode: "fixed", price: 10 * unit() }],
+    },
+    {
+        key: "size",
+        name: __("Custom size"),
+        description: __("Width and height typed by the customer, both required."),
+        fields: () => [
+            { ...blankField(1, "number"), label: __("Width (cm)"), required: true, min: 10, max: 300, step: 1 },
+            { ...blankField(2, "number"), label: __("Height (cm)"), required: true, min: 10, max: 300, step: 1 },
+        ],
+    },
+    {
+        key: "custom",
+        name: __("Custom"),
+        description: "",
+        fields: () => [blankField(1, "text")],
+    },
+];
+
+interface Draft {
+    name: string;
+    enabled: boolean;
+    applies_to: SetScope;
+    products: Target[];
+    categories: Target[];
+    exclude_products: Target[];
+    fields: OptionField[];
+}
+
+const picks = (type: Target["type"], ids: number[]): Target[] => ids.map((id) => ({ type, id }));
+
+const ids = (list: Target[]): number[] => list.map((p) => p.id);
+
+function draftOf(set: OptionSet | null, preset: SetPreset | undefined): Draft {
+    return {
+        name: set?.name ?? (preset !== undefined && preset.key !== "custom" ? preset.name : ""),
+        enabled: set?.enabled ?? true,
+        applies_to: set?.applies_to ?? "all",
+        products: picks("product", set?.product_ids ?? []),
+        categories: picks("category", set?.category_ids ?? []),
+        exclude_products: picks("product", set?.exclude_product_ids ?? []),
+        fields: set?.fields ?? (preset ?? SET_PRESETS[SET_PRESETS.length - 1]).fields(),
+    };
+}
+
+function inputOf(draft: Draft): OptionSetInput {
+    return {
+        name: draft.name.trim(),
+        enabled: draft.enabled,
+        applies_to: draft.applies_to,
+        product_ids: draft.applies_to === "products" ? ids(draft.products) : [],
+        category_ids: draft.applies_to === "categories" ? ids(draft.categories) : [],
+        exclude_product_ids: ids(draft.exclude_products),
+        fields: draft.fields.map((f) => ({ ...f, label: f.label.trim(), choices: isChoice(f.type) ? f.choices : [] })),
+    };
+}
+
+/** Only the keys that differ from the stored set. */
+function changes(input: OptionSetInput, base: OptionSetInput | null): Partial<OptionSetInput> {
+    if (base === null) {
+        return input;
+    }
+    const out: Record<string, unknown> = {};
+    for (const key of Object.keys(input) as (keyof OptionSetInput)[]) {
+        if (JSON.stringify(input[key]) !== JSON.stringify(base[key])) {
+            out[key] = input[key];
+        }
+    }
+    return out as Partial<OptionSetInput>;
+}
+
+function Field({ label, help, error, children, className }: { label: string; help?: string; error?: string; className?: string; children: (id: string) => ReactNode }) {
+    const id = useId();
+    return (
+        <div className={className}>
+            <Label htmlFor={id} className="fxc:mb-2 fxc:block">
+                {label}
+            </Label>
+            {children(id)}
+            {error ? (
+                <p className="fxc:text-destructive fxc:mt-1 fxc:text-xs">{error}</p>
+            ) : (
+                help && <p className="fxc:text-muted-foreground fxc:mt-1 fxc:text-xs">{help}</p>
+            )}
+        </div>
+    );
+}
+
+/** A percent typed as a decimal, reported in hundredths; unparseable text reports NaN. */
+function PercentInput({ value, onChange, label }: { value: number; onChange: (v: number) => void; label: string }) {
+    const [text, setText] = useState(() => (value > 0 ? String(value / 100) : ""));
+    return (
+        <div className="fxc:flex fxc:items-center fxc:gap-1">
+            <Input
+                aria-label={label}
+                inputMode="decimal"
+                className="fxc:w-20"
+                value={text}
+                onChange={(e) => {
+                    setText(e.target.value);
+                    const percent = parseDecimal(e.target.value);
+                    onChange(percent === null ? 0 : Math.round(percent * 100));
+                }}
+            />
+            <span className="fxc:text-muted-foreground fxc:text-sm">%</span>
+        </div>
+    );
+}
+
+/** No charge, a fixed amount, or a percent of the unit price. */
+function PriceInputs({ mode, price, onChange, label }: { mode: PriceMode; price: number; onChange: (mode: PriceMode, price: number) => void; label: string }) {
+    const { currency } = getPluginGlobal();
+    return (
+        <div className="fxc:flex fxc:items-center fxc:gap-2">
+            <Select
+                aria-label={sprintf(__("%s: extra charge"), label)}
+                className="fxc:w-36"
+                value={mode}
+                onChange={(e) => onChange(e.target.value as PriceMode, 0)}
+                options={[
+                    { value: "none", label: __("No charge") },
+                    { value: "fixed", label: __("Fixed amount") },
+                    { value: "percent", label: __("Percent of price") },
+                ]}
+            />
+            {mode === "fixed" && (
+                <div className="fxc:flex fxc:items-center fxc:gap-1">
+                    <span className="fxc:text-muted-foreground fxc:text-sm">{currency.symbol}</span>
+                    <MoneyInput
+                        aria-label={sprintf(__("%s: amount"), label)}
+                        className="fxc:w-24"
+                        value={price}
+                        exponent={currency.exponent}
+                        onChange={(minor) => onChange(mode, minor)}
+                    />
+                </div>
+            )}
+            {mode === "percent" && <PercentInput key={mode} label={sprintf(__("%s: percent"), label)} value={price} onChange={(v) => onChange(mode, v)} />}
+        </div>
+    );
+}
+
+function ChoicesEditor({ field, onChange }: { field: OptionField; onChange: (choices: Choice[]) => void }) {
+    const many = field.type === "checkboxes";
+    const set = (id: number, patch: Partial<Choice>) =>
+        onChange(field.choices.map((c) => (c.id === id ? { ...c, ...patch } : patch.default && !many ? { ...c, default: false } : c)));
+    return (
+        <div className="fxc:space-y-2">
+            <div className="fxc:text-muted-foreground fxc:grid fxc:grid-cols-[minmax(0,1fr)_auto_4.5rem_2.25rem] fxc:gap-2 fxc:text-xs fxc:font-medium">
+                <span>{__("Choice")}</span>
+                <span>{__("Extra charge")}</span>
+                <span>{many ? __("Ticked") : __("Default")}</span>
+            </div>
+            {field.choices.map((choice, index) => (
+                <div key={choice.id} className="fxc:grid fxc:grid-cols-[minmax(0,1fr)_auto_4.5rem_2.25rem] fxc:items-center fxc:gap-2">
+                    <Input
+                        aria-label={sprintf(__("Choice %d: name"), index + 1)}
+                        maxLength={60}
+                        value={choice.label}
+                        onChange={(e) => set(choice.id, { label: e.target.value })}
+                    />
+                    <PriceInputs
+                        label={sprintf(__("Choice %d"), index + 1)}
+                        mode={choice.price_mode}
+                        price={choice.price}
+                        onChange={(price_mode, price) => set(choice.id, { price_mode, price })}
+                    />
+                    <label className="fxc:flex fxc:justify-center">
+                        <input
+                            type={many ? "checkbox" : "radio"}
+                            className="flexacommerce-check"
+                            aria-label={sprintf(__("Choice %d: picked at the start"), index + 1)}
+                            checked={choice.default}
+                            onChange={(e) => set(choice.id, { default: e.target.checked })}
+                            onClick={() => !many && choice.default && set(choice.id, { default: false })}
+                        />
+                    </label>
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={sprintf(__("Remove choice %d"), index + 1)}
+                        disabled={field.choices.length <= 1}
+                        onClick={() => onChange(field.choices.filter((c) => c.id !== choice.id))}
+                    >
+                        <X aria-hidden className="fxc:size-4" />
+                    </Button>
+                </div>
+            ))}
+            <Button variant="outline" size="sm" disabled={field.choices.length >= 30} onClick={() => onChange([...field.choices, blankChoice(nextId(field.choices))])}>
+                <Plus aria-hidden className="fxc:size-4" />
+                {__("Add choice")}
+            </Button>
+        </div>
+    );
+}
+
+const OPS: { value: LogicOp; label: string; choice: boolean }[] = [
+    { value: "is", label: __("is"), choice: true },
+    { value: "is_not", label: __("is not"), choice: true },
+    { value: "not_empty", label: __("is filled in"), choice: false },
+    { value: "empty", label: __("is empty"), choice: false },
+];
+
+/** "Show this field when…": rules name the fields above it. */
+function LogicEditor({ field, above, onChange }: { field: OptionField; above: OptionField[]; onChange: (logic: OptionField["logic"]) => void }) {
+    const targets = above.filter((f) => f.type !== "heading");
+    if (field.logic === null) {
+        return targets.length === 0 ? (
+            <p className="fxc:text-muted-foreground fxc:text-xs">{__("Fields further down can show or hide depending on this one.")}</p>
+        ) : (
+            <Button variant="outline" size="sm" onClick={() => onChange({ action: "show", match: "all", rules: [ruleFor(targets[targets.length - 1])] })}>
+                <Plus aria-hidden className="fxc:size-4" />
+                {__("Show only when…")}
+            </Button>
+        );
+    }
+    const logic = field.logic;
+    const setRule = (index: number, rule: LogicRule) => onChange({ ...logic, rules: logic.rules.map((r, i) => (i === index ? rule : r)) });
+    return (
+        <div className="fxc:bg-muted/50 fxc:space-y-2 fxc:rounded-md fxc:p-3">
+            <div className="fxc:flex fxc:flex-wrap fxc:items-center fxc:gap-2 fxc:text-sm">
+                <Select
+                    aria-label={__("Show or hide")}
+                    className="fxc:w-28"
+                    value={logic.action}
+                    onChange={(e) => onChange({ ...logic, action: e.target.value as "show" | "hide" })}
+                    options={[
+                        { value: "show", label: __("Show") },
+                        { value: "hide", label: __("Hide") },
+                    ]}
+                />
+                <span>{__("this field when")}</span>
+                <Select
+                    aria-label={__("Which conditions")}
+                    className="fxc:w-24"
+                    value={logic.match}
+                    onChange={(e) => onChange({ ...logic, match: e.target.value as "any" | "all" })}
+                    options={[
+                        { value: "all", label: __("all") },
+                        { value: "any", label: __("any") },
+                    ]}
+                />
+                <span>{__("of these are true:")}</span>
+            </div>
+            {logic.rules.map((rule, index) => {
+                const target = targets.find((t) => t.id === rule.field);
+                const ops = OPS.filter((op) => !op.choice || (target !== undefined && isChoice(target.type)));
+                return (
+                    <div key={index} className="fxc:flex fxc:flex-wrap fxc:items-center fxc:gap-2">
+                        <Select
+                            aria-label={sprintf(__("Condition %d: field"), index + 1)}
+                            className="fxc:w-48"
+                            value={String(rule.field)}
+                            onChange={(e) => {
+                                const next = targets.find((t) => t.id === Number(e.target.value));
+                                if (next) {
+                                    setRule(index, ruleFor(next));
+                                }
+                            }}
+                            options={[
+                                ...(target === undefined ? [{ value: String(rule.field), label: __("(field moved or removed)") }] : []),
+                                ...targets.map((t) => ({ value: String(t.id), label: t.label.trim() || typeOf(t.type).label })),
+                            ]}
+                        />
+                        <Select
+                            aria-label={sprintf(__("Condition %d: test"), index + 1)}
+                            className="fxc:w-32"
+                            value={rule.op}
+                            onChange={(e) => {
+                                const op = e.target.value as LogicOp;
+                                const choice = OPS.find((o) => o.value === op)?.choice;
+                                setRule(index, { ...rule, op, value: choice ? rule.value || String(target?.choices[0]?.id ?? "") : "" });
+                            }}
+                            options={ops.map(({ value, label }) => ({ value, label }))}
+                        />
+                        {(rule.op === "is" || rule.op === "is_not") && target !== undefined && (
+                            <Select
+                                aria-label={sprintf(__("Condition %d: choice"), index + 1)}
+                                className="fxc:w-40"
+                                value={rule.value}
+                                onChange={(e) => setRule(index, { ...rule, value: e.target.value })}
+                                options={target.choices.map((c) => ({ value: String(c.id), label: c.label.trim() || sprintf(__("Choice %d"), c.id) }))}
+                            />
+                        )}
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label={sprintf(__("Remove condition %d"), index + 1)}
+                            onClick={() => {
+                                const rules = logic.rules.filter((_, i) => i !== index);
+                                onChange(rules.length === 0 ? null : { ...logic, rules });
+                            }}
+                        >
+                            <X aria-hidden className="fxc:size-4" />
+                        </Button>
+                    </div>
+                );
+            })}
+            <Button variant="ghost" size="sm" disabled={logic.rules.length >= 10} onClick={() => onChange({ ...logic, rules: [...logic.rules, ruleFor(targets[targets.length - 1])] })}>
+                <Plus aria-hidden className="fxc:size-4" />
+                {__("Add condition")}
+            </Button>
+        </div>
+    );
+}
+
+function ruleFor(target: OptionField): LogicRule {
+    return isChoice(target.type) && target.choices.length > 0
+        ? { field: target.id, op: "is", value: String(target.choices[0].id) }
+        : { field: target.id, op: "not_empty", value: "" };
+}
+
+const numberText = (value: number | null) => (value === null ? "" : String(value));
+
+const textNumber = (text: string): number | null => {
+    const n = parseDecimal(text);
+    return n === null ? null : n;
+};
+
+interface FieldCardProps {
+    field: OptionField;
+    index: number;
+    count: number;
+    above: OptionField[];
+    open: boolean;
+    error?: string;
+    onToggle: () => void;
+    onChange: (patch: Partial<OptionField>) => void;
+    onMove: (delta: number) => void;
+    onRemove: () => void;
+}
+
+function FieldCard({ field, index, count, above, open, error, onToggle, onChange, onMove, onRemove }: FieldCardProps) {
+    const { icon: Icon, label: typeLabel } = typeOf(field.type);
+    const heading = field.type === "heading";
+    const typed = field.type === "text" || field.type === "textarea" || field.type === "number";
+    const title = field.label.trim() || __("Untitled field");
+    return (
+        <li className={cn("fxc:rounded-md fxc:border", error && "fxc:border-destructive")}>
+            <div className="fxc:flex fxc:items-center fxc:gap-3 fxc:px-3 fxc:py-2">
+                <button
+                    type="button"
+                    aria-expanded={open}
+                    className="fxc:flex fxc:min-w-0 fxc:flex-1 fxc:items-center fxc:gap-3 fxc:rounded fxc:text-start fxc:outline-none fxc:focus-visible:ring-2 fxc:focus-visible:ring-primary-accent"
+                    onClick={onToggle}
+                >
+                    <span className="fxc:bg-muted fxc:text-muted-foreground fxc:flex fxc:size-8 fxc:shrink-0 fxc:items-center fxc:justify-center fxc:rounded-md">
+                        <Icon aria-hidden className="fxc:size-4" />
+                    </span>
+                    <span className="fxc:min-w-0">
+                        <span className="fxc:block fxc:truncate fxc:text-sm fxc:font-medium">
+                            {title}
+                            {field.required && <span className="fxc:text-destructive"> *</span>}
+                        </span>
+                        <span className="fxc:text-muted-foreground fxc:block fxc:text-xs">
+                            {typeLabel}
+                            {field.logic !== null && ` · ${__("shows on a condition")}`}
+                        </span>
+                    </span>
+                </button>
+                <Button variant="ghost" size="icon" aria-label={sprintf(__("Move %s up"), title)} disabled={index === 0} onClick={() => onMove(-1)}>
+                    <ArrowUp aria-hidden className="fxc:size-4" />
+                </Button>
+                <Button variant="ghost" size="icon" aria-label={sprintf(__("Move %s down"), title)} disabled={index === count - 1} onClick={() => onMove(1)}>
+                    <ArrowDown aria-hidden className="fxc:size-4" />
+                </Button>
+                <Button variant="ghost" size="icon" aria-label={sprintf(__("Remove %s"), title)} disabled={count <= 1} onClick={onRemove}>
+                    <Trash2 aria-hidden className="fxc:size-4" />
+                </Button>
+            </div>
+            {error && <p className="fxc:text-destructive fxc:px-3 fxc:pb-2 fxc:text-xs">{error}</p>}
+            {open && (
+                <div className="fxc:space-y-4 fxc:border-t fxc:px-3 fxc:py-4">
+                    <div className="fxc:grid fxc:gap-4 fxc:sm:grid-cols-[12rem_minmax(0,1fr)]">
+                        <Field label={__("Type")}>
+                            {(id) => (
+                                <Select
+                                    id={id}
+                                    value={field.type}
+                                    onChange={(e) => {
+                                        const type = e.target.value as FieldType;
+                                        onChange({
+                                            type,
+                                            choices: isChoice(type) && field.choices.length === 0 ? [blankChoice(1), blankChoice(2)] : field.choices,
+                                            required: type === "heading" ? false : field.required,
+                                        });
+                                    }}
+                                    options={FIELD_TYPES.map(({ value, label }) => ({ value, label }))}
+                                />
+                            )}
+                        </Field>
+                        <Field label={heading ? __("Heading text") : __("Label")} help={heading ? undefined : __("Shown above the field, and with the item in the cart and the order.")}>
+                            {(id) => <Input id={id} maxLength={80} value={field.label} onChange={(e) => onChange({ label: e.target.value })} />}
+                        </Field>
+                    </div>
+                    <Field label={__("Help text")} help={__("Optional, shown under the field.")}>
+                        {(id) => <Input id={id} maxLength={200} value={field.help} onChange={(e) => onChange({ help: e.target.value })} />}
+                    </Field>
+                    {!heading && (
+                        <label className="fxc:flex fxc:items-center fxc:gap-2 fxc:text-sm">
+                            <input type="checkbox" className="flexacommerce-check" checked={field.required} onChange={(e) => onChange({ required: e.target.checked })} />
+                            {__("Required: the product cannot go into the cart without it")}
+                        </label>
+                    )}
+
+                    {(field.type === "text" || field.type === "textarea") && (
+                        <div className="fxc:grid fxc:gap-4 fxc:sm:grid-cols-2">
+                            <Field label={__("Placeholder")}>
+                                {(id) => <Input id={id} maxLength={80} value={field.placeholder} onChange={(e) => onChange({ placeholder: e.target.value })} />}
+                            </Field>
+                            <Field label={__("Character limit")} help={__("Empty: no limit of your own.")}>
+                                {(id) => (
+                                    <Input
+                                        id={id}
+                                        type="number"
+                                        min={1}
+                                        max={1000}
+                                        value={field.max_length > 0 ? String(field.max_length) : ""}
+                                        onChange={(e) => onChange({ max_length: Math.max(0, Math.floor(Number(e.target.value) || 0)) })}
+                                    />
+                                )}
+                            </Field>
+                        </div>
+                    )}
+
+                    {field.type === "number" && (
+                        <div className="fxc:grid fxc:gap-4 fxc:sm:grid-cols-3">
+                            <Field label={__("Smallest")}>
+                                {(id) => <Input id={id} inputMode="decimal" value={numberText(field.min)} onChange={(e) => onChange({ min: textNumber(e.target.value) })} />}
+                            </Field>
+                            <Field label={__("Largest")}>
+                                {(id) => <Input id={id} inputMode="decimal" value={numberText(field.max)} onChange={(e) => onChange({ max: textNumber(e.target.value) })} />}
+                            </Field>
+                            <Field label={__("Step")} help={__("1 for whole numbers.")}>
+                                {(id) => <Input id={id} inputMode="decimal" value={numberText(field.step)} onChange={(e) => onChange({ step: textNumber(e.target.value) })} />}
+                            </Field>
+                        </div>
+                    )}
+
+                    {typed && (
+                        <div>
+                            <p className="fxc:mb-2 fxc:text-sm fxc:font-medium">{__("Extra charge when filled in")}</p>
+                            <PriceInputs label={title} mode={field.price_mode} price={field.price} onChange={(price_mode, price) => onChange({ price_mode, price })} />
+                        </div>
+                    )}
+
+                    {isChoice(field.type) && <ChoicesEditor field={field} onChange={(choices) => onChange({ choices })} />}
+
+                    <div className="fxc:border-t fxc:pt-4">
+                        <p className="fxc:mb-2 fxc:text-sm fxc:font-medium">{__("Conditions")}</p>
+                        <LogicEditor field={field} above={above} onChange={(logic) => onChange({ logic })} />
+                    </div>
+                </div>
+            )}
+        </li>
+    );
+}
+
+interface Props {
+    open: boolean;
+    set: OptionSet | null;
+    preset?: SetPreset;
+    onOpenChange: (open: boolean) => void;
+}
+
+export function OptionSetDialog({ open, set: stored, preset, onOpenChange }: Props) {
+    const [draft, setDraft] = useState<Draft>(() => draftOf(stored, preset));
+    const [errors, setErrors] = useState<Record<string, string>>({});
+    const [fieldError, setFieldError] = useState<{ index: number; message: string } | null>(null);
+    const [expanded, setExpanded] = useState<number | null>(null);
+    const [chosen, setChosen] = useState<string>(preset?.key ?? "custom");
+    const [adding, setAdding] = useState<FieldType>("text");
+    const save = useSaveOptionSet();
+
+    useEffect(() => {
+        if (open) {
+            const next = draftOf(stored, preset);
+            setDraft(next);
+            setChosen(preset?.key ?? "custom");
+            setErrors({});
+            setFieldError(null);
+            setExpanded(stored === null ? (next.fields[0]?.id ?? null) : null);
+        }
+    }, [open, stored, preset]);
+
+    const set = <K extends keyof Draft>(key: K, value: Draft[K]) => setDraft((d) => ({ ...d, [key]: value }));
+
+    const setFields = (fields: OptionField[]) => {
+        set("fields", fields);
+        setFieldError(null);
+    };
+
+    const applyPreset = (p: SetPreset) => {
+        setChosen(p.key);
+        setDraft((d) => {
+            const next = draftOf(null, p);
+            const typed = d.name.trim() !== "" && !SET_PRESETS.some((q) => q.name === d.name);
+            setExpanded(next.fields[0]?.id ?? null);
+            return { ...next, name: typed ? d.name : next.name, applies_to: d.applies_to, products: d.products, categories: d.categories };
+        });
+        setErrors({});
+        setFieldError(null);
+    };
+
+    const patchField = (id: number, patch: Partial<OptionField>) => setFields(draft.fields.map((f) => (f.id === id ? { ...f, ...patch } : f)));
+
+    const moveField = (index: number, delta: number) => {
+        const fields = [...draft.fields];
+        const [field] = fields.splice(index, 1);
+        fields.splice(index + delta, 0, field);
+        setFields(fields);
+    };
+
+    /** Conditions that named the removed field go with it. */
+    const removeField = (id: number) =>
+        setFields(
+            draft.fields
+                .filter((f) => f.id !== id)
+                .map((f) => {
+                    if (f.logic === null) {
+                        return f;
+                    }
+                    const rules = f.logic.rules.filter((r) => r.field !== id);
+                    return { ...f, logic: rules.length === 0 ? null : { ...f.logic, rules } };
+                }),
+        );
+
+    const addField = () => {
+        const id = nextId(draft.fields);
+        setFields([...draft.fields, blankField(id, adding)]);
+        setExpanded(id);
+    };
+
+    const submit = () => {
+        const body = changes(inputOf(draft), stored !== null ? inputOf(draftOf(stored, undefined)) : null);
+        if (stored !== null && Object.keys(body).length === 0) {
+            onOpenChange(false);
+            return;
+        }
+        save.mutate(
+            { id: stored?.id ?? 0, input: body },
+            {
+                onSuccess: () => {
+                    showToast.success(stored !== null ? __("Option set saved.") : __("Option set added."));
+                    onOpenChange(false);
+                },
+                onError: (error) => {
+                    const data = error instanceof ApiError ? error.data : {};
+                    const field = typeof data.field === "string" ? data.field : "";
+                    const index = typeof data.index === "number" ? data.index : -1;
+                    if (field === "fields" && index >= 0) {
+                        setFieldError({ index, message: error.message });
+                        setExpanded(draft.fields[index]?.id ?? null);
+                    } else if (field !== "" && field !== "id") {
+                        setErrors({ [field]: error.message });
+                    } else {
+                        showToast.error(error.message);
+                    }
+                },
+            },
+        );
+    };
+
+    const busy = save.isPending;
+
+    return (
+        <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
+            <DialogContent className="fxc:max-h-[90vh] fxc:max-w-3xl fxc:overflow-y-auto">
+                <DialogHeader>
+                    <DialogTitle>{stored !== null ? __("Edit option set") : __("New option set")}</DialogTitle>
+                    <DialogDescription>{__("Fields the customer fills in on the product page, above the Add to cart button. Extra charges are added to the unit price.")}</DialogDescription>
+                </DialogHeader>
+
+                <form
+                    id="fxc-option-set-form"
+                    className="fxc:space-y-6"
+                    onSubmit={(e) => {
+                        e.preventDefault();
+                        submit();
+                    }}
+                >
+                    {stored === null && (
+                        <fieldset>
+                            <legend className="fxc:mb-2 fxc:text-sm fxc:font-medium">{__("Start from")}</legend>
+                            <div className="fxc:flex fxc:flex-wrap fxc:gap-2">
+                                {SET_PRESETS.map((p) => (
+                                    <button
+                                        key={p.key}
+                                        type="button"
+                                        aria-pressed={chosen === p.key}
+                                        className={cn(
+                                            "fxc:rounded-full fxc:border fxc:px-3 fxc:py-1 fxc:text-sm fxc:outline-none fxc:focus-visible:ring-2 fxc:focus-visible:ring-primary-accent",
+                                            chosen === p.key ? "fxc:border-foreground fxc:bg-foreground fxc:text-background" : "fxc:hover:bg-muted",
+                                        )}
+                                        onClick={() => applyPreset(p)}
+                                    >
+                                        {p.name}
+                                    </button>
+                                ))}
+                            </div>
+                        </fieldset>
+                    )}
+
+                    <Field label={__("Name")} help={__("Only you see it, in this list.")} error={errors.name}>
+                        {(id) => <Input id={id} className="fxc:sm:w-96" maxLength={60} value={draft.name} onChange={(e) => set("name", e.target.value)} />}
+                    </Field>
+
+                    <section className="fxc:space-y-3 fxc:border-t fxc:pt-5">
+                        <h3 className="fxc:text-sm fxc:font-semibold">{__("Fields")}</h3>
+                        {errors.fields && <p className="fxc:text-destructive fxc:text-xs">{errors.fields}</p>}
+                        <ul className="fxc:space-y-2">
+                            {draft.fields.map((field, index) => (
+                                <FieldCard
+                                    key={field.id}
+                                    field={field}
+                                    index={index}
+                                    count={draft.fields.length}
+                                    above={draft.fields.slice(0, index)}
+                                    open={expanded === field.id}
+                                    error={fieldError?.index === index ? fieldError.message : undefined}
+                                    onToggle={() => setExpanded(expanded === field.id ? null : field.id)}
+                                    onChange={(patch) => patchField(field.id, patch)}
+                                    onMove={(delta) => moveField(index, delta)}
+                                    onRemove={() => removeField(field.id)}
+                                />
+                            ))}
+                        </ul>
+                        <div className="fxc:flex fxc:items-center fxc:gap-2">
+                            <Select
+                                aria-label={__("Type of the new field")}
+                                className="fxc:w-44"
+                                value={adding}
+                                onChange={(e) => setAdding(e.target.value as FieldType)}
+                                options={FIELD_TYPES.map(({ value, label }) => ({ value, label }))}
+                            />
+                            <Button variant="outline" disabled={draft.fields.length >= 20} onClick={addField}>
+                                <Plus aria-hidden className="fxc:size-4" />
+                                {__("Add field")}
+                            </Button>
+                        </div>
+                    </section>
+
+                    <section className="fxc:space-y-4 fxc:border-t fxc:pt-5">
+                        <h3 className="fxc:text-sm fxc:font-semibold">{__("Products")}</h3>
+                        <Field label={__("Show on")}>
+                            {(id) => (
+                                <Select
+                                    id={id}
+                                    className="fxc:sm:w-64"
+                                    value={draft.applies_to}
+                                    onChange={(e) => set("applies_to", e.target.value as SetScope)}
+                                    options={[
+                                        { value: "all", label: __("All products") },
+                                        { value: "products", label: __("Chosen products") },
+                                        { value: "categories", label: __("Products in chosen categories") },
+                                    ]}
+                                />
+                            )}
+                        </Field>
+                        {draft.applies_to === "products" && (
+                            <Field label={__("Products")} error={errors.product_ids}>
+                                {(id) => (
+                                    <TargetPicker
+                                        id={id}
+                                        kind="product"
+                                        variants={false}
+                                        value={draft.products}
+                                        onChange={(v) => set("products", v)}
+                                        placeholder={__("Search by name or SKU")}
+                                    />
+                                )}
+                            </Field>
+                        )}
+                        {draft.applies_to === "categories" && (
+                            <Field label={__("Categories")} help={__("Subcategories count too.")} error={errors.category_ids}>
+                                {(id) => (
+                                    <TargetPicker id={id} kind="category" value={draft.categories} onChange={(v) => set("categories", v)} placeholder={__("Search categories")} />
+                                )}
+                            </Field>
+                        )}
+                        <Field label={__("Except these products")} error={errors.exclude_product_ids}>
+                            {(id) => (
+                                <TargetPicker
+                                    id={id}
+                                    kind="product"
+                                    variants={false}
+                                    value={draft.exclude_products}
+                                    onChange={(v) => set("exclude_products", v)}
+                                    placeholder={__("None")}
+                                />
+                            )}
+                        </Field>
+                    </section>
+                </form>
+
+                <DialogFooter>
+                    <Button variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>
+                        {__("Cancel")}
+                    </Button>
+                    <Button type="submit" form="fxc-option-set-form" disabled={busy}>
+                        {busy ? __("Saving…") : stored !== null ? __("Save set") : __("Add set")}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}

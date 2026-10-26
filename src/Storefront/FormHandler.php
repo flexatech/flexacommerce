@@ -9,6 +9,7 @@ use Flexa\Commerce\Contracts\Exceptions\InsufficientStock;
 use Flexa\Commerce\Contracts\Exceptions\InvalidCartRequest;
 use Flexa\Commerce\Contracts\Exceptions\NotPurchasable;
 use Flexa\Commerce\Contracts\Exceptions\RateLimited;
+use Flexa\Commerce\Options\ProductOptions;
 use Flexa\Commerce\Plugin;
 use Flexa\Commerce\Support\SameSite;
 
@@ -62,12 +63,14 @@ final class FormHandler {
 						$attributes[ sanitize_text_field( (string) $key ) ] = sanitize_text_field( (string) $value );
 					}
 				}
+				$options = isset( $_POST['options'] ) && is_array( $_POST['options'] ) ? ProductOptions::posted( wp_unslash( $_POST['options'] ) ) : []; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- ProductOptions::accept() cleans each value for its field type.
 				$service->add(
 					$user,
 					$product,
 					isset( $_POST['variant_id'] ) ? absint( $_POST['variant_id'] ) : 0,
 					isset( $_POST['quantity'] ) ? max( 1, absint( $_POST['quantity'] ) ) : 1,
-					$attributes
+					$attributes,
+					$options
 				);
 				self::redirect( $back, 'added', $product );
 			}
