@@ -223,6 +223,13 @@ function Method({ automatic, onChange }: { automatic: boolean; onChange: (automa
     );
 }
 
+/** Common buy X get Y offers; the percentage is in the form's units (100 = free). */
+const offers = () => [
+    { label: __("Buy 1, get 1 free"), buy: "1", get: "1", percent: "100" },
+    { label: __("Buy 2, get 1 half off"), buy: "2", get: "1", percent: "50" },
+    { label: __("Buy 2, get 1 free"), buy: "2", get: "1", percent: "100" },
+];
+
 interface Props {
     open: boolean;
     coupon: Coupon | null;
@@ -295,7 +302,7 @@ export function CouponDialog({ open, coupon, automatic = false, onOpenChange }: 
                     </DialogTitle>
                     <DialogDescription>
                         {draft.automatic
-                            ? __("Applies to every cart that meets the rules, after any codes the shopper entered. Set a minimum spend and the cart tells shoppers how much more they need. Dates use your browser's time zone.")
+                            ? __("Applies to every cart that meets the rules, after any codes the shopper entered. With a minimum spend, or as buy X get Y, the cart tells shoppers what they still need. Dates use your browser's time zone.")
                             : __("Shoppers enter the code in the cart. Codes are not case sensitive. Dates use your browser's time zone.")}
                     </DialogDescription>
                 </DialogHeader>
@@ -435,6 +442,29 @@ export function CouponDialog({ open, coupon, automatic = false, onOpenChange }: 
                                     "Each set is X items bought and Y items discounted. The cheapest items it may discount go first; the products and categories under Restrictions are what counts as bought.",
                                 )}
                             </p>
+                            <div className="fxc:flex fxc:flex-wrap fxc:items-center fxc:gap-2">
+                                <span className="fxc:text-muted-foreground fxc:text-xs">{__("Quick fill:")}</span>
+                                {offers().map((offer) => (
+                                    <Button
+                                        key={offer.label}
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        aria-pressed={draft.buy_qty === offer.buy && draft.get_qty === offer.get && parseDecimal(draft.percent) === Number(offer.percent)}
+                                        onClick={() =>
+                                            setDraft((d) => ({
+                                                ...d,
+                                                buy_qty: offer.buy,
+                                                get_qty: offer.get,
+                                                percent: offer.percent,
+                                                code: d.automatic && d.code.trim() === "" ? offer.label : d.code,
+                                            }))
+                                        }
+                                    >
+                                        {offer.label}
+                                    </Button>
+                                ))}
+                            </div>
                             <div className="fxc:grid fxc:gap-4 fxc:sm:grid-cols-3">
                                 <Field label={__("Buy (X)")} error={errors.buy_qty}>
                                     {(id) => (

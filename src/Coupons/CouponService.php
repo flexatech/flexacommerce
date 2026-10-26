@@ -42,7 +42,8 @@ final class CouponService {
 	 * codes and drop out without a message when they do not fit; an
 	 * individual-use code keeps them out, and an individual-use automatic
 	 * coupon only applies alone. `next` is the automatic coupon closest to
-	 * applying when only its minimum spend is missing.
+	 * applying when only its minimum spend is missing, else the buy X get Y
+	 * one that needs the fewest more units (ADR-027).
 	 *
 	 * @param list<string>   $codes normalized, in the order added
 	 * @param list<CartItem> $items
@@ -74,7 +75,8 @@ final class CouponService {
 			$accepted[] = $coupon;
 			$exclusive  = $coupon->individual_use;
 		}
-		$next = null;
+		$next  = null;
+		$short = null;
 		foreach ( $exclusive ? [] : $this->coupons->automatic() as $coupon ) {
 			if ( $coupon->individual_use && $accepted !== [] ) {
 				continue;
@@ -92,10 +94,22 @@ final class CouponService {
 				$next = [
 					'coupon'    => $coupon,
 					'remaining' => $missing,
+					'items'     => 0,
 				];
+				continue;
+			}
+			if ( $coupon->type === Coupon::BUY_X_GET_Y && $this->check( $coupon, $items, $subtotal, $user_id, false ) === null ) {
+				$units = $this->short( $coupon, $items );
+				if ( $units > 0 && ( $short === null || $units < $short['items'] ) ) {
+					$short = [
+						'coupon'    => $coupon,
+						'remaining' => 0,
+						'items'     => $units,
+					];
+				}
 			}
 		}
-		return new Discounts( $subtotal->currency, $this->calculate( $accepted, $items ), $rejected, $next );
+		return new Discounts( $subtotal->currency, $this->calculate( $accepted, $items ), $rejected, $next ?? $short );
 	}
 
 	/**
@@ -268,11 +282,12 @@ final class CouponService {
 
 	/**
 	 * Why a coupon does not apply to the cart, or null when it does. The
-	 * email rules wait for the billing email at checkout.
+	 * email rules wait for the billing email at checkout. Without $sets a
+	 * buy X get Y coupon passes when the cart has none of its sets yet.
 	 *
 	 * @param list<CartItem> $items
 	 */
-	private function check( Coupon $coupon, array $items, Money $subtotal, int $user_id ): ?string {
+	private function check( Coupon $coupon, array $items, Money $subtotal, int $user_id, bool $sets = true ): ?string {
 		$now = $this->clock->db_now();
 		if ( $coupon->status !== Coupon::ACTIVE ) {
 			return self::unknown( $coupon->code );
@@ -311,7 +326,7 @@ final class CouponService {
 			/* translators: %s: coupon code. */
 			return sprintf( __( 'Coupon "%s" does not apply to the items in your cart.', 'flexacommerce' ), $coupon->code );
 		}
-		if ( $coupon->type === Coupon::BUY_X_GET_Y && $this->sets( $coupon, $items ) === [] ) {
+		if ( $sets && $coupon->type === Coupon::BUY_X_GET_Y && $this->sets( $coupon, $items ) === [] ) {
 			return sprintf(
 				/* translators: 1: coupon code, 2: units to buy, 3: units discounted. */
 				__( 'Coupon "%1$s" is a buy %2$d, get %3$d offer. Add the items it covers to your cart to use it.', 'flexacommerce' ),
@@ -407,6 +422,34 @@ final class CouponService {
 			++$sets;
 		}
 		return array_filter( $free );
+	}
+
+	/**
+	 * How many more units the cart needs for the first set of a buy X get Y
+	 * coupon. Units on lines that only count as bought or only may be
+	 * discounted fill their side; units on lines that count for both fill
+	 * the discounted side first, then the bought one.
+	 *
+	 * @param list<CartItem> $items
+	 */
+	private function short( Coupon $coupon, array $items ): int {
+		$get  = [];
+		$both = 0;
+		$only = 0;
+		foreach ( $this->eligible( $coupon, $items, true ) as $item ) {
+			$get[ $item->line->key ] = $item->line->quantity;
+		}
+		foreach ( $this->eligible( $coupon, $items ) as $item ) {
+			if ( isset( $get[ $item->line->key ] ) ) {
+				$both += $item->line->quantity;
+				unset( $get[ $item->line->key ] );
+			} else {
+				$only += $item->line->quantity;
+			}
+		}
+		$get_left = max( 0, $coupon->get_qty - array_sum( $get ) );
+		$shared   = min( $both, $get_left );
+		return $get_left - $shared + max( 0, $coupon->buy_qty - $only - ( $both - $shared ) );
 	}
 
 	/**

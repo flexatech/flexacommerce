@@ -272,8 +272,7 @@ const { state, actions } = store( 'flexacommerce/cart', {
 			return ( ( coupon.automatic ? i18n.discount : i18n.coupon ) || '%s' ).replace( '%s', () => coupon.label );
 		},
 		get nextLabel() {
-			const next = state.cart?.next_discount;
-			return next ? ( i18n.next || '%1$s %2$s' ).replace( '%1$s', () => next.remaining.formatted ).replace( '%2$s', () => next.label ) : '';
+			return state.cart?.next_discount?.message ?? '';
 		},
 		get nextWidth() {
 			return ( state.cart?.next_discount?.percent ?? 0 ) + '%';

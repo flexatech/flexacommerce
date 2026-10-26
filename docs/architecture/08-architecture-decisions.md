@@ -356,3 +356,21 @@ Status of every ADR: **Accepted** (plan approved 2026-10-24) unless it says othe
 **Consequences.** `DB_VERSION` 7 adds the `automatic` column and the `automatic_status` key (dbDelta, no upgrade step). P10 counts five autoloaded options. A store with automatic discounts pays one query on cart requests (P4q is measured without them). The flag counts disabled coupons as off but expired and used-up ones as on, which only costs that query. WooCommerce has no automatic coupons, so migration back to WooCommerce refuses them (`unsupported_coupon`), as it refuses buy X get Y. Shoppers cannot remove an automatic discount from the cart.
 
 **Revisit when.** A store needs an automatic discount limited by customer email or account, more than a few dozen active ones, or a choice between stacking and best-of.
+
+
+## ADR-027: Automatic buy X get Y with a count-down nudge
+
+**Context.** Item 2 after the flexa-extra port (2026-10-27): offers like "buy 2, get 1 free" that apply without a code, as flexa-extra's BOGO rules do. Coupons already have buy X get Y (ADR-021) and ADR-026 made any coupon automatic, so the offer already applied. What was missing: the cart said nothing until the first set was complete, and the admin had to work out the numbers for common offers.
+
+**Decision.**
+1. **No new rule type.** An automatic discount of type `buy_x_get_y` is the offer. It applies through the automatic pass like any other coupon.
+2. **An item nudge.** When an automatic buy X get Y coupon passes every rule except having a set (`check()` with `$sets = false`), `CouponService::short()` counts the units still missing for the first set. Units on lines that count only as bought or only as discounted fill their own side; units on lines that count for both fill the discounted side first, then the bought side. With no get rules every line counts for both, so the count is X + Y minus the units in the cart. The cart needs at least one unit that counts as bought: a cart with only the free item gets no nudge.
+3. **One nudge.** A missing minimum spend (ADR-026) still wins. Without one, the buy X get Y coupon with the fewest missing units is the nudge. `Discounts::$next` carries `items` beside `remaining`.
+4. **The sentence comes from the server.** `next_discount` gains `message` (the translated sentence, "Add 1 more item for this discount: Buy 2, get 1 free.", plural forms through `_n`) and `items`; `remaining` is null for an item nudge. The percent is the share of X + Y already in the cart, capped at 99. `cart.js` shows `message`, so it no longer needs the spend sentence in its strings.
+5. **Quick fill in the form.** The buy X get Y section of the coupon form has three buttons: Buy 1, get 1 free; Buy 2, get 1 half off; Buy 2, get 1 free. Each sets X, Y and the percentage, and names an automatic discount after the offer when the name is still empty.
+
+**Alternatives.** Porting flexa-extra's pricing rule pass: it would discount inside the unit price (ADR-024), with no order line, usage count or nudge. Counting the missing units in the browser: `cart.js` would need the coupon's rules and the category tree.
+
+**Consequences.** No DB_VERSION, no new option. The nudge costs nothing beyond the automatic pass: `short()` works on lines already resolved. With get rules the count can say "1 more item" when the item missing is the discounted one; the offer's name is what tells the shopper which. Migration back to WooCommerce refuses these offers already (automatic, ADR-026).
+
+**Revisit when.** Shoppers need to see which product is missing, or a store wants both nudges at once.

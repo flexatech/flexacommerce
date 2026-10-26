@@ -64,6 +64,8 @@ abstract class CouponTestCase extends TaxTestCase {
 			$wpdb->query( 'DELETE FROM ' . Schema::table( $table ) ); // phpcs:ignore WordPress.DB
 		}
 		update_option( CouponRepository::AUTOMATIC_OPTION, 0, true );
+		// The plugin's coupon services cache coupons for the request; a server render test fills them.
+		( fn () => $this->coupons = null )->call( Plugin::instance() );
 		$wpdb->query( 'COMMIT' ); // phpcs:ignore WordPress.DB
 	}
 

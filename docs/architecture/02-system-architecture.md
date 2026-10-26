@@ -711,7 +711,8 @@ A coupon with `automatic` set (ADR-026) applies to every cart it fits, with no c
 
 - **Order.** After the shopper's codes, the active automatic coupons in id order, each on what the earlier ones left. One that does not fit drops out without a notice. An individual-use code keeps them all out; an individual-use automatic coupon applies only when nothing else did.
 - **Shown as** "Discount: <name>" in the cart, at checkout and on the confirmation page, with no remove button. Its order line is a normal `discount` line and it takes a use at checkout like a code. Typing the name as a code gives the unknown-code message.
-- **Nudge.** `next_discount` in the cart response (`{label, remaining, percent}`, or `null`) names the automatic coupon closest to applying when only its minimum spend is missing. The cart shows "Spend $30.00 more for this discount: Big basket." above the totals, with a bar that is decoration only.
+- **Nudge.** `next_discount` in the cart response (`{label, message, remaining, items, percent}`, or `null`) names the automatic coupon closest to applying when only its minimum spend is missing. Without one, it names the automatic buy X get Y coupon that needs the fewest more units for its first set (ADR-027); then `remaining` is null and `items` is the count. The cart shows `message` ("Spend $30.00 more for this discount: Big basket.", "Add 1 more item for this discount: Buy 2, get 1 free.") above the totals, with a bar that is decoration only.
+- **Buy X get Y offers.** An automatic discount of type buy X get Y is the "buy 2, get 1 free" offer. The form's buy X get Y section has quick-fill buttons for the common offers.
 - **Cost.** `flexacommerce_automatic_coupons`, an autoloaded flag, is 1 while an active automatic coupon exists. With it off, a cart without codes costs nothing (§7.13.6). With it on, the cart reads the automatic coupons once per request.
 
 ## 8. Service contracts (internal, signatures illustrative)

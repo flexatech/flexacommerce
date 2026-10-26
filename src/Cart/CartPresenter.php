@@ -84,19 +84,44 @@ final class CartPresenter {
 
 	/**
 	 * How far the cart is from the automatic coupon closest to applying:
-	 * the spend missing and the share already reached, in percent.
+	 * the spend or the units missing (`remaining` is null for units), the
+	 * share already reached in percent, and the sentence the cart shows.
 	 *
-	 * @return array{label:string,remaining:array{amount:int,formatted:string},percent:int}|null
+	 * @return array{label:string,message:string,remaining:array{amount:int,formatted:string}|null,items:int,percent:int}|null
 	 */
 	public function next_discount( CartState $state ): ?array {
 		$next = $state->discounts?->next;
 		if ( $next === null ) {
 			return null;
 		}
-		$goal = max( 1, (int) $next['coupon']->min_subtotal );
+		$coupon = $next['coupon'];
+		if ( $next['items'] > 0 ) {
+			$goal = max( 1, $coupon->buy_qty + $coupon->get_qty );
+			return [
+				'label'     => $coupon->code,
+				'message'   => sprintf(
+					/* translators: 1: number of items, 2: the name of an automatic discount */
+					_n( 'Add %1$d more item for this discount: %2$s.', 'Add %1$d more items for this discount: %2$s.', $next['items'], 'flexacommerce' ),
+					$next['items'],
+					$coupon->code
+				),
+				'remaining' => null,
+				'items'     => $next['items'],
+				'percent'   => min( 99, intdiv( 100 * max( 0, $goal - $next['items'] ), $goal ) ),
+			];
+		}
+		$goal      = max( 1, (int) $coupon->min_subtotal );
+		$remaining = $this->money( new Money( $next['remaining'], $state->subtotal->currency ) );
 		return [
-			'label'     => $next['coupon']->code,
-			'remaining' => $this->money( new Money( $next['remaining'], $state->subtotal->currency ) ),
+			'label'     => $coupon->code,
+			'message'   => sprintf(
+				/* translators: 1: an amount of money, 2: the name of an automatic discount */
+				__( 'Spend %1$s more for this discount: %2$s.', 'flexacommerce' ),
+				$remaining['formatted'],
+				$coupon->code
+			),
+			'remaining' => $remaining,
+			'items'     => 0,
 			'percent'   => min( 99, intdiv( 100 * max( 0, $goal - $next['remaining'] ), $goal ) ),
 		];
 	}

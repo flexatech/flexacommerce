@@ -155,17 +155,9 @@ final class CartTable {
 			: sprintf( __( 'Coupon: %s', 'flexacommerce' ), $label );
 	}
 
-	/** "Spend $20.00 more for this discount: Spring sale." */
+	/** "Spend $20.00 more for this discount: Spring sale.", from the cart response. */
 	private static function next_label( mixed $next ): string {
-		if ( ! is_array( $next ) ) {
-			return '';
-		}
-		return sprintf(
-			/* translators: 1: an amount of money, 2: the name of an automatic discount */
-			__( 'Spend %1$s more for this discount: %2$s.', 'flexacommerce' ),
-			(string) ( $next['remaining']['formatted'] ?? '' ),
-			(string) ( $next['label'] ?? '' )
-		);
+		return is_array( $next ) ? (string) ( $next['message'] ?? '' ) : '';
 	}
 
 	/**

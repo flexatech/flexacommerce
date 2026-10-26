@@ -18,7 +18,7 @@ final class Discounts {
 	/**
 	 * @param list<AppliedCoupon>  $applied  in the order the codes were added
 	 * @param array<string,string> $rejected normalized code => message
-	 * @param array{coupon:Coupon,remaining:int}|null $next the automatic coupon the cart is closest to, with the spend still missing
+	 * @param array{coupon:Coupon,remaining:int,items:int}|null $next the automatic coupon the cart is closest to, with the spend or the units still missing
 	 */
 	public function __construct(
 		public readonly string $currency,
