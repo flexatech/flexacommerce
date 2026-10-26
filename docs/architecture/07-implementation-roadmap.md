@@ -285,7 +285,7 @@ Exit: **1.0 (M2)**.
 
 1. Online gateway add-on (Q4).
 2. Tax presets for more markets (EU VAT, UK, Canada, Australia), VAT ID validation and tax reports, as add-ons or presets.
-3. Coupons: built ahead of order on 2026-10-26 (ADR-021, doc 02 §7.13). WooCommerce coupon migration followed (doc 05 §5.8). Left: a product and category picker on the admin screen, free-shipping coupons.
+3. Coupons: built ahead of order on 2026-10-26 (ADR-021, doc 02 §7.13). WooCommerce coupon migration followed (doc 05 §5.8). Free-shipping coupons followed (doc 02 §7.13.8). Left: a product and category picker on the admin screen.
 4. Product lookup table if the revisit condition in doc 03 §5 triggers.
 5. Public product-type API.
 

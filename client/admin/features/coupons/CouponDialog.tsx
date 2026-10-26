@@ -29,6 +29,7 @@ interface Draft {
     per_customer_limit: string;
     individual_use: boolean;
     exclude_sale_items: boolean;
+    free_shipping: boolean;
     product_ids: string;
     exclude_product_ids: string;
     category_ids: string;
@@ -78,6 +79,7 @@ function draftOf(coupon: Coupon | null): Draft {
         per_customer_limit: coupon !== null && coupon.per_customer_limit > 0 ? String(coupon.per_customer_limit) : "",
         individual_use: coupon?.individual_use ?? false,
         exclude_sale_items: coupon?.exclude_sale_items ?? false,
+        free_shipping: coupon?.free_shipping ?? false,
         product_ids: (coupon?.product_ids ?? []).join(", "),
         exclude_product_ids: (coupon?.exclude_product_ids ?? []).join(", "),
         category_ids: (coupon?.category_ids ?? []).join(", "),
@@ -102,6 +104,7 @@ function inputOf(draft: Draft): CouponInput {
         per_customer_limit: Number(draft.per_customer_limit) || 0,
         individual_use: draft.individual_use,
         exclude_sale_items: draft.exclude_sale_items,
+        free_shipping: draft.free_shipping,
         product_ids: ids(draft.product_ids),
         exclude_product_ids: ids(draft.exclude_product_ids),
         category_ids: ids(draft.category_ids),
@@ -259,7 +262,13 @@ export function CouponDialog({ open, coupon, onOpenChange }: Props) {
                         </Field>
                         <Field
                             label={draft.type === "percent" ? __("Percentage") : sprintf(__("Amount (%s)"), currency.code)}
-                            help={draft.type === "fixed_product" ? __("Taken off every unit of the items it applies to.") : undefined}
+                            help={
+                                draft.free_shipping
+                                    ? __("May be 0 when the coupon only gives free shipping.")
+                                    : draft.type === "fixed_product"
+                                      ? __("Taken off every unit of the items it applies to.")
+                                      : undefined
+                            }
                             error={errors.amount}
                         >
                             {(id) =>
@@ -321,6 +330,12 @@ export function CouponDialog({ open, coupon, onOpenChange }: Props) {
                             onChange={(v) => set("exclude_sale_items", v)}
                             label={__("Exclude sale items")}
                             help={__("Items with a sale price get no discount from this coupon.")}
+                        />
+                        <Check
+                            checked={draft.free_shipping}
+                            onChange={(v) => set("free_shipping", v)}
+                            label={__("Free shipping")}
+                            help={__("Turns on the free shipping methods set to need a coupon.")}
                         />
                     </div>
 

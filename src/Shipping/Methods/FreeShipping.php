@@ -12,8 +12,14 @@ use Flexa\Commerce\Contracts\Shipping\ShippingRate;
 
 defined( 'ABSPATH' ) || exit;
 
-/** Free, optionally only from a minimum contents total. */
+/**
+ * Free, optionally only from a minimum contents total or with a coupon that
+ * gives free shipping. With no requirement chosen the minimum applies when
+ * it is set, as before the setting existed.
+ */
 final class FreeShipping implements ShippingMethod {
+	public const REQUIRES = [ '', 'coupon', 'either', 'both' ];
+
 	public function type(): string {
 		return 'free_shipping';
 	}
@@ -25,13 +31,35 @@ final class FreeShipping implements ShippingMethod {
 	public function settings_fields(): array {
 		return [
 			new SettingField( 'title', 'text', __( 'Name shown at checkout', 'flexacommerce' ), __( 'Free shipping', 'flexacommerce' ) ),
+			new SettingField(
+				'requires',
+				'select',
+				__( 'Free shipping requires', 'flexacommerce' ),
+				'',
+				__( 'A coupon gives free shipping when its "Free shipping" box is ticked.', 'flexacommerce' ),
+				[
+					''       => __( 'The minimum order amount, if set', 'flexacommerce' ),
+					'coupon' => __( 'A free-shipping coupon', 'flexacommerce' ),
+					'either' => __( 'A free-shipping coupon or the minimum amount', 'flexacommerce' ),
+					'both'   => __( 'A free-shipping coupon and the minimum amount', 'flexacommerce' ),
+				]
+			),
 			new SettingField( 'min_amount', 'money', __( 'Minimum order amount', 'flexacommerce' ), 0, __( 'Leave at 0 to offer free shipping on every order.', 'flexacommerce' ) ),
 		];
 	}
 
 	public function rates( ShippingPackage $package, array $settings, int $instance_id ): array {
-		$min = max( 0, (int) ( $settings['min_amount'] ?? 0 ) );
-		if ( $package->contents_total->amount < $min ) {
+		$min      = max( 0, (int) ( $settings['min_amount'] ?? 0 ) );
+		$requires = (string) ( $settings['requires'] ?? '' );
+		$coupon   = $package->free_shipping;
+		$spent    = $package->contents_total->amount >= $min;
+		$free     = match ( $requires ) {
+			'coupon' => $coupon,
+			'either' => $coupon || $spent,
+			'both'   => $coupon && $spent,
+			default  => $spent,
+		};
+		if ( ! $free ) {
 			return [];
 		}
 		return [

@@ -103,7 +103,7 @@ Legend: **MVP** = required for MVP. **FND** = architectural foundation in MVP, u
 | Cart calculations | MVP | Server-side only. Browser totals are never accepted. |
 | Server-side price validation at checkout | MVP | Prices are re-read and re-calculated inside the checkout transaction. |
 | Shipping zones (country, state, postcode pattern) | MVP | |
-| Flat rate, free shipping (with optional minimum), local pickup | MVP | |
+| Flat rate, free shipping (with optional minimum or coupon), local pickup | MVP | Coupon requirement added with free-shipping coupons |
 | Live carrier rates | POST | Through the shipping method contract. |
 | Cash on delivery | MVP | |
 | Manual bank transfer | MVP | |
@@ -165,7 +165,7 @@ Legend: **MVP** = required for MVP. **FND** = architectural foundation in MVP, u
 | Stock reservation table with timed holds per cart | The order itself is the reservation (ADR-005). Cart-level holds add a cleanup system and race conditions without preventing oversell better than an atomic decrement at order placement. |
 | Real-time two-way sync with WooCommerce | Conflict resolution across two writable stores is a product of its own. One-time migration plus re-runnable incremental import covers the stated need. |
 | Full tax engine | Kept to a rate table plus WooCommerce's options (ADR-020). Excluded: maintaining rate data for all US jurisdictions, product tax codes, VAT ID checks, tax reports and filing. Those belong to provider add-ons, through `TaxRateProvider` or `TaxCalculator`. |
-| Coupons | Discount rules interact with tax, shipping and refunds. Built after the MVP scope with a fixed rule set and one mode (sequential), no amount filters and no free-shipping or buy-X-get-Y rules (ADR-021). |
+| Coupons | Discount rules interact with tax, shipping and refunds. Built after the MVP scope with a fixed rule set and one mode (sequential), no amount filters and no buy-X-get-Y rules. Free-shipping coupons work through the free shipping method (ADR-021). |
 | Custom React storefront / headless API | Core blocks + Interactivity API meet the need without a frontend framework. |
 | Multi-currency | Changes the money model, reporting and refunds. Out. |
 | Product-type plugin API in 1.0 | A public API is a promise. Ship an internal registry first and publish the contract once two real types exist. |

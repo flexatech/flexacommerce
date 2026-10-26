@@ -301,7 +301,7 @@ function setup( root ) {
 			const row = el( 'tr', { class: 'fxc-checkout__coupon', 'data-fxc-coupon-row': true } );
 			row.append(
 				el( 'th', { scope: 'row' }, ( i18n.coupon || '%s' ).replace( '%s', coupon.label ) ),
-				el( 'td', {}, '-' + coupon.discount.formatted )
+				el( 'td', {}, coupon.free_shipping && coupon.discount.amount === 0 ? i18n.freeShip || '' : '-' + coupon.discount.formatted )
 			);
 			subtotalRow.parentNode.insertBefore( row, anchor );
 			anchor = row.nextSibling;

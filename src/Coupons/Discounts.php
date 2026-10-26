@@ -46,6 +46,16 @@ final class Discounts {
 		return $this->total()->amount > 0;
 	}
 
+	/** Whether an applied coupon gives free shipping. */
+	public function free_shipping(): bool {
+		foreach ( $this->applied as $applied ) {
+			if ( $applied->coupon->free_shipping ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	public function find( string $code ): ?AppliedCoupon {
 		foreach ( $this->applied as $applied ) {
 			if ( $applied->coupon->matches( $code ) ) {

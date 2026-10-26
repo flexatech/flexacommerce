@@ -300,13 +300,27 @@ final class CheckoutForm {
 				continue;
 			}
 			$html .= sprintf(
-				'<tr class="fxc-checkout__coupon" data-fxc-coupon-row><th scope="row">%1$s</th><td>-%2$s</td></tr>',
+				'<tr class="fxc-checkout__coupon" data-fxc-coupon-row><th scope="row">%1$s</th><td>%2$s</td></tr>',
 				/* translators: %s: coupon code */
 				esc_html( sprintf( __( 'Coupon: %s', 'flexacommerce' ), (string) $coupon['label'] ) ),
-				esc_html( (string) ( $coupon['discount']['formatted'] ?? '' ) )
+				esc_html( self::coupon_amount( $coupon ) )
 			);
 		}
 		return $html;
+	}
+
+	/**
+	 * What an applied coupon row shows: the discount, or "Free shipping" for
+	 * a coupon that takes nothing else off.
+	 *
+	 * @param array<mixed> $coupon a CartPresenter coupon row
+	 */
+	public static function coupon_amount( array $coupon ): string {
+		$discount = is_array( $coupon['discount'] ?? null ) ? $coupon['discount'] : [];
+		if ( ! empty( $coupon['free_shipping'] ) && (int) ( $discount['amount'] ?? 0 ) === 0 ) {
+			return __( 'Free shipping', 'flexacommerce' );
+		}
+		return '-' . (string) ( $discount['formatted'] ?? '' );
 	}
 
 	/**
@@ -501,6 +515,7 @@ final class CheckoutForm {
 				'includes' => __( 'Includes %1$s %2$s', 'flexacommerce' ),
 				/* translators: %s: coupon code */
 				'coupon'   => __( 'Coupon: %s', 'flexacommerce' ),
+				'freeShip' => __( 'Free shipping', 'flexacommerce' ),
 				'summary'  => __( 'Please fix the following before placing your order:', 'flexacommerce' ),
 				'noRates'  => __( 'There are no shipping options for this address. Check the address or contact us.', 'flexacommerce' ),
 				'select'   => __( 'Select an option', 'flexacommerce' ),

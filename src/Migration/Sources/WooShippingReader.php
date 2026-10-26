@@ -110,14 +110,10 @@ final class WooShippingReader {
 				$out['notes'][]   = 'Local pickup has no cost per item in FlexaCommerce.';
 			}
 		} elseif ( $type === 'free_shipping' ) {
+			// The canonical values are FlexaCommerce's: '' is the minimum amount when one is set.
 			$requires          = $text( 'requires' );
 			$out['min_amount'] = in_array( $requires, [ 'min_amount', 'either', 'both' ], true ) ? ( self::amount( $text( 'min_amount' ) ) ?? '0' ) : '0';
-			if ( $requires === 'coupon' || $requires === 'both' ) {
-				$out['supported'] = false;
-				$out['notes'][]   = 'Free shipping that needs a coupon is not supported.';
-			} elseif ( $requires === 'either' ) {
-				$out['notes'][] = 'Free shipping with a coupon below the minimum amount is not supported; only the minimum amount applies.';
-			}
+			$out['requires']   = in_array( $requires, [ 'coupon', 'either', 'both' ], true ) ? $requires : '';
 		} else {
 			$out['settings'] = $settings;
 		}

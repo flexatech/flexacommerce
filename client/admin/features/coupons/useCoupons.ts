@@ -24,6 +24,8 @@ export interface Coupon {
     per_customer_limit: number;
     individual_use: boolean;
     exclude_sale_items: boolean;
+    /** Turns on the free shipping methods that ask for a coupon. */
+    free_shipping: boolean;
     product_ids: number[];
     exclude_product_ids: number[];
     category_ids: number[];

@@ -166,6 +166,7 @@ final class FxcShippingWriter {
 				'title'      => (string) ( $row['title'] ?? '' ),
 				'tax_status' => array_key_exists( 'taxable', $row ) && ! $row['taxable'] ? 'none' : 'taxable',
 				'location'   => (string) ( $row['location'] ?? '' ),
+				'requires'   => (string) ( $row['requires'] ?? '' ),
 			];
 			foreach ( [ 'cost', 'cost_per_item', 'min_amount' ] as $key ) {
 				if ( isset( $row[ $key ] ) ) {

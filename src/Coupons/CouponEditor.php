@@ -97,8 +97,10 @@ final class CouponEditor {
 		if ( ! in_array( $type, Coupon::TYPES, true ) ) {
 			throw new InvalidCoupon( __( 'Choose a discount type.', 'flexacommerce' ), 'type' );
 		}
-		$amount = self::integer( $in['amount'] ?? null, 'amount' );
-		if ( $amount === null || $amount <= 0 ) {
+		// A free-shipping coupon may give no discount besides the shipping.
+		$free_shipping = ! empty( $in['free_shipping'] );
+		$amount        = self::integer( $in['amount'] ?? null, 'amount' ) ?? ( $free_shipping ? 0 : null );
+		if ( $amount === null || $amount < 0 || ( $amount === 0 && ! $free_shipping ) ) {
 			throw new InvalidCoupon( __( 'The amount must be more than zero.', 'flexacommerce' ), 'amount' );
 		}
 		if ( $type === Coupon::PERCENT && $amount > Coupon::FULL_PERCENT ) {
@@ -159,6 +161,7 @@ final class CouponEditor {
 			'per_customer_limit' => $limits['per_customer_limit'],
 			'individual_use'     => ! empty( $in['individual_use'] ),
 			'exclude_sale_items' => ! empty( $in['exclude_sale_items'] ),
+			'free_shipping'      => $free_shipping,
 			'rules'              => $rules,
 		];
 	}

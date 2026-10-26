@@ -117,6 +117,7 @@ final class Assets {
 				'coupon'      => __( 'Coupon: %s', 'flexacommerce' ),
 				'applied'     => __( 'Coupon applied.', 'flexacommerce' ),
 				'unapplied'   => __( 'Coupon removed.', 'flexacommerce' ),
+				'freeShip'    => __( 'Free shipping', 'flexacommerce' ),
 			],
 		];
 	}

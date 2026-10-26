@@ -10,7 +10,8 @@ defined( 'ABSPATH' ) || exit;
  * A row of fxc_coupons (doc 03 §4.17). Amounts are in the minor unit; a
  * percent coupon holds hundredths of a percent (1000 = 10 %). Dates are UTC
  * `datetime` values. The product and category rules and the allowed emails
- * live in the `rules` JSON column.
+ * live in the `rules` JSON column. A free-shipping coupon turns on the
+ * free shipping methods that ask for one; its amount may then be zero.
  */
 final class Coupon {
 	public const PERCENT       = 'percent';
@@ -57,6 +58,7 @@ final class Coupon {
 		public readonly array $emails = [],
 		public readonly string $created_at = '',
 		public readonly string $updated_at = '',
+		public readonly bool $free_shipping = false,
 	) {}
 
 	/** The form a shopper's code is compared in: trimmed, lower case. */
@@ -91,6 +93,7 @@ final class Coupon {
 			emails: array_values( array_map( 'strval', is_array( $rules['emails'] ?? null ) ? $rules['emails'] : [] ) ),
 			created_at: (string) ( $row['created_at'] ?? '' ),
 			updated_at: (string) ( $row['updated_at'] ?? '' ),
+			free_shipping: (bool) ( $row['free_shipping'] ?? false ),
 		);
 	}
 
@@ -149,6 +152,7 @@ final class Coupon {
 			'per_customer_limit' => $this->per_customer_limit,
 			'individual_use'     => $this->individual_use,
 			'exclude_sale_items' => $this->exclude_sale_items,
+			'free_shipping'      => $this->free_shipping,
 			'created_at'         => $this->created_at,
 			'updated_at'         => $this->updated_at,
 		] + $this->rules();

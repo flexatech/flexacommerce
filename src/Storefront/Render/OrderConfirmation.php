@@ -75,7 +75,7 @@ final class OrderConfirmation {
 		foreach ( $order->items as $item ) {
 			if ( $item->type === OrderItem::DISCOUNT ) {
 				/* translators: %s: coupon code */
-				$coupons[] = [ sprintf( __( 'Coupon: %s', 'flexacommerce' ), $item->name ), -$item->total ];
+				$coupons[] = [ sprintf( __( 'Coupon: %s', 'flexacommerce' ), $item->name ), $item->total === 0 && ! empty( $item->meta['free_shipping'] ) ? __( 'Free shipping', 'flexacommerce' ) : -$item->total ];
 				continue;
 			}
 			if ( $item->type === OrderItem::SHIPPING ) {
@@ -116,7 +116,7 @@ final class OrderConfirmation {
 		}
 		$rows[] = [ __( 'Total', 'flexacommerce' ), $order->total ];
 		foreach ( $rows as [ $label, $amount ] ) {
-			$html .= '<tr><th scope="row">' . esc_html( $label ) . '</th><td>' . esc_html( $this->money( $order, $amount ) ) . '</td></tr>';
+			$html .= '<tr><th scope="row">' . esc_html( $label ) . '</th><td>' . esc_html( is_string( $amount ) ? $amount : $this->money( $order, $amount ) ) . '</td></tr>';
 		}
 		return $html . '</tfoot></table>';
 	}

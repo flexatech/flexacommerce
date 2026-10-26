@@ -254,7 +254,12 @@ final class CartService {
 			}
 			$lines[] = new PackageLine( $item->line->variant_id, $item->line->quantity, $item->weight_g(), $item->dimensions_mm(), $item->total );
 		}
-		return new ShippingPackage( $destination, $lines, $state->discounts !== null ? $state->discounted_subtotal() : $state->subtotal );
+		return new ShippingPackage(
+			$destination,
+			$lines,
+			$state->discounts !== null ? $state->discounted_subtotal() : $state->subtotal,
+			$state->discounts?->free_shipping() ?? false
+		);
 	}
 
 	/** Lines of a resolved cart a renderer can show, with display prices. */

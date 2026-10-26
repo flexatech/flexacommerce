@@ -634,6 +634,7 @@ Discount codes the shopper enters in the cart. Module `Coupons` (§3.2), tables 
 
 - **Eligibility.** `product_ids` and `exclude_product_ids` match the product or the variation. `category_ids` and `exclude_category_ids` match the product's categories and their parents, so a rule on "Clothing" covers "Clothing > Shirts". `exclude_sale_items` skips lines whose unit price is reduced. A line with no current price (a product that left the catalog) is never eligible. Category terms are read only when a coupon has a category rule.
 - **Conditions** checked whenever the cart is priced: `status = active`, `starts_at ≤ now < expires_at` (both optional), `min_subtotal ≤ subtotal ≤ max_subtotal` (both optional, on the subtotal before coupons), `usage_count < usage_limit` (0 = no limit), the per-customer limit for a logged-in shopper, and at least one eligible line. A disabled code reads as unknown to the shopper.
+- **Free shipping.** A coupon with `free_shipping` set also turns on the `free_shipping` methods that ask for a coupon (§7.13.8). Such a coupon may have an amount of 0; any other coupon needs an amount above 0.
 - **Checked at checkout only:** allowed emails (`emails`, `*` wildcards, case-insensitive) against the billing email or the account email, and the per-customer limit counted by user id or billing email (lower-cased).
 
 #### 7.13.2 Order of application
@@ -657,7 +658,7 @@ A code is checked when it is added (and refused with the reason) and again on ev
 #### 7.13.5 Orders: redeem and release
 
 - Product lines store `discount_total` (net) and `total = subtotal - discount_total`; their taxes are on the discounted amount.
-- One `discount` line per applied code: `name` and `code` = the code, `total` = its net share, `meta` = `{coupon_id, type, amount, discount_tax}`. A snapshot: editing or deleting the coupon never changes an order.
+- One `discount` line per applied code: `name` and `code` = the code, `total` = its net share, `meta` = `{coupon_id, type, amount, discount_tax}`, plus `free_shipping: true` for a free-shipping coupon (its line can have a total of 0). A snapshot: editing or deleting the coupon never changes an order.
 - Invariant asserted on insert: `orders.discount_total = Σ product lines.discount_total = Σ discount lines.total` (the last only when the order has discount lines).
 - **Redeem** runs inside the `place_order()` transaction after the order row exists: for each code, `take_use()` is one `UPDATE … SET usage_count = usage_count + 1 WHERE id = ? AND status = 'active' AND (usage_limit = 0 OR usage_count < usage_limit)`, which locks the row; the per-customer count read after it is exact; then a `coupon_uses` row is inserted. A failed step throws `InvalidCheckout` and the whole order rolls back, so two shoppers racing for the last use get one order and one clear message.
 - **Release:** when an order moves to `cancelled`, `OrderService` calls the release closure in the same transaction: the order's `coupon_uses` rows are deleted (`FOR UPDATE`) and each coupon's `usage_count` goes down by one. Refunds do not release a use (WooCommerce does the same).
@@ -674,7 +675,14 @@ A cart with no codes builds no coupon service and runs no coupon query: `CartSta
 - Admin screen: **FlexaCommerce > Coupons**. Product and category ids are typed as comma-separated lists for now (no picker).
 - Hooks: `flexacommerce.coupon.saved` (`Coupon $coupon, bool $created`) and `flexacommerce.coupon.deleted` (`Coupon $coupon`), doc 04 §7.
 - Migration: WooCommerce coupons are migrated in both directions by the `coupons` stage (doc 05 §5.8), and the order export carries the `discount` lines.
-- Not yet: free-shipping coupons, BOGO rules.
+- Not yet: BOGO rules.
+
+#### 7.13.8 Free shipping
+
+- `Discounts::free_shipping()` is true when an applied coupon has `free_shipping`. `CartService::package()` passes it to `ShippingPackage::$free_shipping` (doc 04 §4), and it is part of the package hash, so a cached quote does not outlive the code.
+- The `free_shipping` method has a `requires` setting, the same choices as WooCommerce: empty (the minimum amount when one is set, the behaviour before the setting existed), `coupon`, `either` (a coupon or the minimum) and `both` (a coupon and the minimum). The minimum is compared with the contents total after coupons, as WooCommerce does by default.
+- A coupon that only gives free shipping still counts as used when the order is placed, and its rule checks (spend, dates, limits, products) apply as for any code. Its row in the cart, at checkout and on the confirmation page reads "Free shipping" instead of an amount; a coupon with an amount and free shipping shows the amount.
+- Free shipping comes from the method, never from the coupon: a store with no `free_shipping` method that asks for a coupon gives no free shipping, whatever the code says. The coupon form says so.
 
 ## 8. Service contracts (internal, signatures illustrative)
 

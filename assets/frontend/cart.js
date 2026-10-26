@@ -165,7 +165,11 @@ const { state, actions } = store( 'flexacommerce/cart', {
 		},
 		get couponAmount() {
 			const { coupon } = getContext();
-			return coupon.valid ? '-' + coupon.discount.formatted : coupon.message;
+			if ( ! coupon.valid ) {
+				return coupon.message;
+			}
+			// Mirrors CheckoutForm::coupon_amount().
+			return coupon.free_shipping && coupon.discount.amount === 0 ? i18n.freeShip || '' : '-' + coupon.discount.formatted;
 		},
 		get countLabel() {
 			return state.count > 0 ? String( state.count ) : '';

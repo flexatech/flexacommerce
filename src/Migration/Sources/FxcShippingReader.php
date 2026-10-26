@@ -68,6 +68,9 @@ final class FxcShippingReader {
 				$out[ $key ] = Decimal::trim( Decimal::from_minor( max( 0, (int) $settings[ $key ] ), $currency, $exponent ) );
 			}
 		}
+		if ( $method->type === 'free_shipping' ) {
+			$out['requires'] = (string) ( $settings['requires'] ?? '' );
+		}
 		if ( $method->type === 'local_pickup' ) {
 			$out['location'] = trim( (string) ( $settings['location'] ?? '' ) );
 		} elseif ( $handler === null || ! in_array( $method->type, [ 'flat_rate', 'free_shipping' ], true ) ) {

@@ -110,7 +110,8 @@ final class WooShippingWriter {
 		$out    = [ 'title' => $title ];
 		if ( $type === 'free_shipping' ) {
 			$min               = $amount( 'min_amount' );
-			$out['requires']   = $min === '0' ? '' : 'min_amount';
+			$requires          = (string) ( $row['requires'] ?? '' );
+			$out['requires']   = in_array( $requires, [ 'coupon', 'either', 'both' ], true ) ? $requires : ( $min === '0' ? '' : 'min_amount' );
 			$out['min_amount'] = $min === '0' ? '' : wc_format_localized_price( $min );
 			return $out;
 		}

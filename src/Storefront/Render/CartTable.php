@@ -137,7 +137,7 @@ final class CartTable {
 			self::COUPON_FORM,
 			esc_attr( $code ),
 			esc_attr__( 'Remove coupon', 'flexacommerce' ),
-			esc_html( ! empty( $coupon['valid'] ) ? '-' . (string) ( $coupon['discount']['formatted'] ?? '' ) : (string) ( $coupon['message'] ?? '' ) )
+			esc_html( ! empty( $coupon['valid'] ) ? CheckoutForm::coupon_amount( $coupon ) : (string) ( $coupon['message'] ?? '' ) )
 		);
 	}
 

@@ -55,9 +55,10 @@ final class CartPresenter {
 
 	/**
 	 * The codes in the order added; one that does not apply carries the
-	 * reason. `code` is the form to send back to remove it.
+	 * reason. `code` is the form to send back to remove it. `free_shipping`
+	 * is set when an applied coupon gives free shipping.
 	 *
-	 * @return list<array{code:string,label:string,valid:bool,message:string,discount:array{amount:int,formatted:string}}>
+	 * @return list<array{code:string,label:string,valid:bool,message:string,discount:array{amount:int,formatted:string},free_shipping:bool}>
 	 */
 	public function coupons( CartState $state ): array {
 		$discounts = $state->discounts;
@@ -65,11 +66,12 @@ final class CartPresenter {
 		foreach ( $state->cart->coupons as $code ) {
 			$applied = $discounts?->find( $code );
 			$rows[]  = [
-				'code'     => $code,
-				'label'    => $applied !== null ? $applied->coupon->code : $code,
-				'valid'    => $applied !== null,
-				'message'  => (string) ( $discounts->rejected[ $code ] ?? '' ),
-				'discount' => $this->money( new Money( $applied?->total() ?? 0, $state->subtotal->currency ) ),
+				'code'          => $code,
+				'label'         => $applied !== null ? $applied->coupon->code : $code,
+				'valid'         => $applied !== null,
+				'message'       => (string) ( $discounts->rejected[ $code ] ?? '' ),
+				'discount'      => $this->money( new Money( $applied?->total() ?? 0, $state->subtotal->currency ) ),
+				'free_shipping' => $applied !== null && $applied->coupon->free_shipping,
 			];
 		}
 		return $rows;

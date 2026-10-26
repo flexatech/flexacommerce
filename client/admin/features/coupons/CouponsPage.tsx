@@ -16,6 +16,9 @@ import { CouponDialog } from "./CouponDialog";
 import { useCoupons, useDeleteCoupon, type Coupon, type CouponListParams } from "./useCoupons";
 
 function amountText(coupon: Coupon): string {
+    if (coupon.free_shipping && coupon.amount === 0) {
+        return __("Free shipping");
+    }
     if (coupon.type === "percent") {
         return `${coupon.amount / 100} %`;
     }

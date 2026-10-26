@@ -267,7 +267,7 @@ final class CouponRepository {
 		if ( array_key_exists( 'rules', $row ) ) {
 			$row['rules'] = wp_json_encode( $row['rules'], self::JSON_FLAGS );
 		}
-		foreach ( [ 'individual_use', 'exclude_sale_items' ] as $flag ) {
+		foreach ( [ 'individual_use', 'exclude_sale_items', 'free_shipping' ] as $flag ) {
 			if ( array_key_exists( $flag, $row ) ) {
 				$row[ $flag ] = $row[ $flag ] ? 1 : 0;
 			}

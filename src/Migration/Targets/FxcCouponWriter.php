@@ -52,16 +52,13 @@ final class FxcCouponWriter {
 		if ( $source !== '' && $source !== $currency && $type !== Coupon::PERCENT ) {
 			$this->problems[] = Problem::warning( 'coupon_currency', sprintf( 'The coupon "%1$s" is in %2$s and the store uses %3$s. The amounts are copied as they are.', $code, $source, $currency ) );
 		}
-		$amount = $this->amount( (string) ( $data['amount'] ?? '0' ), $type, $currency, $exponent, $code );
-		if ( $amount <= 0 ) {
-			$reason = ! empty( $data['free_shipping'] ) ? 'The coupon only gives free shipping, which FlexaCommerce coupons cannot do.' : 'The coupon has no amount.';
-			throw new Rejected( 'unsupported_coupon', sprintf( 'The coupon "%1$s" was not imported. %2$s', $code, $reason ) );
+		$amount        = $this->amount( (string) ( $data['amount'] ?? '0' ), $type, $currency, $exponent, $code );
+		$free_shipping = ! empty( $data['free_shipping'] );
+		if ( $amount <= 0 && ! $free_shipping ) {
+			throw new Rejected( 'unsupported_coupon', sprintf( 'The coupon "%s" was not imported. The coupon has no amount.', $code ) );
 		}
 
 		$status = ( $data['status'] ?? '' ) === Coupon::ACTIVE ? Coupon::ACTIVE : Coupon::DISABLED;
-		if ( ! empty( $data['free_shipping'] ) ) {
-			$this->problems[] = Problem::warning( 'coupon_free_shipping', sprintf( 'The coupon "%s" also gave free shipping. FlexaCommerce imports the discount only.', $code ) );
-		}
 		if ( (int) ( $data['item_limit'] ?? 0 ) > 0 ) {
 			$status           = Coupon::DISABLED;
 			$this->problems[] = Problem::warning( 'coupon_item_limit', sprintf( 'The coupon "%s" applies to a limited number of items, which FlexaCommerce does not support. It was imported disabled.', $code ) );
@@ -88,7 +85,7 @@ final class FxcCouponWriter {
 		$input = [
 			'code'                 => $code,
 			'type'                 => $type,
-			'amount'               => $amount,
+			'amount'               => max( 0, $amount ),
 			'status'               => $status,
 			'description'          => (string) ( $data['description'] ?? '' ),
 			'starts_at'            => Dates::to_db( is_string( $data['starts_at'] ?? null ) ? $data['starts_at'] : null ),
@@ -99,6 +96,7 @@ final class FxcCouponWriter {
 			'per_customer_limit'   => max( 0, (int) ( $data['per_customer_limit'] ?? 0 ) ),
 			'individual_use'       => ! empty( $data['individual_use'] ),
 			'exclude_sale_items'   => ! empty( $data['exclude_sale_items'] ),
+			'free_shipping'        => $free_shipping,
 			'product_ids'          => $products,
 			'exclude_product_ids'  => $this->products( (array) ( $data['exclude_products'] ?? [] ), $map, $code ),
 			'category_ids'         => $cats,

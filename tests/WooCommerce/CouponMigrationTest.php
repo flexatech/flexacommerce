@@ -93,21 +93,23 @@ final class CouponMigrationTest extends \WP_UnitTestCase {
 
 		$job = $this->run_job( Direction::WC_TO_FXC );
 		$this->assertSame( JobStatus::COMPLETED_WITH_WARNINGS, $job->status );
-		$this->assertSame( 2, $job->counter( 'coupons', 'rejected' ) );
-		$this->assertNull( $this->fxc_coupon( 'shipfree' ), 'Free shipping alone is not a discount FlexaCommerce can give.' );
+		$this->assertSame( 1, $job->counter( 'coupons', 'rejected' ) );
+		$this->assertSame( [ 0, true ], [ $this->fxc_coupon( 'shipfree' )->amount, $this->fxc_coupon( 'shipfree' )->free_shipping ], 'Free shipping alone is imported.' );
 		$this->assertSame( 700, $this->fxc_coupon( 'taken' )->amount, 'The coupon made in FlexaCommerce is kept.' );
 
 		$this->assertSame( Coupon::ACTIVE, $this->fxc_coupon( 'shipplus' )->status );
 		$this->assertSame( 400, $this->fxc_coupon( 'shipplus' )->amount );
+		$this->assertTrue( $this->fxc_coupon( 'shipplus' )->free_shipping );
 		$this->assertSame( Coupon::DISABLED, $this->fxc_coupon( 'twoitems' )->status );
 		$this->assertSame( Coupon::DISABLED, $this->fxc_coupon( 'grouped' )->status );
 		$this->assertSame( [], $this->fxc_coupon( 'grouped' )->product_ids );
 		$this->assertSame( 3333, $this->fxc_coupon( 'cart' )->amount );
 
 		$codes = array_count_values( array_column( $this->service->log( $job->id )['rows'], 'code' ) );
-		foreach ( [ 'coupon_free_shipping', 'coupon_item_limit', 'coupon_rules_lost', 'coupon_product_missing', 'coupon_rounded', 'unsupported_coupon', 'duplicate_code' ] as $code ) {
+		foreach ( [ 'coupon_item_limit', 'coupon_rules_lost', 'coupon_product_missing', 'coupon_rounded', 'duplicate_code' ] as $code ) {
 			$this->assertSame( 1, $codes[ $code ] ?? 0, $code );
 		}
+		$this->assertArrayNotHasKey( 'unsupported_coupon', $codes );
 	}
 
 	public function test_a_second_run_updates_the_same_coupon(): void {
@@ -139,13 +141,21 @@ final class CouponMigrationTest extends \WP_UnitTestCase {
 				'emails'      => [ 'ana@example.com' ],
 			]
 		);
+		$ship   = $this->fxc_editor()->save(
+			[
+				'code'          => 'shiponly',
+				'type'          => Coupon::FIXED_CART,
+				'amount'        => 0,
+				'free_shipping' => true,
+			]
+		);
 		$save10 = $this->fxc_coupon( 'save10' );
 		$this->fxc_editor()->save( [ 'amount' => 1500 ], $save10->id );
 		$this->edited_later( $save10->id );
 
 		$job = $this->run_job( Direction::FXC_TO_WC );
 		$this->assertContains( $job->status, JobStatus::FINISHED, (string) wp_json_encode( $this->service->log( $job->id ) ) );
-		$this->assertSame( 1, $job->counter( 'coupons', 'created' ) );
+		$this->assertSame( 2, $job->counter( 'coupons', 'created' ) );
 		$this->assertSame( 1, $job->counter( 'coupons', 'updated' ) );
 
 		// A draft is not found by its code, so it is looked up through the id map.
@@ -156,6 +166,10 @@ final class CouponMigrationTest extends \WP_UnitTestCase {
 		$this->assertSame( [ $this->store->products['tee'] ], $spring->get_product_ids() );
 		$this->assertSame( [ 'ana@example.com' ], $spring->get_email_restrictions() );
 		$this->assertSame( gmmktime( 0, 0, 0, 6, 1, 2031 ), $spring->get_date_expires()?->getTimestamp() );
+
+		$ship = new \WC_Coupon( $this->remote_id( 'coupon', $ship->id ) );
+		$this->assertTrue( $ship->get_free_shipping() );
+		$this->assertSame( '0', (string) $ship->get_amount() );
 
 		$wc_save10 = new \WC_Coupon( 'save10' );
 		$this->assertSame( $this->local_id( 'coupon', $wc_save10->get_id() ), $save10->id, 'The imported coupon is updated in place.' );
