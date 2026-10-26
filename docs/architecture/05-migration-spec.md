@@ -30,7 +30,7 @@ Status: **Approved 2026-10-24**. Covers WooCommerce → FlexaCommerce and FlexaC
 
 ## 3. Canonical format v1
 
-The canonical format is the contract between adapters. In MVP it exists only in memory (same-site). It is also the future export file format (JSON Lines, one record per line), so it is specified fully now.
+The canonical format is the contract between adapters. Same-site jobs keep it in memory. It is also the export file format (JSON Lines, one record per line, §4.6).
 
 ### 3.1 Rules
 
@@ -177,8 +177,10 @@ Migration\
   Verifier                 verification report (§9.1)
   IdMap                    fxc_id_map access, resolve( ref ) / remember( ... )
   ImportGuard              side-effect suppression (§8.3)
-  Transport\SameSite       pulls from Source and pushes to Target in-process (MVP)
-  Transport\File           JSONL export/import (post-MVP)
+  Transport\FileExport     writes one store as a JSONL file (§4.6)
+  Transport\FileIndex      sidecar index of a JSONL file: id → byte offset per stage
+  Transport\FileSource     a JSONL file as the SourceAdapter of a job
+  Transport\Relocation     users and images of the site a file came from
 ```
 
 Dependency rule: adapters depend on Canonical and their own store; stages depend on adapters through interfaces `SourceAdapter` / `TargetAdapter`; nothing outside `Migration\` depends on migration code.
@@ -229,6 +231,58 @@ draft ──preflight ok──► ready ──start──► running ⇄ paused
 6. **Verify** (§9.1). Automatic at the end, re-runnable.
 7. **Incremental re-run** as often as needed before cutover.
 8. **Cutover** (§9), WC→FXC only.
+
+### 4.6 File transport (cross-site)
+
+A store moves to another site through a JSON Lines file. The exporting site needs no FlexaCommerce job; the importing site runs an ordinary job whose source is the file.
+
+```
+wp flexacommerce migrate export store.jsonl --from=wc [--stages=...] [--orders-from=... --orders-to=...]
+wp flexacommerce migrate import store.jsonl [--stages=...] [--dry-run] [--media=download|skip] --yes-i-have-a-backup
+```
+
+**File layout.** The first line is the header:
+
+```json
+{ "type": "header", "format_version": "1.0", "system": "wc",
+  "site": { "id": "6f0c…", "url": "https://old.example/" },
+  "created_at": "2026-10-26T09:00:00Z", "stages": ["attributes", "terms", "products", "customers", "orders"],
+  "plugin_version": "0.6.0" }
+```
+
+Every other line is a record envelope (§3.1) with an optional `depends` list, or a side line:
+
+- `{ "type": "user", "id": "wp:user:17", "data": { "email", "login", "display_name", "first_name", "last_name", "registered" } }`
+- `{ "type": "media", "id": "wp:attachment:55", "data": { "url", "title", "alt", "caption", "description", "mime", "filename" } }`
+
+Records follow stage order and ascending id inside a stage. A dependency that the file would hold later, or not at all (its stage was not exported), is written just before the record that needs it, and skipped when its own stage reaches it. A side line comes before the first record that points at it. `site.id` is a uuid kept in the option `flexacommerce_site_id` (made on the first export, not autoloaded).
+
+**Direction.** The header's `system` decides it: a `wc` file imports into FlexaCommerce, an `fxc` file into WooCommerce. A file job cannot be used for cutover (§9); cutover stays a same-site step.
+
+**Index.** Before the job is created the whole file is read once and checked line by line (JSON object, header first, type, id and data present, known type, numeric id, no duplicate id). A bad file is refused with the line number, so no job exists for it. The check writes a sidecar `<file>.index`: a JSON meta line (file size, mtime, header, each section's start and count) and then 16-byte entries `pack('J2', id, offset)` sorted by id per section. Sections are the stages plus `user` and `media`. Batches seek through the sidecar, so a batch costs the same at the end of a 1 GB file as at the start. A sidecar whose size or mtime does not match the file is built again. The folder holding the file must be writable.
+
+**Reading.** `FileSource` serves ids and records from the index. Each record's checksum is recomputed; a mismatch rejects that entity (`checksum_mismatch`), the rest of the job goes on. Preflight checks:
+
+| Code | Level | When |
+|---|---|---|
+| `file_version` | error | the file's major format version differs from ours |
+| `file_direction` | error | the header's system does not match the job's source |
+| `file_changed` | error | the file now comes from another site than when the job was created |
+| `file_stage_missing` | warning | a selected stage is not in the file |
+| `file_source` | info | source URL, export date, plugin version, user and image counts |
+| `media_download` | info | how many images will be downloaded |
+
+**Id map scope.** The id map rows of a file job use `remote_system = "{system}:{hash}"`, where the hash is the first 24 hex characters of sha256 of `site.id`. Imports from two different source sites never share rows, and same-site rows (`wc`) are untouched. A second import of the same file, or of a newer export of the same site, updates what the first one created (§8.1). The gateway reference of imported transactions carries the same scope: `import:{system}:{source_id}:payment`.
+
+**Users and images (`Relocation`).** User and attachment ids of the source site mean nothing on the target, so file jobs resolve them through the side lines:
+
+- A user is matched by email. When a customer or an order needs one and none exists, it is created with role `customer` (or the site's default role) and a random password; it gets no notification. On multisite, a matched user who is not a member of the site is added to it. A product author is only matched, never created.
+- An image is downloaded from its source URL into the media library (`download_url` + `media_handle_sideload`, 30 s timeout), with title, caption, description and alt text. `--media=skip` leaves images out. A failed download is a warning on the entity, and is not retried in the same request.
+- Both are kept in the id map as entities `user` and `attachment`, so a re-run reuses them.
+
+**Privacy and removal.** An export holds customer names, emails, addresses and order history. The CLI says so after writing; treat the file like a database backup and delete it after the import. Removing imported data (§9.3) leaves the users and images an import created, since other content may use them by then.
+
+**Limits.** No admin screen for file jobs yet (WP-CLI only); the REST endpoint cannot set a file. The file must be on the importing server's disk.
 
 ## 5. Mapping: WooCommerce → FlexaCommerce
 
@@ -438,7 +492,7 @@ Rollback before step 5: nothing changed for WooCommerce. After step 5: reactivat
 
 ### 9.3 Removing imported data
 
-`wp flexacommerce migrate purge <job>` deletes target entities created by that job whose current checksum still matches (never touches entities created or edited afterwards). Available in both directions; for FXC→WC it deletes WooCommerce entities through CRUD (`delete( true )`).
+`wp flexacommerce migrate purge <job>` deletes target entities created by that job whose current checksum still matches (never touches entities created or edited afterwards). Available in both directions; for FXC→WC it deletes WooCommerce entities through CRUD (`delete( true )`). After a file import, purge leaves the users and images the import created (§4.6).
 
 ## 10. FlexaCommerce → WooCommerce specifics
 

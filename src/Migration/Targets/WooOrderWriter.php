@@ -59,10 +59,10 @@ final class WooOrderWriter {
 		] as $key => $setter ) {
 			$order->{$setter}( Dates::to_timestamp( is_string( $data[ $key ] ?? null ) ? $data[ $key ] : null ) );
 		}
-		$customer = Ref::int_id( is_string( $data['customer'] ?? null ) ? $data['customer'] : null );
-		if ( $customer > 0 && get_userdata( $customer ) === false ) {
-			$this->problems[] = Problem::warning( 'missing_customer', sprintf( 'User %d no longer exists; the order is a guest order.', $customer ) );
-			$customer         = 0;
+		$account  = Ref::int_id( is_string( $data['customer'] ?? null ) ? $data['customer'] : null );
+		$customer = $map->user_id( $account, true );
+		if ( $account > 0 && $customer === 0 ) {
+			$this->problems[] = Problem::warning( 'missing_customer', sprintf( 'User %d no longer exists; the order is a guest order.', $account ) );
 		}
 		$order->set_customer_id( $customer );
 		$order->set_customer_ip_address( (string) ( $data['customer_ip'] ?? '' ) );

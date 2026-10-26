@@ -87,7 +87,7 @@ final class FxcCatalogWriter {
 		if ( is_int( $data['order'] ?? null ) ) {
 			update_term_meta( $target, AttributeRepository::POSITION_META, $data['order'] );
 		}
-		$image = $this->attachment( $data['image'] ?? null, $problems );
+		$image = $this->attachment( $data['image'] ?? null, $map, $problems );
 		if ( $image > 0 ) {
 			update_term_meta( $target, 'thumbnail_id', $image );
 		}
@@ -176,10 +176,10 @@ final class FxcCatalogWriter {
 			}
 		}
 
-		$target = $this->save_post( $target, $data, $problems );
+		$target = $this->save_post( $target, $data, $map, $problems );
 		$this->save_terms( $target, $data, $map, $problems );
 
-		$image = $this->attachment( $data['image'] ?? null, $problems );
+		$image = $this->attachment( $data['image'] ?? null, $map, $problems );
 		if ( $image > 0 ) {
 			set_post_thumbnail( $target, $image );
 		} else {
@@ -187,7 +187,7 @@ final class FxcCatalogWriter {
 		}
 		$gallery = [];
 		foreach ( is_array( $data['gallery'] ?? null ) ? $data['gallery'] : [] as $ref ) {
-			$id = $this->attachment( $ref, $problems );
+			$id = $this->attachment( $ref, $map, $problems );
 			if ( $id > 0 ) {
 				$gallery[] = $id;
 			}
@@ -195,7 +195,7 @@ final class FxcCatalogWriter {
 
 		[ $raw, $axes ] = $this->attributes_of( $data, $map, $problems );
 		$kind           = ( $data['kind'] ?? 'simple' ) === 'variable' ? 'variable' : 'simple';
-		$base           = $this->fields( is_array( $data['base'] ?? null ) ? $data['base'] : [], 'base', $problems );
+		$base           = $this->fields( is_array( $data['base'] ?? null ) ? $data['base'] : [], 'base', $map, $problems );
 		unset( $base['stock_from_base'] );
 
 		try {
@@ -228,7 +228,7 @@ final class FxcCatalogWriter {
 					continue;
 				}
 				$hashes[ $hash ]      = true;
-				$fields               = $this->fields( $variant, 'variations.' . count( $variations ), $problems );
+				$fields               = $this->fields( $variant, 'variations.' . count( $variations ), $map, $problems );
 				$fields['menu_order'] = count( $variations );
 				$id                   = $map->target_id( 'variant', $source );
 				$variations[]         = [
@@ -329,7 +329,7 @@ final class FxcCatalogWriter {
 	 * @param array<string,mixed> $data
 	 * @param list<Problem>       $problems
 	 */
-	private function save_post( int $target, array $data, array &$problems ): int {
+	private function save_post( int $target, array $data, Mapping $map, array &$problems ): int {
 		$status = (string) ( $data['status'] ?? 'draft' );
 		if ( ! in_array( $status, self::POST_STATUSES, true ) ) {
 			$problems[] = Problem::warning( 'post_status', sprintf( 'The status "%s" is not supported; the product is a draft.', $status ) );
@@ -344,7 +344,7 @@ final class FxcCatalogWriter {
 			'post_excerpt'   => (string) ( $data['excerpt'] ?? '' ),
 			'post_name'      => (string) ( $data['slug'] ?? '' ),
 			'post_status'    => $status,
-			'post_author'    => $author > 0 && get_userdata( $author ) !== false ? $author : 0,
+			'post_author'    => $map->user_id( $author ),
 			'menu_order'     => (int) ( $data['menu_order'] ?? 0 ),
 			'comment_status' => ( $data['comment_status'] ?? 'open' ) === 'closed' ? 'closed' : 'open',
 		];
@@ -507,7 +507,7 @@ final class FxcCatalogWriter {
 	 * @param list<Problem>          $problems
 	 * @return array<string,mixed>
 	 */
-	private function fields( array $row, string $path, array &$problems ): array {
+	private function fields( array $row, string $path, Mapping $map, array &$problems ): array {
 		$currency = Settings::string( 'currency' );
 		$exponent = Currency::exponent( $currency );
 		$fields   = [];
@@ -581,7 +581,7 @@ final class FxcCatalogWriter {
 			$fields[ $key ] = $value;
 		}
 		if ( array_key_exists( 'image', $row ) ) {
-			$fields['image_id'] = $this->attachment( $row['image'], $problems );
+			$fields['image_id'] = $this->attachment( $row['image'], $map, $problems );
 		}
 
 		try {
@@ -645,16 +645,16 @@ final class FxcCatalogWriter {
 
 	/**
 	 * Attachments are shared with the source site; the reference is kept
-	 * when the attachment exists.
+	 * when the attachment exists. A file from another site brings its own.
 	 *
 	 * @param list<Problem> $problems
 	 */
-	private function attachment( mixed $ref, array &$problems ): ?int {
+	private function attachment( mixed $ref, Mapping $map, array &$problems ): ?int {
 		if ( ! is_string( $ref ) ) {
 			return null;
 		}
-		$id = Ref::int_id( $ref );
-		if ( $id > 0 && get_post_type( $id ) === 'attachment' ) {
+		$id = $map->attachment_id( Ref::int_id( $ref ) );
+		if ( $id > 0 ) {
 			return $id;
 		}
 		$problems[] = Problem::warning( 'missing_media', 'An image is missing from the media library and was left out.', [ 'image' => $ref ] );

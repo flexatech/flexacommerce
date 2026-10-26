@@ -9,6 +9,8 @@ use Flexa\Commerce\Migration\Canonical\Record;
 use Flexa\Commerce\Migration\Canonical\Rejected;
 use Flexa\Commerce\Migration\Sources\SourceAdapter;
 use Flexa\Commerce\Migration\Targets\TargetAdapter;
+use Flexa\Commerce\Migration\Transport\FileExport;
+use Flexa\Commerce\Migration\Transport\FileIndex;
 use Flexa\Commerce\Support\Clock;
 
 defined( 'ABSPATH' ) || exit;
@@ -41,6 +43,31 @@ final class MigrationService {
 	 * @param array<string,mixed> $options
 	 */
 	public function create( string $direction, array $options, bool $dry_run, int $user_id ): Job {
+		// A file path only comes from create_from_file(), never from a REST body.
+		unset( $options['file'], $options['id_system'] );
+		return $this->insert( $direction, $options, $dry_run, $user_id );
+	}
+
+	/**
+	 * A job that imports a JSONL export from another site (doc 05 §4.6). The
+	 * file's header sets the direction; the index is built here, so a broken
+	 * file fails before the job exists.
+	 *
+	 * @param array<string,mixed> $options
+	 */
+	public function create_from_file( string $path, array $options, bool $dry_run, int $user_id ): Job {
+		$real = realpath( $path );
+		if ( $real === false ) {
+			throw new MigrationError( 'file_missing', sprintf( 'The file %s does not exist.', $path ) );
+		}
+		$index                = FileIndex::build( $real );
+		$options['file']      = $real;
+		$options['id_system'] = $index->id_system();
+		return $this->insert( FileExport::direction( $index->system() ), $options, $dry_run, $user_id );
+	}
+
+	/** @param array<string,mixed> $options */
+	private function insert( string $direction, array $options, bool $dry_run, int $user_id ): Job {
 		if ( ! in_array( $direction, Direction::ALL, true ) ) {
 			throw new MigrationError( 'invalid_direction', sprintf( 'Unknown direction "%s".', $direction ) );
 		}
@@ -176,13 +203,14 @@ final class MigrationService {
 			throw new MigrationError( 'invalid_status', 'A dry run or a job that is still running cannot be purged.' );
 		}
 		[ , $target ] = ( $this->adapters )( $job );
+		$ids          = $this->ids->for_system( $job->id_system() );
 		$out          = [];
 		return ImportGuard::run(
-			function () use ( $job, $target, $out ): array {
+			function () use ( $job, $target, $ids, $out ): array {
 				foreach ( self::PURGE_ORDER as $entity ) {
 					$deleted = 0;
 					$kept    = 0;
-					foreach ( $this->ids->created_by( $job->id, $job->source(), $entity ) as $row ) {
+					foreach ( $ids->created_by( $job->id, $job->source(), $entity ) as $row ) {
 						$target_id = (int) $row->id_on( $job->target() );
 						$modified  = $target->modified_at( $entity, $target_id );
 						if ( $modified !== null && $modified > $row->updated_at ) {
@@ -190,7 +218,7 @@ final class MigrationService {
 							continue;
 						}
 						$target->delete( $entity, $target_id );
-						$this->ids->delete( $row->id );
+						$ids->delete( $row->id );
 						++$deleted;
 					}
 					$out[ $entity ] = [
@@ -199,8 +227,8 @@ final class MigrationService {
 					];
 				}
 				if ( $out[ Record::PRODUCT ]['kept'] === 0 ) {
-					foreach ( $this->ids->created_by( $job->id, $job->source(), 'variant' ) as $row ) {
-						$this->ids->delete( $row->id );
+					foreach ( $ids->created_by( $job->id, $job->source(), 'variant' ) as $row ) {
+						$ids->delete( $row->id );
 					}
 				}
 				return $out;

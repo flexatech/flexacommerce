@@ -40,6 +40,10 @@ final class Job {
 		'verbose'               => false,
 		'force'                 => false,
 		'backup_confirmed'      => false,
+		// File transport (doc 05 §4.6): the JSONL file, the id map system of its source site, media policy.
+		'file'                  => '',
+		'id_system'             => '',
+		'media'                 => 'download',
 	];
 
 	/**
@@ -114,6 +118,9 @@ final class Job {
 		$out['verbose']               = (bool) $out['verbose'];
 		$out['force']                 = (bool) $out['force'];
 		$out['backup_confirmed']      = (bool) $out['backup_confirmed'];
+		$out['file']                  = is_string( $out['file'] ) ? $out['file'] : '';
+		$out['id_system']             = is_string( $out['id_system'] ) && preg_match( '/^[a-z0-9:]{1,32}$/', $out['id_system'] ) === 1 ? $out['id_system'] : '';
+		$out['media']                 = $out['media'] === 'skip' ? 'skip' : 'download';
 		return $out;
 	}
 
@@ -150,6 +157,16 @@ final class Job {
 
 	public function target(): string {
 		return Direction::target( $this->direction );
+	}
+
+	/** A job that reads a JSONL export file instead of the other store on this site. */
+	public function is_file(): bool {
+		return $this->options['file'] !== '';
+	}
+
+	/** remote_system of this job's id map rows: 'wc' on one site, the source site's key for a file. */
+	public function id_system(): string {
+		return $this->is_file() && $this->options['id_system'] !== '' ? (string) $this->options['id_system'] : IdMapRepository::SYSTEM;
 	}
 
 	public function counter( string $stage, string $name ): int {

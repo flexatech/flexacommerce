@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace Flexa\Commerce\Migration;
 
+use Flexa\Commerce\Migration\Transport\Relocation;
+
 defined( 'ABSPATH' ) || exit;
 
 /**
  * The id map seen from one job: source ids in, target ids out. The table
  * always keeps the WooCommerce id as remote_id, so lookups flip with the
- * direction.
+ * direction. Users and attachments are shared on one site; a job reading a
+ * file from another site finds them through its Relocation.
  */
 final class Mapping {
 	/** @var array<string,?IdMapRow> */
@@ -20,7 +23,13 @@ final class Mapping {
 		private readonly string $direction,
 		private readonly ?int $job_id,
 		private readonly \Closure $now,
+		private readonly ?Relocation $relocation = null,
 	) {}
+
+	/** remote_system of the rows this mapping reads and writes. */
+	public function system(): string {
+		return $this->map->system();
+	}
 
 	public function direction(): string {
 		return $this->direction;
@@ -65,6 +74,31 @@ final class Mapping {
 			$this->map->delete( $row->id );
 		}
 		unset( $this->cache[ $entity . ':' . $source_id ] );
+	}
+
+	/**
+	 * Target user for a source user id, 0 when there is none. On another
+	 * site the user is matched by email, and created when `$create`.
+	 */
+	public function user_id( int $source_id, bool $create = false ): int {
+		if ( $source_id <= 0 ) {
+			return 0;
+		}
+		if ( $this->relocation !== null ) {
+			return $this->relocation->user( $source_id, $this, $create );
+		}
+		return get_userdata( $source_id ) !== false ? $source_id : 0;
+	}
+
+	/** Target attachment for a source attachment id, 0 when there is none. */
+	public function attachment_id( int $source_id ): int {
+		if ( $source_id <= 0 ) {
+			return 0;
+		}
+		if ( $this->relocation !== null ) {
+			return $this->relocation->attachment( $source_id, $this );
+		}
+		return get_post_type( $source_id ) === 'attachment' ? $source_id : 0;
 	}
 
 	/** Drop cached rows, after a rolled back transaction or between batches. */

@@ -132,7 +132,7 @@ Legend: **MVP** = required for MVP. **FND** = architectural foundation in MVP, u
 | Simple products | MVP | MVP | |
 | Variable products, attributes, variations | MVP | MVP | Global (`pa_*`) and local attributes. "Any" variation values preserved. |
 | Categories and tags | MVP | MVP | Hierarchy and slugs preserved. |
-| Images and media | MVP (same site) | MVP (same site) | Same-site migration reuses attachment IDs. Cross-site media transfer is POST. |
+| Images and media | MVP | MVP | Same-site migration reuses attachment IDs. A file import downloads images from the source site (doc 05 §4.6). |
 | SKU and stock | MVP | MVP | Duplicate SKUs reported and resolved by policy (doc 05 §6). |
 | Customers | MVP | MVP | Same site: customers are already WordPress users. Billing/shipping profile meta is mapped. |
 | Orders and order items | MVP | MVP | Historical import: no emails, no payments, no stock changes. |
@@ -142,7 +142,7 @@ Legend: **MVP** = required for MVP. **FND** = architectural foundation in MVP, u
 | Refunds | MVP | MVP | Mapped to refund transactions and WooCommerce refund objects. |
 | Coupon lines, fee lines, tax lines on orders | MVP | MVP | Preserved as historical order lines (amounts only). |
 | Unsupported third-party metadata | MVP (preserved) | MVP (restored if originally from WC) | Stored verbatim in an import bucket, reported, never interpreted. |
-| Cross-site transport (export file → import on another site) | POST | POST | The canonical format is designed for it. MVP transport is same-site. |
+| Cross-site transport (export file → import on another site) | MVP (WP-CLI) | MVP (WP-CLI) | JSONL export and import (doc 05 §4.6). No admin screen yet. |
 | Continuous two-way sync | OUT | OUT | See doc 05 §8. |
 | Import/export validation and error reports | MVP | MVP | |
 

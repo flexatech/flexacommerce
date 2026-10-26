@@ -98,10 +98,10 @@ final class FxcOrderWriter {
 
 		$billing  = FxcStoreWriter::address( 'billing', is_array( $data['addresses']['billing'] ?? null ) ? $data['addresses']['billing'] : [] );
 		$shipping = FxcStoreWriter::address( 'shipping', is_array( $data['addresses']['shipping'] ?? null ) ? $data['addresses']['shipping'] : [] );
-		$customer = Ref::int_id( is_string( $data['customer'] ?? null ) ? $data['customer'] : '' );
-		if ( $customer > 0 && get_userdata( $customer ) === false ) {
-			$this->problems[] = Problem::warning( 'missing_customer', sprintf( 'User %d no longer exists; the order is a guest order.', $customer ) );
-			$customer         = 0;
+		$account  = Ref::int_id( is_string( $data['customer'] ?? null ) ? $data['customer'] : null );
+		$customer = $map->user_id( $account, true );
+		if ( $account > 0 && $customer === 0 ) {
+			$this->problems[] = Problem::warning( 'missing_customer', sprintf( 'User %d no longer exists; the order is a guest order.', $account ) );
 		}
 
 		$row = [
@@ -145,7 +145,7 @@ final class FxcOrderWriter {
 
 		$ids = $this->repository->insert_items( $order_id, $items );
 		$this->repository->save_addresses( $order_id, array_values( array_filter( [ $billing, $shipping ] ) ) );
-		$this->write_transactions( $order_id, $record->source_id(), $transactions, $sources, $ids, $created );
+		$this->write_transactions( $order_id, $map->system() . ':' . $record->source_id(), $transactions, $sources, $ids, $created );
 		$this->write_history( $order_id, $data, $job, $custom, $status, $created );
 		$this->repository->insert_meta( $order_id, $this->meta( $data, $record, $job ) );
 
@@ -498,7 +498,7 @@ final class FxcOrderWriter {
 					'gateway'           => $gateway,
 					'amount'            => $amount,
 					'currency'          => $this->currency,
-					'idempotency_key'   => $type === Transaction::REFUND ? sprintf( 'import:wc:%s:refund:%d', $source_id, $refund_no ) : sprintf( 'import:wc:%s:payment', $source_id ),
+					'idempotency_key'   => $type === Transaction::REFUND ? sprintf( 'import:%s:refund:%d', $source_id, $refund_no ) : sprintf( 'import:%s:payment', $source_id ),
 					'gateway_reference' => $reference,
 					'refund_lines'      => $lines === [] ? null : (string) wp_json_encode( $lines, self::JSON_FLAGS ),
 					'data'              => (string) wp_json_encode( $data, self::JSON_FLAGS ),

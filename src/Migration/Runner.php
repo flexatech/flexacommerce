@@ -13,6 +13,7 @@ use Flexa\Commerce\Migration\Sources\SourceAdapter;
 use Flexa\Commerce\Migration\Targets\RecordingTarget;
 use Flexa\Commerce\Migration\Targets\TargetAdapter;
 use Flexa\Commerce\Migration\Targets\WriteResult;
+use Flexa\Commerce\Migration\Transport\FileSource;
 use Flexa\Commerce\Support\Clock;
 
 defined( 'ABSPATH' ) || exit;
@@ -134,7 +135,13 @@ final class Runner {
 		[ $source, $target ] = ( $this->adapters )( $job );
 		$this->source        = $source;
 		$this->target        = $job->dry_run ? new RecordingTarget( $target ) : $target;
-		$this->map           = new Mapping( $this->ids, $job->direction, $job->dry_run ? null : $job->id, fn (): string => $this->clock->db_now() );
+		$this->map           = new Mapping(
+			$this->ids->for_system( $job->id_system() ),
+			$job->direction,
+			$job->dry_run ? null : $job->id,
+			fn (): string => $this->clock->db_now(),
+			$source instanceof FileSource ? $source->relocation( $job ) : null,
+		);
 		$this->cursor        = $job->cursor;
 		$this->counters      = $job->counters;
 

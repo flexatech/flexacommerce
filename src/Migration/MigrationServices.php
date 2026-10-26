@@ -32,6 +32,9 @@ use Flexa\Commerce\Migration\Targets\WooShippingRepository;
 use Flexa\Commerce\Migration\Targets\WooShippingWriter;
 use Flexa\Commerce\Migration\Targets\WooStoreWriter;
 use Flexa\Commerce\Migration\Targets\WooTarget;
+use Flexa\Commerce\Migration\Transport\FileExport;
+use Flexa\Commerce\Migration\Transport\FileIndex;
+use Flexa\Commerce\Migration\Transport\FileSource;
 use Flexa\Commerce\Shipping\ShippingServices;
 use Flexa\Commerce\Support\Services;
 use Flexa\Commerce\Tax\TaxServices;
@@ -102,7 +105,7 @@ final class MigrationServices {
 
 	public function verifier( Job $job ): Verifier {
 		return new Verifier(
-			$this->ids(),
+			$this->ids()->for_system( $job->id_system() ),
 			$this->services->clock(),
 			$job->direction === Direction::FXC_TO_WC
 				? static fn ( int $order_id ): ?array => WooOrderWriter::summary( $order_id )
@@ -112,6 +115,16 @@ final class MigrationServices {
 
 	/** @return array{0:SourceAdapter,1:TargetAdapter} */
 	public function adapters( Job $job ): array {
+		if ( $job->is_file() ) {
+			$source = new FileSource( FileIndex::open( (string) $job->option( 'file' ) ) );
+			if ( $job->direction === Direction::WC_TO_FXC ) {
+				return [ $source, $this->fxc_target() ];
+			}
+			if ( ! WooSource::available() ) {
+				throw new MigrationError( 'woocommerce_inactive', 'WooCommerce is not active.' );
+			}
+			return [ $source, $this->woo_target() ];
+		}
 		if ( ! WooSource::available() ) {
 			throw new MigrationError( 'woocommerce_inactive', 'WooCommerce is not active.' );
 		}
@@ -119,6 +132,27 @@ final class MigrationServices {
 			return [ $this->fxc_source(), $this->woo_target() ];
 		}
 		return [ $this->woo_source(), $this->fxc_target() ];
+	}
+
+	/**
+	 * Writes this site's store as a JSONL file for another site (doc 05 §4.6).
+	 *
+	 * @param array<string,mixed>              $options stages and the order date range
+	 * @param (callable(string,int):void)|null $progress
+	 * @return array{counts:array<string,int>,rejected:list<array{stage:string,id:string,message:string}>,users:int,media:int}
+	 */
+	public function export( string $system, array $options, string $path, ?callable $progress = null ): array {
+		if ( $system === 'wc' && ! WooSource::available() ) {
+			throw new MigrationError( 'woocommerce_inactive', 'WooCommerce is not active.' );
+		}
+		$source = match ( $system ) {
+			'wc'    => $this->woo_source(),
+			'fxc'   => $this->fxc_source(),
+			default => throw new MigrationError( 'invalid_direction', sprintf( 'Unknown store "%s"; use wc or fxc.', $system ) ),
+		};
+		unset( $options['file'], $options['id_system'] );
+		$job = FileExport::job( FileExport::direction( $system ), $options );
+		return ( new FileExport( $source ) )->export( $job, $path, $progress );
 	}
 
 	public function woo_source(): WooSource {

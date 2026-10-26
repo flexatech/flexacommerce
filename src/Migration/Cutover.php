@@ -117,8 +117,8 @@ final class Cutover {
 		if ( $job === null ) {
 			throw new MigrationError( 'not_found', sprintf( 'Migration job %d does not exist.', $job_id ) );
 		}
-		if ( $job->direction !== Direction::WC_TO_FXC || $job->dry_run || ! in_array( $job->status, JobStatus::FINISHED, true ) ) {
-			throw new MigrationError( 'cutover_job_invalid', 'Pick a finished WooCommerce to FlexaCommerce job that was not a dry run.' );
+		if ( $job->direction !== Direction::WC_TO_FXC || $job->dry_run || $job->is_file() || ! in_array( $job->status, JobStatus::FINISHED, true ) ) {
+			throw new MigrationError( 'cutover_job_invalid', 'Pick a finished WooCommerce to FlexaCommerce job on this site that was not a dry run.' );
 		}
 		$verified = is_string( $job->report['verified_at'] ?? null ) ? $job->report['verified_at'] : '';
 		if ( $verified === '' || $verified < (string) $state['steps']['freeze'] ) {

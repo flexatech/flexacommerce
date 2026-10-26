@@ -9,16 +9,28 @@ use Flexa\Commerce\Database\Schema;
 
 defined( 'ABSPATH' ) || exit;
 
-/** Storage for fxc_id_map (doc 05 §4.2). One remote system for now: 'wc'. */
+/**
+ * Storage for fxc_id_map (doc 05 §4.2), scoped to one remote system: 'wc'
+ * for the WooCommerce store on this site, or the key of the site a JSONL
+ * file came from (doc 05 §4.6).
+ */
 // phpcs:disable WordPress.DB.DirectDatabaseQuery -- plugin table, all values prepared, rows change on every imported entity.
 final class IdMapRepository {
 	public const SYSTEM = 'wc';
 
-	public function __construct( private readonly \wpdb $wpdb ) {}
+	public function __construct( private readonly \wpdb $wpdb, private readonly string $system = self::SYSTEM ) {}
+
+	public function for_system( string $system ): self {
+		return $system === $this->system ? $this : new self( $this->wpdb, $system );
+	}
+
+	public function system(): string {
+		return $this->system;
+	}
 
 	public function by_remote( string $entity, string $remote_id ): ?IdMapRow {
 		$row = $this->wpdb->get_row(
-			$this->wpdb->prepare( 'SELECT * FROM %i WHERE remote_system = %s AND entity = %s AND remote_id = %s', Schema::table( 'id_map' ), self::SYSTEM, $entity, $remote_id ),
+			$this->wpdb->prepare( 'SELECT * FROM %i WHERE remote_system = %s AND entity = %s AND remote_id = %s', Schema::table( 'id_map' ), $this->system, $entity, $remote_id ),
 			ARRAY_A
 		);
 		return is_array( $row ) ? IdMapRow::from_row( $row ) : null;
@@ -26,7 +38,7 @@ final class IdMapRepository {
 
 	public function by_local( string $entity, int $local_id ): ?IdMapRow {
 		$row = $this->wpdb->get_row(
-			$this->wpdb->prepare( 'SELECT * FROM %i WHERE remote_system = %s AND entity = %s AND local_id = %d', Schema::table( 'id_map' ), self::SYSTEM, $entity, $local_id ),
+			$this->wpdb->prepare( 'SELECT * FROM %i WHERE remote_system = %s AND entity = %s AND local_id = %d', Schema::table( 'id_map' ), $this->system, $entity, $local_id ),
 			ARRAY_A
 		);
 		return is_array( $row ) ? IdMapRow::from_row( $row ) : null;
@@ -37,7 +49,7 @@ final class IdMapRepository {
 			$this->wpdb->prepare(
 				'INSERT INTO %i (remote_system, entity, remote_id, local_id, origin, checksum, job_id, created_at, updated_at) VALUES (%s, %s, %s, %d, %s, %s, %d, %s, %s)',
 				Schema::table( 'id_map' ),
-				self::SYSTEM,
+				$this->system,
 				$entity,
 				$remote_id,
 				$local_id,
@@ -86,7 +98,7 @@ final class IdMapRepository {
 			$this->wpdb->prepare(
 				'SELECT * FROM %i WHERE remote_system = %s AND job_id = %d AND origin = %s AND entity = %s ORDER BY id DESC',
 				Schema::table( 'id_map' ),
-				self::SYSTEM,
+				$this->system,
 				$job_id,
 				$origin,
 				$entity
@@ -102,7 +114,7 @@ final class IdMapRepository {
 			$this->wpdb->prepare(
 				'SELECT * FROM %i WHERE remote_system = %s AND entity = %s AND id > %d ORDER BY id LIMIT %d',
 				Schema::table( 'id_map' ),
-				self::SYSTEM,
+				$this->system,
 				$entity,
 				$after,
 				$limit
@@ -114,7 +126,7 @@ final class IdMapRepository {
 
 	public function count( string $entity ): int {
 		return (int) $this->wpdb->get_var(
-			$this->wpdb->prepare( 'SELECT COUNT(*) FROM %i WHERE remote_system = %s AND entity = %s', Schema::table( 'id_map' ), self::SYSTEM, $entity )
+			$this->wpdb->prepare( 'SELECT COUNT(*) FROM %i WHERE remote_system = %s AND entity = %s', Schema::table( 'id_map' ), $this->system, $entity )
 		);
 	}
 }

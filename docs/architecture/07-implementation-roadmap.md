@@ -251,7 +251,7 @@ Implementation notes (phase 5, 2026-10-25):
 | P1 | Purge imported data command |
 | P1 | Action Scheduler driver |
 | P2 | Shipping zones migration (done 2026-10-26) |
-| P3 | JSONL file transport (cross-site) |
+| P3 | JSONL file transport (cross-site, done 2026-10-26) |
 
 Exit criteria: all migration tests green in all storage modes; 100,000-order synthetic job completes within the memory target, throughput recorded; P9 runs nightly; benchmark dataset also imported through migration and compared with the native load (doc 10 §6.2).
 
@@ -264,6 +264,7 @@ Implementation notes (phase 6, 2026-10-26):
 - **P9.** `Runner::run_batch()` resets the peak at the start of each batch and returns the batch's own peak (`memory_get_peak_usage()`), which `wp flexacommerce migrate run` prints. A process-wide peak is the wrong number: it includes the preflight, and WP-CLI sets `memory_limit` to -1, so `php -d memory_limit=128M` proves nothing. `MigrationTest` checks every batch against 128 MB. Most of a batch's peak is the loaded site: WordPress with WooCommerce 11.2.1 is about 110 MB in WP-CLI on the bench stack (51 MB without WooCommerce; FlexaCommerce adds under 2 MB), and a batch adds 4 to 12 MB. The batch budget used to be an absolute 128 MB of `memory_get_usage()`, which would have given a site already over 128 MB one entity per batch; it now counts growth from the batch start (`memory_budget`, 64 MB by default), with a stop at 80 % of `memory_limit` so growth cannot reach the fatal error (doc 05 §4.4). `MigrationTest` covers both.
 - **Cross-check** (doc 10 §6.2): the WooCommerce store of dataset M, migrated into FlexaCommerce on the same site and exported after WooCommerce is deactivated, passes the parity check against the spec (10,000 products, 36,828 variants). 10,329 entities in 540 s with highest batch peak 122.8 MB, measured while another job loaded the database, so the time is indicative.
 - **Shipping zones** (P2, doc 05 §5.7) are the `shipping` stage, both directions. Flat rate and local pickup gained a tax status setting so `tax_status: none` survives the trip. `ShippingMigrationTest` covers the formula parser, the methods imported turned off, a second run next to zones made by hand, and FXC→WC; the golden store has two zones and an "everywhere else" method, so `RoundTripTest` compares them too.
+- **File transport** (P3, doc 05 §4.6): `wp flexacommerce migrate export` writes the store as JSONL with a header, the records and `user`/`media` side lines; `migrate import` checks the whole file, builds a sidecar index of byte offsets and creates an ordinary job whose source is the file. Id map rows of a file job are scoped by the source site (`wc:{hash}`), so two source sites never collide and same-site rows stay as they were. Users are matched by email or created as customers; images are downloaded into the media library unless `--media=skip`. `FileTransportTest` covers WC to FXC across a simulated second site (user and image removed after the export, then recreated), a second import with nothing changed, media skip, FXC to WC with verify, broken files refused before a job exists, a newer major format, REST unable to set a file, and the index (seek, reuse, rebuild). WP-CLI only for now.
 - **Not done.** P9 does not run nightly: the CI workflow is off, so the check lives in the WooCommerce suite until CI is back. The 100,000-order job (doc 05 §11) has no recorded result: `tools/bench/synthetic-orders.php` generates the stores (`mig-hpos.bench`, `mig-legacy.bench`), but the first runs hit a full disk on the bench host and were discarded. A database error during a write is currently logged as a rejected entity, so such a run still ends "completed with warnings"; failing the job instead is open.
 
 ## Phase 7: Hardening and release
@@ -285,7 +286,7 @@ Exit: **1.0 (M2)**.
 1. Online gateway add-on (Q4).
 2. Tax presets for more markets (EU VAT, UK, Canada, Australia), VAT ID validation and tax reports, as add-ons or presets.
 3. Coupons.
-4. Cross-site transport (JSONL).
+4. Admin screen for file imports (the transport itself shipped in phase 6).
 5. Product lookup table if the revisit condition in doc 03 §5 triggers.
 6. Public product-type API.
 

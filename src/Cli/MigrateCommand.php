@@ -28,6 +28,8 @@ defined( 'ABSPATH' ) || exit;
  *   wp flexacommerce migrate cancel <job>
  *   wp flexacommerce migrate purge <job> [--yes]
  *   wp flexacommerce migrate cutover [<step>] [--job=<id>] [--pages=<mode>] [--acknowledge-warnings] [--accept-failures]
+ *   wp flexacommerce migrate export <file> [--from=<store>] [--stages=<list>] [--orders-from=<date>] [--orders-to=<date>]
+ *   wp flexacommerce migrate import <file> [--stages=<list>] [--dry-run] [--yes-i-have-a-backup] [--media=<policy>]
  */
 final class MigrateCommand {
 	/** CLI flag => job option. */
@@ -41,7 +43,7 @@ final class MigrateCommand {
 			return;
 		}
 		$instance = new self();
-		foreach ( [ 'preflight', 'run', 'status', 'list', 'log', 'verify', 'pause', 'cancel', 'purge', 'cutover' ] as $command ) {
+		foreach ( [ 'preflight', 'run', 'status', 'list', 'log', 'verify', 'pause', 'cancel', 'purge', 'cutover', 'export', 'import' ] as $command ) {
 			WP_CLI::add_command( 'flexacommerce migrate ' . $command, [ $instance, $command === 'list' ? 'list_jobs' : $command ] );
 		}
 	}
@@ -447,6 +449,110 @@ final class MigrateCommand {
 		if ( $step !== '' ) {
 			WP_CLI::success( sprintf( 'Cutover step "%s" done.', $step ) );
 		}
+	}
+
+	/**
+	 * Writes the WooCommerce or FlexaCommerce store of this site to a JSONL
+	 * file that `migrate import` reads on another site. The file holds
+	 * customer names, emails and addresses: keep it private and delete it
+	 * after the import.
+	 *
+	 * ## OPTIONS
+	 *
+	 * <file>
+	 * : Path of the file to write.
+	 *
+	 * [--from=<store>]
+	 * : wc or fxc.
+	 * ---
+	 * default: wc
+	 * ---
+	 *
+	 * [--stages=<stages>]
+	 * : Comma-separated stages.
+	 *
+	 * [--orders-from=<date>]
+	 * : Only orders created on or after this date (Y-m-d).
+	 *
+	 * [--orders-to=<date>]
+	 * : Only orders created before this date (Y-m-d).
+	 *
+	 * @when after_wp_load
+	 *
+	 * @param array<int,string>         $args
+	 * @param array<string,string|bool> $assoc_args
+	 */
+	public function export( array $args, array $assoc_args ): void {
+		$path = (string) ( $args[0] ?? '' );
+		if ( $path === '' ) {
+			WP_CLI::error( 'Give the path of the file to write.' );
+		}
+		$started = microtime( true );
+		$result  = self::attempt(
+			fn (): array => Plugin::instance()->migration()->export(
+				(string) ( $assoc_args['from'] ?? 'wc' ),
+				self::options( $assoc_args ),
+				$path,
+				static function ( string $stage, int $written ): void {
+					WP_CLI::log( sprintf( '%-10s %7d records', $stage, $written ) );
+				}
+			)
+		);
+		$rows    = [];
+		foreach ( $result['counts'] as $stage => $count ) {
+			$rows[] = [
+				'stage'   => $stage,
+				'records' => $count,
+			];
+		}
+		\WP_CLI\Utils\format_items( 'table', $rows, [ 'stage', 'records' ] );
+		foreach ( $result['rejected'] as $rejected ) {
+			WP_CLI::warning( sprintf( '%1$s %2$s left out: %3$s', $rejected['stage'], $rejected['id'], $rejected['message'] ) );
+		}
+		WP_CLI::success( sprintf( 'Wrote %1$s in %2$.1f s with %3$d users and %4$d images. It holds personal data: keep it private and delete it after the import.', $path, microtime( true ) - $started, $result['users'], $result['media'] ) );
+	}
+
+	/**
+	 * Imports a file written by `migrate export` on another site. A WooCommerce
+	 * export goes into FlexaCommerce, a FlexaCommerce export into WooCommerce.
+	 * Customers are matched by email or created, images are downloaded from
+	 * the source site. Running the same file again updates what changed.
+	 *
+	 * ## OPTIONS
+	 *
+	 * <file>
+	 * : Path of the export file.
+	 *
+	 * [--stages=<stages>]
+	 * : Comma-separated stages.
+	 *
+	 * [--dry-run]
+	 * : Read and validate everything, write only the job and its log.
+	 *
+	 * [--media=<policy>]
+	 * : download or skip.
+	 * ---
+	 * default: download
+	 * ---
+	 *
+	 * [--yes-i-have-a-backup]
+	 * : Confirms a current database backup. Required for a real run.
+	 *
+	 * @when after_wp_load
+	 *
+	 * @param array<int,string>         $args
+	 * @param array<string,string|bool> $assoc_args
+	 */
+	public function import( array $args, array $assoc_args ): void {
+		$options          = self::options( $assoc_args );
+		$options['media'] = ( $assoc_args['media'] ?? 'download' ) === 'skip' ? 'skip' : 'download';
+		$job              = self::attempt( fn (): Job => self::service()->create_from_file( (string) ( $args[0] ?? '' ), $options, (bool) ( $assoc_args['dry-run'] ?? false ), get_current_user_id() ) );
+		WP_CLI::log( sprintf( 'Created job %1$d (%2$s, %3$s).', $job->id, $job->direction, $job->status ) );
+		if ( $job->status !== JobStatus::READY ) {
+			self::print_problems( $job, 'table' );
+			WP_CLI::error( 'The preflight found errors.' );
+		}
+		$this->run( [ (string) $job->id ], $assoc_args );
 	}
 
 	private static function service(): MigrationService {

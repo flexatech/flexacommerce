@@ -119,7 +119,7 @@ final class WooCatalogWriter {
 		if ( is_int( $data['order'] ?? null ) ) {
 			update_term_meta( $target, 'order', $data['order'] );
 		}
-		$image = self::attachment( $data['image'] ?? null, $problems );
+		$image = self::attachment( $data['image'] ?? null, $map, $problems );
 		if ( $image > 0 ) {
 			update_term_meta( $target, 'thumbnail_id', $image );
 		}
@@ -165,10 +165,10 @@ final class WooCatalogWriter {
 		if ( $created !== null ) {
 			$product->set_date_created( $created );
 		}
-		$product->set_image_id( self::attachment( $data['image'] ?? null, $problems ) ?? '' );
+		$product->set_image_id( self::attachment( $data['image'] ?? null, $map, $problems ) ?? '' );
 		$gallery = [];
 		foreach ( is_array( $data['gallery'] ?? null ) ? $data['gallery'] : [] as $ref ) {
-			$id = self::attachment( $ref, $problems );
+			$id = self::attachment( $ref, $map, $problems );
 			if ( $id !== null ) {
 				$gallery[] = $id;
 			}
@@ -195,8 +195,8 @@ final class WooCatalogWriter {
 			throw new Rejected( 'product_failed', 'WooCommerce did not save the product.' );
 		}
 		wp_set_object_terms( $target, $kind, 'product_type' );
-		$author = (int) ( $data['author'] ?? 0 );
-		if ( $author > 0 && get_userdata( $author ) !== false && (int) get_post_field( 'post_author', $target ) !== $author ) {
+		$author = $map->user_id( (int) ( $data['author'] ?? 0 ) );
+		if ( $author > 0 && (int) get_post_field( 'post_author', $target ) !== $author ) {
 			wp_update_post(
 				[
 					'ID'          => $target,
@@ -300,7 +300,7 @@ final class WooCatalogWriter {
 		$variation->set_status( ( $variant['enabled'] ?? true ) ? 'publish' : 'private' );
 		$variation->set_menu_order( is_int( $variant['menu_order'] ?? null ) ? $variant['menu_order'] : $position );
 		$variation->set_description( (string) ( $variant['description'] ?? '' ) );
-		$variation->set_image_id( self::attachment( $variant['image'] ?? null, $problems ) ?? '' );
+		$variation->set_image_id( self::attachment( $variant['image'] ?? null, $map, $problems ) ?? '' );
 		$this->apply_row( $variation, $variant, $job, $problems );
 		foreach ( self::extra_meta( $variant['extra'] ?? null, $problems ) as $key => $value ) {
 			$variation->update_meta_data( $key, $value );
@@ -484,12 +484,12 @@ final class WooCatalogWriter {
 	}
 
 	/** @param list<Problem> $problems */
-	private static function attachment( mixed $ref, array &$problems ): ?int {
+	private static function attachment( mixed $ref, Mapping $map, array &$problems ): ?int {
 		if ( ! is_string( $ref ) ) {
 			return null;
 		}
-		$id = Ref::int_id( $ref );
-		if ( $id > 0 && get_post_type( $id ) === 'attachment' ) {
+		$id = $map->attachment_id( Ref::int_id( $ref ) );
+		if ( $id > 0 ) {
 			return $id;
 		}
 		$problems[] = Problem::warning( 'missing_media', 'An image is missing from the media library and was left out.', [ 'image' => $ref ] );

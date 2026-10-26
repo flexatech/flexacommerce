@@ -140,6 +140,8 @@ Status of every ADR: **Accepted** (plan approved 2026-10-24) unless it says othe
 
 **Revisit when.** Cross-site migration becomes a priority (add file transport, no core change).
 
+**Revisited 2026-10-26.** File transport added in phase 6 (doc 05 §4.6) as planned: a JSONL file read through a fourth source, `FileSource`, with no change to the canonical format, stages or targets. The only additions outside `Transport\` are an id map scope per source site and a `Relocation` hook in `Mapping` for user and attachment ids.
+
 ---
 
 ## ADR-012: WP-Cron and a transport-agnostic runner, no queue library

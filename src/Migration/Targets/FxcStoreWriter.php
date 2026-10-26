@@ -90,11 +90,14 @@ final class FxcStoreWriter {
 		return new WriteResult( $target > 0 ? WriteResult::UPDATED : WriteResult::CREATED, $saved->id );
 	}
 
-	/** Addresses of an existing WordPress user; users are shared and never created. */
+	/**
+	 * Addresses of a WordPress user. On one site users are shared and never
+	 * created; from a file the user is matched by email or created.
+	 */
 	public function customer( Record $record, Mapping $map ): WriteResult {
-		$user_id = (int) $record->source_id();
-		if ( $user_id <= 0 || get_userdata( $user_id ) === false ) {
-			throw new Rejected( 'unknown_user', sprintf( 'User %d does not exist.', $user_id ) );
+		$user_id = $map->user_id( (int) $record->source_id(), true );
+		if ( $user_id <= 0 ) {
+			throw new Rejected( 'unknown_user', sprintf( 'User %s does not exist.', $record->source_id() ) );
 		}
 		$action = $map->row( Record::CUSTOMER, $record->source_id() ) === null ? WriteResult::CREATED : WriteResult::UPDATED;
 		foreach ( CustomerProfile::TYPES as $type ) {
