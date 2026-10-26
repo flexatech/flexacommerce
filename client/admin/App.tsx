@@ -3,6 +3,7 @@ import type { AdminPage } from "@/shared/types/global";
 import { Header } from "./components/Header";
 import { AttributesPage } from "./features/attributes/AttributesPage";
 import { CustomersPage } from "./features/customers/CustomersPage";
+import { MigrationPage } from "./features/migration/MigrationPage";
 import { OrdersPage } from "./features/orders/OrdersPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
 import { StatusPage } from "./features/status/StatusPage";
@@ -19,6 +20,8 @@ export function App({ page }: { page: AdminPage }) {
                     <CustomersPage />
                 ) : page === "flexacommerce-settings" ? (
                     <SettingsPage />
+                ) : page === "flexacommerce-migration" ? (
+                    <MigrationPage />
                 ) : page === "flexacommerce-attributes" ? (
                     <AttributesPage />
                 ) : (

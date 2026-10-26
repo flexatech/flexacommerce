@@ -34,7 +34,8 @@ final class Job {
 		'batch_orders'          => 100,
 		'batch_default'         => 200,
 		'time_budget'           => 20,
-		'memory_budget'         => 134217728,
+		// Bytes a batch may grow by from its start, so a heavy site still gets full batches.
+		'memory_budget'         => 67108864,
 		'verbose'               => false,
 		'force'                 => false,
 		'backup_confirmed'      => false,

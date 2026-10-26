@@ -284,7 +284,7 @@ Catalog latency is budgeted relative to core on the same machine, because the ab
 ### 6.2 Identical datasets
 
 - A neutral dataset spec (JSON, generated with a fixed seed) describes products, attributes, variants, prices, stock, categories, images (shared files), customers and orders for sizes S/M/L (doc 06 §4).
-- Two loaders write it natively: one through FlexaCommerce services, one through WooCommerce CRUD classes. Until migration exists (phase 6), this is the only way to get equal data. After phase 6, the WooCommerce dataset is also migrated into FlexaCommerce and compared with the native load as a cross-check.
+- Two loaders write it natively: one through FlexaCommerce services, one through WooCommerce CRUD classes. Until migration exists (phase 6), this is the only way to get equal data. After phase 6, the WooCommerce dataset is also migrated into FlexaCommerce and compared with the native load as a cross-check. First run 2026-10-26 at dataset M: the migrated store passes the same parity check as the native load (10,000 products, 36,828 variants); details in doc 07, phase 6 notes.
 - A parity script compares both stores before every benchmark: per SKU price, sale price, stock, status, attribute values, category; product, variant, order and customer counts. Any difference stops the benchmark.
 
 ### 6.3 Configuration
@@ -408,5 +408,5 @@ Doc 07 carries the tasks. Summary of what this document adds:
 - **Phase 4 (done 2026-10-25 except C1 and the reference-machine rerun, §7.3):** O6, O7; P6q, P6m binding; T3 checkout P6 and concurrency C1; worker RSS (C2) reported.
 - **Phase 4.5 (taxes, ADR-020):** PT-off, PT-cat, PT-opt, PT-cart, PT-q, PT-m, PT-rows binding; T3 P6t against WooCommerce with the same rates (bench `prep-tax`).
 - **Phase 5 (done 2026-10-25 except L-home, L-list and the reference-machine rerun, §7.4):** P1h, P8 binding; full scenario set in §6.4 at dataset M, both WooCommerce configurations, run at 1 and 10 VU.
-- **Phase 6:** P9 nightly; migration-based dataset cross-check (§6.2).
+- **Phase 6 (2026-10-26; the nightly run waits for CI, the 100,000-order job has no recorded result yet):** P9 checked per batch in the WooCommerce suite; migration-based dataset cross-check (§6.2).
 - **Phase 7:** dataset L, final published report, third-party rerun invitation, release thresholds §5.4 in force.

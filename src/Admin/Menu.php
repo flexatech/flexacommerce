@@ -29,6 +29,7 @@ final class Menu {
 		'edit-tags.php?taxonomy=' . PostTypes::TAG . '&post_type=' . PostTypes::PRODUCT,
 		self::SLUG . '-attributes',
 		self::SLUG . '-settings',
+		self::SLUG . '-migration',
 		self::SLUG,
 	];
 
@@ -120,6 +121,17 @@ final class Menu {
 				__( 'Settings', 'flexacommerce' ),
 				Capabilities::MANAGE,
 				self::SLUG . '-settings',
+				[ $this, 'render_page' ]
+			)
+		);
+		$this->add(
+			self::SLUG . '-migration',
+			(string) add_submenu_page(
+				self::SLUG,
+				__( 'Migration', 'flexacommerce' ),
+				__( 'Migration', 'flexacommerce' ),
+				Capabilities::MANAGE,
+				self::SLUG . '-migration',
 				[ $this, 'render_page' ]
 			)
 		);

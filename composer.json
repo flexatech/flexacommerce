@@ -41,6 +41,18 @@
         "lint:fix": "phpcbf",
         "analyse": "phpstan analyse --memory-limit=1G",
         "test": "phpunit --testsuite unit",
-        "test:integration": "phpunit --testsuite integration"
+        "test:integration": "phpunit --testsuite integration",
+        "test:woocommerce": [
+            "Composer\\Config::disableProcessTimeout",
+            "@putenv FXC_WC_STORAGE=legacy",
+            "phpunit -c tests/phpunit-woocommerce.xml.dist",
+            "@putenv FXC_WC_STORAGE=hpos",
+            "phpunit -c tests/phpunit-woocommerce.xml.dist",
+            "@putenv FXC_WC_STORAGE=sync",
+            "phpunit -c tests/phpunit-woocommerce.xml.dist"
+        ]
+    },
+    "scripts-descriptions": {
+        "test:woocommerce": "Migration tests against WooCommerce, once per order storage mode (legacy, HPOS, HPOS with sync)."
     }
 }

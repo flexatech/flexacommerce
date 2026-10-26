@@ -134,7 +134,7 @@ final class MigrationService {
 		return $this->move( $job_id, [ JobStatus::DRAFT, JobStatus::READY, JobStatus::RUNNING, JobStatus::PAUSED, JobStatus::FAILED ], JobStatus::CANCELLED );
 	}
 
-	/** @return array{job:?Job,processed:int,done:bool,locked:bool} */
+	/** @return array{job:?Job,processed:int,done:bool,locked:bool,peak:int,growth:int} */
 	public function run_batch( int $job_id ): array {
 		return $this->runner->run_batch( $job_id );
 	}
@@ -143,7 +143,7 @@ final class MigrationService {
 	 * Batches until the job leaves running and verifying (WP-CLI). Stops on a
 	 * lease held by another runner.
 	 *
-	 * @param (callable(array{job:?Job,processed:int,done:bool,locked:bool}):void)|null $progress after every batch
+	 * @param (callable(array{job:?Job,processed:int,done:bool,locked:bool,peak:int,growth:int}):void)|null $progress after every batch
 	 */
 	public function run( int $job_id, ?callable $progress = null ): Job {
 		do {
@@ -281,8 +281,9 @@ final class MigrationService {
 				'wp_cron_disabled'   => $cron,
 			]
 		);
-		if ( $memory > 0 && $memory < 128 * MB_IN_BYTES ) {
-			$problems[] = Problem::warning( 'memory_limit', sprintf( 'PHP memory_limit is %s; batches need 128 MB.', size_format( $memory ) ) );
+		$headroom   = $memory - memory_get_usage();
+		if ( $memory > 0 && $headroom < Job::DEFAULT_OPTIONS['memory_budget'] ) {
+			$problems[] = Problem::warning( 'memory_limit', sprintf( 'PHP memory_limit is %1$s and the site already uses %2$s; a batch can grow by %3$s, so batches will be short.', size_format( $memory ), size_format( memory_get_usage() ), size_format( Job::DEFAULT_OPTIONS['memory_budget'] ) ) );
 		}
 		if ( $time > 0 && $time < 30 ) {
 			$problems[] = Problem::warning( 'max_execution_time', sprintf( 'max_execution_time is %d seconds; a batch can take 20.', $time ) );

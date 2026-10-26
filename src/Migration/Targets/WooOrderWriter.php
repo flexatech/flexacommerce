@@ -25,6 +25,8 @@ defined( 'ABSPATH' ) || exit;
 final class WooOrderWriter {
 	public const SOURCE_META = '_fxc_source_id';
 	public const NUMBER_META = '_fxc_order_number';
+	/** The key sequential-number plugins read (doc 05 §10). */
+	public const PLUGIN_NUMBER_META = '_order_number';
 
 	/** @var list<Problem> */
 	private array $problems = [];
@@ -122,6 +124,7 @@ final class WooOrderWriter {
 			$order->update_meta_data( $key, $value );
 		}
 		$order->update_meta_data( self::NUMBER_META, (string) ( $data['number'] ?? '' ) );
+		$order->update_meta_data( self::PLUGIN_NUMBER_META, (string) ( $data['number'] ?? '' ) );
 		$order->update_meta_data( self::SOURCE_META, $record->id );
 		$status = $this->status( (string) ( $data['status'] ?? 'pending' ) );
 		self::set_status( $order, $status );

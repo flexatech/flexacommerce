@@ -26,6 +26,8 @@ defined( 'ABSPATH' ) || exit;
 final class Runner {
 	public const LEASE_SECONDS = 60;
 	private const MAX_DEPTH    = 20;
+	/** Share of memory_limit at which a batch stops, whatever its budget. */
+	private const LIMIT_SHARE = 0.8;
 
 	/** @var array<string,bool> dependency refs handled in this batch */
 	private array $seen = [];
@@ -39,6 +41,7 @@ final class Runner {
 	private ?Mapping $map          = null;
 	private ?SourceAdapter $source = null;
 	private ?TargetAdapter $target = null;
+	private int $memory_start      = 0;
 
 	/**
 	 * @param \Closure(Job):array{0:SourceAdapter,1:TargetAdapter} $adapters
@@ -54,16 +57,26 @@ final class Runner {
 	) {}
 
 	/**
-	 * @return array{job:?Job,processed:int,done:bool,locked:bool}
+	 * `peak` is the batch's own peak memory in bytes (P9, doc 06 §3), `growth`
+	 * that peak less the memory in use when the batch started.
+	 *
+	 * @return array{job:?Job,processed:int,done:bool,locked:bool,peak:int,growth:int}
 	 */
 	public function run_batch( int $job_id ): array {
-		$job = $this->jobs->find( $job_id );
+		// PHP 8.2+, which the plugin requires; phpstan also reads 8.1 for the bootstrap guard.
+		if ( function_exists( 'memory_reset_peak_usage' ) ) {
+			memory_reset_peak_usage();
+		}
+		$this->memory_start = memory_get_usage();
+		$job                = $this->jobs->find( $job_id );
 		if ( $job === null || ! in_array( $job->status, [ JobStatus::RUNNING, JobStatus::VERIFYING ], true ) ) {
 			return [
 				'job'       => $job,
 				'processed' => 0,
 				'done'      => true,
 				'locked'    => false,
+				'peak'      => memory_get_peak_usage(),
+				'growth'    => memory_get_peak_usage() - $this->memory_start,
 			];
 		}
 		$token = wp_generate_uuid4();
@@ -73,6 +86,8 @@ final class Runner {
 				'processed' => 0,
 				'done'      => false,
 				'locked'    => true,
+				'peak'      => memory_get_peak_usage(),
+				'growth'    => memory_get_peak_usage() - $this->memory_start,
 			];
 		}
 		$processed = 0;
@@ -110,6 +125,8 @@ final class Runner {
 			'processed' => $processed,
 			'done'      => $job === null || ! in_array( $job->status, [ JobStatus::RUNNING, JobStatus::VERIFYING ], true ),
 			'locked'    => false,
+			'peak'      => memory_get_peak_usage(),
+			'growth'    => memory_get_peak_usage() - $this->memory_start,
 		];
 	}
 
@@ -346,8 +363,15 @@ final class Runner {
 	}
 
 	private function over_budget( Job $job, float $started ): bool {
-		return microtime( true ) - $started >= (int) $job->option( 'time_budget' )
-			|| memory_get_usage() >= (int) $job->option( 'memory_budget' );
+		if ( microtime( true ) - $started >= (int) $job->option( 'time_budget' ) ) {
+			return true;
+		}
+		$used = memory_get_usage();
+		if ( $used - $this->memory_start >= (int) $job->option( 'memory_budget' ) ) {
+			return true;
+		}
+		$limit = wp_convert_hr_to_bytes( (string) ini_get( 'memory_limit' ) );
+		return $limit > 0 && $used >= $limit * self::LIMIT_SHARE;
 	}
 
 	private function lease_until(): string {

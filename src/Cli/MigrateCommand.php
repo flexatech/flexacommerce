@@ -139,12 +139,14 @@ final class MigrateCommand {
 		$processed = 0;
 		$batches   = 0;
 		$peak      = 0;
+		$growth    = 0;
 		$job       = $service->run(
 			$job->id,
-			static function ( array $result ) use ( &$processed, &$batches, &$peak, $started ): void {
+			static function ( array $result ) use ( &$processed, &$batches, &$peak, &$growth, $started ): void {
 				++$batches;
 				$processed += $result['processed'];
-				$peak       = max( $peak, memory_get_peak_usage( true ) );
+				$peak       = max( $peak, $result['peak'] );
+				$growth     = max( $growth, $result['growth'] );
 				$current    = $result['job'];
 				if ( $result['locked'] ) {
 					WP_CLI::warning( 'Another runner holds the lease on this job. Try again in a minute.' );
@@ -152,12 +154,13 @@ final class MigrateCommand {
 				}
 				WP_CLI::log(
 					sprintf(
-						'batch %d  %-10s %7d entities  %6.0f/s  peak %s',
+						'batch %d  %-10s %7d entities  %6.0f/s  batch peak %s, growth %s',
 						$batches,
 						$current instanceof Job ? $current->stage : '',
 						$processed,
 						$processed / max( 0.001, microtime( true ) - $started ),
-						size_format( $peak, 1 )
+						size_format( $peak, 1 ),
+						size_format( $growth, 1 )
 					)
 				);
 			}
@@ -165,7 +168,7 @@ final class MigrateCommand {
 
 		$seconds = microtime( true ) - $started;
 		self::print_totals( $job );
-		WP_CLI::log( sprintf( '%d entities in %.1f s (%.0f/s), peak memory %s.', $processed, $seconds, $processed / max( 0.001, $seconds ), size_format( $peak, 1 ) ) );
+		WP_CLI::log( sprintf( '%d entities in %.1f s (%.0f/s), highest batch peak memory %s, largest growth in a batch %s.', $processed, $seconds, $processed / max( 0.001, $seconds ), size_format( $peak, 1 ), size_format( $growth, 1 ) ) );
 		match ( $job->status ) {
 			JobStatus::COMPLETED               => WP_CLI::success( sprintf( 'Job %d completed.', $job->id ) ),
 			JobStatus::COMPLETED_WITH_WARNINGS => WP_CLI::success( sprintf( 'Job %d completed with warnings. See `wp flexacommerce migrate log %d`.', $job->id, $job->id ) ),

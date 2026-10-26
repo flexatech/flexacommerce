@@ -22,6 +22,7 @@ T3 load tests and the WooCommerce comparison from doc 10 §5.3 and §6. This fol
 | `e2e-prep.php` | Sets up `e2e.bench` for the browser tests in `tests/e2e`: cash on delivery, one US flat rate, a terms page, a page with the filter block, a customer `shopper`, and writes the URLs and products the journeys use to `out/e2e.json`. |
 | `mu-plugins/e2e.php` | On `e2e.bench` only: the theme comes from the `X-FXC-E2E-Theme` header (`twentytwentyfive`, `astra`, `twentytwentyone`), the mini cart block opens the body, and the per-IP order-page limit is off. |
 | `tax-golden.php` | Prices the tax golden cases of `tests/fixtures/tax-golden.json` with a real WooCommerce cart and order on `tax.bench`, and writes the expected amounts back (doc 02 §7.12.9). |
+| `synthetic-orders.php` | Fills a WooCommerce store for the 100,000-order migration job (doc 05 §11): `customers <count>` writes customers with SQL, `orders <count> <part> <parts> [seed]` writes one share of the orders through `WC_Order`, so several processes can run side by side. Emails and stock changes are off. Mix: 60 % completed (5 % of them partly refunded), 20 % processing, 5 % on hold, 5 % cancelled, 3 % refunded, 4 % pending, 3 % failed; 1 to 4 lines, flat-rate shipping, a note on 20 %. |
 | `summarize.php` | p50/p95/p99 per run, median of runs, spread check (≤ 10 %), JSON and markdown. |
 | `bench.sh` | Drives the rest. |
 | `docker/` | nginx 1.27.3, PHP-FPM (8.2 by default), MySQL 8.0.40, k6 0.55.0. Pinned images. |
@@ -36,6 +37,9 @@ T3 load tests and the WooCommerce comparison from doc 10 §5.3 and §6. This fol
 | `wct.bench` | `bench_wct` | The same WooCommerce store, copied from the `bench_wc` dump and tuned with `tune-woocommerce.php` |
 | `tax.bench` | `bench_tax` | WooCommerce, used only by `tax-golden` (recreated on every run) |
 | `e2e.bench` | `bench_e2e` | FlexaCommerce with dataset S, used only by the browser tests; Astra and Twenty Twenty-One are installed for it |
+| `mig.bench` | `bench_mig` | The WooCommerce dataset M store with FlexaCommerce also active, for the migration cross-check (doc 10 §6.2) |
+| `mig-hpos.bench` | `bench_mig_hpos` | Dataset S catalog, 5,000 customers and 100,000 synthetic orders in HPOS, for the migration job |
+| `mig-legacy.bench` | `bench_mig_legacy` | The same with legacy (posts) order storage |
 
 ## Usage
 

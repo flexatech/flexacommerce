@@ -7,6 +7,10 @@
  *   core.bench  bench_fxc with every plugin off, the core baseline
  *   tax.bench   WooCommerce store that prices the tax golden cases (bench_tax)
  *   e2e.bench   FlexaCommerce store for the browser tests (bench_e2e)
+ *   mig.bench   WooCommerce dataset migrated into FlexaCommerce (bench_mig, doc 10 §6.2)
+ *   mig-hpos.bench, mig-legacy.bench
+ *               WooCommerce with 100,000 synthetic orders, HPOS or legacy storage
+ *               (bench_mig_hpos, bench_mig_legacy; doc 05 §11)
  */
 
 $bench_host  = strtolower( (string) ( $_SERVER['HTTP_HOST'] ?? 'fxc.bench' ) );
@@ -17,6 +21,9 @@ $bench_store = [
 	'wct.bench'  => 'bench_wct',
 	'tax.bench'  => 'bench_tax',
 	'e2e.bench'  => 'bench_e2e',
+	'mig.bench'  => 'bench_mig',
+	'mig-hpos.bench'   => 'bench_mig_hpos',
+	'mig-legacy.bench' => 'bench_mig_legacy',
 ];
 if ( ! isset( $bench_store[ $bench_host ] ) ) {
 	$bench_host = 'fxc.bench';

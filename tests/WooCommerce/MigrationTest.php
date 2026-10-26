@@ -150,6 +150,46 @@ final class MigrationTest extends \WP_UnitTestCase {
 		$this->assertSame( 0, $result['processed'] );
 	}
 
+	public function test_every_batch_reports_its_peak_within_the_budget(): void {
+		$job = $this->service->create( Direction::WC_TO_FXC, [ 'backup_confirmed' => true ], false, 1 );
+		$this->service->start( $job->id );
+		$results = [];
+		$this->service->run(
+			$job->id,
+			static function ( array $result ) use ( &$results ): void {
+				$results[] = $result;
+			}
+		);
+		$this->assertNotEmpty( $results );
+		foreach ( $results as $result ) {
+			$this->assertGreaterThan( 0, $result['peak'] );
+			$this->assertLessThan( 128 * MB_IN_BYTES, $result['peak'], 'P9: batch peak memory under 128 MB.' );
+			$this->assertGreaterThanOrEqual( 0, $result['growth'] );
+			$this->assertLessThanOrEqual( $result['peak'], $result['growth'] );
+		}
+	}
+
+	public function test_the_memory_budget_counts_growth_not_what_the_site_already_uses(): void {
+		// Smaller than what the loaded site uses: as an absolute cap it would end every batch after one entity.
+		$job = $this->service->create( Direction::WC_TO_FXC, [ 'backup_confirmed' => true, 'memory_budget' => intdiv( memory_get_usage(), 2 ) ], false, 1 );
+		$this->service->start( $job->id );
+		$this->assertGreaterThan( 1, $this->service->run_batch( $job->id )['processed'] );
+	}
+
+	public function test_a_batch_stops_near_the_memory_limit(): void {
+		$job = $this->service->create( Direction::WC_TO_FXC, [ 'backup_confirmed' => true ], false, 1 );
+		$this->service->start( $job->id );
+		$limit = (string) ini_get( 'memory_limit' );
+		// PHP refuses a limit under the memory in use, so this one puts usage just over 80 %.
+		ini_set( 'memory_limit', (string) (int) ( memory_get_usage() * 1.2 ) );
+		try {
+			$processed = $this->service->run_batch( $job->id )['processed'];
+		} finally {
+			ini_set( 'memory_limit', $limit );
+		}
+		$this->assertSame( 1, $processed );
+	}
+
 	public function test_imported_pending_orders_do_not_expire(): void {
 		$this->import();
 		$stale = Plugin::instance()->orders()->orders()->stale_pending( '2999-01-01 00:00:00', 100 );
