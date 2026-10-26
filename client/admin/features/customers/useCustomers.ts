@@ -1,4 +1,4 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/shared/lib/api";
 
@@ -14,6 +14,10 @@ export interface Customer {
     first_order: string;
     last_order: string;
     edit_url: string;
+    /** Accounts only; guests are never exempt. */
+    tax_exempt: boolean;
+    /** The current user may change `tax_exempt` (an account and the store manager capability). */
+    can_exempt: boolean;
 }
 
 export type CustomerType = "" | "registered" | "guest";
@@ -40,5 +44,14 @@ export function useCustomers(params: CustomerListParams) {
                 per_page: CUSTOMERS_PER_PAGE,
             }),
         placeholderData: keepPreviousData,
+    });
+}
+
+export function useSetTaxExempt() {
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: ({ id, exempt }: { id: number; exempt: boolean }) =>
+            api.patch<{ customer_id: number; tax_exempt: boolean }>(`admin/customers/${id}`, { tax_exempt: exempt }),
+        onSettled: () => qc.invalidateQueries({ queryKey: ["customers"] }),
     });
 }

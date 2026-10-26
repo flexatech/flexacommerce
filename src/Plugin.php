@@ -200,7 +200,7 @@ final class Plugin {
 
 	/** @internal Migration jobs, built only when a job is touched. */
 	public function migration(): Migration\MigrationServices {
-		return $this->migration ??= new Migration\MigrationServices( $this->services(), $this->catalog(), $this->tax() );
+		return $this->migration ??= new Migration\MigrationServices( $this->services(), $this->catalog(), $this->tax(), $this->shipping() );
 	}
 
 	/**

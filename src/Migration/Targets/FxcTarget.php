@@ -26,6 +26,7 @@ final class FxcTarget implements TargetAdapter {
 		private readonly FxcCatalogWriter $catalog,
 		private readonly FxcOrderWriter $orders,
 		private readonly ImportRepository $repository,
+		private readonly FxcShippingWriter $shipping,
 	) {}
 
 	public function system(): string {
@@ -37,6 +38,7 @@ final class FxcTarget implements TargetAdapter {
 			fn (): WriteResult => match ( $record->type ) {
 				Record::SETTINGS  => $this->store->settings( $record, $map ),
 				Record::TAX_RATE  => $this->store->tax_rate( $record, $map ),
+				Record::SHIPPING  => $this->shipping->shipping( $record, $map ),
 				Record::CUSTOMER  => $this->store->customer( $record, $map ),
 				Record::ATTRIBUTE => $this->catalog->attribute( $record, $map ),
 				Record::TERM      => $this->catalog->term( $record, $map ),

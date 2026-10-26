@@ -148,6 +148,9 @@ final class RoundTripTest extends \WP_UnitTestCase {
 			if ( $ref->entity === Record::ORDER ) {
 				$data = self::order_positions( $data );
 			}
+			if ( $ref->entity === Record::SHIPPING ) {
+				$data = self::shipping_ids( $data, $map );
+			}
 			// FlexaCommerce keeps the variant order as a position, so equal menu_order values become 0, 1, ...
 			foreach ( array_keys( $data['variants'] ?? [] ) as $v ) {
 				unset( $data['variants'][ $v ]['menu_order'] );
@@ -177,6 +180,23 @@ final class RoundTripTest extends \WP_UnitTestCase {
 				$data['transactions'][ $t ]['lines'][ $l ]['item'] = $positions[ $line['item'] ] ?? 'missing';
 			}
 		}
+		return $data;
+	}
+
+	/**
+	 * Zone and method ids are new on the way back; compare the FlexaCommerce ids.
+	 *
+	 * @param array<string,mixed>             $data
+	 * @param array<string,array<string,int>> $map
+	 * @return array<string,mixed>
+	 */
+	private static function shipping_ids( array $data, array $map ): array {
+		$method = static fn ( array $m ): array => [ 'id' => (string) ( $map['shipping_method'][ $m['id'] ] ?? 'unmapped' ) ] + $m;
+		foreach ( $data['zones'] as $z => $zone ) {
+			$data['zones'][ $z ]['id']      = (string) ( $map['shipping_zone'][ $zone['id'] ] ?? 'unmapped' );
+			$data['zones'][ $z ]['methods'] = array_map( $method, $zone['methods'] );
+		}
+		$data['rest']['methods'] = array_map( $method, $data['rest']['methods'] );
 		return $data;
 	}
 
@@ -253,7 +273,7 @@ final class RoundTripTest extends \WP_UnitTestCase {
 		foreach ( $wpdb->get_col( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $wpdb->prefix . 'wc_' ) . '%' ) ) as $table ) {
 			$wpdb->query( "DELETE FROM `{$table}`" );
 		}
-		foreach ( [ 'woocommerce_order_items', 'woocommerce_order_itemmeta', 'woocommerce_attribute_taxonomies', 'woocommerce_tax_rates', 'woocommerce_tax_rate_locations' ] as $table ) {
+		foreach ( [ 'woocommerce_order_items', 'woocommerce_order_itemmeta', 'woocommerce_attribute_taxonomies', 'woocommerce_tax_rates', 'woocommerce_tax_rate_locations', 'woocommerce_shipping_zones', 'woocommerce_shipping_zone_locations', 'woocommerce_shipping_zone_methods' ] as $table ) {
 			$wpdb->query( "DELETE FROM {$wpdb->prefix}{$table}" );
 		}
 		// phpcs:enable

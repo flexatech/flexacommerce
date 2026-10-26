@@ -28,6 +28,7 @@ final class WooSource implements SourceAdapter {
 		private readonly WooStoreReader $store,
 		private readonly WooCatalogReader $catalog,
 		private readonly WooOrderReader $orders,
+		private readonly WooShippingReader $shipping,
 	) {}
 
 	public static function available(): bool {
@@ -50,6 +51,7 @@ final class WooSource implements SourceAdapter {
 		return match ( $stage ) {
 			'settings'   => $this->store->settings(),
 			'taxes'      => $this->store->tax_rate( $id ),
+			'shipping'   => $this->shipping->shipping(),
 			'attributes' => $this->catalog->attribute( $id ),
 			'terms'      => $this->catalog->term( $id ),
 			'products'   => $this->catalog->product( $id ),
@@ -155,8 +157,8 @@ final class WooSource implements SourceAdapter {
 		}
 
 		$zones = $this->enumeration->shipping_zones();
-		if ( $zones > 0 ) {
-			$problems[] = Problem::info( 'shipping_zones', sprintf( '%d shipping zones are not migrated. Set up shipping in FlexaCommerce after the import.', $zones ), [ 'zones' => $zones ] );
+		if ( $zones > 0 && ! in_array( 'shipping', $stages, true ) ) {
+			$problems[] = Problem::info( 'shipping_zones', sprintf( '%d shipping zones are left out because the shipping stage is off. Set up shipping in FlexaCommerce after the import.', $zones ), [ 'zones' => $zones ] );
 		}
 		return $problems;
 	}

@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace Flexa\Commerce\Api\Admin;
 
 use Flexa\Commerce\Api\Endpoint;
+use Flexa\Commerce\Customers\CustomerProfile;
 use Flexa\Commerce\Orders\CustomerRepository;
 use Flexa\Commerce\Plugin;
+use Flexa\Commerce\Support\Capabilities;
 use Flexa\Commerce\Support\Settings;
+use WP_Error;
 use WP_REST_Request;
 use WP_REST_Response;
 use WP_REST_Server;
@@ -15,9 +18,10 @@ use WP_REST_Server;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Read-only customers list: users with orders and guest emails, with their
- * order count and what they spent in the store currency. Anyone who can see
- * orders can see it, since it shows nothing the orders do not.
+ * Customers list: users with orders and guest emails, with their order count
+ * and what they spent in the store currency. Anyone who can see orders can
+ * see it, since it shows nothing the orders do not. The one thing it edits is
+ * an account's tax-exempt flag, which needs the store manager capability.
  */
 final class CustomersEndpoint extends Endpoint {
 	public function register_routes(): void {
@@ -63,6 +67,28 @@ final class CustomersEndpoint extends Endpoint {
 				],
 			]
 		);
+		register_rest_route(
+			self::NAMESPACE,
+			'/admin/customers/(?P<id>\d+)',
+			[
+				[
+					'methods'             => 'PATCH',
+					'callback'            => [ $this, 'update' ],
+					'permission_callback' => [ $this, 'manage_permission' ],
+					'args'                => [
+						'id'         => [
+							'type'     => 'integer',
+							'minimum'  => 1,
+							'required' => true,
+						],
+						'tax_exempt' => [
+							'type'     => 'boolean',
+							'required' => true,
+						],
+					],
+				],
+			]
+		);
 	}
 
 	/** @param WP_REST_Request<array<string,mixed>> $request */
@@ -83,7 +109,9 @@ final class CustomersEndpoint extends Endpoint {
 		if ( $ids !== [] ) {
 			cache_users( $ids );
 		}
-		$items = [];
+		$profile    = new CustomerProfile();
+		$can_manage = Capabilities::can_manage();
+		$items      = [];
 		foreach ( $result['items'] as $row ) {
 			$user    = $row['customer_id'] > 0 ? get_userdata( $row['customer_id'] ) : false;
 			$items[] = [
@@ -97,6 +125,8 @@ final class CustomersEndpoint extends Endpoint {
 				'first_order' => str_replace( ' ', 'T', $row['first_order'] ) . 'Z',
 				'last_order'  => str_replace( ' ', 'T', $row['last_order'] ) . 'Z',
 				'edit_url'    => $user instanceof \WP_User && current_user_can( 'edit_user', $user->ID ) ? get_edit_user_link( $user->ID ) : '',
+				'tax_exempt'  => $user instanceof \WP_User && $profile->tax_exempt( $user->ID ),
+				'can_exempt'  => $user instanceof \WP_User && $can_manage,
 			];
 		}
 
@@ -104,5 +134,22 @@ final class CustomersEndpoint extends Endpoint {
 		$response->header( 'X-WP-Total', (string) $result['total'] );
 		$response->header( 'X-WP-TotalPages', (string) (int) ceil( $result['total'] / max( 1, $per_page ) ) );
 		return $response;
+	}
+
+	/** @param WP_REST_Request<array<string,mixed>> $request */
+	public function update( WP_REST_Request $request ): WP_REST_Response|WP_Error {
+		$user = get_userdata( (int) $request->get_param( 'id' ) );
+		if ( ! $user instanceof \WP_User || ( is_multisite() && ! is_user_member_of_blog( $user->ID ) ) ) {
+			return new WP_Error( 'flexacommerce_customer_not_found', __( 'No such account.', 'flexacommerce' ), [ 'status' => 404 ] );
+		}
+		$profile = new CustomerProfile();
+		$profile->set_tax_exempt( $user->ID, (bool) $request->get_param( 'tax_exempt' ) );
+		return new WP_REST_Response(
+			[
+				'customer_id' => $user->ID,
+				'tax_exempt'  => $profile->tax_exempt( $user->ID ),
+			],
+			200
+		);
 	}
 }

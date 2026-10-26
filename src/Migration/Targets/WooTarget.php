@@ -23,6 +23,7 @@ final class WooTarget implements TargetAdapter {
 		private readonly WooStoreWriter $store,
 		private readonly WooCatalogWriter $catalog,
 		private readonly WooOrderWriter $orders,
+		private readonly WooShippingWriter $shipping,
 	) {}
 
 	public function system(): string {
@@ -36,6 +37,7 @@ final class WooTarget implements TargetAdapter {
 		return match ( $record->type ) {
 			Record::SETTINGS  => $this->store->settings( $record, $map ),
 			Record::TAX_RATE  => $this->store->tax_rate( $record, $map ),
+			Record::SHIPPING  => $this->shipping->shipping( $record, $map ),
 			Record::CUSTOMER  => $this->store->customer( $record, $map ),
 			Record::ATTRIBUTE => $this->catalog->attribute( $record, $map ),
 			Record::TERM      => $this->catalog->term( $record, $map ),

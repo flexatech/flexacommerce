@@ -206,7 +206,7 @@ draft ──preflight ok──► ready ──start──► running ⇄ paused
 
 ### 4.4 Batches, cursors, budgets
 
-- Stage order: attributes → terms (categories, tags, attribute values) → products (with variants) → customers → orders (with items, addresses, transactions, notes).
+- Stage order: settings → tax rates → shipping zones (§5.7) → attributes → terms (categories, tags, attribute values) → products (with variants) → customers → orders (with items, addresses, transactions, notes).
 - Cursor per stage: `{ "stage": "orders", "table": "wp_wc_orders", "last_id": 50231, "upper_id": 98765 }`. `upper_id` is captured at job start, so orders created during the job are left for the next incremental run instead of moving the target.
 - Enumeration SQL (read-only, the only raw SQL on WooCommerce tables):
   - Products: `SELECT ID FROM {posts} WHERE post_type = 'product' AND post_status <> 'auto-draft' AND ID > %d AND ID <= %d ORDER BY ID LIMIT %d`.
@@ -325,6 +325,19 @@ Same site, so customers are already WordPress users. The stage maps WooCommerce 
 
 Reverse mapping is the inverse. FXC → WC never produces custom statuses.
 
+### 5.7 Shipping zones
+
+The `shipping` stage runs after `taxes` and, like `settings`, is one record (id 1) that holds every zone in match order plus the methods of "everywhere else". Amounts are decimals in the store currency, converted to minor units on the FlexaCommerce side. Zone and method ids go through the id map as `shipping_zone` and `shipping_method`.
+
+- Locations: countries and states are copied; a continent becomes its countries; postcodes are copied as patterns. A zone left with no known country or state is skipped with a warning.
+- `flat_rate`: the cost formula must be a number, `N * [qty]`, or the two added. Any other formula (`[fee]`, `[cost]`, more terms) and any shipping class cost make the method import **turned off** with a warning, so checkout never charges an amount the old store did not.
+- `free_shipping`: `requires` empty or `min_amount` maps directly. `either` keeps the minimum and warns that the coupon path is gone; `coupon` and `both` import turned off.
+- `local_pickup`: title, cost and tax status. FlexaCommerce's pickup address has no WooCommerce field, so it is dropped with a warning on FXC→WC.
+- Tax status (`taxable` / `none`) is kept on flat rate and local pickup.
+- Other method types have no equivalent and are skipped with a warning.
+
+A second run replaces the zones and methods it created, in place; zones and methods made in the target by hand stay, and new zones are added after the existing ones, before "everywhere else". A method deleted in the source since the last run stays in the target.
+
 ## 6. Conflict and validation policies
 
 | Situation | Default | Options |
@@ -354,7 +367,7 @@ Errors reject one entity, never the batch. A job ends `completed_with_warnings` 
 | Product reviews | stay on the WooCommerce post (Q14) |
 | Product add-on and SEO plugin meta | `_fxc_import` bucket on the product, round-tripped on FXC→WC |
 | Unknown order and item meta | `fxc_order_meta` (`wc:` prefix) and item `meta` JSON, round-tripped |
-| Coupons (definitions), shipping zones and methods, payment gateway settings | not migrated in MVP (tax rates and classes are, since ADR-020). Shipping zones: report lists them for manual setup (POST: automatic) |
+| Coupons (definitions), payment gateway settings | not migrated in MVP (tax rates and classes are, since ADR-020; shipping zones are, see §5.7) |
 | Subscriptions, memberships, bookings | not migrated, warning if their plugins are active |
 | WooCommerce analytics tables, customer lookup, sessions, carts | not migrated (derived or transient data) |
 

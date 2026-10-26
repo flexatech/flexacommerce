@@ -24,6 +24,9 @@ final class GoldenStore {
 	/** @var array<string,int> */
 	public array $terms = [];
 
+	/** @var array<string,int> */
+	public array $zones = [];
+
 	public int $customer = 0;
 	public int $rate     = 0;
 
@@ -58,6 +61,9 @@ final class GoldenStore {
 		}
 		$wpdb->query( "DELETE FROM {$wpdb->usermeta} WHERE user_id > 1" ); // phpcs:ignore WordPress.DB
 		$wpdb->query( "DELETE FROM {$wpdb->users} WHERE ID > 1" ); // phpcs:ignore WordPress.DB
+		delete_option( \Flexa\Commerce\Shipping\ZoneRepository::OPTION );
+		\Flexa\Commerce\Plugin::instance()->shipping()->service()->zones()->flush();
+		$wpdb->query( "DELETE FROM {$wpdb->options} WHERE option_name LIKE 'woocommerce\\_%\\_settings' AND option_name REGEXP '_[0-9]+_settings$'" ); // phpcs:ignore WordPress.DB
 		delete_transient( 'wc_attribute_taxonomies' );
 		wp_cache_flush();
 	}
@@ -185,7 +191,52 @@ final class GoldenStore {
 
 		$store->customer = self::factory_user();
 		$store->orders   = self::orders( $store );
+		$store->zones    = self::zones();
 		return $store;
+	}
+
+	/**
+	 * Two zones and the rest of the world, with settings FlexaCommerce can
+	 * reproduce exactly.
+	 *
+	 * @return array<string,int>
+	 */
+	private static function zones(): array {
+		$california = new \WC_Shipping_Zone();
+		$california->set_zone_name( 'California' );
+		$california->set_zone_order( 1 );
+		$california->add_location( 'US:CA', 'state' );
+		$california->add_location( '90*', 'postcode' );
+		$california->save();
+		self::method( $california, 'flat_rate', [ 'title' => 'Ground', 'tax_status' => 'taxable', 'cost' => '5 + 1.50 * [qty]' ] );
+		self::method( $california, 'free_shipping', [ 'title' => 'Free over 100', 'requires' => 'min_amount', 'min_amount' => '100' ] );
+
+		$canada = new \WC_Shipping_Zone();
+		$canada->set_zone_name( 'Canada' );
+		$canada->set_zone_order( 2 );
+		$canada->add_location( 'CA', 'country' );
+		$canada->save();
+		self::method( $canada, 'local_pickup', [ 'title' => 'Pickup', 'tax_status' => 'none', 'cost' => '3' ] );
+		self::method( $canada, 'flat_rate', [ 'title' => 'Express', 'tax_status' => 'taxable', 'cost' => '25' ], false );
+
+		self::method( new \WC_Shipping_Zone( 0 ), 'flat_rate', [ 'title' => 'International', 'tax_status' => 'none', 'cost' => '2 * [qty]' ] );
+		return [
+			'california' => (int) $california->get_id(),
+			'canada'     => (int) $canada->get_id(),
+		];
+	}
+
+	/** @param array<string,string> $settings */
+	public static function method( \WC_Shipping_Zone $zone, string $type, array $settings, bool $enabled = true ): int {
+		global $wpdb;
+		$id     = (int) $zone->add_shipping_method( $type );
+		$method = \WC_Shipping_Zones::get_shipping_method( $id );
+		$method->init_instance_settings();
+		update_option( $method->get_instance_option_key(), array_merge( $method->instance_settings, $settings ) );
+		if ( ! $enabled ) {
+			$wpdb->update( $wpdb->prefix . 'woocommerce_shipping_zone_methods', [ 'is_enabled' => 0 ], [ 'instance_id' => $id ] ); // phpcs:ignore WordPress.DB
+		}
+		return $id;
 	}
 
 	/** @return array<string,int> */

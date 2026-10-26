@@ -13,6 +13,7 @@ use Flexa\Commerce\Contracts\Tax\TaxLine;
 use Flexa\Commerce\Contracts\Tax\TaxLocation;
 use Flexa\Commerce\Contracts\Tax\TaxRequest;
 use Flexa\Commerce\Contracts\Tax\TaxResult;
+use Flexa\Commerce\Customers\CustomerProfile;
 use Flexa\Commerce\Support\IntMath;
 use Flexa\Commerce\Support\Settings;
 use Flexa\Commerce\Tax\TaxService;
@@ -33,7 +34,9 @@ final class CartTaxes {
 
 	/**
 	 * The tax request for a cart: one line per priced cart item (key = cart
-	 * line key) and one `shipping` line for the rate, when there is one.
+	 * line key) and one `shipping` line for the rate, when there is one. An
+	 * account flagged tax exempt on the Customers screen starts exempt; the
+	 * `flexacommerce.tax.exempt` filter still has the last word.
 	 */
 	public function request( CartState $state, ?ShippingRate $rate, ?TaxLocation $location, string $context = TaxRequest::CHECKOUT, int $user_id = 0, string $email = '' ): TaxRequest {
 		$enabled = $this->tax->enabled();
@@ -63,6 +66,7 @@ final class CartTaxes {
 			$user_id,
 			$email,
 			$context,
+			$enabled && ( new CustomerProfile() )->tax_exempt( $user_id ),
 		);
 	}
 

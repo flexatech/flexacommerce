@@ -27,6 +27,7 @@ final class LocalPickup implements ShippingMethod {
 			new SettingField( 'title', 'text', __( 'Name shown at checkout', 'flexacommerce' ), __( 'Local pickup', 'flexacommerce' ) ),
 			new SettingField( 'cost', 'money', __( 'Cost', 'flexacommerce' ), 0 ),
 			new SettingField( 'location', 'textarea', __( 'Pickup address and hours', 'flexacommerce' ), '' ),
+			Label::tax_status(),
 		];
 	}
 
@@ -38,7 +39,7 @@ final class LocalPickup implements ShippingMethod {
 				Label::of( $settings, $this->title() ),
 				new Money( max( 0, (int) ( $settings['cost'] ?? 0 ) ), $package->currency() ),
 				$location !== '' ? [ $location ] : [],
-				true,
+				Label::taxable( $settings ),
 				false,
 			),
 		];

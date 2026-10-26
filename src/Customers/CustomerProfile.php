@@ -23,6 +23,9 @@ final class CustomerProfile {
 		'shipping' => 'fxc_shipping',
 	];
 
+	/** User option set to '1' for an account the store does not charge tax (doc 02 §7.12). */
+	public const TAX_EXEMPT_META = 'fxc_tax_exempt';
+
 	public function address( int $user_id, string $type ): ?AddressView {
 		if ( $user_id <= 0 || ! isset( self::META[ $type ] ) ) {
 			return null;
@@ -77,10 +80,26 @@ final class CustomerProfile {
 		do_action( 'flexacommerce.customer.address_saved', $user_id, $address );
 	}
 
-	/** Every saved address of this site, for the eraser. */
+	public function tax_exempt( int $user_id ): bool {
+		return $user_id > 0 && get_user_option( self::TAX_EXEMPT_META, $user_id ) === '1';
+	}
+
+	public function set_tax_exempt( int $user_id, bool $exempt ): void {
+		if ( $user_id <= 0 ) {
+			return;
+		}
+		if ( $exempt ) {
+			update_user_option( $user_id, self::TAX_EXEMPT_META, '1' );
+		} else {
+			delete_user_option( $user_id, self::TAX_EXEMPT_META );
+		}
+		do_action( 'flexacommerce.customer.tax_exempt_changed', $user_id, $exempt );
+	}
+
+	/** Every saved address and tax-exempt flag of this site, for the eraser. */
 	public static function delete_all(): void {
 		global $wpdb;
-		foreach ( self::META as $key ) {
+		foreach ( [ ...array_values( self::META ), self::TAX_EXEMPT_META ] as $key ) {
 			delete_metadata( 'user', 0, $wpdb->get_blog_prefix() . $key, '', true );
 		}
 	}

@@ -8,6 +8,8 @@ use Flexa\Commerce\Cart\CartServices;
 use Flexa\Commerce\Cart\CartState;
 use Flexa\Commerce\Cart\MemoryTokenStore;
 use Flexa\Commerce\Checkout\CartTaxes;
+use Flexa\Commerce\Contracts\Tax\TaxRequest;
+use Flexa\Commerce\Customers\CustomerProfile;
 use Flexa\Commerce\Plugin;
 use Flexa\Commerce\Storefront\Render\CartTable;
 use Flexa\Commerce\Tax\TaxService;
@@ -166,5 +168,32 @@ final class TaxCartTest extends TaxTestCase {
 			''
 		);
 		self::assertSame( 40, $this->shop()->presenter()->to_array( $state )['totals']['tax']['amount'] );
+	}
+
+	public function test_an_account_marked_tax_exempt_pays_no_tax(): void {
+		$this->enable( [ 'tax_display_cart' => 'excl' ] );
+		$this->rate(
+			[
+				'state' => 'CA',
+				'rate'  => '7.25',
+			]
+		);
+		$user    = self::factory()->user->create();
+		$profile = new CustomerProfile();
+		$state   = $this->shop()->cart()->add( 0, $this->simple( 1000 ), 0, 1 );
+		$taxes   = new CartTaxes( $this->tax(), $this->shop()->presenter() );
+		$data    = $this->shop()->presenter()->to_array( $state );
+
+		self::assertSame( 73, $taxes->extend( $data, $state, $user )['totals']['tax']['amount'] );
+
+		$profile->set_tax_exempt( $user, true );
+		self::assertTrue( $taxes->request( $state, null, null, TaxRequest::CART, $user )->exempt );
+		self::assertFalse( $taxes->request( $state, null, null, TaxRequest::CART, 0 )->exempt, 'Guests are never exempt by the flag.' );
+		$exempt = $taxes->extend( $data, $state, $user );
+		self::assertSame( 0, $exempt['totals']['tax']['amount'] ?? 0 );
+		self::assertSame( 1000, $exempt['totals']['total']['amount'] );
+
+		$profile->set_tax_exempt( $user, false );
+		self::assertFalse( $taxes->request( $state, null, null, TaxRequest::CART, $user )->exempt );
 	}
 }

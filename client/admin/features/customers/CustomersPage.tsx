@@ -6,13 +6,15 @@ import { Button } from "@/shared/components/ui/button";
 import { Card } from "@/shared/components/ui/card";
 import { Input } from "@/shared/components/ui/input";
 import { Select } from "@/shared/components/ui/select";
+import { Switch } from "@/shared/components/ui/switch";
+import { showToast } from "@/shared/components/showToast";
 import { getPluginGlobal } from "@/shared/lib/api";
 import { __, sprintf } from "@/shared/lib/i18n";
 import { useDebounced } from "@/shared/lib/useDebounced";
 import { PageTitle } from "../../components/PageTitle";
 import { Tabs } from "../../components/Tabs";
 import { formatDate, orderMoney } from "../orders/format";
-import { useCustomers, type Customer, type CustomerListParams, type CustomerOrderBy, type CustomerType } from "./useCustomers";
+import { useCustomers, useSetTaxExempt, type Customer, type CustomerListParams, type CustomerOrderBy, type CustomerType } from "./useCustomers";
 
 /** Accounts link by user id so orders placed under an old email are included; guests link by email. */
 function ordersUrl(customer: Customer): string {
@@ -29,6 +31,24 @@ export function CustomersPage() {
     const [search, setSearch] = useState("");
     const debounced = useDebounced(search);
     const list = useCustomers(params);
+    const setExempt = useSetTaxExempt();
+    const [pending, setPending] = useState<Record<number, boolean>>({});
+
+    const toggleExempt = (customer: Customer, exempt: boolean) => {
+        setPending((p) => ({ ...p, [customer.customer_id]: exempt }));
+        setExempt.mutate(
+            { id: customer.customer_id, exempt },
+            {
+                onSuccess: () => showToast.success(exempt ? __("Customer marked tax exempt.") : __("Customer charged tax again.")),
+                onError: (error) => showToast.error(error.message),
+                onSettled: () =>
+                    setPending((p) => {
+                        const { [customer.customer_id]: _done, ...rest } = p;
+                        return rest;
+                    }),
+            },
+        );
+    };
 
     useEffect(() => {
         if (debounced !== params.search) {
@@ -42,7 +62,7 @@ export function CustomersPage() {
         <div className="fxc:space-y-4">
             <PageTitle
                 title={__("Customers")}
-                description={__("Everyone who has placed an order: accounts and guest emails. Spent is paid less refunds.")}
+                description={__("Everyone who has placed an order: accounts and guest emails. Spent is paid less refunds. An account marked tax exempt pays no tax at checkout.")}
             />
 
             <div className="fxc:flex fxc:flex-wrap fxc:items-end fxc:justify-between fxc:gap-3">
@@ -97,7 +117,8 @@ export function CustomersPage() {
                                 <th className="fxc:px-3 fxc:py-2 fxc:text-right fxc:font-medium">{__("Orders")}</th>
                                 <th className="fxc:px-3 fxc:py-2 fxc:text-right fxc:font-medium">{__("Spent")}</th>
                                 <th className="fxc:px-3 fxc:py-2 fxc:font-medium">{__("First order")}</th>
-                                <th className="fxc:px-5 fxc:py-2 fxc:font-medium">{__("Latest order")}</th>
+                                <th className="fxc:px-3 fxc:py-2 fxc:font-medium">{__("Latest order")}</th>
+                                <th className="fxc:px-5 fxc:py-2 fxc:font-medium">{__("Tax exempt")}</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -134,8 +155,22 @@ export function CustomersPage() {
                                     <td className="fxc:text-muted-foreground fxc:px-3 fxc:py-3 fxc:whitespace-nowrap">
                                         {formatDate(customer.first_order, false)}
                                     </td>
-                                    <td className="fxc:text-muted-foreground fxc:px-5 fxc:py-3 fxc:whitespace-nowrap">
+                                    <td className="fxc:text-muted-foreground fxc:px-3 fxc:py-3 fxc:whitespace-nowrap">
                                         {formatDate(customer.last_order, false)}
+                                    </td>
+                                    <td className="fxc:px-5 fxc:py-3">
+                                        {customer.can_exempt ? (
+                                            <Switch
+                                                aria-label={sprintf(__("Tax exempt: %s"), customer.name || customer.email)}
+                                                checked={pending[customer.customer_id] ?? customer.tax_exempt}
+                                                disabled={customer.customer_id in pending}
+                                                onCheckedChange={(checked) => toggleExempt(customer, checked)}
+                                            />
+                                        ) : customer.tax_exempt ? (
+                                            <Badge variant="muted">{__("Exempt")}</Badge>
+                                        ) : (
+                                            <span className="fxc:text-muted-foreground">{"\u2013"}</span>
+                                        )}
                                     </td>
                                 </tr>
                             ))}

@@ -23,6 +23,7 @@ final class Validator {
 			Record::ORDER    => $this->order( $record->data ),
 			Record::TAX_RATE => $this->tax_rate( $record->data ),
 			Record::TERM, Record::ATTRIBUTE => $this->named( $record->data ),
+			Record::SHIPPING => $this->shipping( $record->data ),
 			Record::SETTINGS, Record::CUSTOMER => [],
 			default          => [ Problem::error( 'unknown_type', sprintf( 'Unknown record type "%s".', $record->type ) ) ],
 		};
@@ -34,6 +35,34 @@ final class Validator {
 	 */
 	private function named( array $data ): array {
 		return is_string( $data['name'] ?? null ) && $data['name'] !== '' ? [] : [ Problem::error( 'missing_name', 'The record has no name.' ) ];
+	}
+
+	/**
+	 * @param array<string,mixed> $data
+	 * @return list<Problem>
+	 */
+	private function shipping( array $data ): array {
+		if ( ! is_array( $data['zones'] ?? null ) || ! is_array( $data['rest'] ?? null ) ) {
+			return [ Problem::error( 'invalid_shipping', 'The shipping record has no zone list.' ) ];
+		}
+		$zones   = $data['zones'];
+		$zones[] = $data['rest'];
+		foreach ( $zones as $zone ) {
+			if ( ! is_array( $zone ) || ! is_array( $zone['methods'] ?? null ) ) {
+				return [ Problem::error( 'invalid_shipping', 'A shipping zone has no method list.' ) ];
+			}
+			foreach ( $zone['methods'] as $method ) {
+				if ( ! is_array( $method ) || ! is_string( $method['type'] ?? null ) || ! is_string( $method['id'] ?? null ) ) {
+					return [ Problem::error( 'invalid_shipping', 'A shipping method has no type or id.' ) ];
+				}
+				foreach ( [ 'cost', 'cost_per_item', 'min_amount' ] as $key ) {
+					if ( isset( $method[ $key ] ) && ! Decimal::is_decimal( $method[ $key ] ) ) {
+						return [ Problem::error( 'invalid_amount', sprintf( 'The shipping amount %s is not a decimal.', $key ) ) ];
+					}
+				}
+			}
+		}
+		return [];
 	}
 
 	/**

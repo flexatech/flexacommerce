@@ -18,6 +18,9 @@ defined( 'ABSPATH' ) || exit;
  */
 // phpcs:disable WordPress.DB.DirectDatabaseQuery -- read-only keyset enumeration of FlexaCommerce tables, values prepared.
 final class FxcEnumerationRepository {
+	/** Stages that are one record with id 1. */
+	private const SINGLE = [ 'settings', 'shipping' ];
+
 	public function __construct( private readonly \wpdb $wpdb ) {}
 
 	/**
@@ -28,7 +31,7 @@ final class FxcEnumerationRepository {
 		'from' => null,
 		'to'   => null,
 	] ): array {
-		if ( $stage === 'settings' ) {
+		if ( in_array( $stage, self::SINGLE, true ) ) {
 			return $after < 1 && $upper >= 1 ? [ 1 ] : [];
 		}
 		$sql = match ( $stage ) {
@@ -76,7 +79,7 @@ final class FxcEnumerationRepository {
 	}
 
 	public function upper_id( string $stage ): int {
-		if ( $stage === 'settings' ) {
+		if ( in_array( $stage, self::SINGLE, true ) ) {
 			return 1;
 		}
 		$sql = match ( $stage ) {
@@ -95,7 +98,7 @@ final class FxcEnumerationRepository {
 		'from' => null,
 		'to'   => null,
 	] ): int {
-		if ( $stage === 'settings' ) {
+		if ( in_array( $stage, self::SINGLE, true ) ) {
 			return 1;
 		}
 		$upper = $this->upper_id( $stage );

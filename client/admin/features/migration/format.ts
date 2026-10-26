@@ -13,6 +13,7 @@ export const DIRECTION_LABELS: Record<Direction, string> = {
 export const STAGE_LABELS: Record<Stage, string> = {
     settings: __("Settings"),
     taxes: __("Tax rates"),
+    shipping: __("Shipping zones"),
     attributes: __("Attributes"),
     terms: __("Categories, tags and values"),
     products: __("Products"),

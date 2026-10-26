@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Flexa\Commerce\Tests\Integration\Api;
 
+use Flexa\Commerce\Customers\CustomerProfile;
 use Flexa\Commerce\Orders\TransitionContext;
 use Flexa\Commerce\Plugin;
 use Flexa\Commerce\Tests\Integration\Orders\OrderTestCase;
@@ -32,7 +33,7 @@ final class AdminCustomersTest extends OrderTestCase {
 		if ( is_multisite() ) {
 			revoke_super_admin( $this->admin );
 		}
-		foreach ( [ 'grace@example.com', 'grace2@example.com' ] as $email ) {
+		foreach ( [ 'grace@example.com', 'grace2@example.com', 'grace3@example.com' ] as $email ) {
 			$user = get_user_by( 'email', $email );
 			if ( $user instanceof \WP_User ) {
 				wp_delete_user( $user->ID );
@@ -104,6 +105,44 @@ final class AdminCustomersTest extends OrderTestCase {
 	public function test_the_list_needs_the_view_orders_capability(): void {
 		wp_set_current_user( self::factory()->user->create( [ 'role' => 'subscriber' ] ) );
 		self::assertSame( 403, $this->send( [] )->get_status() );
+	}
+
+	public function test_a_store_manager_marks_an_account_tax_exempt(): void {
+		$user = self::factory()->user->create( [ 'user_email' => 'grace3@example.com' ] );
+		$this->order( 'grace3@example.com', 'Grace Hopper', $user, 1000, 0, '2026-03-01 10:00:00' );
+		$this->order( 'bob@example.com', 'Bob Guest', 0, 4000, 0, '2026-02-01 10:00:00' );
+
+		$items = $this->send( [] )->get_data();
+		self::assertSame( [ false, false ], array_column( $items, 'tax_exempt' ) );
+		self::assertSame( [ true, false ], array_column( $items, 'can_exempt' ), 'Guests have no account to flag.' );
+
+		$response = $this->patch( $user, true );
+		self::assertSame( 200, $response->get_status() );
+		self::assertTrue( $response->get_data()['tax_exempt'] );
+		self::assertTrue( ( new CustomerProfile() )->tax_exempt( $user ) );
+		self::assertSame( [ true, false ], array_column( $this->send( [] )->get_data(), 'tax_exempt' ) );
+
+		self::assertFalse( $this->patch( $user, false )->get_data()['tax_exempt'] );
+		self::assertFalse( ( new CustomerProfile() )->tax_exempt( $user ) );
+		self::assertSame( 404, $this->patch( 999999, true )->get_status() );
+	}
+
+	public function test_only_a_store_manager_changes_the_flag(): void {
+		$user    = self::factory()->user->create();
+		$viewer  = self::factory()->user->create( [ 'role' => 'subscriber' ] );
+		$granted = get_userdata( $viewer );
+		self::assertInstanceOf( \WP_User::class, $granted );
+		$granted->add_cap( 'view_fxc_orders' );
+		wp_set_current_user( $viewer );
+
+		self::assertSame( 403, $this->patch( $user, true )->get_status() );
+		self::assertFalse( ( new CustomerProfile() )->tax_exempt( $user ) );
+	}
+
+	private function patch( int $user, bool $exempt ): \WP_REST_Response {
+		$request = new \WP_REST_Request( 'PATCH', '/flexacommerce/v1/admin/customers/' . $user );
+		$request->set_body_params( [ 'tax_exempt' => $exempt ] );
+		return rest_get_server()->dispatch( $request );
 	}
 
 	/** Places an order and rewrites the customer columns the list reads. */

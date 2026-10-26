@@ -27,6 +27,7 @@ final class FlatRate implements ShippingMethod {
 			new SettingField( 'title', 'text', __( 'Name shown at checkout', 'flexacommerce' ), __( 'Flat rate', 'flexacommerce' ) ),
 			new SettingField( 'cost', 'money', __( 'Cost per order', 'flexacommerce' ), 0 ),
 			new SettingField( 'cost_per_item', 'money', __( 'Cost per item', 'flexacommerce' ), 0 ),
+			Label::tax_status(),
 		];
 	}
 
@@ -37,6 +38,8 @@ final class FlatRate implements ShippingMethod {
 				'flat_rate:' . $instance_id,
 				Label::of( $settings, $this->title() ),
 				new Money( $cost, $package->currency() ),
+				[],
+				Label::taxable( $settings ),
 			),
 		];
 	}

@@ -16,6 +16,7 @@ final class Record {
 
 	public const SETTINGS  = 'settings';
 	public const TAX_RATE  = 'tax_rate';
+	public const SHIPPING  = 'shipping';
 	public const ATTRIBUTE = 'attribute';
 	public const TERM      = 'term';
 	public const PRODUCT   = 'product';

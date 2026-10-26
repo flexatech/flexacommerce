@@ -39,6 +39,11 @@ final class ZoneRepository {
 		return $zones;
 	}
 
+	/** Forget the zones read so far, after the option changed outside this object. */
+	public function flush(): void {
+		$this->zones = null;
+	}
+
 	public function find( int $id ): ?Zone {
 		foreach ( $this->all() as $zone ) {
 			if ( $zone->id === $id ) {

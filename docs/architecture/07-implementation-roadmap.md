@@ -202,7 +202,7 @@ Implementation notes (phase 4.5, 2026-10-25):
 - **CSV import batches are sent by the admin screen**, 500 rows each, validate pass first; the server refuses a larger batch. There is no server-side batch runner for it.
 - **Tax UI** is the Tax tab of Settings (options, classes, rates per class, CSV, presets, markets), not a separate screen.
 - **US preset.** `resources/tax-presets/us.json` has `as_of` 2025-01-01 and a source per state. The state rates, shipping taxability and origin-state list still need the check against each revenue department that doc 02 §7.12.8 asks for before release.
-- **Not done.** The cart page and `store/cart` showed no tax (done in phase 5, see its notes). T3 P6t against WooCommerce with the same rate table is not run. The tax-exempt flag on the Customers screen (P2) is not built; the filter is the only way in. With `tax_based_on = billing` the checkout form total follows the shipping address until the order is placed. In the admin order view, an inclusive-price line shows unit × quantity, which differs from its stored net total.
+- **Not done.** The cart page and `store/cart` showed no tax (done in phase 5, see its notes). T3 P6t against WooCommerce with the same rate table is not run. The tax-exempt flag on the Customers screen (P2) was added 2026-10-26: a switch per account (`PATCH admin/customers/{id}`, `manage_flexacommerce`), stored as the user option `fxc_tax_exempt`, read by `CartTaxes::request()` and still passed through `flexacommerce.tax.exempt`. With `tax_based_on = billing` the checkout form total follows the shipping address until the order is placed. In the admin order view, an inclusive-price line shows unit × quantity, which differs from its stored net total.
 
 ## Phase 5: Full storefront
 
@@ -250,7 +250,7 @@ Implementation notes (phase 5, 2026-10-25):
 | P0 | `FxcSource` + `WooTarget` (FXC→WC), round-trip test |
 | P1 | Purge imported data command |
 | P1 | Action Scheduler driver |
-| P2 | Shipping zones migration |
+| P2 | Shipping zones migration (done 2026-10-26) |
 | P3 | JSONL file transport (cross-site) |
 
 Exit criteria: all migration tests green in all storage modes; 100,000-order synthetic job completes within the memory target, throughput recorded; P9 runs nightly; benchmark dataset also imported through migration and compared with the native load (doc 10 §6.2).
@@ -263,6 +263,7 @@ Implementation notes (phase 6, 2026-10-26):
 - **Order numbers to WooCommerce.** The FlexaCommerce number goes to `_order_number` and `_fxc_order_number` (doc 05 §10); the reader treats both as mapped, so a round trip adds no extra meta.
 - **P9.** `Runner::run_batch()` resets the peak at the start of each batch and returns the batch's own peak (`memory_get_peak_usage()`), which `wp flexacommerce migrate run` prints. A process-wide peak is the wrong number: it includes the preflight, and WP-CLI sets `memory_limit` to -1, so `php -d memory_limit=128M` proves nothing. `MigrationTest` checks every batch against 128 MB. Most of a batch's peak is the loaded site: WordPress with WooCommerce 11.2.1 is about 110 MB in WP-CLI on the bench stack (51 MB without WooCommerce; FlexaCommerce adds under 2 MB), and a batch adds 4 to 12 MB. The batch budget used to be an absolute 128 MB of `memory_get_usage()`, which would have given a site already over 128 MB one entity per batch; it now counts growth from the batch start (`memory_budget`, 64 MB by default), with a stop at 80 % of `memory_limit` so growth cannot reach the fatal error (doc 05 §4.4). `MigrationTest` covers both.
 - **Cross-check** (doc 10 §6.2): the WooCommerce store of dataset M, migrated into FlexaCommerce on the same site and exported after WooCommerce is deactivated, passes the parity check against the spec (10,000 products, 36,828 variants). 10,329 entities in 540 s with highest batch peak 122.8 MB, measured while another job loaded the database, so the time is indicative.
+- **Shipping zones** (P2, doc 05 §5.7) are the `shipping` stage, both directions. Flat rate and local pickup gained a tax status setting so `tax_status: none` survives the trip. `ShippingMigrationTest` covers the formula parser, the methods imported turned off, a second run next to zones made by hand, and FXC→WC; the golden store has two zones and an "everywhere else" method, so `RoundTripTest` compares them too.
 - **Not done.** P9 does not run nightly: the CI workflow is off, so the check lives in the WooCommerce suite until CI is back. The 100,000-order job (doc 05 §11) has no recorded result: `tools/bench/synthetic-orders.php` generates the stores (`mig-hpos.bench`, `mig-legacy.bench`), but the first runs hit a full disk on the bench host and were discarded. A database error during a write is currently logged as a rejected entity, so such a run still ends "completed with warnings"; failing the job instead is open.
 
 ## Phase 7: Hardening and release
@@ -284,7 +285,7 @@ Exit: **1.0 (M2)**.
 1. Online gateway add-on (Q4).
 2. Tax presets for more markets (EU VAT, UK, Canada, Australia), VAT ID validation and tax reports, as add-ons or presets.
 3. Coupons.
-4. Shipping zones migration and cross-site transport.
+4. Cross-site transport (JSONL).
 5. Product lookup table if the revisit condition in doc 03 §5 triggers.
 6. Public product-type API.
 

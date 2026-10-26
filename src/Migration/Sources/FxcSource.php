@@ -20,6 +20,7 @@ final class FxcSource implements SourceAdapter {
 		private readonly FxcStoreReader $store,
 		private readonly FxcCatalogReader $catalog,
 		private readonly FxcOrderReader $orders,
+		private readonly FxcShippingReader $shipping,
 	) {}
 
 	public function system(): string {
@@ -38,6 +39,7 @@ final class FxcSource implements SourceAdapter {
 		return match ( $stage ) {
 			'settings'   => $this->store->settings(),
 			'taxes'      => $this->store->tax_rate( $id ),
+			'shipping'   => $this->shipping->shipping(),
 			'attributes' => $this->catalog->attribute( $id ),
 			'terms'      => $this->catalog->term( $id ),
 			'products'   => $this->catalog->product( $id ),

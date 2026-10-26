@@ -10,23 +10,29 @@ use Flexa\Commerce\Migration\Canonical\Validator;
 use Flexa\Commerce\Migration\Sources\FxcCatalogReader;
 use Flexa\Commerce\Migration\Sources\FxcEnumerationRepository;
 use Flexa\Commerce\Migration\Sources\FxcOrderReader;
+use Flexa\Commerce\Migration\Sources\FxcShippingReader;
 use Flexa\Commerce\Migration\Sources\FxcSource;
 use Flexa\Commerce\Migration\Sources\FxcStoreReader;
 use Flexa\Commerce\Migration\Sources\SourceAdapter;
 use Flexa\Commerce\Migration\Sources\WooCatalogReader;
 use Flexa\Commerce\Migration\Sources\WooEnumerationRepository;
 use Flexa\Commerce\Migration\Sources\WooOrderReader;
+use Flexa\Commerce\Migration\Sources\WooShippingReader;
 use Flexa\Commerce\Migration\Sources\WooSource;
 use Flexa\Commerce\Migration\Sources\WooStoreReader;
 use Flexa\Commerce\Migration\Targets\FxcCatalogWriter;
 use Flexa\Commerce\Migration\Targets\FxcOrderWriter;
+use Flexa\Commerce\Migration\Targets\FxcShippingWriter;
 use Flexa\Commerce\Migration\Targets\FxcStoreWriter;
 use Flexa\Commerce\Migration\Targets\FxcTarget;
 use Flexa\Commerce\Migration\Targets\TargetAdapter;
 use Flexa\Commerce\Migration\Targets\WooCatalogWriter;
 use Flexa\Commerce\Migration\Targets\WooOrderWriter;
+use Flexa\Commerce\Migration\Targets\WooShippingRepository;
+use Flexa\Commerce\Migration\Targets\WooShippingWriter;
 use Flexa\Commerce\Migration\Targets\WooStoreWriter;
 use Flexa\Commerce\Migration\Targets\WooTarget;
+use Flexa\Commerce\Shipping\ShippingServices;
 use Flexa\Commerce\Support\Services;
 use Flexa\Commerce\Tax\TaxServices;
 
@@ -50,6 +56,7 @@ final class MigrationServices {
 		private readonly Services $services,
 		private readonly CatalogServices $catalog,
 		private readonly TaxServices $tax,
+		private readonly ShippingServices $shipping,
 	) {}
 
 	public function jobs(): JobRepository {
@@ -117,7 +124,7 @@ final class MigrationServices {
 	public function woo_source(): WooSource {
 		if ( $this->woo_source === null ) {
 			$enumeration      = new WooEnumerationRepository( $this->services->wpdb() );
-			$this->woo_source = new WooSource( $enumeration, new WooStoreReader( $enumeration ), new WooCatalogReader(), new WooOrderReader() );
+			$this->woo_source = new WooSource( $enumeration, new WooStoreReader( $enumeration ), new WooCatalogReader(), new WooOrderReader(), new WooShippingReader() );
 		}
 		return $this->woo_source;
 	}
@@ -130,13 +137,14 @@ final class MigrationServices {
 				new FxcStoreReader( $this->tax->repository(), new CustomerProfile() ),
 				new FxcCatalogReader( $this->catalog->attributes(), $this->catalog->product_service() ),
 				new FxcOrderReader( $enumeration ),
+				new FxcShippingReader( $this->shipping->service() ),
 			);
 		}
 		return $this->fxc_source;
 	}
 
 	public function woo_target(): WooTarget {
-		return $this->woo_target ??= new WooTarget( new WooStoreWriter(), new WooCatalogWriter(), new WooOrderWriter() );
+		return $this->woo_target ??= new WooTarget( new WooStoreWriter(), new WooCatalogWriter(), new WooOrderWriter(), new WooShippingWriter( new WooShippingRepository( $this->services->wpdb() ) ) );
 	}
 
 	public function fxc_target(): FxcTarget {
@@ -146,6 +154,7 @@ final class MigrationServices {
 			new FxcCatalogWriter( $this->catalog->attributes(), $this->catalog->product_service(), $this->catalog->variants() ),
 			new FxcOrderWriter( $this->imports(), $this->catalog->product_service(), $this->services->sequence(), $this->services->clock() ),
 			$this->imports(),
+			new FxcShippingWriter( $this->shipping->service() ),
 		);
 	}
 }

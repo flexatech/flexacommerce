@@ -18,6 +18,9 @@ final class WooEnumerationRepository {
 	/** Customer meta that makes a user a customer for the customers stage. */
 	private const CUSTOMER_KEYS = [ 'billing_first_name', 'billing_last_name', 'billing_email', 'billing_address_1', 'billing_country', 'shipping_first_name', 'shipping_address_1', 'shipping_country' ];
 
+	/** Stages that are one record with id 1. */
+	private const SINGLE = [ 'settings', 'shipping' ];
+
 	public function __construct( private readonly \wpdb $wpdb ) {}
 
 	public static function hpos(): bool {
@@ -42,7 +45,7 @@ final class WooEnumerationRepository {
 		'from' => null,
 		'to'   => null,
 	] ): array {
-		if ( $stage === 'settings' ) {
+		if ( in_array( $stage, self::SINGLE, true ) ) {
 			return $after < 1 && $upper >= 1 ? [ 1 ] : [];
 		}
 		$sql = match ( $stage ) {
@@ -65,7 +68,7 @@ final class WooEnumerationRepository {
 	}
 
 	public function upper_id( string $stage ): int {
-		if ( $stage === 'settings' ) {
+		if ( in_array( $stage, self::SINGLE, true ) ) {
 			return 1;
 		}
 		$sql = match ( $stage ) {
@@ -87,7 +90,7 @@ final class WooEnumerationRepository {
 		'from' => null,
 		'to'   => null,
 	] ): int {
-		if ( $stage === 'settings' ) {
+		if ( in_array( $stage, self::SINGLE, true ) ) {
 			return 1;
 		}
 		$upper = $this->upper_id( $stage );

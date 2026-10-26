@@ -8,13 +8,14 @@ defined( 'ABSPATH' ) || exit;
 
 /** One fxc_migration_jobs row. */
 final class Job {
-	/** Stage order (doc 05 §4.4, plus settings and taxes from ADR-020). */
-	public const STAGES = [ 'settings', 'taxes', 'attributes', 'terms', 'products', 'customers', 'orders' ];
+	/** Stage order (doc 05 §4.4, plus settings and taxes from ADR-020 and shipping zones). */
+	public const STAGES = [ 'settings', 'taxes', 'shipping', 'attributes', 'terms', 'products', 'customers', 'orders' ];
 
 	/** Id map entity written by each stage. */
 	public const ENTITIES = [
 		'settings'   => 'settings',
 		'taxes'      => 'tax_rate',
+		'shipping'   => 'shipping',
 		'attributes' => 'attribute',
 		'terms'      => 'term',
 		'products'   => 'product',
