@@ -56,7 +56,7 @@ final class FxcCouponReader {
 				'usage_limit'        => $coupon->usage_limit,
 				'usage_count'        => $coupon->usage_count,
 				'per_customer_limit' => $coupon->per_customer_limit,
-				'item_limit'         => 0,
+				'item_limit'         => $coupon->item_limit,
 				'individual_use'     => $coupon->individual_use,
 				'exclude_sale_items' => $coupon->exclude_sale_items,
 				'free_shipping'      => $coupon->free_shipping,

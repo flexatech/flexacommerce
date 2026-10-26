@@ -133,7 +133,7 @@ final class CouponEditor {
 		}
 
 		$limits = [];
-		foreach ( [ 'usage_limit', 'per_customer_limit' ] as $field ) {
+		foreach ( [ 'usage_limit', 'per_customer_limit', 'item_limit' ] as $field ) {
 			$value = self::integer( $in[ $field ] ?? 0, $field ) ?? 0;
 			if ( $value < 0 || $value > 4294967295 ) {
 				throw new InvalidCoupon( __( 'Usage limits must be zero (no limit) or more.', 'flexacommerce' ), $field );
@@ -159,6 +159,8 @@ final class CouponEditor {
 			'max_subtotal'       => $max,
 			'usage_limit'        => $limits['usage_limit'],
 			'per_customer_limit' => $limits['per_customer_limit'],
+			// A cart discount is split over the lines; an item limit has nothing to count there.
+			'item_limit'         => $type === Coupon::FIXED_CART ? 0 : $limits['item_limit'],
 			'individual_use'     => ! empty( $in['individual_use'] ),
 			'exclude_sale_items' => ! empty( $in['exclude_sale_items'] ),
 			'free_shipping'      => $free_shipping,

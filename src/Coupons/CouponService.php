@@ -167,7 +167,10 @@ final class CouponService {
 	/**
 	 * Sequential discounts: percent of what is left of each eligible line,
 	 * a fixed amount per unit capped at what is left, or a fixed amount for
-	 * the cart split over the eligible lines by what is left of them.
+	 * the cart split over the eligible lines by what is left of them. An
+	 * item limit counts units from the dearest line down, as WooCommerce
+	 * does; a line only partly counted is discounted on its share of what
+	 * is left.
 	 *
 	 * @param list<Coupon>   $coupons
 	 * @param list<CartItem> $items
@@ -200,11 +203,19 @@ final class CouponService {
 					}
 				}
 			} else {
-				foreach ( $eligible as $item ) {
-					$key           = $item->line->key;
+				$units = $coupon->item_limit > 0 ? $coupon->item_limit : PHP_INT_MAX;
+				foreach ( $coupon->item_limit > 0 ? self::dearest_first( $eligible ) : $eligible as $item ) {
+					$key      = $item->line->key;
+					$quantity = $item->line->quantity;
+					$apply    = min( $quantity, $units );
+					if ( $apply <= 0 ) {
+						break;
+					}
+					$units        -= $apply;
+					$base          = $apply === $quantity ? $left[ $key ] : IntMath::mul_div_half_up( $left[ $key ], $apply, $quantity );
 					$lines[ $key ] = $coupon->type === Coupon::PERCENT
-						? IntMath::mul_div_half_up( $left[ $key ], min( $coupon->amount, Coupon::FULL_PERCENT ), Coupon::FULL_PERCENT )
-						: min( $left[ $key ], $coupon->amount * $item->line->quantity );
+						? IntMath::mul_div_half_up( $base, min( $coupon->amount, Coupon::FULL_PERCENT ), Coupon::FULL_PERCENT )
+						: min( $base, $coupon->amount * $apply );
 				}
 			}
 			foreach ( $lines as $key => $discount ) {
@@ -301,6 +312,22 @@ final class CouponService {
 			$out[] = $item;
 		}
 		return $out;
+	}
+
+	/**
+	 * Lines by unit price before discounts, dearest first; equal prices keep
+	 * the cart order.
+	 *
+	 * @param list<CartItem> $items
+	 * @return list<CartItem>
+	 */
+	private static function dearest_first( array $items ): array {
+		usort(
+			$items,
+			// Cross-multiplied so the unit prices are compared without rounding.
+			static fn ( CartItem $a, CartItem $b ): int => ( (int) $b->total?->amount * $a->line->quantity ) <=> ( (int) $a->total?->amount * $b->line->quantity )
+		);
+		return $items;
 	}
 
 	/** @return list<int> the product's categories and their ancestors */

@@ -12,6 +12,8 @@ defined( 'ABSPATH' ) || exit;
  * `datetime` values. The product and category rules and the allowed emails
  * live in the `rules` JSON column. A free-shipping coupon turns on the
  * free shipping methods that ask for one; its amount may then be zero.
+ * A percent or per-product coupon may be limited to a number of items, the
+ * dearest first.
  */
 final class Coupon {
 	public const PERCENT       = 'percent';
@@ -36,6 +38,7 @@ final class Coupon {
 	 * @param list<string> $emails               billing emails allowed to use it, `*` wildcards allowed; empty is everyone
 	 * @param list<int>    $variant_ids          single variations (fxc_variants ids) the coupon applies to
 	 * @param list<int>    $exclude_variant_ids
+	 * @param int          $item_limit           units a percent or per-product coupon discounts at most, the dearest first; 0 is every unit
 	 */
 	public function __construct(
 		public readonly int $id,
@@ -63,6 +66,7 @@ final class Coupon {
 		public readonly bool $free_shipping = false,
 		public readonly array $variant_ids = [],
 		public readonly array $exclude_variant_ids = [],
+		public readonly int $item_limit = 0,
 	) {}
 
 	/** The form a shopper's code is compared in: trimmed, lower case. */
@@ -100,6 +104,7 @@ final class Coupon {
 			free_shipping: (bool) ( $row['free_shipping'] ?? false ),
 			variant_ids: self::ids( $rules['variant_ids'] ?? [] ),
 			exclude_variant_ids: self::ids( $rules['exclude_variant_ids'] ?? [] ),
+			item_limit: (int) ( $row['item_limit'] ?? 0 ),
 		);
 	}
 
@@ -163,6 +168,7 @@ final class Coupon {
 			'usage_limit'        => $this->usage_limit,
 			'usage_count'        => $this->usage_count,
 			'per_customer_limit' => $this->per_customer_limit,
+			'item_limit'         => $this->item_limit,
 			'individual_use'     => $this->individual_use,
 			'exclude_sale_items' => $this->exclude_sale_items,
 			'free_shipping'      => $this->free_shipping,

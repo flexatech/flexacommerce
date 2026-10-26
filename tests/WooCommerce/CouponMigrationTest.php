@@ -107,16 +107,17 @@ final class CouponMigrationTest extends \WP_UnitTestCase {
 		$this->assertSame( Coupon::ACTIVE, $this->fxc_coupon( 'shipplus' )->status );
 		$this->assertSame( 400, $this->fxc_coupon( 'shipplus' )->amount );
 		$this->assertTrue( $this->fxc_coupon( 'shipplus' )->free_shipping );
-		$this->assertSame( Coupon::DISABLED, $this->fxc_coupon( 'twoitems' )->status );
+		$this->assertSame( [ Coupon::ACTIVE, 2 ], [ $this->fxc_coupon( 'twoitems' )->status, $this->fxc_coupon( 'twoitems' )->item_limit ], 'An item limit is kept.' );
 		$this->assertSame( Coupon::DISABLED, $this->fxc_coupon( 'grouped' )->status );
 		$this->assertSame( [], $this->fxc_coupon( 'grouped' )->product_ids );
 		$this->assertSame( 3333, $this->fxc_coupon( 'cart' )->amount );
 
 		$codes = array_count_values( array_column( $this->service->log( $job->id )['rows'], 'code' ) );
-		foreach ( [ 'coupon_item_limit', 'coupon_rules_lost', 'coupon_product_missing', 'coupon_rounded', 'duplicate_code' ] as $code ) {
+		foreach ( [ 'coupon_rules_lost', 'coupon_product_missing', 'coupon_rounded', 'duplicate_code' ] as $code ) {
 			$this->assertSame( 1, $codes[ $code ] ?? 0, $code );
 		}
 		$this->assertArrayNotHasKey( 'unsupported_coupon', $codes );
+		$this->assertArrayNotHasKey( 'coupon_item_limit', $codes );
 	}
 
 	public function test_a_second_run_updates_the_same_coupon(): void {
@@ -146,6 +147,7 @@ final class CouponMigrationTest extends \WP_UnitTestCase {
 				'expires_at'  => '2031-06-01 00:00:00',
 				'product_ids' => [ $tee ],
 				'variant_ids' => [ $this->local_id( 'variant', $this->store->variations['red_large'] ) ],
+				'item_limit'  => 3,
 				'emails'      => [ 'ana@example.com' ],
 			]
 		);
@@ -173,6 +175,7 @@ final class CouponMigrationTest extends \WP_UnitTestCase {
 		$this->assertSame( '2.5', (string) $spring->get_amount() );
 		$this->assertSame( [ $this->store->products['tee'], $this->store->variations['red_large'] ], $spring->get_product_ids(), 'WooCommerce keeps variations with the products.' );
 		$this->assertSame( [ 'ana@example.com' ], $spring->get_email_restrictions() );
+		$this->assertSame( 3, $spring->get_limit_usage_to_x_items() );
 		$this->assertSame( gmmktime( 0, 0, 0, 6, 1, 2031 ), $spring->get_date_expires()?->getTimestamp() );
 
 		$ship = new \WC_Coupon( $this->remote_id( 'coupon', $ship->id ) );

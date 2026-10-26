@@ -59,10 +59,6 @@ final class FxcCouponWriter {
 		}
 
 		$status = ( $data['status'] ?? '' ) === Coupon::ACTIVE ? Coupon::ACTIVE : Coupon::DISABLED;
-		if ( (int) ( $data['item_limit'] ?? 0 ) > 0 ) {
-			$status           = Coupon::DISABLED;
-			$this->problems[] = Problem::warning( 'coupon_item_limit', sprintf( 'The coupon "%s" applies to a limited number of items, which FlexaCommerce does not support. It was imported disabled.', $code ) );
-		}
 
 		$products = $this->products( (array) ( $data['products'] ?? [] ), $map, $code );
 		$excluded = $this->products( (array) ( $data['exclude_products'] ?? [] ), $map, $code );
@@ -95,6 +91,7 @@ final class FxcCouponWriter {
 			'max_subtotal'         => $money( $data['max_subtotal'] ?? null ),
 			'usage_limit'          => max( 0, (int) ( $data['usage_limit'] ?? 0 ) ),
 			'per_customer_limit'   => max( 0, (int) ( $data['per_customer_limit'] ?? 0 ) ),
+			'item_limit'           => max( 0, (int) ( $data['item_limit'] ?? 0 ) ),
 			'individual_use'       => ! empty( $data['individual_use'] ),
 			'exclude_sale_items'   => ! empty( $data['exclude_sale_items'] ),
 			'free_shipping'        => $free_shipping,

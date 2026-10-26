@@ -672,7 +672,7 @@ Tax classes are not a table; they live in `flexacommerce_settings.tax_classes` (
 
 ### 4.14 `fxc_coupons` and `fxc_coupon_uses`
 
-Added with coupons (ADR-021, doc 02 §7.13), `DB_VERSION` 4. `DB_VERSION` 5 adds `free_shipping`.
+Added with coupons (ADR-021, doc 02 §7.13), `DB_VERSION` 4. `DB_VERSION` 5 adds `free_shipping`, `DB_VERSION` 6 adds `item_limit`.
 
 ```sql
 CREATE TABLE fxc_coupons (
@@ -689,6 +689,7 @@ CREATE TABLE fxc_coupons (
   usage_limit int(10) unsigned NOT NULL DEFAULT 0,
   usage_count int(10) unsigned NOT NULL DEFAULT 0,
   per_customer_limit int(10) unsigned NOT NULL DEFAULT 0,
+  item_limit int(10) unsigned NOT NULL DEFAULT 0,
   individual_use tinyint(1) NOT NULL DEFAULT 0,
   exclude_sale_items tinyint(1) NOT NULL DEFAULT 0,
   free_shipping tinyint(1) NOT NULL DEFAULT 0,
@@ -722,6 +723,7 @@ CREATE TABLE fxc_coupon_uses (
 | `free_shipping` | 1 turns on the `free_shipping` methods that ask for a coupon (doc 02 §7.13.8). |
 | `starts_at`, `expires_at` | UTC, both optional; `expires_at` must be after `starts_at`. |
 | `min_subtotal`, `max_subtotal` | Minor units, on the cart subtotal before coupons; `NULL` = no bound. |
+| `item_limit` | Units a `percent` or `fixed_product` coupon discounts at most, the dearest first (doc 02 §7.13.1). 0 = every unit; always 0 for `fixed_cart`. |
 | `usage_limit`, `per_customer_limit` | 0 = no limit. `usage_count` is changed only by `take_use()` and `release_order()` (doc 02 §7.13.5), never by the editor. |
 | `rules` | JSON `{product_ids, exclude_product_ids, variant_ids, exclude_variant_ids, category_ids, exclude_category_ids, emails}` (product ids are post ids, variant ids are `fxc_variants` ids), each a list of at most 1,000 entries. Emails are lower-cased and may hold `*`. Bad JSON reads as no rules. The lists are only read with the coupon row, never searched, so they need no table of their own. |
 | `coupon_uses.user_id`, `email` | The customer of the order (`NULL` for a guest) and the billing email, lower-cased. The per-customer count matches either. |

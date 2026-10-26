@@ -28,6 +28,7 @@ interface Draft {
     max_subtotal: number | null;
     usage_limit: string;
     per_customer_limit: string;
+    item_limit: string;
     individual_use: boolean;
     exclude_sale_items: boolean;
     free_shipping: boolean;
@@ -74,6 +75,7 @@ function draftOf(coupon: Coupon | null): Draft {
         max_subtotal: coupon?.max_subtotal ?? null,
         usage_limit: coupon !== null && coupon.usage_limit > 0 ? String(coupon.usage_limit) : "",
         per_customer_limit: coupon !== null && coupon.per_customer_limit > 0 ? String(coupon.per_customer_limit) : "",
+        item_limit: coupon !== null && coupon.item_limit > 0 ? String(coupon.item_limit) : "",
         individual_use: coupon?.individual_use ?? false,
         exclude_sale_items: coupon?.exclude_sale_items ?? false,
         free_shipping: coupon?.free_shipping ?? false,
@@ -99,6 +101,7 @@ function inputOf(draft: Draft): CouponInput {
         max_subtotal: draft.max_subtotal,
         usage_limit: Number(draft.usage_limit) || 0,
         per_customer_limit: Number(draft.per_customer_limit) || 0,
+        item_limit: draft.type === "fixed_cart" ? 0 : Number(draft.item_limit) || 0,
         individual_use: draft.individual_use,
         exclude_sale_items: draft.exclude_sale_items,
         free_shipping: draft.free_shipping,
@@ -315,6 +318,17 @@ export function CouponDialog({ open, coupon, onOpenChange }: Props) {
                                 />
                             )}
                         </Field>
+                        {draft.type !== "fixed_cart" && (
+                            <Field
+                                label={__("Limit to items")}
+                                help={__("Units in the cart it discounts at most, the most expensive first. Empty: every unit.")}
+                                error={errors.item_limit}
+                            >
+                                {(id) => (
+                                    <Input id={id} type="number" min={0} step={1} value={draft.item_limit} onChange={(e) => set("item_limit", e.target.value)} />
+                                )}
+                            </Field>
+                        )}
                     </div>
 
                     <div className="fxc:space-y-3">

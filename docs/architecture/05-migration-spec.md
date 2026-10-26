@@ -406,11 +406,10 @@ A second run replaces the zones and methods it created, in place; zones and meth
 The `coupons` stage runs last, after orders. One `coupon` record per `shop_coupon` post (auto-drafts and trash are skipped) or `fxc_coupons` row. Amounts are decimals: a percentage as a number of percent (`12.5`), money in the store currency. FlexaCommerce keeps a percentage in hundredths and money in minor units; more decimals than that are rounded with the warning `coupon_rounded`. Products, variations and categories are references, and the coupon depends on them, so they are imported first.
 
 - Status: a published WooCommerce coupon is `active`; any other status is `disabled`. FXC→WC writes `publish` or `draft`.
-- Copied as they are: code, description, type (`percent`, `fixed_cart`, `fixed_product`), amount, expiry, minimum and maximum spend, usage limit and count, per-customer limit, individual use, exclude sale items, product and category rules (both lists), allowed emails. WooCommerce keeps codes in lower case.
+- Copied as they are: code, description, type (`percent`, `fixed_cart`, `fixed_product`), amount, expiry, minimum and maximum spend, usage limit and count, per-customer limit, item limit (`limit_usage_to_x_items`), individual use, exclude sale items, product and category rules (both lists), allowed emails. WooCommerce keeps codes in lower case.
 - Used by: FXC→WC writes the `_used_by` meta from `coupon_uses`. WC→FXC rebuilds `coupon_uses` from the imported orders' `discount` lines (not cancelled), once at the end of the orders stage and once at the end of the coupons stage, so per-customer limits count the old orders.
 - Free shipping is copied in both directions. A coupon that gives free shipping only is imported with an amount of 0; any other coupon with no amount is rejected (`unsupported_coupon`).
 - Products and variations: WooCommerce keeps both as post ids in one list. WC→FXC sends a variation to `variant_ids` (or `exclude_variant_ids`) and a product to `product_ids`; FXC→WC joins them again.
-- A limit on the number of items (`limit_usage_to_x_items`) has no equivalent; the coupon is imported **disabled** with the warning `coupon_item_limit`.
 - A product or category in the rules that was not imported is dropped with `coupon_product_missing` / `coupon_category_missing`. If that empties an "only these" list, the coupon is imported disabled (`coupon_rules_lost`), so it never applies to every product.
 - WooCommerce has no start date. A FlexaCommerce coupon that starts later goes back as a draft with the warning `coupon_starts_later`.
 - A code the target already uses for another coupon rejects the record (`duplicate_code`); the target's coupon stays as it is. On WooCommerce only published coupons are checked, as WooCommerce does.
@@ -448,7 +447,6 @@ Errors reject one entity, never the batch. A job ends `completed_with_warnings` 
 | Product add-on and SEO plugin meta | `_fxc_import` bucket on the product, round-tripped on FXC→WC |
 | Unknown order and item meta | `fxc_order_meta` (`wc:` prefix) and item `meta` JSON, round-tripped |
 | Payment gateway settings | not migrated in MVP (tax rates and classes are, since ADR-020; shipping zones are, see §5.7; coupons are, see §5.8) |
-| Item limits on a coupon | see §5.8: item-limited coupons import disabled |
 | Subscriptions, memberships, bookings | not migrated, warning if their plugins are active |
 | WooCommerce analytics tables, customer lookup, sessions, carts | not migrated (derived or transient data) |
 

@@ -22,6 +22,8 @@ export interface Coupon {
     usage_limit: number;
     usage_count: number;
     per_customer_limit: number;
+    /** Units a percent or per-product coupon discounts at most, the dearest first. 0 is every unit. */
+    item_limit: number;
     individual_use: boolean;
     exclude_sale_items: boolean;
     /** Turns on the free shipping methods that ask for a coupon. */
