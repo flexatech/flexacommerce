@@ -2,7 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { showToast } from "@/shared/components/showToast";
-import { api } from "@/shared/lib/api";
+import { api, ApiError } from "@/shared/lib/api";
 import type { BatchResult, CutoverStatus, Direction, Job, JobOptions, LogRow, MigrationsIndex, PurgeResult } from "./types";
 
 export const LOG_PER_PAGE = 50;
@@ -53,7 +53,93 @@ export function useCreateJob() {
     });
 }
 
-export type JobAction = "preflight" | "start" | "pause" | "cancel" | "verify" | "background";
+export interface ImportProgress {
+    phase: "idle" | "uploading" | "checking";
+    sent: number;
+    total: number;
+}
+
+const IDLE: ImportProgress = { phase: "idle", sent: 0, total: 0 };
+
+/**
+ * Sends an export file in chunks, then asks the server to check it and
+ * create the job. A chunk refused for its offset resends from the size the
+ * server reports, so a dropped request costs one chunk. `cancel` stops
+ * between chunks and drops the partial upload.
+ */
+export function useImportFile() {
+    const qc = useQueryClient();
+    const [progress, setProgress] = useState<ImportProgress>(IDLE);
+    const [error, setError] = useState<string | null>(null);
+    const abort = useRef<AbortController | null>(null);
+
+    useEffect(() => () => abort.current?.abort(), []);
+
+    const run = useCallback(
+        async (file: File, job: Omit<NewJob, "direction">): Promise<Job | null> => {
+            const controller = new AbortController();
+            abort.current = controller;
+            setError(null);
+            setProgress({ phase: "uploading", sent: 0, total: file.size });
+            let token: string | null = null;
+            try {
+                const begun = await api.post<{ token: string; chunk: number }>("admin/migrations/uploads", {
+                    name: file.name,
+                    size: file.size,
+                });
+                token = begun.token;
+                let offset = 0;
+                while (offset < file.size) {
+                    if (controller.signal.aborted) {
+                        throw new DOMException("Aborted", "AbortError");
+                    }
+                    const chunk = file.slice(offset, offset + begun.chunk);
+                    try {
+                        const { received } = await api.postBlob<{ received: number }>(
+                            `admin/migrations/uploads/${token}`,
+                            chunk,
+                            { offset },
+                            controller.signal,
+                        );
+                        offset = received;
+                    } catch (e) {
+                        if (e instanceof ApiError && e.code === "flexacommerce_migration_upload_offset" && typeof e.data.received === "number") {
+                            offset = e.data.received;
+                            continue;
+                        }
+                        throw e;
+                    }
+                    setProgress({ phase: "uploading", sent: offset, total: file.size });
+                }
+                setProgress({ phase: "checking", sent: file.size, total: file.size });
+                const created = await api.post<Job>("admin/migrations/import", { upload: token, ...job });
+                token = null;
+                qc.setQueryData(["migrations", "job", created.id], created);
+                void qc.invalidateQueries({ queryKey: ["migrations"], exact: true });
+                return created;
+            } catch (e) {
+                // After `import` the part is gone and this answers 404; before it, it frees the disk.
+                if (token !== null) {
+                    void api.delete(`admin/migrations/uploads/${token}`).catch(() => undefined);
+                }
+                if (!(e instanceof DOMException && e.name === "AbortError")) {
+                    setError((e as Error).message);
+                }
+                return null;
+            } finally {
+                abort.current = null;
+                setProgress(IDLE);
+            }
+        },
+        [qc],
+    );
+
+    const cancel = useCallback(() => abort.current?.abort(), []);
+
+    return { run, cancel, progress, error, busy: progress.phase !== "idle" };
+}
+
+export type JobAction = "preflight" | "start" | "pause" | "cancel" | "verify" | "background" | "remove-file";
 
 /** One POST per lifecycle action; the response is the job. */
 export function useJobAction(id: number) {

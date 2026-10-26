@@ -142,7 +142,7 @@ Legend: **MVP** = required for MVP. **FND** = architectural foundation in MVP, u
 | Refunds | MVP | MVP | Mapped to refund transactions and WooCommerce refund objects. |
 | Coupon lines, fee lines, tax lines on orders | MVP | MVP | Preserved as historical order lines (amounts only). |
 | Unsupported third-party metadata | MVP (preserved) | MVP (restored if originally from WC) | Stored verbatim in an import bucket, reported, never interpreted. |
-| Cross-site transport (export file → import on another site) | MVP (WP-CLI) | MVP (WP-CLI) | JSONL export and import (doc 05 §4.6). No admin screen yet. |
+| Cross-site transport (export file → import on another site) | MVP | MVP | JSONL export from WP-CLI; import from WP-CLI or by upload on the Migration screen (doc 05 §4.6). |
 | Continuous two-way sync | OUT | OUT | See doc 05 §8. |
 | Import/export validation and error reports | MVP | MVP | |
 

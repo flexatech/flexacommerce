@@ -25,6 +25,7 @@ export interface JobOptions {
     orders_from: string | null;
     orders_to: string | null;
     backup_confirmed: boolean;
+    media: "download" | "skip";
     [key: string]: unknown;
 }
 
@@ -66,11 +67,21 @@ export interface Job {
     totals: Counters;
     /** Not in the list payload. */
     report?: JobReport;
+    /** Only on a job that reads an export file. */
+    file?: JobFile;
     created_by: number;
     created_at: string;
     updated_at: string;
     started_at: string | null;
     finished_at: string | null;
+}
+
+export interface JobFile {
+    name: string;
+    size: number;
+    exists: boolean;
+    /** Uploaded through this screen, so the screen may delete it. */
+    removable: boolean;
 }
 
 export interface MigrationsIndex {

@@ -40,8 +40,9 @@ final class Job {
 		'verbose'               => false,
 		'force'                 => false,
 		'backup_confirmed'      => false,
-		// File transport (doc 05 §4.6): the JSONL file, the id map system of its source site, media policy.
+		// File transport (doc 05 §4.6): the JSONL file, its name when uploaded, the id map system of its source site, media policy.
 		'file'                  => '',
+		'file_name'             => '',
 		'id_system'             => '',
 		'media'                 => 'download',
 	];
@@ -119,6 +120,7 @@ final class Job {
 		$out['force']                 = (bool) $out['force'];
 		$out['backup_confirmed']      = (bool) $out['backup_confirmed'];
 		$out['file']                  = is_string( $out['file'] ) ? $out['file'] : '';
+		$out['file_name']             = is_string( $out['file_name'] ) ? $out['file_name'] : '';
 		$out['id_system']             = is_string( $out['id_system'] ) && preg_match( '/^[a-z0-9:]{1,32}$/', $out['id_system'] ) === 1 ? $out['id_system'] : '';
 		$out['media']                 = $out['media'] === 'skip' ? 'skip' : 'download';
 		return $out;

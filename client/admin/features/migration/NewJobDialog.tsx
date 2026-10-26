@@ -12,10 +12,12 @@ import {
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { Select } from "@/shared/components/ui/select";
-import { __ } from "@/shared/lib/i18n";
-import { DIRECTION_LABELS, STAGE_LABELS } from "./format";
-import type { Direction, JobOptions, MigrationsIndex, Stage } from "./types";
-import { useCreateJob } from "./useMigrations";
+import { __, sprintf } from "@/shared/lib/i18n";
+import { DIRECTION_LABELS, formatBytes, STAGE_LABELS } from "./format";
+import type { Direction, Job, JobOptions, MigrationsIndex, Stage } from "./types";
+import { useCreateJob, useImportFile } from "./useMigrations";
+
+type Source = "site" | "file";
 
 function Check({ checked, onChange, label, help }: { checked: boolean; onChange: (checked: boolean) => void; label: string; help?: string }) {
     const id = useId();
@@ -38,6 +40,28 @@ function Check({ checked, onChange, label, help }: { checked: boolean; onChange:
     );
 }
 
+function UploadProgress({ phase, sent, total }: { phase: "uploading" | "checking"; sent: number; total: number }) {
+    return (
+        <div className="fxc:space-y-1">
+            <div
+                role="progressbar"
+                aria-label={__("Upload")}
+                aria-valuemin={0}
+                aria-valuemax={total}
+                aria-valuenow={sent}
+                className="fxc:bg-muted fxc:h-2 fxc:overflow-hidden fxc:rounded-full"
+            >
+                <div className="fxc:bg-primary fxc:h-full fxc:transition-[width]" style={{ width: `${total > 0 ? (sent / total) * 100 : 0}%` }} />
+            </div>
+            <p className="fxc:text-muted-foreground fxc:text-xs">
+                {phase === "uploading"
+                    ? sprintf(__("Uploading %1$s of %2$s"), formatBytes(sent), formatBytes(total))
+                    : __("Checking every line of the file. A large file can take a few minutes.")}
+            </p>
+        </div>
+    );
+}
+
 interface Props {
     open: boolean;
     onOpenChange: (open: boolean) => void;
@@ -47,7 +71,11 @@ interface Props {
 
 export function NewJobDialog({ open, onOpenChange, index, onCreated }: Props) {
     const create = useCreateJob();
+    const importFile = useImportFile();
     const firstJob = index.jobs.length === 0;
+    const [source, setSource] = useState<Source>("site");
+    const [file, setFile] = useState<File | null>(null);
+    const [media, setMedia] = useState(true);
     const [direction, setDirection] = useState<Direction>(index.woocommerce ? "wc_to_fxc" : "fxc_to_wc");
     const [dryRun, setDryRun] = useState(true);
     const [stages, setStages] = useState<Stage[]>(index.defaults.stages);
@@ -60,30 +88,46 @@ export function NewJobDialog({ open, onOpenChange, index, onCreated }: Props) {
     const toggleStage = (stage: Stage, on: boolean) =>
         setStages((current) => index.stages.filter((s) => (s === stage ? on : current.includes(s))));
 
-    const submit = () =>
+    const busy = create.isPending || importFile.busy;
+    const progress = importFile.progress;
+    const error = source === "file" ? importFile.error : create.isError ? create.error.message : null;
+    const policies = {
+        stages,
+        target_modified: targetModified,
+        duplicate_sku: duplicateSku,
+        order_number_conflict: numberConflict,
+    };
+
+    const done = (job: Job) => {
+        onOpenChange(false);
+        onCreated(job.id);
+    };
+
+    const submit = () => {
+        if (source === "file") {
+            if (file) {
+                void importFile
+                    .run(file, { dry_run: dryRun, options: { ...policies, media: media ? "download" : "skip" } })
+                    .then((job) => job && done(job));
+            }
+            return;
+        }
         create.mutate(
             {
                 direction,
                 dry_run: dryRun,
                 options: {
-                    stages,
-                    target_modified: targetModified,
-                    duplicate_sku: duplicateSku,
-                    order_number_conflict: numberConflict,
+                    ...policies,
                     orders_from: from !== "" ? `${from}T00:00:00Z` : null,
                     orders_to: to !== "" ? `${to}T23:59:59Z` : null,
                 },
             },
-            {
-                onSuccess: (job) => {
-                    onOpenChange(false);
-                    onCreated(job.id);
-                },
-            },
+            { onSuccess: done },
         );
+    };
 
     return (
-        <Dialog open={open} onOpenChange={(o) => !create.isPending && onOpenChange(o)}>
+        <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
             <DialogContent className="fxc:max-w-xl">
                 <DialogHeader>
                     <DialogTitle>{__("New migration")}</DialogTitle>
@@ -94,22 +138,59 @@ export function NewJobDialog({ open, onOpenChange, index, onCreated }: Props) {
 
                 <div className="fxc:space-y-5">
                     <div>
-                        <Label htmlFor="fxc-migration-direction" className="fxc:mb-2 fxc:block">
-                            {__("Direction")}
+                        <Label htmlFor="fxc-migration-source" className="fxc:mb-2 fxc:block">
+                            {__("Copy from")}
                         </Label>
                         <Select
-                            id="fxc-migration-direction"
+                            id="fxc-migration-source"
                             className="fxc:w-full"
-                            value={direction}
-                            onChange={(e) => setDirection(e.target.value as Direction)}
-                            options={index.directions.map((d) => ({ value: d, label: DIRECTION_LABELS[d] }))}
+                            value={source}
+                            disabled={busy}
+                            onChange={(e) => setSource(e.target.value as Source)}
+                            options={[
+                                { value: "site", label: __("The other store on this site") },
+                                { value: "file", label: __("An export file from another site") },
+                            ]}
                         />
-                        {!index.woocommerce && (
-                            <p className="fxc:text-muted-foreground fxc:mt-1 fxc:text-xs">
-                                {__("WooCommerce is not active, so the preflight will block either direction until it is.")}
-                            </p>
-                        )}
                     </div>
+
+                    {source === "file" ? (
+                        <div>
+                            <Label htmlFor="fxc-migration-file" className="fxc:mb-2 fxc:block">
+                                {__("Export file")}
+                            </Label>
+                            <input
+                                id="fxc-migration-file"
+                                type="file"
+                                accept=".jsonl,.ndjson,.json,application/x-ndjson"
+                                disabled={busy}
+                                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                            />
+                            <p className="fxc:text-muted-foreground fxc:mt-1 fxc:text-xs">
+                                {file
+                                    ? sprintf(__("%1$s, %2$s. The direction comes from the file."), file.name, formatBytes(file.size))
+                                    : __("Made on the other site with wp flexacommerce migrate export. A WooCommerce export imports into FlexaCommerce, a FlexaCommerce export into WooCommerce.")}
+                            </p>
+                        </div>
+                    ) : (
+                        <div>
+                            <Label htmlFor="fxc-migration-direction" className="fxc:mb-2 fxc:block">
+                                {__("Direction")}
+                            </Label>
+                            <Select
+                                id="fxc-migration-direction"
+                                className="fxc:w-full"
+                                value={direction}
+                                onChange={(e) => setDirection(e.target.value as Direction)}
+                                options={index.directions.map((d) => ({ value: d, label: DIRECTION_LABELS[d] }))}
+                            />
+                            {!index.woocommerce && (
+                                <p className="fxc:text-muted-foreground fxc:mt-1 fxc:text-xs">
+                                    {__("WooCommerce is not active, so the preflight will block either direction until it is.")}
+                                </p>
+                            )}
+                        </div>
+                    )}
 
                     <Check
                         checked={dryRun}
@@ -121,6 +202,15 @@ export function NewJobDialog({ open, onOpenChange, index, onCreated }: Props) {
                                 : __("Read and check everything without writing to the target.")
                         }
                     />
+
+                    {source === "file" && (
+                        <Check
+                            checked={media}
+                            onChange={setMedia}
+                            label={__("Download images from the source site")}
+                            help={__("The source site must be online while the job runs. Off: products import without their images.")}
+                        />
+                    )}
 
                     <fieldset className="fxc:space-y-2">
                         <legend className="fxc:mb-2 fxc:text-sm fxc:font-medium">{__("What to copy")}</legend>
@@ -185,7 +275,7 @@ export function NewJobDialog({ open, onOpenChange, index, onCreated }: Props) {
                         </div>
                     </div>
 
-                    {stages.includes("orders") && (
+                    {source === "site" && stages.includes("orders") && (
                         <div className="fxc:grid fxc:gap-4 fxc:sm:grid-cols-2">
                             <div>
                                 <Label htmlFor="fxc-migration-from" className="fxc:mb-2 fxc:block">
@@ -202,15 +292,29 @@ export function NewJobDialog({ open, onOpenChange, index, onCreated }: Props) {
                         </div>
                     )}
 
-                    {create.isError && <p className="fxc:text-destructive fxc:text-sm">{create.error.message}</p>}
+                    {source === "file" && file && progress.phase === "idle" && (
+                        <p className="fxc:text-muted-foreground fxc:text-xs">
+                            {__("The file holds customer names, emails and addresses. It stays on this server until you delete it from the job page.")}
+                        </p>
+                    )}
+
+                    {progress.phase !== "idle" && <UploadProgress phase={progress.phase} sent={progress.sent} total={progress.total} />}
+
+                    {error && <p className="fxc:text-destructive fxc:text-sm">{error}</p>}
                 </div>
 
                 <DialogFooter>
-                    <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={create.isPending}>
-                        {__("Cancel")}
-                    </Button>
-                    <Button onClick={submit} disabled={create.isPending || stages.length === 0}>
-                        {create.isPending ? __("Checking…") : __("Create and check")}
+                    {progress.phase === "uploading" ? (
+                        <Button variant="ghost" onClick={importFile.cancel}>
+                            {__("Stop upload")}
+                        </Button>
+                    ) : (
+                        <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
+                            {__("Cancel")}
+                        </Button>
+                    )}
+                    <Button onClick={submit} disabled={busy || stages.length === 0 || (source === "file" && !file)}>
+                        {progress.phase === "uploading" ? __("Uploading…") : busy ? __("Checking…") : source === "file" ? __("Upload and check") : __("Create and check")}
                     </Button>
                 </DialogFooter>
             </DialogContent>

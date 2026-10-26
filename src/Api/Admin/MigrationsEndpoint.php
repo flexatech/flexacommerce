@@ -11,6 +11,7 @@ use Flexa\Commerce\Migration\JobStatus;
 use Flexa\Commerce\Migration\MigrationError;
 use Flexa\Commerce\Migration\MigrationService;
 use Flexa\Commerce\Migration\Sources\WooSource;
+use Flexa\Commerce\Migration\Transport\Uploads;
 use Flexa\Commerce\Plugin;
 use WP_Error;
 use WP_REST_Request;
@@ -23,9 +24,13 @@ defined( 'ABSPATH' ) || exit;
  * The Migration screen (doc 05 §4.5). The screen drives a job by polling
  * `batch`; each call runs one Runner batch under the job lease, so a second
  * tab or the Action Scheduler driver gets `locked` instead of a duplicate run.
+ * An export file from another site (doc 05 §4.6) is sent in chunks to
+ * `uploads`, then `import` turns it into a job.
  */
 final class MigrationsEndpoint extends Endpoint {
 	private const ID = '/admin/migrations/(?P<id>\d+)';
+
+	private const UPLOAD = '/admin/migrations/uploads/(?P<token>[a-f0-9]{32})';
 
 	public function register_routes(): void {
 		register_rest_route(
@@ -95,6 +100,82 @@ final class MigrationsEndpoint extends Endpoint {
 				],
 			]
 		);
+		register_rest_route(
+			self::NAMESPACE,
+			'/admin/migrations/uploads',
+			[
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => [ $this, 'begin_upload' ],
+				'permission_callback' => [ $this, 'manage_permission' ],
+				'args'                => [
+					'name' => [
+						'type'     => 'string',
+						'required' => true,
+					],
+					'size' => [
+						'type'     => 'integer',
+						'minimum'  => 1,
+						'required' => true,
+					],
+				],
+			]
+		);
+		register_rest_route(
+			self::NAMESPACE,
+			self::UPLOAD,
+			[
+				[
+					'methods'             => WP_REST_Server::CREATABLE,
+					'callback'            => [ $this, 'append_upload' ],
+					'permission_callback' => [ $this, 'manage_permission' ],
+					'args'                => [
+						'offset' => [
+							'type'     => 'integer',
+							'minimum'  => 0,
+							'required' => true,
+						],
+					],
+				],
+				[
+					'methods'             => WP_REST_Server::DELETABLE,
+					'callback'            => [ $this, 'abort_upload' ],
+					'permission_callback' => [ $this, 'manage_permission' ],
+				],
+			]
+		);
+		register_rest_route(
+			self::NAMESPACE,
+			'/admin/migrations/import',
+			[
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => [ $this, 'import' ],
+				'permission_callback' => [ $this, 'manage_permission' ],
+				'args'                => [
+					'upload'  => [
+						'type'     => 'string',
+						'pattern'  => '^[a-f0-9]{32}$',
+						'required' => true,
+					],
+					'dry_run' => [
+						'type'    => 'boolean',
+						'default' => true,
+					],
+					'options' => [
+						'type'    => 'object',
+						'default' => [],
+					],
+				],
+			]
+		);
+		register_rest_route(
+			self::NAMESPACE,
+			self::ID . '/remove-file',
+			[
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => [ $this, 'remove_file' ],
+				'permission_callback' => [ $this, 'manage_permission' ],
+			]
+		);
 		foreach ( [ 'preflight', 'start', 'batch', 'background', 'pause', 'cancel', 'verify', 'purge' ] as $action ) {
 			register_rest_route(
 				self::NAMESPACE,
@@ -142,6 +223,82 @@ final class MigrationsEndpoint extends Endpoint {
 			),
 			201
 		);
+	}
+
+	/** @param WP_REST_Request<array<string,mixed>> $request */
+	public function begin_upload( WP_REST_Request $request ): WP_REST_Response|WP_Error {
+		try {
+			$upload = ( new Uploads() )->begin( (string) $request->get_param( 'name' ), (int) $request->get_param( 'size' ), get_current_user_id() );
+		} catch ( MigrationError $e ) {
+			return self::migration_error( $e );
+		}
+		return new WP_REST_Response( $upload, 201 );
+	}
+
+	/**
+	 * One chunk, sent as the raw request body.
+	 *
+	 * @param WP_REST_Request<array<string,mixed>> $request
+	 */
+	public function append_upload( WP_REST_Request $request ): WP_REST_Response|WP_Error {
+		try {
+			$received = ( new Uploads() )->append( (string) $request->get_param( 'token' ), (int) $request->get_param( 'offset' ), $request->get_body(), get_current_user_id() );
+		} catch ( MigrationError $e ) {
+			if ( $e->reason === 'upload_offset' ) {
+				return new WP_Error(
+					'flexacommerce_migration_upload_offset',
+					'The chunk does not start where the upload stands.',
+					[
+						'status'   => 409,
+						'received' => (int) $e->getMessage(),
+					]
+				);
+			}
+			return self::migration_error( $e );
+		}
+		return new WP_REST_Response( [ 'received' => $received ], 200 );
+	}
+
+	/** @param WP_REST_Request<array<string,mixed>> $request */
+	public function abort_upload( WP_REST_Request $request ): WP_REST_Response|WP_Error {
+		try {
+			( new Uploads() )->abort( (string) $request->get_param( 'token' ), get_current_user_id() );
+		} catch ( MigrationError $e ) {
+			return self::migration_error( $e );
+		}
+		return new WP_REST_Response( null, 204 );
+	}
+
+	/**
+	 * A job from a finished upload. The whole file is checked here, so a
+	 * broken one is deleted and no job is created.
+	 *
+	 * @param WP_REST_Request<array<string,mixed>> $request
+	 */
+	public function import( WP_REST_Request $request ): WP_REST_Response|WP_Error {
+		$options = $request->get_param( 'options' );
+		$options = is_array( $options ) ? $options : [];
+		try {
+			$file = ( new Uploads() )->finish( (string) $request->get_param( 'upload' ), get_current_user_id() );
+		} catch ( MigrationError $e ) {
+			return self::migration_error( $e );
+		}
+		if ( function_exists( 'set_time_limit' ) ) {
+			@set_time_limit( 300 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- reading a large file once; disabled on some hosts.
+		}
+		$options['file_name'] = $file['name'];
+		try {
+			$job = self::service()->create_from_file( $file['path'], $options, (bool) $request->get_param( 'dry_run' ), get_current_user_id() );
+		} catch ( MigrationError $e ) {
+			Uploads::remove( $file['path'] );
+			return self::migration_error( $e );
+		}
+		return new WP_REST_Response( self::payload( $job ), 201 );
+	}
+
+	/** @param WP_REST_Request<array<string,mixed>> $request */
+	public function remove_file( WP_REST_Request $request ): WP_REST_Response|WP_Error {
+		return self::respond( fn (): Job => self::service()->remove_file( self::id( $request ) ) );
 	}
 
 	/** @param WP_REST_Request<array<string,mixed>> $request */
@@ -196,7 +353,7 @@ final class MigrationsEndpoint extends Endpoint {
 		$job = $result['job'] ?? self::service()->find( $id );
 		return new WP_REST_Response(
 			[
-				'job'       => $job->to_array(),
+				'job'       => self::payload( $job ),
 				'processed' => $result['processed'],
 				'done'      => $result['done'],
 				'locked'    => $result['locked'],
@@ -268,7 +425,7 @@ final class MigrationsEndpoint extends Endpoint {
 	/** @param callable():Job $work */
 	private static function respond( callable $work, int $status = 200 ): WP_REST_Response|WP_Error {
 		try {
-			return new WP_REST_Response( $work()->to_array(), $status );
+			return new WP_REST_Response( self::payload( $work() ), $status );
 		} catch ( MigrationError $e ) {
 			return self::migration_error( $e );
 		}
@@ -276,17 +433,40 @@ final class MigrationsEndpoint extends Endpoint {
 
 	private static function migration_error( MigrationError $e ): WP_Error {
 		$status = match ( $e->reason ) {
-			'not_found'                                 => 404,
-			'invalid_status', 'backup_required'         => 409,
-			'direction_unavailable', 'invalid_direction' => 400,
-			default                                     => 500,
+			'not_found'                                                   => 404,
+			'invalid_status', 'backup_required', 'upload_incomplete', 'file_missing' => 409,
+			'direction_unavailable', 'invalid_direction', 'invalid_file'  => 400,
+			'disk_full'                                                   => 507,
+			default                                                       => 500,
 		};
 		return new WP_Error( 'flexacommerce_migration_' . $e->reason, $e->getMessage(), [ 'status' => $status ] );
 	}
 
+	/**
+	 * The job, plus what the screen shows of its file: the server path stays
+	 * in the options for WP-CLI.
+	 *
+	 * @return array<string,mixed>
+	 */
+	private static function payload( Job $job ): array {
+		$out = $job->to_array();
+		if ( $job->is_file() ) {
+			$path        = (string) $job->option( 'file' );
+			$exists      = is_file( $path );
+			$name        = (string) $job->option( 'file_name' );
+			$out['file'] = [
+				'name'      => $name !== '' ? $name : wp_basename( $path ),
+				'size'      => $exists ? (int) filesize( $path ) : 0,
+				'exists'    => $exists,
+				'removable' => $exists && Uploads::owns( $path ),
+			];
+		}
+		return $out;
+	}
+
 	/** @return array<string,mixed> */
 	private static function summary( Job $job ): array {
-		$out = $job->to_array();
+		$out = self::payload( $job );
 		unset( $out['cursor'], $out['report'] );
 		return $out;
 	}

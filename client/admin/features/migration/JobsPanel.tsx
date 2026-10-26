@@ -30,7 +30,7 @@ export function JobsPanel() {
         <div className="fxc:space-y-4">
             <div className="fxc:flex fxc:items-center fxc:justify-between fxc:gap-4">
                 <p className="fxc:text-muted-foreground fxc:text-sm">
-                    {__("Copy the catalog, customers and orders between WooCommerce and FlexaCommerce. Re-run a job as often as you like: records already copied are updated, not duplicated.")}
+                    {__("Copy the catalog, customers and orders between WooCommerce and FlexaCommerce on this site, or import an export file from another site. Re-run a job as often as you like: records already copied are updated, not duplicated.")}
                 </p>
                 <Button onClick={() => setCreating(true)}>
                     <Plus aria-hidden />
@@ -68,7 +68,10 @@ export function JobsPanel() {
                                         </button>
                                         {job.dry_run && <Badge className="fxc:ml-2">{__("Dry run")}</Badge>}
                                     </td>
-                                    <td className="fxc:px-2 fxc:py-2">{DIRECTION_LABELS[job.direction]}</td>
+                                    <td className="fxc:px-2 fxc:py-2">
+                                        {DIRECTION_LABELS[job.direction]}
+                                        {job.file && <span className="fxc:text-muted-foreground fxc:block fxc:text-xs">{sprintf(__("File: %s"), job.file.name)}</span>}
+                                    </td>
                                     <td className="fxc:px-2 fxc:py-2">
                                         <Badge variant={STATUS_TONES[job.status]}>{STATUS_LABELS[job.status]}</Badge>
                                     </td>

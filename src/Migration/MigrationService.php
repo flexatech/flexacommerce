@@ -11,6 +11,7 @@ use Flexa\Commerce\Migration\Sources\SourceAdapter;
 use Flexa\Commerce\Migration\Targets\TargetAdapter;
 use Flexa\Commerce\Migration\Transport\FileExport;
 use Flexa\Commerce\Migration\Transport\FileIndex;
+use Flexa\Commerce\Migration\Transport\Uploads;
 use Flexa\Commerce\Support\Clock;
 
 defined( 'ABSPATH' ) || exit;
@@ -44,7 +45,7 @@ final class MigrationService {
 	 */
 	public function create( string $direction, array $options, bool $dry_run, int $user_id ): Job {
 		// A file path only comes from create_from_file(), never from a REST body.
-		unset( $options['file'], $options['id_system'] );
+		unset( $options['file'], $options['file_name'], $options['id_system'] );
 		return $this->insert( $direction, $options, $dry_run, $user_id );
 	}
 
@@ -125,6 +126,9 @@ final class MigrationService {
 		if ( ! $job->dry_run && ! $job->option( 'backup_confirmed' ) ) {
 			throw new MigrationError( 'backup_required', 'Confirm that you have a current database backup before a real run.' );
 		}
+		if ( $job->is_file() && ! is_file( (string) $job->option( 'file' ) ) ) {
+			throw new MigrationError( 'file_missing', 'The export file of this job has been deleted. Upload it again in a new job.' );
+		}
 		$now    = $this->clock->db_now();
 		$fields = [];
 		if ( $job->started_at === null ) {
@@ -159,6 +163,24 @@ final class MigrationService {
 
 	public function cancel( int $job_id ): Job {
 		return $this->move( $job_id, [ JobStatus::DRAFT, JobStatus::READY, JobStatus::RUNNING, JobStatus::PAUSED, JobStatus::FAILED ], JobStatus::CANCELLED );
+	}
+
+	/**
+	 * Deletes the uploaded export file of a job that is not running. The job
+	 * and its log stay; it can no longer start or verify again.
+	 */
+	public function remove_file( int $job_id ): Job {
+		$job = $this->find( $job_id );
+		if ( ! $job->is_file() || ! Uploads::owns( (string) $job->option( 'file' ) ) ) {
+			throw new MigrationError( 'invalid_file', 'Only a file uploaded to the Migration screen can be deleted here.' );
+		}
+		if ( in_array( $job->status, [ JobStatus::RUNNING, JobStatus::VERIFYING ], true ) ) {
+			throw new MigrationError( 'invalid_status', 'Pause or cancel the job before deleting its file.' );
+		}
+		if ( ! Uploads::remove( (string) $job->option( 'file' ) ) ) {
+			throw new MigrationError( 'file_unwritable', 'Could not delete the file.' );
+		}
+		return $job;
 	}
 
 	/** @return array{job:?Job,processed:int,done:bool,locked:bool,peak:int,growth:int} */

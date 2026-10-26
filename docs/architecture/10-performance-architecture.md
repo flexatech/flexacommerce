@@ -168,7 +168,7 @@ The rule is "never slower without a persistent cache, faster with one": caching 
 ### 3.9 Admin and REST
 
 - Admin assets and manifest stay limited to our screens (F5).
-- REST: endpoint objects are built only when the request targets `flexacommerce/v1`, or when the full route index is requested (`/wp-json/`), which needs all routes (F6, O6).
+- REST: endpoint objects are built only when the request targets `flexacommerce/v1`, or when the full route index is requested (`/wp-json/`), which needs all routes (F6, O6). A request to `flexacommerce/v1/store/…` (cart, checkout) builds only the store endpoints, so admin routes added later do not weigh on the checkout budget (P6m).
 - Admin list screens: server-side pagination and the `EXPLAIN` rule; P7 stays as in doc 06.
 
 ## 4. Budgets

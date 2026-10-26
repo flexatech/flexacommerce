@@ -40,17 +40,20 @@ function buildUrl(path: string, query?: Query): string {
 async function send<T>(
     method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE",
     path: string,
-    body?: Json,
+    body?: Json | Blob,
     query?: Query,
+    signal?: AbortSignal,
 ): Promise<{ data: T; headers: Headers }> {
+    const raw = body instanceof Blob;
     const response = await fetch(buildUrl(path, query), {
         method,
         credentials: "same-origin",
         headers: {
-            "Content-Type": "application/json",
+            "Content-Type": raw ? "application/octet-stream" : "application/json",
             "X-WP-Nonce": getPluginGlobal().restNonce,
         },
-        body: body !== undefined ? JSON.stringify(body) : undefined,
+        body: raw ? body : body !== undefined ? JSON.stringify(body) : undefined,
+        signal,
     });
 
     if (response.status === 204) {
@@ -99,6 +102,9 @@ export const api = {
     },
     get: <T>(path: string, query?: Query) => request<T>("GET", path, undefined, query),
     post: <T>(path: string, body?: Json) => request<T>("POST", path, body),
+    /** POSTs a Blob as the raw request body (a file chunk). */
+    postBlob: async <T>(path: string, blob: Blob, query?: Query, signal?: AbortSignal) =>
+        (await send<T>("POST", path, blob, query, signal)).data,
     patch: <T>(path: string, body?: Json) => request<T>("PATCH", path, body),
     put: <T>(path: string, body?: Json) => request<T>("PUT", path, body),
     delete: <T>(path: string, body?: Json) => request<T>("DELETE", path, body),

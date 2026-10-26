@@ -14,7 +14,7 @@ defined( 'ABSPATH' ) || exit;
 /**
  * The single destructive path: deletes the products and their terms, then
  * drops every table, option, role, saved address and cron event of the
- * current site. Uninstall and WP-CLI both call this.
+ * current site, and the export files uploaded to the Migration screen. Uninstall and WP-CLI both call this.
  */
 final class Eraser {
 	public static function erase_site(): void {
@@ -23,6 +23,7 @@ final class Eraser {
 		Schema::drop_all();
 		Roles::uninstall();
 		CustomerProfile::delete_all();
+		self::erase_imports();
 
 		do_action( 'flexacommerce.data_erased', get_current_blog_id() );
 	}
@@ -60,5 +61,19 @@ final class Eraser {
 				wp_delete_term( (int) $term_id, $taxonomy );
 			}
 		}
+	}
+
+	/** The folder Migration\Transport\Uploads keeps uploaded export files in. */
+	private static function erase_imports(): void {
+		$dir = trailingslashit( (string) wp_upload_dir( null, false )['basedir'] ) . 'flexacommerce-imports';
+		if ( ! is_dir( $dir ) ) {
+			return;
+		}
+		foreach ( (array) scandir( $dir ) as $name ) {
+			if ( is_string( $name ) && is_file( $dir . '/' . $name ) ) {
+				wp_delete_file( $dir . '/' . $name );
+			}
+		}
+		@rmdir( $dir ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.file_system_operations_rmdir -- best effort, the folder may hold files from elsewhere.
 	}
 }

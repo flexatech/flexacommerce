@@ -66,6 +66,18 @@ export const DRY_RUN_COUNTER_LABELS: Record<CounterName, string> = {
     warnings: __("Warnings"),
 };
 
+/** Bytes as B, KB, MB or GB, one decimal above KB. */
+export function formatBytes(bytes: number): string {
+    const units = ["B", "KB", "MB", "GB"];
+    let value = bytes;
+    let unit = 0;
+    while (value >= 1024 && unit < units.length - 1) {
+        value /= 1024;
+        unit++;
+    }
+    return `${unit < 2 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`;
+}
+
 export function formatValue(value: unknown): string {
     return typeof value === "string" ? value : JSON.stringify(value);
 }

@@ -1,5 +1,5 @@
 import { useId, useState } from "react";
-import { ArrowLeft, CheckCircle2, CircleAlert, CircleX, Download, Info, Pause, Play, RefreshCw, Server, Square, Trash2 } from "lucide-react";
+import { ArrowLeft, CheckCircle2, CircleAlert, CircleX, Download, FileText, Info, Pause, Play, RefreshCw, Server, Square, Trash2 } from "lucide-react";
 
 import { showToast } from "@/shared/components/showToast";
 import { Badge } from "@/shared/components/ui/badge";
@@ -23,6 +23,7 @@ import {
     DIRECTION_LABELS,
     download,
     DRY_RUN_COUNTER_LABELS,
+    formatBytes,
     formatValue,
     STAGE_LABELS,
     STATUS_LABELS,
@@ -225,7 +226,14 @@ function Actions({ job }: { job: Job }) {
     const busy = action.isPending || runner.running;
     const needsBackup = !job.dry_run && !job.options.backup_confirmed;
     const finished = job.status === "completed" || job.status === "completed_with_warnings";
-    const startable = job.status === "ready" || job.status === "paused" || job.status === "failed" || finished;
+    // A file job whose file was deleted keeps its history but cannot read again.
+    const readable = job.file?.exists !== false;
+    const startable = readable && (job.status === "ready" || job.status === "paused" || job.status === "failed" || finished);
+    const removeFile = () => {
+        if (window.confirm(__("Delete the export file from this server? The job and its log stay, but it cannot run or verify again."))) {
+            action.mutate({ action: "remove-file" }, { onSuccess: () => showToast.success(__("The export file was deleted.")) });
+        }
+    };
 
     const start = () =>
         action.mutate(
@@ -302,7 +310,7 @@ function Actions({ job }: { job: Job }) {
                         </Button>
                     </>
                 )}
-                {finished && (
+                {finished && readable && (
                     <Button variant="outline" size="sm" disabled={busy} onClick={() => action.mutate({ action: "verify" })}>
                         <CheckCircle2 aria-hidden />
                         {__("Verify again")}
@@ -326,6 +334,12 @@ function Actions({ job }: { job: Job }) {
                         }}
                     >
                         {__("Cancel job")}
+                    </Button>
+                )}
+                {job.file?.removable && !isActive(job) && (
+                    <Button variant="ghost" size="sm" disabled={busy} onClick={removeFile}>
+                        <Trash2 aria-hidden />
+                        {__("Delete export file")}
                     </Button>
                 )}
                 {!job.dry_run && !isActive(job) && job.started_at !== null && (
@@ -374,6 +388,14 @@ export function JobDetail({ id, onBack }: { id: number; onBack: () => void }) {
                         {job.started_at && ` · ${sprintf(__("started %s UTC"), job.started_at)}`}
                         {job.finished_at && ` · ${sprintf(__("finished %s UTC"), job.finished_at)}`}
                     </p>
+                    {job.file && (
+                        <p className="fxc:text-muted-foreground fxc:flex fxc:items-center fxc:gap-1 fxc:text-sm">
+                            <FileText aria-hidden className="fxc:size-4" />
+                            {job.file.exists
+                                ? sprintf(__("From the file %1$s (%2$s)"), job.file.name, formatBytes(job.file.size))
+                                : sprintf(__("From the file %s, since deleted"), job.file.name)}
+                        </p>
+                    )}
                 </div>
             </div>
 

@@ -282,7 +282,16 @@ Records follow stage order and ascending id inside a stage. A dependency that th
 
 **Privacy and removal.** An export holds customer names, emails, addresses and order history. The CLI says so after writing; treat the file like a database backup and delete it after the import. Removing imported data (§9.3) leaves the users and images an import created, since other content may use them by then.
 
-**Limits.** No admin screen for file jobs yet (WP-CLI only); the REST endpoint cannot set a file. The file must be on the importing server's disk.
+**Admin upload.** On the Migration screen, "New migration" can copy from an export file. The browser sends the file in chunks, so `upload_max_filesize` does not cap its size:
+
+- `POST /admin/migrations/uploads` with `{name, size}` checks free disk space (the size plus 10% for the index) and returns a random 32-hex token and the chunk size, at most 8 MB and below `wp_max_upload_size()`.
+- `POST /admin/migrations/uploads/{token}?offset=n` appends the raw request body. A chunk at the wrong offset gets 409 `upload_offset` with `received`, and the screen resends from there. Bytes past the announced size are refused.
+- `POST /admin/migrations/import` with `{upload, dry_run, options}` renames the part to `<token>.jsonl` and runs the same check as `migrate import`. A broken file is deleted and no job is created.
+- `DELETE /admin/migrations/uploads/{token}` drops an unfinished upload.
+
+Files live in `uploads/flexacommerce-imports`, which carries `.htaccess`, `index.php` and `web.config` guards; where the server ignores them, the 128-bit names keep the files unguessable. A token belongs to the user who began it. Parts left for more than a day are deleted on the next upload. The job page shows the file and can delete it (`POST {id}/remove-file`) once the job is not running or verifying; a job whose file is gone keeps its history but cannot start or verify again (`file_missing`). Only files in that folder can be deleted from the screen, so a file given to the CLI stays where it is. The store reset (`Maintenance\Eraser`) deletes the folder.
+
+**Limits.** A REST request still cannot point a job at a path on the server; `file` and `file_name` in the options are dropped. The file must reach the importing server, by upload or by any other copy.
 
 ## 5. Mapping: WooCommerce → FlexaCommerce
 

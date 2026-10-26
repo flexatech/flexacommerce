@@ -17,7 +17,8 @@ final class Router {
 	use HasInstance;
 
 	public function register_routes(): void {
-		if ( self::needs_core_routes() ) {
+		$scope = self::scope();
+		if ( $scope === 'all' ) {
 			( new Admin\SettingsEndpoint() )->register_routes();
 			( new Admin\StatusEndpoint() )->register_routes();
 			( new Admin\LogsEndpoint() )->register_routes();
@@ -31,11 +32,12 @@ final class Router {
 			( new Admin\EmailsEndpoint() )->register_routes();
 			( new Admin\MigrationsEndpoint() )->register_routes();
 			( new Admin\CutoverEndpoint() )->register_routes();
-
+			( new WebhooksEndpoint() )->register_routes();
+		}
+		if ( $scope !== 'none' ) {
 			( new Store\CartEndpoint() )->register_routes();
 			( new Store\CheckoutEndpoint() )->register_routes();
 			( new Store\ProductsEndpoint() )->register_routes();
-			( new WebhooksEndpoint() )->register_routes();
 			add_filter( 'rest_authentication_errors', [ $this, 'keep_cookie_user_on_store' ], 50 );
 		}
 
@@ -44,22 +46,29 @@ final class Router {
 	}
 
 	/**
-	 * False only for a REST request to another namespace (doc 10 F6).
-	 * Internal dispatches (`rest_do_request()`, preloading) run outside a
-	 * REST request, the index lists every namespace and a batch can carry
-	 * our routes, so those still register everything.
+	 * Which of our endpoints a request needs (doc 10 F6): `none` for a REST
+	 * request to another namespace, `store` for one to our store routes (a
+	 * checkout builds no admin endpoint), `all` otherwise. Internal
+	 * dispatches (`rest_do_request()`, preloading) run outside a REST
+	 * request, the index lists every namespace and a batch can carry our
+	 * routes, so those still register everything.
+	 *
+	 * @return 'all'|'store'|'none'
 	 */
-	private static function needs_core_routes(): bool {
+	private static function scope(): string {
 		if ( ! defined( 'REST_REQUEST' ) || ! REST_REQUEST ) {
-			return true;
+			return 'all';
 		}
 		$route = $GLOBALS['wp']->query_vars['rest_route'] ?? '';
 		$route = '/' . ltrim( is_string( $route ) ? $route : '', '/' );
 		if ( $route === '/' || str_starts_with( $route, '/batch/' ) ) {
-			return true;
+			return 'all';
 		}
 		$namespace = '/' . FLEXACOMMERCE_REST_NAMESPACE;
-		return $route === $namespace || str_starts_with( $route, $namespace . '/' );
+		if ( str_starts_with( $route, $namespace . '/store/' ) ) {
+			return 'store';
+		}
+		return $route === $namespace || str_starts_with( $route, $namespace . '/' ) ? 'all' : 'none';
 	}
 
 	/**

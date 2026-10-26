@@ -1,30 +1,30 @@
 {
-  "_label-EipgFRSV.js": {
-    "file": "assets/label-EipgFRSV.js",
+  "_label-PXuZ1aB7.js": {
+    "file": "assets/label-PXuZ1aB7.js",
     "name": "label"
   },
   "admin/main.tsx": {
-    "file": "assets/admin-rjqnf7z4.js",
+    "file": "assets/admin-CB7o7oJm.js",
     "name": "admin",
     "src": "admin/main.tsx",
     "isEntry": true,
     "imports": [
-      "_label-EipgFRSV.js"
+      "_label-PXuZ1aB7.js"
     ],
     "css": [
-      "assets/admin-D-TdBG8I.css"
+      "assets/admin-CLaxXOcO.css"
     ]
   },
   "admin/product-editor.tsx": {
-    "file": "assets/product-editor-B7fWSczK.js",
+    "file": "assets/product-editor-lh3GSnih.js",
     "name": "product-editor",
     "src": "admin/product-editor.tsx",
     "isEntry": true,
     "imports": [
-      "_label-EipgFRSV.js"
+      "_label-PXuZ1aB7.js"
     ],
     "css": [
-      "assets/product-editor-DLTR2t-b.css"
+      "assets/product-editor-CFUTPD_G.css"
     ]
   }
 }

@@ -114,8 +114,13 @@ return [
 	// Extra peak memory of that checkout at 10 lines. Recorded 84 KB on
 	// 2026-10-25 (doc 10 said 64 KB provisional): 10 lines x 4 rates of tax
 	// meta, 4 tax rows and the order read back, plus ~10 KB of query log.
+	// Raised 2026-10-26 when store requests stopped building the admin
+	// endpoints: the taxes-off peak used to fall while routes were
+	// registered and hid part of the tax cost. Peaks off/on went from
+	// 6 271 752/6 359 872 B (delta 88 120) to 6 009 568/6 163 224 B
+	// (delta 153 656); both requests use less memory. 153 656 + 10 %.
 	'PT-m'        => [
-		'memory' => 98304,
+		'memory' => 169984,
 	],
 	// Handler rows read by one match on a 50 000-location table.
 	'PT-rows'     => [
