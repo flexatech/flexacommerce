@@ -54,16 +54,40 @@ final class ShopQueryTest extends CartTestCase {
 			'none'  => $this->product(),
 		];
 
-		$this->go_to( add_query_arg( [ 'post_type' => PostTypes::PRODUCT, 'orderby' => 'price' ], home_url( '/' ) ) );
+		$this->go_to(
+			add_query_arg(
+				[
+					'post_type' => PostTypes::PRODUCT,
+					'orderby'   => 'price',
+				],
+				home_url( '/' )
+			)
+		);
 		$found = $this->found( $ids );
 		self::assertCount( 4, $found );
 		self::assertSame( [ $ids['cheap'], $ids['mid'], $ids['dear'] ], array_values( array_diff( $found, [ $ids['none'] ] ) ) );
 
-		$this->go_to( add_query_arg( [ 'post_type' => PostTypes::PRODUCT, 'orderby' => 'price-desc' ], home_url( '/' ) ) );
+		$this->go_to(
+			add_query_arg(
+				[
+					'post_type' => PostTypes::PRODUCT,
+					'orderby'   => 'price-desc',
+				],
+				home_url( '/' )
+			)
+		);
 		$found = $this->found( $ids );
 		self::assertSame( [ $ids['dear'], $ids['mid'], $ids['cheap'] ], array_values( array_diff( $found, [ $ids['none'] ] ) ) );
 
-		$this->go_to( add_query_arg( [ 'post_type' => PostTypes::PRODUCT, 'orderby' => 'nonsense' ], home_url( '/' ) ) );
+		$this->go_to(
+			add_query_arg(
+				[
+					'post_type' => PostTypes::PRODUCT,
+					'orderby'   => 'nonsense',
+				],
+				home_url( '/' )
+			)
+		);
 		self::assertSame( 'menu_order', ShopQuery::current_sort() );
 	}
 
@@ -107,7 +131,15 @@ final class ShopQueryTest extends CartTestCase {
 		$this->go_to( add_query_arg( 'filter_cat', 'clothing-' . strtolower( $this->run ), $shop ) );
 		self::assertEqualsCanonicalizing( [ $in_child, $red_one ], $this->found( $ids ), 'a parent category includes its children' );
 
-		$this->go_to( add_query_arg( [ 'filter_cat' => 'clothing-' . strtolower( $this->run ), 'filter_' . $attribute => $red ], $shop ) );
+		$this->go_to(
+			add_query_arg(
+				[
+					'filter_cat'           => 'clothing-' . strtolower( $this->run ),
+					'filter_' . $attribute => $red,
+				],
+				$shop
+			)
+		);
 		self::assertSame( [ $red_one ], $this->found( $ids ) );
 		self::assertSame( [ $red ], ShopQuery::request()[ $attribute ] );
 
@@ -152,7 +184,12 @@ final class ShopQueryTest extends CartTestCase {
 			$ids[ $visibility ] = $this->simple();
 			$this->save( $ids[ $visibility ], [ 'visibility' => $visibility ] );
 		}
-		$query = new \WP_Query( $vars + [ 'post__in' => array_values( $ids ), 'fields' => 'ids' ] );
+		$query = new \WP_Query(
+			$vars + [
+				'post__in' => array_values( $ids ),
+				'fields'   => 'ids',
+			]
+		);
 		self::assertEqualsCanonicalizing( [ $ids['visible'], $ids['catalog'] ], array_map( 'intval', $query->posts ) );
 	}
 
@@ -170,7 +207,16 @@ final class ShopQueryTest extends CartTestCase {
 	}
 
 	public function test_the_sort_form_keeps_the_filters(): void {
-		$this->go_to( add_query_arg( [ 'post_type' => PostTypes::PRODUCT, 'orderby' => 'price', 'filter_cat' => 'shoes' ], home_url( '/' ) ) );
+		$this->go_to(
+			add_query_arg(
+				[
+					'post_type'  => PostTypes::PRODUCT,
+					'orderby'    => 'price',
+					'filter_cat' => 'shoes',
+				],
+				home_url( '/' )
+			)
+		);
 		$html = do_blocks( '<!-- wp:flexacommerce/catalog-sorting /-->' );
 		self::assertStringContainsString( '<form class="fxc-sorting', $html );
 		self::assertMatchesRegularExpression( '#<label for="(fxc-orderby-\d+)">Sort products</label> <select name="orderby" id="\1">#', $html );
@@ -203,7 +249,16 @@ final class ShopQueryTest extends CartTestCase {
 		);
 		$slug = (string) get_term( $term )->slug;
 
-		$this->go_to( add_query_arg( [ 'post_type' => PostTypes::PRODUCT, 'orderby' => 'date', 'filter_cat' => $slug ], home_url( '/' ) ) );
+		$this->go_to(
+			add_query_arg(
+				[
+					'post_type'  => PostTypes::PRODUCT,
+					'orderby'    => 'date',
+					'filter_cat' => $slug,
+				],
+				home_url( '/' )
+			)
+		);
 		$html = do_blocks( '<!-- wp:flexacommerce/product-filters {"attributeSlugs":["' . get_term( $color )->slug . '"]} /-->' );
 		self::assertStringContainsString( 'aria-label="Filter products"', $html );
 		self::assertStringContainsString( '<legend>Categories</legend>', $html );

@@ -10,6 +10,8 @@ use Flexa\Commerce\Contracts\Money;
 use Flexa\Commerce\Contracts\MoneyFactory;
 use Flexa\Commerce\Contracts\Pricing\PriceContext;
 use Flexa\Commerce\Contracts\Pricing\PriceResolution;
+use Flexa\Commerce\Pricing\Rules\PriceRule;
+use Flexa\Commerce\Pricing\Rules\PriceRules;
 use Flexa\Commerce\Support\Clock;
 use Flexa\Commerce\Support\Settings;
 use Flexa\Commerce\Tax\TaxService;
@@ -18,11 +20,14 @@ defined( 'ABSPATH' ) || exit;
 
 /**
  * Active prices (doc 03 §3.3, doc 04 §3). The stored regular and sale prices
- * and the sale schedule give the base amount; `flexacommerce.price.unit` may
- * change it. Amounts are what the catalog stores; `for_display()` turns
+ * and the sale schedule give the base amount, the pricing rules may lower
+ * it (ADR-024), then `flexacommerce.price.unit` may change it. Amounts are what the catalog stores; `for_display()` turns
  * them into the catalog's with or without tax price (doc 02 §7.12.5).
  */
 final class PricingService {
+	/** Where the pricing rules are kept; read here so a store without rules loads no rule class. */
+	public const RULES_OPTION = 'flexacommerce_price_rules';
+
 	/** @var array<string,?PriceResolution> */
 	private array $memo = [];
 
@@ -32,26 +37,32 @@ final class PricingService {
 	/**
 	 * @param ?\Closure():TaxService $tax Resolves the tax service on first
 	 *        use; null shows the stored prices as they are.
+	 * @param ?\Closure():PriceRules $rules Resolves the pricing rules on
+	 *        first use; null leaves prices as stored.
 	 */
 	public function __construct(
 		private readonly MoneyFactory $money,
 		private readonly Clock $clock,
 		private readonly ?\Closure $tax = null,
+		private readonly ?\Closure $rules = null,
 	) {}
 
 	/**
 	 * Unit price of a sellable row, or null when it has no price (and so
 	 * cannot be bought). Memoised per request, keyed by every input.
+	 * `$product_quantity` is the units of the whole product in the cart,
+	 * which a bulk rule may count; 0 means `$quantity`.
 	 */
-	public function unit_price( Product $product, Variant $variant, int $quantity = 1, int $user_id = 0, ?\DateTimeImmutable $at = null ): ?PriceResolution {
-		$at       = $at ?? $this->clock->now();
-		$quantity = max( 1, $quantity );
-		$key      = $variant->id . ':' . $quantity . ':' . $user_id . ':' . $at->getTimestamp();
+	public function unit_price( Product $product, Variant $variant, int $quantity = 1, int $user_id = 0, ?\DateTimeImmutable $at = null, int $product_quantity = 0 ): ?PriceResolution {
+		$at               = $at ?? $this->clock->now();
+		$quantity         = max( 1, $quantity );
+		$product_quantity = max( $quantity, $product_quantity );
+		$key              = $variant->id . ':' . $quantity . ':' . $product_quantity . ':' . $user_id . ':' . $at->getTimestamp();
 		if ( array_key_exists( $key, $this->memo ) ) {
 			return $this->memo[ $key ];
 		}
 
-		$this->memo[ $key ] = $this->resolve( $product, $variant, $quantity, $user_id, $at );
+		$this->memo[ $key ] = $this->resolve( $product, $variant, $quantity, $product_quantity, $user_id, $at );
 		return $this->memo[ $key ];
 	}
 
@@ -158,12 +169,32 @@ final class PricingService {
 		$this->shop = null;
 	}
 
-	private function resolve( Product $product, Variant $variant, int $quantity, int $user_id, \DateTimeImmutable $at ): ?PriceResolution {
+	/** The pricing rules when the store has any. */
+	public function rules(): ?PriceRules {
+		if ( $this->rules === null || get_option( self::RULES_OPTION, [] ) === [] ) {
+			return null;
+		}
+		return ( $this->rules )();
+	}
+
+	/** The bulk rule whose tiers the product page lists for this customer. */
+	public function bulk_rule( Product $product, int $user_id ): ?PriceRule {
+		$now = $this->clock->now()->setTimezone( new \DateTimeZone( 'UTC' ) )->format( Clock::DB_FORMAT );
+		return $this->rules()?->bulk_for( $product, $user_id, $now );
+	}
+
+	/** An amount in the store currency, for a rule's fixed amount. */
+	public function money( int $minor ): Money {
+		return $this->money->from_minor( $minor );
+	}
+
+	private function resolve( Product $product, Variant $variant, int $quantity, int $product_quantity, int $user_id, \DateTimeImmutable $at ): ?PriceResolution {
 		$now    = $at->setTimezone( new \DateTimeZone( 'UTC' ) )->format( Clock::DB_FORMAT );
 		$active = $variant->active_price( $now );
 		if ( $active === null || $variant->regular_price === null ) {
 			return null;
 		}
+		$active = $this->rules()?->apply( $product, $variant, $active, $quantity, $product_quantity, $user_id, $now ) ?? $active;
 
 		$filtered = has_filter( 'flexacommerce.price.unit' )
 			? apply_filters( 'flexacommerce.price.unit', $active, $product->view_of( $variant ), new PriceContext( $user_id, $quantity, $at ) )

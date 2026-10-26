@@ -127,7 +127,7 @@ final class TemplateLoaderTest extends CartTestCase {
 		$this->go_to( add_query_arg( 'post_type', PostTypes::PRODUCT, home_url( '/' ) ) );
 		$wrapper = static fn (): array => [ '<section class="custom">', '</section>' ];
 		add_filter( 'flexacommerce.template_wrapper', $wrapper );
-		$html = $this->render( TemplateLoader::ARCHIVE );
+		$html    = $this->render( TemplateLoader::ARCHIVE );
 		remove_filter( 'flexacommerce.template_wrapper', $wrapper );
 		self::assertStringContainsString( '<section class="custom">', $html );
 		self::assertStringNotContainsString( 'id="primary"', $html );

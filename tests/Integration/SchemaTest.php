@@ -40,7 +40,7 @@ final class SchemaTest extends \WP_UnitTestCase {
 		self::assertNotNull( $value );
 	}
 
-	public function test_only_the_settings_option_is_autoloaded(): void {
+	public function test_only_the_settings_and_the_storefront_lists_are_autoloaded(): void {
 		global $wpdb;
 		$autoloaded = $wpdb->get_col(
 			$wpdb->prepare(
@@ -48,6 +48,7 @@ final class SchemaTest extends \WP_UnitTestCase {
 				$wpdb->esc_like( 'flexacommerce_' ) . '%'
 			)
 		);
-		self::assertSame( [ 'flexacommerce_settings' ], $autoloaded );
+		sort( $autoloaded );
+		self::assertSame( [ 'flexacommerce_badges', 'flexacommerce_price_rules', 'flexacommerce_settings' ], $autoloaded );
 	}
 }

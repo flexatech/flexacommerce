@@ -4,8 +4,9 @@ import { Tabs } from "../../components/Tabs";
 import { useUrlTab } from "../../components/useUrlTab";
 import { BadgesPanel } from "../badges/BadgesPanel";
 import { CouponsPanel } from "../coupons/CouponsPanel";
+import { PriceRulesPanel } from "../pricing/PriceRulesPanel";
 
-const TABS = ["coupons", "badges"] as const;
+const TABS = ["coupons", "pricing", "badges"] as const;
 type Tab = (typeof TABS)[number];
 
 /** Coupons, automatic pricing rules and product badges: what the store does to sell more. */
@@ -21,12 +22,14 @@ export function PromotionsPage() {
                     onChange={setTab}
                     items={[
                         { value: "coupons", label: __("Coupons") },
+                        { value: "pricing", label: __("Pricing rules") },
                         { value: "badges", label: __("Badges") },
                     ]}
                 />
             </div>
             <div className="fxc:space-y-4">
                 {tab === "coupons" && <CouponsPanel />}
+                {tab === "pricing" && <PriceRulesPanel />}
                 {tab === "badges" && <BadgesPanel />}
             </div>
         </div>

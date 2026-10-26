@@ -31,9 +31,10 @@ return [
 		'queries' => 0,
 		'classes' => [ 'Flexa\\Commerce\\Api\\Admin\\', 'Flexa\\Commerce\\Api\\Endpoint' ],
 	],
-	// Autoloaded options owned by FlexaCommerce, on any request.
+	// Autoloaded options owned by FlexaCommerce, on any request: the
+	// settings and the badge and price rule lists (empty here).
 	'P10'         => [
-		'options' => 1,
+		'options' => 3,
 		'bytes'   => 10240,
 	],
 	// Product archive at 12 and 48 per page, against a core archive of the

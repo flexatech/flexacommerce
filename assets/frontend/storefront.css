@@ -8,6 +8,11 @@
 .fxc-add-to-cart__variant { flex-basis: 100%; }
 .fxc-add-to-cart__variant p { margin: 0 0 .25rem; }
 .fxc-add-to-cart__quantity { width: 4.5rem; padding: .5rem; }
+.fxc-tiers { flex-basis: 100%; border-collapse: collapse; font-size: .875em; }
+.fxc-tiers caption { text-align: start; font-weight: 600; padding-block-end: .25rem; }
+.fxc-tiers th, .fxc-tiers td { padding: .375rem .75rem; border: 1px solid currentcolor; border-color: color-mix(in srgb, currentcolor 20%, transparent); text-align: start; }
+.fxc-tiers thead th { font-weight: 600; }
+.fxc-tiers tbody th { font-weight: 400; }
 .fxc-add-to-cart__button[aria-disabled="true"] { opacity: .6; cursor: not-allowed; }
 .fxc-add-to-cart__button.is-busy { cursor: progress; opacity: .75; }
 .fxc-add-to-cart__message { flex-basis: 100%; margin: 0; min-height: 1.5em; }

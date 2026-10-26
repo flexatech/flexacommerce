@@ -43,7 +43,9 @@ final class Plugin {
 
 	private ?Coupons\CouponServices $coupons = null;
 
-	private ?Badges\BadgeRepository $badges = null;
+	private ?Badges\BadgeRepository $badges                           = null;
+	private ?Pricing\Rules\PriceRuleRepository $price_rule_repository = null;
+	private ?Pricing\Rules\PriceRules $price_rules                    = null;
 
 	private ?Migration\MigrationServices $migration = null;
 
@@ -152,12 +154,23 @@ final class Plugin {
 			tax: fn (): Tax\TaxService => $this->tax()->service(),
 			totals: fn ( array $data, Cart\CartState $state ): array => $this->cart_totals( $data, $state ),
 			coupons: fn (): Coupons\CouponService => $this->coupons()->service(),
+			rules: fn (): Pricing\Rules\PriceRules => $this->price_rules(),
 		);
 	}
 
 	/** @internal Coupon codes, built the first time a cart holds one or the Coupons screen is opened. */
 	public function coupons(): Coupons\CouponServices {
 		return $this->coupons ??= new Coupons\CouponServices( $this->services(), $this->cart()->pricing() );
+	}
+
+	/** The stored pricing rules (ADR-024). */
+	public function price_rule_repository(): Pricing\Rules\PriceRuleRepository {
+		return $this->price_rule_repository ??= new Pricing\Rules\PriceRuleRepository();
+	}
+
+	/** Applies the pricing rules to unit prices (ADR-024). */
+	public function price_rules(): Pricing\Rules\PriceRules {
+		return $this->price_rules ??= new Pricing\Rules\PriceRules( $this->price_rule_repository() );
 	}
 
 	/** The labels drawn over product images (ADR-023). */

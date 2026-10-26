@@ -370,6 +370,10 @@ final class CartService {
 		$items   = [];
 		$totals  = [];
 		$notices = $cart->notices;
+		$units   = [];
+		foreach ( $cart->lines as $line ) {
+			$units[ $line->product_id ] = ( $units[ $line->product_id ] ?? 0 ) + $line->quantity;
+		}
 		foreach ( $cart->lines as $line ) {
 			$product = $this->products->find( $line->product_id );
 			$variant = $product?->sellable( $line->variant_id );
@@ -388,7 +392,7 @@ final class CartService {
 			$availability = $this->stock->availability( $product, $variant );
 			$owner_total  = $this->owner_quantity( $cart, $product, $variant );
 			$status       = $availability->allows( $owner_total ) ? CartItem::OK : CartItem::INSUFFICIENT_STOCK;
-			$unit         = $this->pricing->unit_price( $product, $variant, $line->quantity, $user_id );
+			$unit         = $this->pricing->unit_price( $product, $variant, $line->quantity, $user_id, product_quantity: $units[ $line->product_id ] );
 			$total        = $unit !== null ? $this->pricing->line_total( $unit, $line->quantity ) : null;
 			if ( $total !== null ) {
 				$totals[] = $total;

@@ -7,6 +7,7 @@ namespace Flexa\Commerce\Storefront\Render;
 use Flexa\Commerce\Cart\PurchaseOptions;
 use Flexa\Commerce\Catalog\AttributeRepository;
 use Flexa\Commerce\Catalog\Product;
+use Flexa\Commerce\Pricing\PricingService;
 use Flexa\Commerce\Storefront\Assets;
 use Flexa\Commerce\Storefront\FormHandler;
 use Flexa\Commerce\Support\Settings;
@@ -27,7 +28,10 @@ final class AddToCartForm {
 	public const LOOP   = 'loop';
 	public const SINGLE = 'single';
 
-	public function __construct( private readonly PurchaseOptions $options ) {}
+	public function __construct(
+		private readonly PurchaseOptions $options,
+		private readonly ?PricingService $pricing = null,
+	) {}
 
 	public function html( Product $product, string $mode = self::SINGLE, int $user_id = 0 ): string {
 		return Component::wrap(
@@ -135,6 +139,9 @@ final class AddToCartForm {
 			'<button type="submit" class="wp-element-button fxc-add-to-cart__button" data-wp-bind--aria-disabled="state.cannotAdd" data-wp-class--is-busy="context.busy">%s</button>',
 			esc_html__( 'Add to cart', 'flexacommerce' )
 		);
+		if ( $mode === self::SINGLE && $this->pricing !== null ) {
+			$html .= QuantityTiers::html( $this->pricing, $product, $user_id );
+		}
 		$html .= '<p class="fxc-add-to-cart__message" role="status" aria-live="polite" data-wp-text="context.message" data-wp-class--is-error="context.failed"></p>';
 		$html .= FormHandler::notice_for( $product->id );
 		return $html . '</form>';

@@ -16,7 +16,8 @@ defined( 'ABSPATH' ) || exit;
  * next to CatalogServices. Tests pass their own token store. `$tax`
  * resolves the tax service for catalog display prices, and `$totals` adds
  * the tax rows to the public cart shape; Cart never calls either itself.
- * `$coupons` resolves the coupon service, called only for a cart with a code.
+ * `$coupons` resolves the coupon service, called only for a cart with a code;
+ * `$rules` the pricing rules, called only when the store has some.
  */
 final class CartServices {
 	private ?PricingService $pricing  = null;
@@ -36,12 +37,13 @@ final class CartServices {
 		private readonly ?\Closure $tax = null,
 		private readonly ?\Closure $totals = null,
 		private readonly ?\Closure $coupons = null,
+		private readonly ?\Closure $rules = null,
 	) {
 		$this->token_store = $tokens;
 	}
 
 	public function pricing(): PricingService {
-		return $this->pricing ??= new PricingService( $this->services->money(), $this->services->clock(), $this->tax );
+		return $this->pricing ??= new PricingService( $this->services->money(), $this->services->clock(), $this->tax, $this->rules );
 	}
 
 	public function stock(): StockService {

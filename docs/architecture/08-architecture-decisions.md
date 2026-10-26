@@ -303,3 +303,20 @@ Status of every ADR: **Accepted** (plan approved 2026-10-24) unless it says othe
 
 **Revisit when.** A store needs more than 50 badges, badges per customer group, or video in the gallery.
 
+
+## ADR-024: Pricing rules as one ordered option, applied inside the unit price
+
+**Context.** Step 4 of the flexa-extra port (2026-10-26): automatic price changes with no coupon code. flexa-extra keeps its rules in a post type and rewrites WooCommerce prices through price filters, so cart, product page and list prices can drift apart. FlexaCommerce already has one place that decides a unit price: `PricingService::unit_price()`, which the cart, the product page and the REST API all call.
+
+**Decision.**
+1. **One option, `flexacommerce_price_rules`, autoloaded**, with at most 100 rules. A rule is a small row: a type (`adjust`, the same change for any quantity, or `bulk`, tiers by quantity), a change (percent off in hundredths, an amount off each unit, or a set unit price, in minor units), the products (all, chosen products, or categories including their child categories), excluded products, the customers (everyone, logged in, or chosen roles), what to do with products on sale (apply to the sale price, or skip them) and optional start and end dates in UTC. A store with no rules reads the option and loads no rule class, so the P1 budgets hold.
+2. **Rules only lower prices, and the lowest wins.** `PriceRules::apply()` runs on the active price (sale price when there is one) before the `flexacommerce.price.unit` filter. Each matching rule gives a candidate price; the result is the lowest of them and of the active price. Rules never add up and never raise a price, so a merchant can reason about one rule at a time.
+3. **Bulk counts the whole product or each variation.** With `count: product`, the cart passes the sum of all lines of the product, so 2 red and 3 blue shirts reach the 5-unit tier. With `count: variant`, only the line quantity counts. The largest tier whose minimum is reached applies.
+4. **The product page shows the tiers.** `QuantityTiers` renders a table under the quantity field from the first live bulk rule for the product and shopper. A simple product shows the real unit price at each tier; a variable product shows the change ("12.5% off").
+5. **Edited under Promotions > Pricing rules**, between coupons and badges. A rule starts from a preset (category sale, bulk discount, wholesale price, custom), and the dialog shows what a product at 100 would cost.
+
+**Alternatives.** Price filters at display time, as flexa-extra does: easy to add, but every reader of a price would need the same filters, and the cart total could differ from the product page. Rules as coupons applied automatically: reuses the coupon tables, but coupons work on the cart, so the product page could not show the lower price.
+
+**Consequences.** No DB_VERSION. Activation and `maybe_upgrade()` create the rule list and the badge list empty and autoloaded: a missing option is a query on every page without a persistent object cache. P10 now counts three autoloaded options. Price min/max meta used for sorting and the price filter does not reflect rules. Coupons with `exclude_sale_items` treat a rule-reduced item as on sale, because they check `is_reduced()`. Guest prices stay cacheable; role and logged-in prices depend on the shopper, so a page cache must vary on login (the default for WordPress page caches). Rules on the cart total, and graduated tiers (each tier priced separately), are left out. With several bulk rules for one product, the tier table shows the first in list order.
+
+**Revisit when.** A store needs cart-level rules (spend 100, get 10% off), graduated tiers, or price sorting that follows rules.

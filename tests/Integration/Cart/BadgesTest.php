@@ -17,7 +17,7 @@ final class BadgesTest extends CartTestCase {
 	private const NOW = '2026-06-01 12:00:00';
 
 	public function tear_down(): void {
-		delete_option( BadgeRepository::OPTION );
+		update_option( BadgeRepository::OPTION, [], true );
 		parent::tear_down();
 	}
 

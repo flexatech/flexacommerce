@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Flexa\Commerce\Setup;
 
+use Flexa\Commerce\Badges\BadgeRepository;
 use Flexa\Commerce\Database\Schema;
 use Flexa\Commerce\Maintenance\Cron;
+use Flexa\Commerce\Pricing\PricingService;
 use Flexa\Commerce\Support\Settings;
 
 defined( 'ABSPATH' ) || exit;
@@ -35,6 +37,7 @@ final class Activator {
 	public static function activate_site(): void {
 		Schema::migrate();
 		Settings::seed();
+		self::seed_lists();
 		Pages::install();
 		Roles::install();
 		Cron::schedule();
@@ -53,10 +56,21 @@ final class Activator {
 			return;
 		}
 		Schema::maybe_upgrade();
+		self::seed_lists();
 		if ( (int) get_option( Roles::VERSION_OPTION, 0 ) < Roles::VERSION ) {
 			Roles::install();
 			Cron::schedule();
 		}
+	}
+
+	/**
+	 * Badges and pricing rules are read on storefront pages. An empty list
+	 * that exists rides in the autoloaded options; a missing one costs a
+	 * query on every page without a persistent object cache.
+	 */
+	private static function seed_lists(): void {
+		add_option( BadgeRepository::OPTION, [], '', true );
+		add_option( PricingService::RULES_OPTION, [], '', true );
 	}
 
 	/** New site on a network where the plugin is network-active. */

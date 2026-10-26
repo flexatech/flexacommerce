@@ -333,7 +333,7 @@ final class Storefront {
 	}
 
 	private function form(): AddToCartForm {
-		return $this->form ??= new AddToCartForm( Plugin::instance()->cart()->purchase_options() );
+		return $this->form ??= new AddToCartForm( Plugin::instance()->cart()->purchase_options(), Plugin::instance()->cart()->pricing() );
 	}
 
 	private function table(): CartTable {

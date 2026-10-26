@@ -128,7 +128,7 @@ The context is decided once in `Plugin::boot()` from cheap signals: `is_admin()`
 
 ### 3.4 Options and autoload
 
-- `flexacommerce_settings` stays the only autoloaded option, ≤ 10 KB (P10).
+- `flexacommerce_settings` is autoloaded, ≤ 10 KB (P10). So are the badge list (ADR-023) and the price rule list (ADR-024), because storefront pages read them; activation and `maybe_upgrade()` create them empty, since a missing option would cost a query on every page. Their size follows what the merchant adds (at most 50 badges and 100 rules).
 - Hot paths read no other option. Flags that must be checked every request (F1) move into the autoloaded settings, or are replaced by acting in the request that changes the state. For the rewrite flush, O1 removed the flag: `PostTypes::maybe_flush()` checks that the shop rule is present in `rewrite_rules`, which is autoloaded, so the check costs no query. A missing rule (after activation or a base change) is restored by one flush on the next front-end request. If the flush cannot restore it because another plugin claims the same URL, the base is written to `flexacommerce_rewrite_guard` (autoloaded) so the flush is not repeated on every request; that option exists only in this conflict case.
 - Transients are not used on front-end hot paths: without a persistent cache they are option rows, so a missing or expired transient is a query.
 
@@ -204,7 +204,7 @@ Columns: **Budget** is the limit. **Tier** says which test enforces it (§5.1). 
 | PT-m | Checkout, taxes on, 10 lines | extra peak memory vs P6m | ≤ 96 KB (measured 84 KB + 10 %, rounded up; raised once from the provisional 64 KB) | T1 | 84,280 B at 10 lines (macOS, PHP 8.5, asserted only with the OPcache file cache) |
 | PT-rows | Rate match on a 50,000-location US fixture | rows read | ≤ 200 per match | T1 | 174 (5,000 rates × 10 ZIPs plus 50 ranges) |
 | R-REST | REST request for another plugin's route | FlexaCommerce endpoint objects built | 0 | T1 | 0 (was 5, F6, fixed by O6) |
-| P10 | Any request | autoloaded options owned | 1, ≤ 10 KB | T1 | 1, 575 B (plus `flexacommerce_rewrite_guard`, which exists only while another plugin claims the shop URL, §3.4) |
+| P10 | Any request | autoloaded options owned | 3 (settings, badges, price rules), ≤ 10 KB with empty lists | T1 | 1, 575 B (plus `flexacommerce_rewrite_guard`, which exists only while another plugin claims the shop URL, §3.4) |
 | P11 | Catalog pages | `Set-Cookie` or `no-cache` from FlexaCommerce | none | T1 | holds on archive, simple and variable product, and since phase 5 on a sorted and filtered archive, a category, a search and the classic theme templates: no sessions query, no `nocache_headers`, no `Set-Cookie` in `wp_headers` (§5.2). The cart page does call `nocache_headers` |
 | P8 | Product page | JS / CSS gzip | ≤ 15 KB / ≤ 10 KB | T1 (build) | 3,355 B JS, 2,368 B CSS on simple and variable product |
 | P9 | Migration batch | peak memory | < 128 MB | T2 | n/a |
