@@ -1,5 +1,5 @@
 import { useEffect, useId, useState, type ReactNode } from "react";
-import { AlignLeft, ArrowDown, ArrowUp, ChevronsUpDown, CircleDot, Hash, Heading, Plus, SquareCheck, Trash2, Type, X } from "lucide-react";
+import { AlignLeft, ArrowDown, ArrowUp, Calendar, ChevronsUpDown, CircleDot, Hash, Heading, Palette, Plus, RectangleHorizontal, SquareCheck, SwatchBook, Trash2, Type, X } from "lucide-react";
 
 import { showToast } from "@/shared/components/showToast";
 import { Button } from "@/shared/components/ui/button";
@@ -31,9 +31,13 @@ export const FIELD_TYPES: { value: FieldType; label: string; icon: typeof Type }
     { value: "text", label: __("Short text"), icon: Type },
     { value: "textarea", label: __("Long text"), icon: AlignLeft },
     { value: "number", label: __("Number"), icon: Hash },
+    { value: "date", label: __("Date"), icon: Calendar },
+    { value: "color", label: __("Color picker"), icon: Palette },
     { value: "select", label: __("Dropdown"), icon: ChevronsUpDown },
     { value: "radio", label: __("Radio buttons"), icon: CircleDot },
     { value: "checkboxes", label: __("Checkboxes"), icon: SquareCheck },
+    { value: "swatch", label: __("Color swatches"), icon: SwatchBook },
+    { value: "button", label: __("Buttons"), icon: RectangleHorizontal },
     { value: "heading", label: __("Heading"), icon: Heading },
 ];
 
@@ -55,13 +59,16 @@ function blankField(id: number, type: FieldType): OptionField {
         step: null,
         price_mode: "none",
         price: 0,
-        choices: isChoice(type) ? [blankChoice(1), blankChoice(2)] : [],
+        choices: isChoice(type) ? [blankChoice(1, type), blankChoice(2, type)] : [],
         logic: null,
     };
 }
 
-function blankChoice(id: number): Choice {
-    return { id, label: "", price_mode: "none", price: 0, default: false };
+/** A swatch starts black; the other choice types keep no color. */
+const START = "#000000";
+
+function blankChoice(id: number, type: FieldType): Choice {
+    return { id, label: "", price_mode: "none", price: 0, default: false, color: type === "swatch" ? START : "" };
 }
 
 const nextId = (list: { id: number }[]) => list.reduce((max, item) => Math.max(max, item.id), 0) + 1;
@@ -84,7 +91,7 @@ export const SET_PRESETS: SetPreset[] = [
             {
                 ...blankField(1, "checkboxes"),
                 label: __("Gift wrap"),
-                choices: [{ ...blankChoice(1), label: __("Wrap it as a gift"), price_mode: "fixed", price: 5 * unit() }],
+                choices: [{ ...blankChoice(1, "checkboxes"), label: __("Wrap it as a gift"), price_mode: "fixed", price: 5 * unit() }],
             },
             {
                 ...blankField(2, "textarea"),
@@ -108,6 +115,29 @@ export const SET_PRESETS: SetPreset[] = [
             { ...blankField(1, "number"), label: __("Width (cm)"), required: true, min: 10, max: 300, step: 1 },
             { ...blankField(2, "number"), label: __("Height (cm)"), required: true, min: 10, max: 300, step: 1 },
         ],
+    },
+    {
+        key: "color",
+        name: __("Color choice"),
+        description: __("Three color swatches, the first picked at the start."),
+        fields: () => [
+            {
+                ...blankField(1, "swatch"),
+                label: __("Color"),
+                required: true,
+                choices: [
+                    { ...blankChoice(1, "swatch"), label: __("Black"), color: "#000000", default: true },
+                    { ...blankChoice(2, "swatch"), label: __("White"), color: "#ffffff" },
+                    { ...blankChoice(3, "swatch"), label: __("Red"), color: "#c62828" },
+                ],
+            },
+        ],
+    },
+    {
+        key: "delivery",
+        name: __("Delivery date"),
+        description: __("A required date, from tomorrow up to 60 days ahead."),
+        fields: () => [{ ...blankField(1, "date"), label: __("Delivery date"), required: true, min: 1, max: 60 }],
     },
     {
         key: "custom",
@@ -242,17 +272,29 @@ function PriceInputs({ mode, price, onChange, label }: { mode: PriceMode; price:
 
 function ChoicesEditor({ field, onChange }: { field: OptionField; onChange: (choices: Choice[]) => void }) {
     const many = field.type === "checkboxes";
+    const swatch = field.type === "swatch";
+    const grid = swatch ? "fxc:grid-cols-[2.5rem_minmax(0,1fr)_auto_4.5rem_2.25rem]" : "fxc:grid-cols-[minmax(0,1fr)_auto_4.5rem_2.25rem]";
     const set = (id: number, patch: Partial<Choice>) =>
         onChange(field.choices.map((c) => (c.id === id ? { ...c, ...patch } : patch.default && !many ? { ...c, default: false } : c)));
     return (
         <div className="fxc:space-y-2">
-            <div className="fxc:text-muted-foreground fxc:grid fxc:grid-cols-[minmax(0,1fr)_auto_4.5rem_2.25rem] fxc:gap-2 fxc:text-xs fxc:font-medium">
+            <div className={cn("fxc:text-muted-foreground fxc:grid fxc:gap-2 fxc:text-xs fxc:font-medium", grid)}>
+                {swatch && <span>{__("Color")}</span>}
                 <span>{__("Choice")}</span>
                 <span>{__("Extra charge")}</span>
                 <span>{many ? __("Ticked") : __("Default")}</span>
             </div>
             {field.choices.map((choice, index) => (
-                <div key={choice.id} className="fxc:grid fxc:grid-cols-[minmax(0,1fr)_auto_4.5rem_2.25rem] fxc:items-center fxc:gap-2">
+                <div key={choice.id} className={cn("fxc:grid fxc:items-center fxc:gap-2", grid)}>
+                    {swatch && (
+                        <input
+                            type="color"
+                            aria-label={sprintf(__("Choice %d: color"), index + 1)}
+                            className="fxc:h-9 fxc:w-10 fxc:cursor-pointer fxc:rounded-md fxc:border fxc:bg-transparent fxc:p-0.5"
+                            value={choice.color || START}
+                            onChange={(e) => set(choice.id, { color: e.target.value })}
+                        />
+                    )}
                     <Input
                         aria-label={sprintf(__("Choice %d: name"), index + 1)}
                         maxLength={60}
@@ -286,7 +328,7 @@ function ChoicesEditor({ field, onChange }: { field: OptionField; onChange: (cho
                     </Button>
                 </div>
             ))}
-            <Button variant="outline" size="sm" disabled={field.choices.length >= 30} onClick={() => onChange([...field.choices, blankChoice(nextId(field.choices))])}>
+            <Button variant="outline" size="sm" disabled={field.choices.length >= 30} onClick={() => onChange([...field.choices, blankChoice(nextId(field.choices), field.type)])}>
                 <Plus aria-hidden className="fxc:size-4" />
                 {__("Add choice")}
             </Button>
@@ -412,6 +454,9 @@ function ruleFor(target: OptionField): LogicRule {
 
 const numberText = (value: number | null) => (value === null ? "" : String(value));
 
+/** Whole days from 0; empty text means no limit. */
+const days = (text: string): number | null => (text.trim() === "" ? null : Math.max(0, Math.floor(Number(text) || 0)));
+
 const textNumber = (text: string): number | null => {
     const n = parseDecimal(text);
     return n === null ? null : n;
@@ -433,7 +478,8 @@ interface FieldCardProps {
 function FieldCard({ field, index, count, above, open, error, onToggle, onChange, onMove, onRemove }: FieldCardProps) {
     const { icon: Icon, label: typeLabel } = typeOf(field.type);
     const heading = field.type === "heading";
-    const typed = field.type === "text" || field.type === "textarea" || field.type === "number";
+    const typed = ["text", "textarea", "number", "date", "color"].includes(field.type);
+    const color = field.type === "color";
     const title = field.label.trim() || __("Untitled field");
     return (
         <li className={cn("fxc:rounded-md fxc:border", error && "fxc:border-destructive")}>
@@ -479,10 +525,16 @@ function FieldCard({ field, index, count, above, open, error, onToggle, onChange
                                     value={field.type}
                                     onChange={(e) => {
                                         const type = e.target.value as FieldType;
+                                        const choices = isChoice(type) && field.choices.length === 0 ? [blankChoice(1, type), blankChoice(2, type)] : field.choices;
+                                        // Number limits, days and a starting color mean different things per type.
+                                        const limits = type === "date" || field.type === "date";
+                                        const start = type === "color" || field.type === "color";
                                         onChange({
                                             type,
-                                            choices: isChoice(type) && field.choices.length === 0 ? [blankChoice(1), blankChoice(2)] : field.choices,
-                                            required: type === "heading" ? false : field.required,
+                                            choices: type === "swatch" ? choices.map((c) => ({ ...c, color: c.color || START })) : choices,
+                                            required: type === "heading" || type === "color" ? false : field.required,
+                                            ...(limits ? { min: null, max: null, step: null } : {}),
+                                            ...(start ? { placeholder: "" } : {}),
                                         });
                                     }}
                                     options={FIELD_TYPES.map(({ value, label }) => ({ value, label }))}
@@ -496,7 +548,7 @@ function FieldCard({ field, index, count, above, open, error, onToggle, onChange
                     <Field label={__("Help text")} help={__("Optional, shown under the field.")}>
                         {(id) => <Input id={id} maxLength={200} value={field.help} onChange={(e) => onChange({ help: e.target.value })} />}
                     </Field>
-                    {!heading && (
+                    {!heading && !color && (
                         <label className="fxc:flex fxc:items-center fxc:gap-2 fxc:text-sm">
                             <input type="checkbox" className="flexacommerce-check" checked={field.required} onChange={(e) => onChange({ required: e.target.checked })} />
                             {__("Required: the product cannot go into the cart without it")}
@@ -537,9 +589,34 @@ function FieldCard({ field, index, count, above, open, error, onToggle, onChange
                         </div>
                     )}
 
+                    {field.type === "date" && (
+                        <div className="fxc:grid fxc:gap-4 fxc:sm:grid-cols-2">
+                            <Field label={__("Earliest, in days from today")} help={__("0 is today. Empty: any date.")}>
+                                {(id) => <Input id={id} type="number" min={0} max={3650} value={numberText(field.min)} onChange={(e) => onChange({ min: days(e.target.value) })} />}
+                            </Field>
+                            <Field label={__("Latest, in days from today")} help={__("Empty: no limit.")}>
+                                {(id) => <Input id={id} type="number" min={0} max={3650} value={numberText(field.max)} onChange={(e) => onChange({ max: days(e.target.value) })} />}
+                            </Field>
+                        </div>
+                    )}
+
+                    {color && (
+                        <Field label={__("Starting color")} help={__("What the picker shows before the customer changes it. The field always sends a color.")}>
+                            {(id) => (
+                                <input
+                                    id={id}
+                                    type="color"
+                                    className="fxc:h-9 fxc:w-14 fxc:cursor-pointer fxc:rounded-md fxc:border fxc:bg-transparent fxc:p-0.5"
+                                    value={field.placeholder || START}
+                                    onChange={(e) => onChange({ placeholder: e.target.value })}
+                                />
+                            )}
+                        </Field>
+                    )}
+
                     {typed && (
                         <div>
-                            <p className="fxc:mb-2 fxc:text-sm fxc:font-medium">{__("Extra charge when filled in")}</p>
+                            <p className="fxc:mb-2 fxc:text-sm fxc:font-medium">{color ? __("Extra charge") : __("Extra charge when filled in")}</p>
                             <PriceInputs label={title} mode={field.price_mode} price={field.price} onChange={(price_mode, price) => onChange({ price_mode, price })} />
                         </div>
                     )}

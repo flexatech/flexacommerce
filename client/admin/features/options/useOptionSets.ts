@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/shared/lib/api";
 
-export type FieldType = "text" | "textarea" | "number" | "select" | "radio" | "checkboxes" | "heading";
+export type FieldType = "text" | "textarea" | "number" | "date" | "color" | "select" | "radio" | "checkboxes" | "swatch" | "button" | "heading";
 /** An amount in minor units, or a percent of the unit price in hundredths. */
 export type PriceMode = "none" | "fixed" | "percent";
 export type SetScope = "all" | "products" | "categories";
@@ -14,6 +14,8 @@ export interface Choice {
     price_mode: PriceMode;
     price: number;
     default: boolean;
+    /** `#rrggbb` for a swatch, empty for the other types. */
+    color: string;
 }
 
 export interface LogicRule {
@@ -66,7 +68,7 @@ interface Listing {
 
 const KEY = ["product-options"] as const;
 
-export const CHOICE_TYPES: FieldType[] = ["select", "radio", "checkboxes"];
+export const CHOICE_TYPES: FieldType[] = ["select", "radio", "checkboxes", "swatch", "button"];
 
 export function useOptionSets() {
     return useQuery({

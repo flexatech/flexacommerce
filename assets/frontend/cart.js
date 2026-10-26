@@ -161,7 +161,7 @@ function optionValue( element, type ) {
 	if ( type === 'checkboxes' ) {
 		return [ ...element.querySelectorAll( 'input:checked' ) ].map( ( input ) => input.value );
 	}
-	if ( type === 'radio' ) {
+	if ( type === 'radio' || type === 'swatch' || type === 'button' ) {
 		return element.querySelector( 'input:checked' )?.value ?? '';
 	}
 	const input = element.querySelector( 'input, select, textarea' );

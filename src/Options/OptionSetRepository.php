@@ -29,6 +29,7 @@ final class OptionSetRepository {
 	public const MAX_LENGTH  = 1000;
 	public const TEXT_LENGTH = 200;
 	public const MAX_NUMBER  = 1000000000;
+	public const MAX_DAYS    = 3650;
 
 	/** @var list<OptionSet>|null */
 	private ?array $all = null;
@@ -259,6 +260,22 @@ final class OptionSetRepository {
 			}
 		}
 
+		if ( $type === OptionField::DATE ) {
+			$min = self::days( $row['min'] ?? null, $index );
+			$max = self::days( $row['max'] ?? null, $index );
+			if ( $min !== null && $max !== null && $max < $min ) {
+				throw new InvalidOptionSet( __( 'The latest date must not be before the earliest.', 'flexacommerce' ), 'fields', $index );
+			}
+		}
+
+		$placeholder = $typed ? self::text( $row['placeholder'] ?? '', self::MAX_LABEL, 'fields', $index ) : '';
+		if ( $type === OptionField::COLOR ) {
+			if ( $placeholder !== '' && preg_match( '/^#[0-9a-fA-F]{6}$/', $placeholder ) !== 1 ) {
+				throw new InvalidOptionSet( __( 'Enter the starting color as #rrggbb.', 'flexacommerce' ), 'fields', $index );
+			}
+			$placeholder = strtolower( $placeholder );
+		}
+
 		[ $mode, $price ] = $typed
 			? self::price( $row['price_mode'] ?? OptionField::NONE, $row['price'] ?? 0, $index )
 			: [ OptionField::NONE, 0 ];
@@ -268,8 +285,9 @@ final class OptionSetRepository {
 			type: $type,
 			label: $label,
 			help: $help,
-			required: ! $heading && filter_var( $row['required'] ?? false, FILTER_VALIDATE_BOOL ),
-			placeholder: $typed ? self::text( $row['placeholder'] ?? '', self::MAX_LABEL, 'fields', $index ) : '',
+			// A color input always posts a color, so it cannot be left empty.
+			required: ! $heading && $type !== OptionField::COLOR && filter_var( $row['required'] ?? false, FILTER_VALIDATE_BOOL ),
+			placeholder: $placeholder,
 			max_length: $max_length,
 			min: $min,
 			max: $max,
@@ -282,7 +300,7 @@ final class OptionSetRepository {
 	}
 
 	/**
-	 * @return list<array{id:int,label:string,price_mode:string,price:int,default:bool}>
+	 * @return list<array{id:int,label:string,price_mode:string,price:int,default:bool,color:string}>
 	 * @throws InvalidOptionSet
 	 */
 	private static function choices( mixed $value, string $type, int $index ): array {
@@ -314,6 +332,13 @@ final class OptionSetRepository {
 			if ( $label === '' ) {
 				throw new InvalidOptionSet( __( 'Enter a name for each choice.', 'flexacommerce' ), 'fields', $index );
 			}
+			$color = '';
+			if ( $type === OptionField::SWATCH ) {
+				$color = is_string( $row['color'] ?? null ) ? strtolower( trim( $row['color'] ) ) : '';
+				if ( preg_match( '/^#[0-9a-f]{6}$/', $color ) !== 1 ) {
+					throw new InvalidOptionSet( __( 'Pick a color for each swatch.', 'flexacommerce' ), 'fields', $index );
+				}
+			}
 			[ $mode, $price ] = self::price( $row['price_mode'] ?? OptionField::NONE, $row['price'] ?? 0, $index );
 			$default          = filter_var( $row['default'] ?? false, FILTER_VALIDATE_BOOL );
 			$defaults        += $default ? 1 : 0;
@@ -323,6 +348,7 @@ final class OptionSetRepository {
 				'price_mode' => $mode,
 				'price'      => $price,
 				'default'    => $default,
+				'color'      => $color,
 			];
 		}
 		if ( $defaults > 1 && $type !== OptionField::CHECKBOXES ) {
@@ -414,6 +440,26 @@ final class OptionSetRepository {
 			throw new InvalidOptionSet( __( 'Enter a number.', 'flexacommerce' ), 'fields', $index );
 		}
 		return (float) $value;
+	}
+
+	/**
+	 * Days from today, for the dates a date field offers.
+	 *
+	 * @throws InvalidOptionSet
+	 */
+	private static function days( mixed $value, int $index ): ?float {
+		if ( $value === null || $value === '' ) {
+			return null;
+		}
+		$days = filter_var( $value, FILTER_VALIDATE_INT );
+		if ( $days === false ) {
+			$days = is_float( $value ) && floor( $value ) === $value ? (int) $value : false;
+		}
+		if ( $days === false || $days < 0 || $days > self::MAX_DAYS ) {
+			/* translators: %d: the largest number of days */
+			throw new InvalidOptionSet( sprintf( __( 'Enter a number of days from 0 to %d.', 'flexacommerce' ), self::MAX_DAYS ), 'fields', $index );
+		}
+		return (float) $days;
 	}
 
 	/** @throws InvalidOptionSet */

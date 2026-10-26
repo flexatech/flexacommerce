@@ -15,7 +15,12 @@ defined( 'ABSPATH' ) || exit;
  * percent price is in hundredths (2500 is 25%) of the unit price after
  * pricing rules; a fixed price is in minor units.
  *
- * @phpstan-type Choice array{id:int,label:string,price_mode:string,price:int,default:bool}
+ * Date fields (ADR-028) keep `min` and `max` as days from today and post
+ * Y-m-d. Color fields always post a color, `#rrggbb`; their `placeholder`
+ * is the color picked at the start. Swatches and buttons pick one choice
+ * like radio buttons; a swatch choice has a `color`.
+ *
+ * @phpstan-type Choice array{id:int,label:string,price_mode:string,price:int,default:bool,color:string}
  * @phpstan-type Rule array{field:int,op:string,value:string}
  * @phpstan-type Logic array{action:string,match:string,rules:list<Rule>}
  */
@@ -27,8 +32,13 @@ final class OptionField {
 	public const RADIO      = 'radio';
 	public const CHECKBOXES = 'checkboxes';
 	public const HEADING    = 'heading';
-	public const TYPES      = [ self::TEXT, self::TEXTAREA, self::NUMBER, self::SELECT, self::RADIO, self::CHECKBOXES, self::HEADING ];
-	public const CHOICES    = [ self::SELECT, self::RADIO, self::CHECKBOXES ];
+	public const DATE       = 'date';
+	public const COLOR      = 'color';
+	public const SWATCH     = 'swatch';
+	public const BUTTON     = 'button';
+	public const TYPES      = [ self::TEXT, self::TEXTAREA, self::NUMBER, self::DATE, self::COLOR, self::SELECT, self::RADIO, self::CHECKBOXES, self::SWATCH, self::BUTTON, self::HEADING ];
+	public const CHOICES    = [ self::SELECT, self::RADIO, self::CHECKBOXES, self::SWATCH, self::BUTTON ];
+	public const START      = '#000000';
 
 	public const NONE         = 'none';
 	public const FIXED        = 'fixed';
@@ -83,6 +93,7 @@ final class OptionField {
 					'price_mode' => $one( $choice['price_mode'] ?? null, self::PRICE_MODES ),
 					'price'      => max( 0, (int) ( $choice['price'] ?? 0 ) ),
 					'default'    => (bool) ( $choice['default'] ?? false ),
+					'color'      => (string) ( $choice['color'] ?? '' ),
 				];
 			}
 		}
@@ -183,7 +194,14 @@ final class OptionField {
 	 */
 	public function text_of( string|array $value ): string {
 		if ( ! $this->has_choices() ) {
-			return is_string( $value ) ? $value : '';
+			if ( ! is_string( $value ) ) {
+				return '';
+			}
+			if ( $this->type === self::DATE && $value !== '' ) {
+				$date = \DateTimeImmutable::createFromFormat( '!Y-m-d', $value, wp_timezone() );
+				return $date !== false ? wp_date( (string) get_option( 'date_format', 'F j, Y' ), $date->getTimestamp() ) ?: $value : $value;
+			}
+			return $this->type === self::COLOR ? strtoupper( $value ) : $value;
 		}
 		$names = [];
 		foreach ( (array) $value as $id ) {
@@ -227,6 +245,18 @@ final class OptionField {
 			}
 		}
 		return $this->logic['action'] === self::SHOW ? $met : ! $met;
+	}
+
+	/**
+	 * The earliest and latest dates a date field takes, Y-m-d in the site's
+	 * time zone; null for no limit.
+	 *
+	 * @return array{0:?string,1:?string}
+	 */
+	public function date_range(): array {
+		$today = current_datetime()->setTime( 0, 0 );
+		$day   = static fn ( ?float $days ): ?string => $days === null ? null : $today->modify( '+' . (int) $days . ' days' )->format( 'Y-m-d' );
+		return [ $day( $this->min ), $day( $this->max ) ];
 	}
 
 	public static function price_of( string $mode, int $price, int $base ): int {

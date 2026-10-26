@@ -335,7 +335,7 @@ Status of every ADR: **Accepted** (plan approved 2026-10-24) unless it says othe
 
 **Alternatives.** Option sets as a post type: revisions for free, but a query on every product page, and a list screen the merchant would rarely need. Options per product in post meta: simple for one product, but the same gift wrap field would have to be copied to each product.
 
-**Consequences.** No DB_VERSION. Activation and `maybe_upgrade()` create the list empty and autoloaded; P10 now counts four autoloaded options. A deleted field adds nothing to lines already in a cart, although the line keeps its label. A set that is turned off still charges items already in a cart, since the shopper saw that price. File uploads, date pickers, color pickers and per-variation option sets are left out.
+**Consequences.** No DB_VERSION. Activation and `maybe_upgrade()` create the list empty and autoloaded; P10 now counts four autoloaded options. A deleted field adds nothing to lines already in a cart, although the line keeps its label. A set that is turned off still charges items already in a cart, since the shopper saw that price. File uploads, date pickers, color pickers and per-variation option sets are left out (date and color fields came with ADR-028).
 
 **Revisit when.** A store needs file uploads, more than 30 sets, or option prices that follow tax display settings.
 
@@ -374,3 +374,21 @@ Status of every ADR: **Accepted** (plan approved 2026-10-24) unless it says othe
 **Consequences.** No DB_VERSION, no new option. The nudge costs nothing beyond the automatic pass: `short()` works on lines already resolved. With get rules the count can say "1 more item" when the item missing is the discounted one; the offer's name is what tells the shopper which. Migration back to WooCommerce refuses these offers already (automatic, ADR-026).
 
 **Revisit when.** Shoppers need to see which product is missing, or a store wants both nudges at once.
+
+
+## ADR-028: Date, color, swatch and button option fields
+
+**Context.** Item 3 after the flexa-extra port (2026-10-27): flexa-extra's option fields include a date picker, a color picker, color swatches and button choices. ADR-025 left the first two out and had no visual choice types.
+
+**Decision.**
+1. **Four field types in the same list.** `date` and `color` are typed fields with their own price, like text. `swatch` and `button` are choice fields with a single pick, so they post one choice id and validate like radio buttons. Nothing about the storage changes; each choice gains a `color` key, empty except on swatches.
+2. **A date range in days from today.** `min` and `max` hold whole days (0 to 3650) counted from today in the site time zone, so "from tomorrow up to 60 days ahead" stays true without editing. The browser gets them as `min` and `max` on `<input type="date">`; `ProductOptions` checks the posted `Y-m-d` value is a real day inside the range. The cart line keeps `Y-m-d` and shows it in the site date format.
+3. **A color always has a value.** `<input type="color">` cannot be empty, so the editor turns the required flag off and the field uses the placeholder slot for its starting color (black when empty). The server takes `#rrggbb`, stores it lowercased and shows it uppercased in the cart. A priced color field therefore always charges when it is shown.
+4. **Swatches reuse the attribute swatch look** (ADR-022): each choice renders as `.fxc-swatch` with a radio inside, the color in `--fxc-swatch-color`, and the name and price in the title and in screen-reader text. Buttons render the name inside the face. A swatch choice without a valid `#rrggbb` color is refused in the editor.
+5. **Editor.** The type list adds Date, Color picker, Color swatches and Buttons. A date field asks for the earliest and latest day; a color field asks for the starting color; swatch choices get a color column. Switching type clears limits and the starting color that mean something else in the new type. Two presets: a color choice and a delivery date.
+
+**Alternatives.** Absolute dates for the range: a merchant would have to move them forward by hand. A text field with a pattern for colors: no picker on the product page.
+
+**Consequences.** No DB_VERSION, no new option. Sets saved before this keep working: a choice without `color` reads as empty. The date range uses today when the page renders, so a page cached past midnight can offer one day the server then refuses, with a message. A color field cannot be optional; a store that needs "no color" should use swatches with a "None" choice. File uploads and per-variation option sets are still left out.
+
+**Revisit when.** A store needs blocked weekdays or holidays on the date field, time slots, or several swatches picked at once.

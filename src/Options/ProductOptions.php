@@ -164,6 +164,8 @@ final class ProductOptions {
 		switch ( $field->type ) {
 			case OptionField::SELECT:
 			case OptionField::RADIO:
+			case OptionField::SWATCH:
+			case OptionField::BUTTON:
 				if ( $raw === '' ) {
 					return '';
 				}
@@ -191,6 +193,36 @@ final class ProductOptions {
 					}
 				}
 				return rtrim( rtrim( sprintf( '%.6F', $number ), '0' ), '.' );
+
+			case OptionField::DATE:
+				$raw = trim( $raw );
+				if ( $raw === '' ) {
+					return '';
+				}
+				[ $year, $month, $day ] = array_map( 'intval', explode( '-', $raw ) + [ '', '', '' ] );
+				if ( preg_match( '/^\d{4}-\d{2}-\d{2}$/', $raw ) !== 1 || ! checkdate( $month, $day, $year ) ) {
+					throw self::invalid( $field );
+				}
+				[ $earliest, $latest ] = $field->date_range();
+				if ( ( $earliest !== null && $raw < $earliest ) || ( $latest !== null && $raw > $latest ) ) {
+					throw new InvalidCartRequest(
+						/* translators: %s: the name of a product option */
+						sprintf( __( 'Pick a date for %s within the dates offered.', 'flexacommerce' ), $field->label ),
+						'options',
+						'invalid_option'
+					);
+				}
+				return $raw;
+
+			case OptionField::COLOR:
+				$raw = trim( $raw );
+				if ( $raw === '' ) {
+					return '';
+				}
+				if ( preg_match( '/^#[0-9a-fA-F]{6}$/', $raw ) !== 1 ) {
+					throw self::invalid( $field );
+				}
+				return strtolower( $raw );
 
 			default:
 				$long = $field->type === OptionField::TEXTAREA;

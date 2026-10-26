@@ -131,6 +131,29 @@ final class OptionFields {
 		$required = $field->required ? ' <span class="fxc-option__required" aria-hidden="true">*</span>' : '';
 		$name     = 'options[' . $key . ']';
 
+		if ( $field->type === OptionField::SWATCH || $field->type === OptionField::BUTTON ) {
+			$swatch = $field->type === OptionField::SWATCH;
+			$html   = sprintf( '<fieldset %1$s%2$s><legend>%3$s%4$s</legend><div class="fxc-swatches__list">', $attrs, $about, esc_html( $field->label ), $required );
+			foreach ( $field->choices as $choice ) {
+				$price = self::price_tag( $choice['price_mode'], $choice['price'], $money );
+				$text  = esc_html( $choice['label'] ) . $price;
+				$html .= sprintf(
+					'<label class="fxc-swatch fxc-swatch--%1$s"%2$s><input class="fxc-swatch__input" type="radio" name="%3$s" value="%4$d"%5$s%6$s%7$s><span class="fxc-swatch__face"%8$s>%9$s</span>%10$s</label>',
+					$swatch ? 'color' : 'button',
+					$swatch ? ' title="' . esc_attr( wp_strip_all_tags( $text ) ) . '"' : '',
+					esc_attr( $name ),
+					$choice['id'],
+					$choice['default'] ? ' checked' : '',
+					$field->required ? ' required' : '',
+					$off,
+					$swatch ? ' style="--fxc-swatch-color:' . esc_attr( $choice['color'] ) . '"' : '',
+					$swatch ? '' : $text,
+					$swatch ? '<span class="screen-reader-text">' . $text . '</span>' : ''
+				);
+			}
+			return $html . '</div>' . $help . '</fieldset>';
+		}
+
 		if ( $field->type === OptionField::RADIO || $field->type === OptionField::CHECKBOXES ) {
 			$radio = $field->type === OptionField::RADIO;
 			$html  = sprintf( '<fieldset %1$s%2$s><legend>%3$s%4$s</legend>', $attrs, $about, esc_html( $field->label ), $required );
@@ -171,6 +194,16 @@ final class OptionFields {
 				);
 			}
 			$control .= '</select>';
+		} elseif ( $field->type === OptionField::DATE ) {
+			[ $earliest, $latest ] = $field->date_range();
+			$control               = sprintf(
+				'<input type="date" %1$s%2$s%3$s>',
+				$common,
+				$earliest !== null ? ' min="' . esc_attr( $earliest ) . '"' : '',
+				$latest !== null ? ' max="' . esc_attr( $latest ) . '"' : ''
+			);
+		} elseif ( $field->type === OptionField::COLOR ) {
+			$control = sprintf( '<input type="color" %1$s value="%2$s">', $common, esc_attr( $field->placeholder !== '' ? $field->placeholder : OptionField::START ) );
 		} elseif ( $field->type === OptionField::NUMBER ) {
 			$control = sprintf(
 				'<input type="number" %1$s%2$s%3$s step="%4$s"%5$s inputmode="decimal">',

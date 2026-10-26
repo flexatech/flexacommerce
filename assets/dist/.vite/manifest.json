@@ -4,7 +4,7 @@
     "name": "units"
   },
   "admin/main.tsx": {
-    "file": "assets/admin-BekNsvjx.js",
+    "file": "assets/admin-CimvpUiB.js",
     "name": "admin",
     "src": "admin/main.tsx",
     "isEntry": true,
@@ -12,11 +12,11 @@
       "_units-C8Q98QlJ.js"
     ],
     "css": [
-      "assets/admin-DgTYXG8V.css"
+      "assets/admin-CJOTvh9A.css"
     ]
   },
   "admin/product-editor.tsx": {
-    "file": "assets/product-editor-Wj4uZqIA.js",
+    "file": "assets/product-editor-Brh46y-x.js",
     "name": "product-editor",
     "src": "admin/product-editor.tsx",
     "isEntry": true,
@@ -24,7 +24,7 @@
       "_units-C8Q98QlJ.js"
     ],
     "css": [
-      "assets/product-editor-I_eofn-J.css"
+      "assets/product-editor-CTn6LWbj.css"
     ]
   }
 }

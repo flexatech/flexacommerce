@@ -86,7 +86,7 @@ final class ProductOptionsTest extends CartTestCase {
 					[
 						$text,
 						[
-							'type'  => 'color',
+							'type'  => 'signature',
 							'label' => 'C',
 						],
 					],
@@ -363,7 +363,7 @@ final class ProductOptionsTest extends CartTestCase {
 		$response = $admin( 'POST', '', $this->engraving() );
 		self::assertSame( 201, $response->get_status() );
 		self::assertSame( 'Engraving', $response->get_data()['items'][0]['fields'][0]['label'] );
-		$bad = $admin( 'PATCH', '/1', [ 'fields' => [ [ 'type' => 'color' ] ] ] );
+		$bad = $admin( 'PATCH', '/1', [ 'fields' => [ [ 'type' => 'signature' ] ] ] );
 		self::assertSame( 400, $bad->get_status() );
 		self::assertSame( [ 'fields', 0 ], [ $bad->get_data()['data']['field'], $bad->get_data()['data']['index'] ] );
 		self::assertSame( 404, $admin( 'DELETE', '/9' )->get_status() );
