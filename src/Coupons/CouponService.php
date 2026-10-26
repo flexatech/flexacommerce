@@ -278,11 +278,12 @@ final class CouponService {
 		}
 		$out = [];
 		foreach ( $priced as $item ) {
-			$ids = [ $item->line->product_id, $item->line->variant_id ];
-			if ( $coupon->product_ids !== [] && array_intersect( $ids, $coupon->product_ids ) === [] ) {
+			$product = $item->line->product_id;
+			$variant = $item->line->variant_id;
+			if ( $coupon->has_product_rules() && ! in_array( $product, $coupon->product_ids, true ) && ! in_array( $variant, $coupon->variant_ids, true ) ) {
 				continue;
 			}
-			if ( array_intersect( $ids, $coupon->exclude_product_ids ) !== [] ) {
+			if ( in_array( $product, $coupon->exclude_product_ids, true ) || in_array( $variant, $coupon->exclude_variant_ids, true ) ) {
 				continue;
 			}
 			if ( $coupon->exclude_sale_items && $item->unit?->is_reduced() === true ) {

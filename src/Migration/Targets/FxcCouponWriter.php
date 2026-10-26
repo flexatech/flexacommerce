@@ -65,8 +65,9 @@ final class FxcCouponWriter {
 		}
 
 		$products = $this->products( (array) ( $data['products'] ?? [] ), $map, $code );
+		$excluded = $this->products( (array) ( $data['exclude_products'] ?? [] ), $map, $code );
 		$cats     = $this->terms( (array) ( $data['categories'] ?? [] ), $map, $code );
-		if ( ( $products === [] && (array) ( $data['products'] ?? [] ) !== [] ) || ( $cats === [] && (array) ( $data['categories'] ?? [] ) !== [] ) ) {
+		if ( ( $products === [ [], [] ] && (array) ( $data['products'] ?? [] ) !== [] ) || ( $cats === [] && (array) ( $data['categories'] ?? [] ) !== [] ) ) {
 			$status           = Coupon::DISABLED;
 			$this->problems[] = Problem::warning( 'coupon_rules_lost', sprintf( 'None of the products or categories the coupon "%s" is limited to were imported. It was imported disabled so it does not apply to every product.', $code ) );
 		}
@@ -97,8 +98,10 @@ final class FxcCouponWriter {
 			'individual_use'       => ! empty( $data['individual_use'] ),
 			'exclude_sale_items'   => ! empty( $data['exclude_sale_items'] ),
 			'free_shipping'        => $free_shipping,
-			'product_ids'          => $products,
-			'exclude_product_ids'  => $this->products( (array) ( $data['exclude_products'] ?? [] ), $map, $code ),
+			'product_ids'          => $products[0],
+			'exclude_product_ids'  => $excluded[0],
+			'variant_ids'          => $products[1],
+			'exclude_variant_ids'  => $excluded[1],
 			'category_ids'         => $cats,
 			'exclude_category_ids' => $this->terms( (array) ( $data['exclude_categories'] ?? [] ), $map, $code ),
 			'emails'               => array_values( array_map( 'strval', (array) ( $data['emails'] ?? [] ) ) ),
@@ -152,19 +155,21 @@ final class FxcCouponWriter {
 	}
 
 	/**
-	 * Product and variant references to FlexaCommerce ids; ones that were not imported are dropped.
+	 * Product and variant references to FlexaCommerce product ids and variant
+	 * ids; ones that were not imported are dropped.
 	 *
 	 * @param array<mixed> $refs
-	 * @return list<int>
+	 * @return array{0:list<int>,1:list<int>}
 	 */
 	private function products( array $refs, Mapping $map, string $code ): array {
-		$out     = [];
+		$out     = [ [], [] ];
 		$missing = 0;
 		foreach ( $refs as $ref ) {
-			$parsed = Ref::parse( is_string( $ref ) ? $ref : null );
-			$id     = $parsed === null ? 0 : $map->target_id( $parsed->entity === 'variant' ? 'variant' : Record::PRODUCT, $parsed->id );
+			$parsed  = Ref::parse( is_string( $ref ) ? $ref : null );
+			$variant = $parsed?->entity === 'variant';
+			$id      = $parsed === null ? 0 : $map->target_id( $variant ? 'variant' : Record::PRODUCT, $parsed->id );
 			if ( $id > 0 ) {
-				$out[] = $id;
+				$out[ $variant ? 1 : 0 ][ $id ] = $id;
 			} else {
 				++$missing;
 			}
@@ -172,7 +177,7 @@ final class FxcCouponWriter {
 		if ( $missing > 0 ) {
 			$this->problems[] = Problem::warning( 'coupon_product_missing', sprintf( '%1$d products of the coupon "%2$s" were not imported and were left out of its rules.', $missing, $code ) );
 		}
-		return array_values( array_unique( $out ) );
+		return [ array_values( $out[0] ), array_values( $out[1] ) ];
 	}
 
 	/**

@@ -11,6 +11,7 @@ import { ApiError, getPluginGlobal } from "@/shared/lib/api";
 import { __, sprintf } from "@/shared/lib/i18n";
 import { inputToMinor, minorToInput, parseDecimal } from "@/shared/lib/units";
 import { MoneyInput } from "../../components/MoneyInput";
+import { TargetPicker, type Pick } from "./TargetPicker";
 import { useSaveCoupon, type Coupon, type CouponInput, type CouponType } from "./useCoupons";
 
 /** What the form edits; dates are `datetime-local` text in the browser's time zone. */
@@ -30,10 +31,10 @@ interface Draft {
     individual_use: boolean;
     exclude_sale_items: boolean;
     free_shipping: boolean;
-    product_ids: string;
-    exclude_product_ids: string;
-    category_ids: string;
-    exclude_category_ids: string;
+    products: Pick[];
+    exclude_products: Pick[];
+    categories: Pick[];
+    exclude_categories: Pick[];
     emails: string;
 }
 
@@ -55,13 +56,9 @@ function toUtc(local: string): string | null {
     return Number.isNaN(d.getTime()) ? local : d.toISOString().slice(0, 19) + "Z";
 }
 
-function ids(text: string): number[] {
-    return text
-        .split(/[\s,]+/)
-        .filter(Boolean)
-        .map(Number)
-        .filter((n) => Number.isInteger(n) && n > 0);
-}
+const picks = (type: Pick["type"], ids: number[] | undefined): Pick[] => (ids ?? []).map((id) => ({ type, id }));
+
+const idsOf = (list: Pick[], type: Pick["type"]): number[] => list.filter((p) => p.type === type).map((p) => p.id);
 
 function draftOf(coupon: Coupon | null): Draft {
     return {
@@ -80,10 +77,10 @@ function draftOf(coupon: Coupon | null): Draft {
         individual_use: coupon?.individual_use ?? false,
         exclude_sale_items: coupon?.exclude_sale_items ?? false,
         free_shipping: coupon?.free_shipping ?? false,
-        product_ids: (coupon?.product_ids ?? []).join(", "),
-        exclude_product_ids: (coupon?.exclude_product_ids ?? []).join(", "),
-        category_ids: (coupon?.category_ids ?? []).join(", "),
-        exclude_category_ids: (coupon?.exclude_category_ids ?? []).join(", "),
+        products: [...picks("product", coupon?.product_ids), ...picks("variant", coupon?.variant_ids)],
+        exclude_products: [...picks("product", coupon?.exclude_product_ids), ...picks("variant", coupon?.exclude_variant_ids)],
+        categories: picks("category", coupon?.category_ids),
+        exclude_categories: picks("category", coupon?.exclude_category_ids),
         emails: (coupon?.emails ?? []).join(", "),
     };
 }
@@ -105,10 +102,12 @@ function inputOf(draft: Draft): CouponInput {
         individual_use: draft.individual_use,
         exclude_sale_items: draft.exclude_sale_items,
         free_shipping: draft.free_shipping,
-        product_ids: ids(draft.product_ids),
-        exclude_product_ids: ids(draft.exclude_product_ids),
-        category_ids: ids(draft.category_ids),
-        exclude_category_ids: ids(draft.exclude_category_ids),
+        product_ids: idsOf(draft.products, "product"),
+        exclude_product_ids: idsOf(draft.exclude_products, "product"),
+        variant_ids: idsOf(draft.products, "variant"),
+        exclude_variant_ids: idsOf(draft.exclude_products, "variant"),
+        category_ids: idsOf(draft.categories, "category"),
+        exclude_category_ids: idsOf(draft.exclude_categories, "category"),
         emails: draft.emails
             .split(/[\s,]+/)
             .map((e) => e.trim())
@@ -342,17 +341,53 @@ export function CouponDialog({ open, coupon, onOpenChange }: Props) {
                     <fieldset className="fxc:space-y-4">
                         <legend className="fxc:mb-2 fxc:text-sm fxc:font-medium">{__("Restrictions")}</legend>
                         <div className="fxc:grid fxc:gap-4 fxc:sm:grid-cols-2">
-                            <Field label={__("Products")} help={__("Product or variation IDs, comma separated. Empty: all.")} error={errors.product_ids}>
-                                {(id) => <Input id={id} value={draft.product_ids} onChange={(e) => set("product_ids", e.target.value)} />}
+                            <Field
+                                label={__("Products")}
+                                help={__("Search by name or SKU. A product covers all its variations. Empty: all.")}
+                                error={errors.product_ids ?? errors.variant_ids}
+                            >
+                                {(id) => (
+                                    <TargetPicker
+                                        id={id}
+                                        kind="product"
+                                        value={draft.products}
+                                        onChange={(v) => set("products", v)}
+                                        placeholder={__("Search products")}
+                                    />
+                                )}
                             </Field>
-                            <Field label={__("Excluded products")} error={errors.exclude_product_ids}>
-                                {(id) => <Input id={id} value={draft.exclude_product_ids} onChange={(e) => set("exclude_product_ids", e.target.value)} />}
+                            <Field label={__("Excluded products")} error={errors.exclude_product_ids ?? errors.exclude_variant_ids}>
+                                {(id) => (
+                                    <TargetPicker
+                                        id={id}
+                                        kind="product"
+                                        value={draft.exclude_products}
+                                        onChange={(v) => set("exclude_products", v)}
+                                        placeholder={__("Search products")}
+                                    />
+                                )}
                             </Field>
-                            <Field label={__("Categories")} help={__("Category IDs; subcategories are included. Empty: all.")} error={errors.category_ids}>
-                                {(id) => <Input id={id} value={draft.category_ids} onChange={(e) => set("category_ids", e.target.value)} />}
+                            <Field label={__("Categories")} help={__("Subcategories are included. Empty: all.")} error={errors.category_ids}>
+                                {(id) => (
+                                    <TargetPicker
+                                        id={id}
+                                        kind="category"
+                                        value={draft.categories}
+                                        onChange={(v) => set("categories", v)}
+                                        placeholder={__("Search categories")}
+                                    />
+                                )}
                             </Field>
                             <Field label={__("Excluded categories")} error={errors.exclude_category_ids}>
-                                {(id) => <Input id={id} value={draft.exclude_category_ids} onChange={(e) => set("exclude_category_ids", e.target.value)} />}
+                                {(id) => (
+                                    <TargetPicker
+                                        id={id}
+                                        kind="category"
+                                        value={draft.exclude_categories}
+                                        onChange={(v) => set("exclude_categories", v)}
+                                        placeholder={__("Search categories")}
+                                    />
+                                )}
                             </Field>
                         </div>
                         <Field

@@ -15,7 +15,8 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Free, optionally only from a minimum contents total or with a coupon that
  * gives free shipping. With no requirement chosen the minimum applies when
- * it is set, as before the setting existed.
+ * it is set, as before the setting existed. The minimum is compared with the
+ * total after coupon discounts unless `ignore_discounts` is on.
  */
 final class FreeShipping implements ShippingMethod {
 	public const REQUIRES = [ '', 'coupon', 'either', 'both' ];
@@ -45,6 +46,7 @@ final class FreeShipping implements ShippingMethod {
 				]
 			),
 			new SettingField( 'min_amount', 'money', __( 'Minimum order amount', 'flexacommerce' ), 0, __( 'Leave at 0 to offer free shipping on every order.', 'flexacommerce' ) ),
+			new SettingField( 'ignore_discounts', 'checkbox', __( 'Check the minimum before coupon discounts', 'flexacommerce' ), false, __( 'Off: a coupon that brings the total under the minimum removes free shipping.', 'flexacommerce' ) ),
 		];
 	}
 
@@ -52,7 +54,8 @@ final class FreeShipping implements ShippingMethod {
 		$min      = max( 0, (int) ( $settings['min_amount'] ?? 0 ) );
 		$requires = (string) ( $settings['requires'] ?? '' );
 		$coupon   = $package->free_shipping;
-		$spent    = $package->contents_total->amount >= $min;
+		$total    = ! empty( $settings['ignore_discounts'] ) ? $package->subtotal_before_discounts() : $package->contents_total;
+		$spent    = $total->amount >= $min;
 		$free     = match ( $requires ) {
 			'coupon' => $coupon,
 			'either' => $coupon || $spent,

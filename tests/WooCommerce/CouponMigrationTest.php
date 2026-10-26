@@ -68,7 +68,8 @@ final class CouponMigrationTest extends \WP_UnitTestCase {
 		$this->assertSame( [ 50, 3, 2 ], [ $coupon->usage_limit, $coupon->usage_count, $coupon->per_customer_limit ] );
 		$this->assertTrue( $coupon->individual_use );
 		$this->assertTrue( $coupon->exclude_sale_items );
-		$this->assertSame( [ $this->local_id( 'product', $this->store->products['tee'] ), $this->local_id( 'variant', $this->store->variations['red_large'] ) ], $coupon->product_ids );
+		$this->assertSame( [ $this->local_id( 'product', $this->store->products['tee'] ) ], $coupon->product_ids );
+		$this->assertSame( [ $this->local_id( 'variant', $this->store->variations['red_large'] ) ], $coupon->variant_ids, 'A variation is a variant rule, apart from the product ids.' );
 		$this->assertSame( [ $this->local_id( 'product', $this->store->products['unicode'] ) ], $coupon->exclude_product_ids );
 		$this->assertSame( [ $this->local_id( 'term', $this->store->terms['shirts'] ) ], $coupon->category_ids );
 		$this->assertSame( [ '*@example.com' ], $coupon->emails );
@@ -89,7 +90,13 @@ final class CouponMigrationTest extends \WP_UnitTestCase {
 		self::wc_coupon( 'grouped', 'percent', '5', fn ( \WC_Coupon $c ) => $c->set_product_ids( [ $this->store->products['grouped'] ] ) );
 		self::wc_coupon( 'cart', 'fixed_cart', '33.333' );
 		self::wc_coupon( 'taken', 'percent', '5' );
-		$this->fxc_editor()->save( [ 'code' => 'TAKEN', 'type' => Coupon::PERCENT, 'amount' => 700 ] );
+		$this->fxc_editor()->save(
+			[
+				'code'   => 'TAKEN',
+				'type'   => Coupon::PERCENT,
+				'amount' => 700,
+			]
+		);
 
 		$job = $this->run_job( Direction::WC_TO_FXC );
 		$this->assertSame( JobStatus::COMPLETED_WITH_WARNINGS, $job->status );
@@ -129,7 +136,7 @@ final class CouponMigrationTest extends \WP_UnitTestCase {
 
 	public function test_coupons_go_back_to_woocommerce(): void {
 		$this->run_job( Direction::WC_TO_FXC );
-		$tee = $this->local_id( 'product', $this->store->products['tee'] );
+		$tee    = $this->local_id( 'product', $this->store->products['tee'] );
 		$spring = $this->fxc_editor()->save(
 			[
 				'code'        => 'spring',
@@ -138,6 +145,7 @@ final class CouponMigrationTest extends \WP_UnitTestCase {
 				'starts_at'   => gmdate( 'Y-m-d H:i:s', time() + DAY_IN_SECONDS ),
 				'expires_at'  => '2031-06-01 00:00:00',
 				'product_ids' => [ $tee ],
+				'variant_ids' => [ $this->local_id( 'variant', $this->store->variations['red_large'] ) ],
 				'emails'      => [ 'ana@example.com' ],
 			]
 		);
@@ -163,7 +171,7 @@ final class CouponMigrationTest extends \WP_UnitTestCase {
 		$this->assertSame( 'draft', $spring->get_status(), 'WooCommerce has no start date, so a later coupon waits as a draft.' );
 		$this->assertSame( 'fixed_product', $spring->get_discount_type() );
 		$this->assertSame( '2.5', (string) $spring->get_amount() );
-		$this->assertSame( [ $this->store->products['tee'] ], $spring->get_product_ids() );
+		$this->assertSame( [ $this->store->products['tee'], $this->store->variations['red_large'] ], $spring->get_product_ids(), 'WooCommerce keeps variations with the products.' );
 		$this->assertSame( [ 'ana@example.com' ], $spring->get_email_restrictions() );
 		$this->assertSame( gmmktime( 0, 0, 0, 6, 1, 2031 ), $spring->get_date_expires()?->getTimestamp() );
 
@@ -218,7 +226,15 @@ final class CouponMigrationTest extends \WP_UnitTestCase {
 	}
 
 	private function run_job( string $direction ): Job {
-		$job = $this->service->create( $direction, [ 'backup_confirmed' => true, 'stages' => [ 'settings', 'terms', 'attributes', 'products', 'customers', 'orders', 'coupons' ] ], false, 1 );
+		$job = $this->service->create(
+			$direction,
+			[
+				'backup_confirmed' => true,
+				'stages'           => [ 'settings', 'terms', 'attributes', 'products', 'customers', 'orders', 'coupons' ],
+			],
+			false,
+			1
+		);
 		$this->assertSame( JobStatus::READY, $job->status, (string) wp_json_encode( $job->report ) );
 		$this->service->start( $job->id );
 		return $this->service->run( $job->id );

@@ -168,6 +168,9 @@ final class FxcShippingWriter {
 				'location'   => (string) ( $row['location'] ?? '' ),
 				'requires'   => (string) ( $row['requires'] ?? '' ),
 			];
+			if ( $type === 'free_shipping' ) {
+				$input['ignore_discounts'] = ! empty( $row['ignore_discounts'] );
+			}
 			foreach ( [ 'cost', 'cost_per_item', 'min_amount' ] as $key ) {
 				if ( isset( $row[ $key ] ) ) {
 					$input[ $key ] = $this->minor( (string) $row[ $key ], $key );

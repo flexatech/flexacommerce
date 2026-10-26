@@ -18,7 +18,7 @@ defined( 'ABSPATH' ) || exit;
 final class CouponEditor {
 	private const MAX_LIST = 1000;
 
-	private const ID_LISTS = [ 'product_ids', 'exclude_product_ids', 'category_ids', 'exclude_category_ids' ];
+	private const ID_LISTS = [ 'product_ids', 'exclude_product_ids', 'variant_ids', 'exclude_variant_ids', 'category_ids', 'exclude_category_ids' ];
 
 	public function __construct(
 		private readonly CouponRepository $coupons,

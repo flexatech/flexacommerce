@@ -134,6 +134,63 @@ final class VariantRepository {
 		return is_array( $row ) ? Variant::from_row( $row ) : null;
 	}
 
+	/**
+	 * Rows whose SKU contains the text, for the admin pickers.
+	 *
+	 * @return list<array{id:int,product_id:int,is_base:bool}>
+	 */
+	public function search_sku( string $text, int $limit ): array {
+		$text = trim( $text );
+		if ( $text === '' ) {
+			return [];
+		}
+		$rows = $this->wpdb->get_results(
+			$this->wpdb->prepare(
+				'SELECT id, product_id, is_base FROM %i WHERE sku LIKE %s ORDER BY product_id, is_base DESC, menu_order, id LIMIT %d',
+				Schema::table( 'variants' ),
+				'%' . $this->wpdb->esc_like( $text ) . '%',
+				$limit
+			),
+			ARRAY_A
+		);
+		return array_map(
+			static fn ( array $row ): array => [
+				'id'         => (int) $row['id'],
+				'product_id' => (int) $row['product_id'],
+				'is_base'    => (bool) $row['is_base'],
+			],
+			is_array( $rows ) ? $rows : []
+		);
+	}
+
+	/**
+	 * The product of each row that exists.
+	 *
+	 * @param list<int> $variant_ids
+	 * @return array<int,int> variant id => product id
+	 */
+	public function owners( array $variant_ids ): array {
+		$variant_ids = array_values( array_unique( array_filter( array_map( 'intval', $variant_ids ), static fn ( int $id ): bool => $id > 0 ) ) );
+		if ( $variant_ids === [] ) {
+			return [];
+		}
+		$placeholders = implode( ',', array_fill( 0, count( $variant_ids ), '%d' ) );
+		$rows         = $this->wpdb->get_results(
+			$this->wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- placeholders only.
+				"SELECT id, product_id FROM %i WHERE id IN ({$placeholders})",
+				Schema::table( 'variants' ),
+				...$variant_ids
+			),
+			ARRAY_A
+		);
+		$out = [];
+		foreach ( is_array( $rows ) ? $rows : [] as $row ) {
+			$out[ (int) $row['id'] ] = (int) $row['product_id'];
+		}
+		return $out;
+	}
+
 	/** @throws DuplicateSku|InvalidProduct|QueryFailed */
 	public function insert( Variant $variant ): int {
 		$now  = $this->clock->db_now();

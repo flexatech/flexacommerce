@@ -58,10 +58,41 @@ final class ShippingMigrationTest extends \WP_UnitTestCase {
 		$europe->set_zone_order( 3 );
 		$europe->add_location( 'EU', 'continent' );
 		$europe->save();
-		GoldenStore::method( $europe, 'flat_rate', [ 'title' => 'Percent', 'cost' => '10 + [fee percent="10"]' ] );
-		GoldenStore::method( $europe, 'flat_rate', [ 'title' => 'By class', 'cost' => '4', 'class_cost_12' => '2' ] );
-		GoldenStore::method( $europe, 'free_shipping', [ 'title' => 'Coupon only', 'requires' => 'coupon' ] );
-		GoldenStore::method( $europe, 'free_shipping', [ 'title' => 'Either', 'requires' => 'either', 'min_amount' => '80' ] );
+		GoldenStore::method(
+			$europe,
+			'flat_rate',
+			[
+				'title' => 'Percent',
+				'cost'  => '10 + [fee percent="10"]',
+			]
+		);
+		GoldenStore::method(
+			$europe,
+			'flat_rate',
+			[
+				'title'         => 'By class',
+				'cost'          => '4',
+				'class_cost_12' => '2',
+			]
+		);
+		GoldenStore::method(
+			$europe,
+			'free_shipping',
+			[
+				'title'    => 'Coupon only',
+				'requires' => 'coupon',
+			]
+		);
+		GoldenStore::method(
+			$europe,
+			'free_shipping',
+			[
+				'title'            => 'Either',
+				'requires'         => 'either',
+				'min_amount'       => '80',
+				'ignore_discounts' => 'yes',
+			]
+		);
 
 		$job = $this->run_job( Direction::WC_TO_FXC );
 		$this->assertSame( JobStatus::COMPLETED_WITH_WARNINGS, $job->status );
@@ -73,6 +104,8 @@ final class ShippingMigrationTest extends \WP_UnitTestCase {
 		$this->assertSame( 'coupon', $europe->methods[2]->settings['requires'], 'Free shipping with a coupon is kept.' );
 		$this->assertSame( 'either', $europe->methods[3]->settings['requires'] );
 		$this->assertSame( 8000, $europe->methods[3]->settings['min_amount'] );
+		$this->assertTrue( $europe->methods[3]->settings['ignore_discounts'], 'The minimum before coupons is kept.' );
+		$this->assertFalse( $europe->methods[2]->settings['ignore_discounts'] );
 
 		$codes = array_count_values( array_column( $this->service->log( $job->id )['rows'], 'code' ) );
 		$this->assertSame( 2, $codes['shipping_method_disabled'] ?? 0 );
@@ -82,7 +115,15 @@ final class ShippingMigrationTest extends \WP_UnitTestCase {
 	public function test_a_second_import_replaces_its_zones_and_keeps_the_ones_made_in_fxc(): void {
 		$this->run_job( Direction::WC_TO_FXC );
 		[ $california, $canada, $rest ] = $this->zones->all();
-		$native_method = new MethodInstance( 0, 'flat_rate', true, [ 'title' => 'Courier', 'cost' => 900 ] );
+		$native_method                  = new MethodInstance(
+			0,
+			'flat_rate',
+			true,
+			[
+				'title' => 'Courier',
+				'cost'  => 900,
+			]
+		);
 		$this->zones->save(
 			[
 				$california,
@@ -97,7 +138,14 @@ final class ShippingMigrationTest extends \WP_UnitTestCase {
 		$zone->add_location( 'US:NV', 'state' );
 		$zone->save();
 		$ground = array_key_first( $zone->get_shipping_methods() );
-		update_option( 'woocommerce_flat_rate_' . $ground . '_settings', [ 'title' => 'Ground', 'tax_status' => 'taxable', 'cost' => '6' ] );
+		update_option(
+			'woocommerce_flat_rate_' . $ground . '_settings',
+			[
+				'title'      => 'Ground',
+				'tax_status' => 'taxable',
+				'cost'       => '6',
+			]
+		);
 
 		$job = $this->run_job( Direction::WC_TO_FXC );
 		$this->assertSame( 1, $job->counter( 'shipping', 'updated' ) );
@@ -115,7 +163,40 @@ final class ShippingMigrationTest extends \WP_UnitTestCase {
 	public function test_zones_go_back_to_woocommerce(): void {
 		$this->run_job( Direction::WC_TO_FXC );
 		$zones = $this->zones->all();
-		$this->zones->save( [ ...array_slice( $zones, 0, 2 ), new Zone( 0, 'Texas', [ 'state:US:TX' ], [], [ new MethodInstance( 0, 'local_pickup', true, [ 'title' => 'Warehouse', 'cost' => 250, 'location' => '1 Dock Rd' ] ), new MethodInstance( 0, 'free_shipping', true, [ 'requires' => 'either', 'min_amount' => 5000 ] ) ] ), $zones[2] ] );
+		$this->zones->save(
+			[
+				...array_slice( $zones, 0, 2 ),
+				new Zone(
+					0,
+					'Texas',
+					[ 'state:US:TX' ],
+					[],
+					[
+						new MethodInstance(
+							0,
+							'local_pickup',
+							true,
+							[
+								'title'    => 'Warehouse',
+								'cost'     => 250,
+								'location' => '1 Dock Rd',
+							]
+						),
+						new MethodInstance(
+							0,
+							'free_shipping',
+							true,
+							[
+								'requires'         => 'either',
+								'min_amount'       => 5000,
+								'ignore_discounts' => true,
+							]
+						),
+					]
+				),
+				$zones[2],
+			]
+		);
 
 		$job = $this->run_job( Direction::FXC_TO_WC );
 		$this->assertContains( $job->status, JobStatus::FINISHED, (string) wp_json_encode( $this->service->log( $job->id ) ) );
@@ -129,6 +210,7 @@ final class ShippingMigrationTest extends \WP_UnitTestCase {
 		$this->assertSame( '2.5', $pickup->get_instance_option( 'cost' ) );
 		$free = array_values( $texas->get_shipping_methods() )[1];
 		$this->assertSame( [ 'either', '50' ], [ $free->get_instance_option( 'requires' ), $free->get_instance_option( 'min_amount' ) ] );
+		$this->assertSame( 'yes', $free->get_instance_option( 'ignore_discounts' ) );
 		$codes = array_column( $this->service->log( $job->id )['rows'], 'code' );
 		$this->assertContains( 'pickup_location', $codes );
 	}
@@ -145,7 +227,15 @@ final class ShippingMigrationTest extends \WP_UnitTestCase {
 	}
 
 	private function run_job( string $direction ): Job {
-		$job = $this->service->create( $direction, [ 'backup_confirmed' => true, 'stages' => [ 'settings', 'shipping' ] ], false, 1 );
+		$job = $this->service->create(
+			$direction,
+			[
+				'backup_confirmed' => true,
+				'stages'           => [ 'settings', 'shipping' ],
+			],
+			false,
+			1
+		);
 		$this->assertSame( JobStatus::READY, $job->status, (string) wp_json_encode( $job->report ) );
 		$this->service->start( $job->id );
 		return $this->service->run( $job->id );

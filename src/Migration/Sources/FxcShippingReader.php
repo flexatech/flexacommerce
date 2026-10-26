@@ -69,7 +69,8 @@ final class FxcShippingReader {
 			}
 		}
 		if ( $method->type === 'free_shipping' ) {
-			$out['requires'] = (string) ( $settings['requires'] ?? '' );
+			$out['requires']         = (string) ( $settings['requires'] ?? '' );
+			$out['ignore_discounts'] = ! empty( $settings['ignore_discounts'] );
 		}
 		if ( $method->type === 'local_pickup' ) {
 			$out['location'] = trim( (string) ( $settings['location'] ?? '' ) );

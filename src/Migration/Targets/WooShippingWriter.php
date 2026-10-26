@@ -109,10 +109,11 @@ final class WooShippingWriter {
 		$amount = static fn ( string $key ): string => Decimal::clean( $row[ $key ] ?? null ) ?? '0';
 		$out    = [ 'title' => $title ];
 		if ( $type === 'free_shipping' ) {
-			$min               = $amount( 'min_amount' );
-			$requires          = (string) ( $row['requires'] ?? '' );
-			$out['requires']   = in_array( $requires, [ 'coupon', 'either', 'both' ], true ) ? $requires : ( $min === '0' ? '' : 'min_amount' );
-			$out['min_amount'] = $min === '0' ? '' : wc_format_localized_price( $min );
+			$min                     = $amount( 'min_amount' );
+			$requires                = (string) ( $row['requires'] ?? '' );
+			$out['requires']         = in_array( $requires, [ 'coupon', 'either', 'both' ], true ) ? $requires : ( $min === '0' ? '' : 'min_amount' );
+			$out['min_amount']       = $min === '0' ? '' : wc_format_localized_price( $min );
+			$out['ignore_discounts'] = empty( $row['ignore_discounts'] ) ? 'no' : 'yes';
 			return $out;
 		}
 		$out['tax_status'] = array_key_exists( 'taxable', $row ) && ! $row['taxable'] ? 'none' : 'taxable';

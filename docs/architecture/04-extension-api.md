@@ -124,7 +124,7 @@ interface ShippingMethod {
 }
 ```
 
-- `ShippingPackage`: destination (`country`, `state`, `postcode`, `city`), lines (`variant_id`, `qty`, `weight_g`, `dimensions_mm`, `line_total` Money), `contents_total`, `currency`, `free_shipping` (bool, true when the cart has a coupon that gives free shipping; an optional last constructor argument, default `false`).
+- `ShippingPackage`: destination (`country`, `state`, `postcode`, `city`), lines (`variant_id`, `qty`, `weight_g`, `dimensions_mm`, `line_total` Money), `contents_total`, `currency`, `free_shipping` (bool, true when the cart has a coupon that gives free shipping; an optional constructor argument, default `false`), `subtotal` (optional `?Money`, the contents total before coupons, set by the cart only when it has coupons; read it through `subtotal_before_discounts()`, which falls back to `contents_total`).
 - `ShippingRate`: `id` (`{type}:{instance_id}[:{suffix}]`), `label`, `cost` (Money), `meta` (array of display strings), `taxable` (bool, default `true`; `false` means the tax engine never taxes this rate, doc 02 §7.12.4).
 - `rates()` must be fast and side-effect free. It may be called on every cart read. Methods that call remote APIs must cache per package hash and time out (≤ 3 s). Core wraps the call: an exception or timeout removes that method's rates and logs it, so one failing carrier never breaks checkout.
 - Core methods: `flat_rate` (cost per order or per item), `free_shipping` (optional minimum contents total, a free-shipping coupon, or both, doc 02 §7.13.8), `local_pickup` (no address required, configurable label).

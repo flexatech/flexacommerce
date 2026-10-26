@@ -51,6 +51,25 @@ select.flexacommerce-control {
     border-color: var(--border) !important;
 }
 
+/* A picker: a bordered box holding chips and a borderless text input. */
+.flexacommerce-control.flexacommerce-picker {
+    padding: 0.25rem 0.375rem !important;
+}
+
+.flexacommerce-control.flexacommerce-picker:focus-within {
+    border-color: var(--brand-600) !important;
+}
+
+.flexacommerce-bare-input,
+.flexacommerce-bare-input:focus {
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    outline: none !important;
+    min-height: 0 !important;
+    padding: 0 0.375rem !important;
+}
+
 /* WP paints a blue focus ring outside checkboxes and radios. */
 .flexacommerce-check:focus,
 .flexacommerce-check:focus-visible {

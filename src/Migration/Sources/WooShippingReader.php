@@ -114,6 +114,8 @@ final class WooShippingReader {
 			$requires          = $text( 'requires' );
 			$out['min_amount'] = in_array( $requires, [ 'min_amount', 'either', 'both' ], true ) ? ( self::amount( $text( 'min_amount' ) ) ?? '0' ) : '0';
 			$out['requires']   = in_array( $requires, [ 'coupon', 'either', 'both' ], true ) ? $requires : '';
+			// WooCommerce reads `ignore_discounts` only when a minimum applies; the canonical flag keeps the stored value.
+			$out['ignore_discounts'] = $text( 'ignore_discounts' ) === 'yes';
 		} else {
 			$out['settings'] = $settings;
 		}

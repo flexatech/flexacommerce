@@ -29,11 +29,13 @@ final class Coupon {
 	public const MAX_CODE_LENGTH = 100;
 
 	/**
-	 * @param list<int>    $product_ids          products or variations the coupon applies to; empty is every product
+	 * @param list<int>    $product_ids          products (post ids) the coupon applies to, with every variation; empty with no $variant_ids is every product
 	 * @param list<int>    $exclude_product_ids
 	 * @param list<int>    $category_ids
 	 * @param list<int>    $exclude_category_ids
 	 * @param list<string> $emails               billing emails allowed to use it, `*` wildcards allowed; empty is everyone
+	 * @param list<int>    $variant_ids          single variations (fxc_variants ids) the coupon applies to
+	 * @param list<int>    $exclude_variant_ids
 	 */
 	public function __construct(
 		public readonly int $id,
@@ -59,6 +61,8 @@ final class Coupon {
 		public readonly string $created_at = '',
 		public readonly string $updated_at = '',
 		public readonly bool $free_shipping = false,
+		public readonly array $variant_ids = [],
+		public readonly array $exclude_variant_ids = [],
 	) {}
 
 	/** The form a shopper's code is compared in: trimmed, lower case. */
@@ -94,14 +98,18 @@ final class Coupon {
 			created_at: (string) ( $row['created_at'] ?? '' ),
 			updated_at: (string) ( $row['updated_at'] ?? '' ),
 			free_shipping: (bool) ( $row['free_shipping'] ?? false ),
+			variant_ids: self::ids( $rules['variant_ids'] ?? [] ),
+			exclude_variant_ids: self::ids( $rules['exclude_variant_ids'] ?? [] ),
 		);
 	}
 
-	/** @return array{product_ids:list<int>,exclude_product_ids:list<int>,category_ids:list<int>,exclude_category_ids:list<int>,emails:list<string>} */
+	/** @return array{product_ids:list<int>,exclude_product_ids:list<int>,variant_ids:list<int>,exclude_variant_ids:list<int>,category_ids:list<int>,exclude_category_ids:list<int>,emails:list<string>} */
 	public function rules(): array {
 		return [
 			'product_ids'          => $this->product_ids,
 			'exclude_product_ids'  => $this->exclude_product_ids,
+			'variant_ids'          => $this->variant_ids,
+			'exclude_variant_ids'  => $this->exclude_variant_ids,
 			'category_ids'         => $this->category_ids,
 			'exclude_category_ids' => $this->exclude_category_ids,
 			'emails'               => $this->emails,
@@ -110,6 +118,11 @@ final class Coupon {
 
 	public function matches( string $code ): bool {
 		return self::normalize( $this->code ) === self::normalize( $code );
+	}
+
+	/** Whether the coupon is limited to some products or variations. */
+	public function has_product_rules(): bool {
+		return $this->product_ids !== [] || $this->variant_ids !== [];
 	}
 
 	public function has_category_rules(): bool {

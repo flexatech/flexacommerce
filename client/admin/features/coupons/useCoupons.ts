@@ -26,8 +26,12 @@ export interface Coupon {
     exclude_sale_items: boolean;
     /** Turns on the free shipping methods that ask for a coupon. */
     free_shipping: boolean;
+    /** Product post ids; each covers every variation of the product. */
     product_ids: number[];
     exclude_product_ids: number[];
+    /** Single variations (variant ids). */
+    variant_ids: number[];
+    exclude_variant_ids: number[];
     category_ids: number[];
     exclude_category_ids: number[];
     emails: string[];
@@ -74,5 +78,44 @@ export function useDeleteCoupon() {
     return useMutation({
         mutationFn: (id: number) => api.delete<{ deleted: boolean }>(`admin/coupons/${id}`),
         onSettled: () => qc.invalidateQueries({ queryKey: ["coupons"] }),
+    });
+}
+
+export type TargetType = "product" | "variant" | "category";
+
+/** A row of the product and category pickers. */
+export interface Target {
+    type: TargetType;
+    id: number;
+    label: string;
+    sku: string;
+}
+
+export type TargetKind = "product" | "category";
+
+/** Products (each followed by its variations) or categories matching the text, by name or SKU. */
+export function useTargetSearch(kind: TargetKind, search: string, enabled: boolean) {
+    return useQuery({
+        queryKey: ["coupons", "targets", kind, search],
+        queryFn: () => api.get<Target[]>("admin/coupons/targets", { kind, search }),
+        enabled,
+        placeholderData: keepPreviousData,
+        staleTime: 30_000,
+    });
+}
+
+/** The rows of ids a coupon already holds; ids that no longer exist are missing from the result. */
+export function useTargetLookup(picks: { type: TargetType; id: number }[]) {
+    const of = (type: TargetType) =>
+        picks
+            .filter((p) => p.type === type)
+            .map((p) => p.id)
+            .join(",");
+    const query = { product_ids: of("product"), variant_ids: of("variant"), category_ids: of("category") };
+    return useQuery({
+        queryKey: ["coupons", "targets", "lookup", query],
+        queryFn: () => api.get<Target[]>("admin/coupons/targets", query),
+        enabled: picks.length > 0,
+        staleTime: Infinity,
     });
 }

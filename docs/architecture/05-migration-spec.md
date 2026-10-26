@@ -394,7 +394,7 @@ The `shipping` stage runs after `taxes` and, like `settings`, is one record (id 
 
 - Locations: countries and states are copied; a continent becomes its countries; postcodes are copied as patterns. A zone left with no known country or state is skipped with a warning.
 - `flat_rate`: the cost formula must be a number, `N * [qty]`, or the two added. Any other formula (`[fee]`, `[cost]`, more terms) and any shipping class cost make the method import **turned off** with a warning, so checkout never charges an amount the old store did not.
-- `free_shipping`: `requires` and the minimum map directly. WooCommerce's `min_amount` becomes FlexaCommerce's empty value (the minimum when set), and back again when a minimum is set; `coupon`, `either` and `both` are the same on both sides (doc 02 §7.13.8).
+- `free_shipping`: `requires` and the minimum map directly. WooCommerce's `min_amount` becomes FlexaCommerce's empty value (the minimum when set), and back again when a minimum is set; `coupon`, `either` and `both` are the same on both sides (doc 02 §7.13.8). WooCommerce's `ignore_discounts` (`yes`/`no`) becomes the boolean `ignore_discounts` and back.
 - `local_pickup`: title, cost and tax status. FlexaCommerce's pickup address has no WooCommerce field, so it is dropped with a warning on FXC→WC.
 - Tax status (`taxable` / `none`) is kept on flat rate and local pickup.
 - Other method types have no equivalent and are skipped with a warning.
@@ -409,6 +409,7 @@ The `coupons` stage runs last, after orders. One `coupon` record per `shop_coupo
 - Copied as they are: code, description, type (`percent`, `fixed_cart`, `fixed_product`), amount, expiry, minimum and maximum spend, usage limit and count, per-customer limit, individual use, exclude sale items, product and category rules (both lists), allowed emails. WooCommerce keeps codes in lower case.
 - Used by: FXC→WC writes the `_used_by` meta from `coupon_uses`. WC→FXC rebuilds `coupon_uses` from the imported orders' `discount` lines (not cancelled), once at the end of the orders stage and once at the end of the coupons stage, so per-customer limits count the old orders.
 - Free shipping is copied in both directions. A coupon that gives free shipping only is imported with an amount of 0; any other coupon with no amount is rejected (`unsupported_coupon`).
+- Products and variations: WooCommerce keeps both as post ids in one list. WC→FXC sends a variation to `variant_ids` (or `exclude_variant_ids`) and a product to `product_ids`; FXC→WC joins them again.
 - A limit on the number of items (`limit_usage_to_x_items`) has no equivalent; the coupon is imported **disabled** with the warning `coupon_item_limit`.
 - A product or category in the rules that was not imported is dropped with `coupon_product_missing` / `coupon_category_missing`. If that empties an "only these" list, the coupon is imported disabled (`coupon_rules_lost`), so it never applies to every product.
 - WooCommerce has no start date. A FlexaCommerce coupon that starts later goes back as a draft with the warning `coupon_starts_later`.

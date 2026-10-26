@@ -34,8 +34,8 @@ final class FxcCouponReader {
 		$money    = static fn ( ?int $minor ): ?string => $minor === null ? null : Decimal::trim( Decimal::from_minor( $minor, $currency, $exponent ) );
 		$depends  = [];
 
-		$products = $this->product_refs( $coupon->product_ids, $depends );
-		$excluded = $this->product_refs( $coupon->exclude_product_ids, $depends );
+		$products = $this->product_refs( $coupon->product_ids, $coupon->variant_ids, $depends );
+		$excluded = $this->product_refs( $coupon->exclude_product_ids, $coupon->exclude_variant_ids, $depends );
 		$cats     = $this->term_refs( $coupon->category_ids, $depends );
 		$no_cats  = $this->term_refs( $coupon->exclude_category_ids, $depends );
 
@@ -73,20 +73,22 @@ final class FxcCouponReader {
 	}
 
 	/**
-	 * A coupon holds product ids and variant ids in one list; a product post wins.
+	 * Product refs, then variant refs for the variations of the list.
 	 *
-	 * @param list<int>    $ids
+	 * @param list<int>    $product_ids
+	 * @param list<int>    $variant_ids
 	 * @param list<string> $depends
 	 * @return list<string>
 	 */
-	private function product_refs( array $ids, array &$depends ): array {
+	private function product_refs( array $product_ids, array $variant_ids, array &$depends ): array {
 		$out = [];
-		foreach ( $ids as $id ) {
+		foreach ( $product_ids as $id ) {
 			if ( get_post_type( $id ) === PostTypes::PRODUCT ) {
 				$out[]     = Ref::make( 'fxc', Record::PRODUCT, $id );
 				$depends[] = $out[ count( $out ) - 1 ];
-				continue;
 			}
+		}
+		foreach ( $variant_ids as $id ) {
 			$variant = $this->variants->find( $id );
 			if ( $variant !== null && ! $variant->is_base ) {
 				$out[]     = Ref::make( 'fxc', 'variant', $id );

@@ -258,7 +258,8 @@ final class CartService {
 			$destination,
 			$lines,
 			$state->discounts !== null ? $state->discounted_subtotal() : $state->subtotal,
-			$state->discounts?->free_shipping() ?? false
+			$state->discounts?->free_shipping() ?? false,
+			$state->discounts !== null ? $state->subtotal : null
 		);
 	}
 

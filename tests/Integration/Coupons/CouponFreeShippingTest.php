@@ -60,16 +60,16 @@ final class CouponFreeShippingTest extends CouponTestCase {
 	/** @return array<string,array{0:string,1:bool,2:int,3:bool}> */
 	public static function requirements(): array {
 		return [
-			'none, no minimum'          => [ '', false, 0, true ],
-			'none, minimum not met'     => [ '', true, 5000, false ],
-			'coupon, without one'       => [ 'coupon', false, 0, false ],
-			'coupon, with one'          => [ 'coupon', true, 0, true ],
-			'either, coupon only'       => [ 'either', true, 5000, true ],
-			'either, minimum met'       => [ 'either', false, 1000, true ],
-			'either, neither'           => [ 'either', false, 5000, false ],
-			'both, coupon below min'    => [ 'both', true, 5000, false ],
-			'both, coupon and minimum'  => [ 'both', true, 1000, true ],
-			'both, minimum, no coupon'  => [ 'both', false, 1000, false ],
+			'none, no minimum'         => [ '', false, 0, true ],
+			'none, minimum not met'    => [ '', true, 5000, false ],
+			'coupon, without one'      => [ 'coupon', false, 0, false ],
+			'coupon, with one'         => [ 'coupon', true, 0, true ],
+			'either, coupon only'      => [ 'either', true, 5000, true ],
+			'either, minimum met'      => [ 'either', false, 1000, true ],
+			'either, neither'          => [ 'either', false, 5000, false ],
+			'both, coupon below min'   => [ 'both', true, 5000, false ],
+			'both, coupon and minimum' => [ 'both', true, 1000, true ],
+			'both, minimum, no coupon' => [ 'both', false, 1000, false ],
 		];
 	}
 
@@ -85,6 +85,50 @@ final class CouponFreeShippingTest extends CouponTestCase {
 			7
 		);
 		self::assertSame( $free, $rates !== [] );
+	}
+
+	public function test_the_minimum_can_be_checked_before_discounts(): void {
+		$package  = new ShippingPackage( new Destination( 'US' ), [], new Money( 1500, 'USD' ), false, new Money( 2000, 'USD' ) );
+		$settings = [ 'min_amount' => 2000 ];
+		self::assertSame( [], ( new FreeShipping() )->rates( $package, $settings, 7 ), 'after discounts by default' );
+		self::assertCount( 1, ( new FreeShipping() )->rates( $package, $settings + [ 'ignore_discounts' => true ], 7 ) );
+
+		$plain = new ShippingPackage( new Destination( 'US' ), [], new Money( 2000, 'USD' ) );
+		self::assertSame( 2000, $plain->subtotal_before_discounts()->amount, 'no coupons: the contents total' );
+		self::assertNotSame( $plain->hash(), $package->hash() );
+	}
+
+	public function test_a_cart_with_a_discount_below_the_minimum(): void {
+		$zones = ( new ZoneRepository() )->save(
+			[
+				new Zone(
+					0,
+					'US',
+					[ 'country:US' ],
+					[],
+					[
+						new MethodInstance( 0, 'flat_rate', true, [ 'cost' => 500 ] ),
+						new MethodInstance(
+							0,
+							'free_shipping',
+							true,
+							[
+								'min_amount'       => 2000,
+								'ignore_discounts' => true,
+							]
+						),
+					]
+				),
+			]
+		);
+		$free  = 'free_shipping:' . $zones[0]->methods[1]->instance_id;
+		$this->coupon( 'FIVE', Coupon::FIXED_CART, 500 );
+		$browser = $this->shopper();
+		$this->add( $browser, $this->simple( 1000 ), 2 );
+		$browser->cart()->apply_coupon( 0, 'five' );
+
+		$form = $this->checkout( $browser )->form_state( 0 );
+		self::assertContains( $free, array_column( $form['shipping_rates'], 'id' ), 'the subtotal before the coupon meets the minimum' );
 	}
 
 	public function test_the_coupon_is_part_of_the_package_hash(): void {

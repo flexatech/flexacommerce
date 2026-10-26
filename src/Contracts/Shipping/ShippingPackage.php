@@ -17,13 +17,20 @@ final class ShippingPackage {
 	/**
 	 * @param list<PackageLine> $lines
 	 * @param bool              $free_shipping whether the cart has a coupon that gives free shipping
+	 * @param Money|null        $subtotal      the items subtotal before coupon discounts; null when it equals $contents_total
 	 */
 	public function __construct(
 		public readonly Destination $destination,
 		public readonly array $lines,
 		public readonly Money $contents_total,
 		public readonly bool $free_shipping = false,
+		public readonly ?Money $subtotal = null,
 	) {}
+
+	/** The items subtotal before coupon discounts. */
+	public function subtotal_before_discounts(): Money {
+		return $this->subtotal ?? $this->contents_total;
+	}
 
 	public function currency(): string {
 		return $this->contents_total->currency;
@@ -41,6 +48,6 @@ final class ShippingPackage {
 	/** Stable hash for caching remote quotes. */
 	public function hash(): string {
 		$lines = array_map( static fn ( PackageLine $l ): array => [ $l->variant_id, $l->qty, $l->line_total->amount ], $this->lines );
-		return md5( (string) wp_json_encode( [ $this->destination->to_array(), $lines, $this->contents_total->amount, $this->currency(), $this->free_shipping ] ) );
+		return md5( (string) wp_json_encode( [ $this->destination->to_array(), $lines, $this->contents_total->amount, $this->currency(), $this->free_shipping, $this->subtotal?->amount ] ) );
 	}
 }
