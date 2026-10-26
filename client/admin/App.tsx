@@ -2,6 +2,7 @@ import { Toaster } from "@/shared/components/ui/sonner";
 import type { AdminPage } from "@/shared/types/global";
 import { Header } from "./components/Header";
 import { AttributesPage } from "./features/attributes/AttributesPage";
+import { CouponsPage } from "./features/coupons/CouponsPage";
 import { CustomersPage } from "./features/customers/CustomersPage";
 import { MigrationPage } from "./features/migration/MigrationPage";
 import { OrdersPage } from "./features/orders/OrdersPage";
@@ -18,6 +19,8 @@ export function App({ page }: { page: AdminPage }) {
                     <OrdersPage />
                 ) : page === "flexacommerce-customers" ? (
                     <CustomersPage />
+                ) : page === "flexacommerce-coupons" ? (
+                    <CouponsPage />
                 ) : page === "flexacommerce-settings" ? (
                     <SettingsPage />
                 ) : page === "flexacommerce-migration" ? (

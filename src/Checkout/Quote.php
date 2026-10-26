@@ -15,10 +15,12 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Totals computed on the server for one cart, destination and rate. The
  * checkout page shows one and the submit computes another; they must agree.
- * `items_net` is the product lines without tax; with prices entered without
- * tax it equals the cart subtotal. `tax_failure` names the tax add-on that
- * failed when the rate table was used instead. `taxes` is null while taxes
- * are off.
+ * `items_net` is the product lines without tax and before coupons; with
+ * prices entered without tax it equals the cart subtotal. `discount` is what
+ * the coupons take off it, without tax; `taxes` are on what is left, and
+ * `undiscounted` is the same calculation before coupons, null without a
+ * discount. `tax_failure` names the tax add-on that failed when the rate
+ * table was used instead. `taxes` is null while taxes are off.
  */
 final class Quote {
 	/** @param list<ShippingRate> $rates */
@@ -35,7 +37,13 @@ final class Quote {
 		public readonly Money $items_net,
 		public readonly bool $prices_include_tax = false,
 		public readonly ?string $tax_failure = null,
+		public readonly ?Money $discount = null,
+		public readonly ?TaxResult $undiscounted = null,
 	) {}
+
+	public function discount(): Money {
+		return $this->discount ?? $this->items_net->multiply( 0 );
+	}
 
 	/** Whether the customer must give a shipping address for the chosen rate. */
 	public function needs_address(): bool {

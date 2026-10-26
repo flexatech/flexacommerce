@@ -18,6 +18,8 @@ use Flexa\Commerce\Contracts\Shipping\Destination;
 use Flexa\Commerce\Contracts\Shipping\PackageLine;
 use Flexa\Commerce\Contracts\Shipping\ShippingPackage;
 use Flexa\Commerce\Contracts\ValidationResult;
+use Flexa\Commerce\Coupons\Coupon;
+use Flexa\Commerce\Coupons\CouponService;
 use Flexa\Commerce\Inventory\StockService;
 use Flexa\Commerce\Pricing\PricingService;
 use Flexa\Commerce\Support\Clock;
@@ -34,6 +36,7 @@ defined( 'ABSPATH' ) || exit;
 final class CartService {
 	public const WRITES_PER_MINUTE = 60;
 
+	/** @param ?\Closure():CouponService $coupons built only when a cart holds a code */
 	public function __construct(
 		private readonly SessionStore $sessions,
 		private readonly ProductRepository $products,
@@ -41,6 +44,7 @@ final class CartService {
 		private readonly PricingService $pricing,
 		private readonly StockService $stock,
 		private readonly Clock $clock,
+		private readonly ?\Closure $coupons = null,
 	) {}
 
 	/** The cart without a session lookup when no cookie is present (P11). */
@@ -163,6 +167,40 @@ final class CartService {
 	}
 
 	/**
+	 * Adds a coupon code. The coupon is checked against the cart as it is;
+	 * an individual-use coupon replaces the codes already there.
+	 *
+	 * @throws InvalidCartRequest|RateLimited
+	 */
+	public function apply_coupon( int $user_id, string $code ): CartState {
+		$service = $this->coupons();
+		return $this->mutate(
+			$user_id,
+			function ( Cart $cart ) use ( $service, $code, $user_id ): Cart {
+				if ( $cart->is_empty() ) {
+					throw new InvalidCartRequest( __( 'Add a product to your cart before you apply a coupon.', 'flexacommerce' ), 'code', 'coupon_invalid' );
+				}
+				$state = $this->resolve( $cart->with_coupons( [] ), $user_id, true );
+				return $cart->with_coupons( $service->accept( $cart->coupons, $code, $state->items, $state->subtotal, $user_id ) );
+			}
+		);
+	}
+
+	/** @throws InvalidCartRequest|RateLimited */
+	public function remove_coupon( int $user_id, string $code ): CartState {
+		$code = Coupon::normalize( $code );
+		return $this->mutate(
+			$user_id,
+			static function ( Cart $cart ) use ( $code ): Cart {
+				if ( ! in_array( $code, $cart->coupons, true ) ) {
+					throw new InvalidCartRequest( __( 'This coupon is not in your cart.', 'flexacommerce' ), 'code', 'unknown_coupon' );
+				}
+				return $cart->with_coupons( array_values( array_diff( $cart->coupons, [ $code ] ) ) );
+			}
+		);
+	}
+
+	/**
 	 * Remember the address used for quotes and the chosen rate. The rate is
 	 * not checked here: checkout checks it against fresh rates.
 	 *
@@ -216,12 +254,19 @@ final class CartService {
 			}
 			$lines[] = new PackageLine( $item->line->variant_id, $item->line->quantity, $item->weight_g(), $item->dimensions_mm(), $item->total );
 		}
-		return new ShippingPackage( $destination, $lines, $state->subtotal );
+		return new ShippingPackage( $destination, $lines, $state->discounts !== null ? $state->discounted_subtotal() : $state->subtotal );
 	}
 
 	/** Lines of a resolved cart a renderer can show, with display prices. */
 	public function format( Money $money ): string {
 		return $this->pricing->format( $money );
+	}
+
+	private function coupons(): CouponService {
+		if ( $this->coupons === null ) {
+			throw new \LogicException( 'Coupons are not available.' );
+		}
+		return ( $this->coupons )();
 	}
 
 	private static function new_token(): string {
@@ -267,6 +312,9 @@ final class CartService {
 		$notices = [];
 		foreach ( $guest->lines as $line ) {
 			$cart = $cart->with_added( $line );
+		}
+		if ( $guest->coupons !== [] ) {
+			$cart = $cart->with_coupons( array_slice( array_values( array_unique( [ ...$user_cart->coupons, ...$guest->coupons ] ) ), 0, CouponService::MAX_CODES ) );
 		}
 		foreach ( $cart->lines as $line ) {
 			$product = $this->products->find( $line->product_id );
@@ -360,7 +408,19 @@ final class CartService {
 			$items[] = new CartItem( $line, $product, $variant, $unit, $total, $availability, $status );
 		}
 
-		return new CartState( $cart, $items, $this->pricing->sum( $totals ), $notices, $has_session );
+		$subtotal  = $this->pricing->sum( $totals );
+		$discounts = null;
+		if ( $cart->coupons !== [] && $items !== [] && $this->coupons !== null ) {
+			$discounts = $this->coupons()->discounts( $cart->coupons, $items, $subtotal, $user_id );
+			foreach ( $discounts->rejected as $message ) {
+				$notices[] = [
+					'code'    => 'coupon_invalid',
+					'message' => $message,
+				];
+			}
+		}
+
+		return new CartState( $cart, $items, $subtotal, $notices, $has_session, $discounts );
 	}
 
 	/**

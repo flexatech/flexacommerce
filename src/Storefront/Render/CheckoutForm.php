@@ -276,11 +276,37 @@ final class CheckoutForm {
 				esc_html( $label ),
 				esc_html( (string) ( $totals[ $key ]['formatted'] ?? '' ) )
 			);
+			if ( $key === 'subtotal' ) {
+				$html .= self::coupon_rows( (array) ( $state['coupons'] ?? [] ) );
+			}
 		}
 		if ( ! empty( $tax['included'] ) ) {
 			$html .= self::tax_rows( $tax );
 		}
 		return $html . '</tfoot></table>';
+	}
+
+	/**
+	 * One row per coupon, after the subtotal. Codes are added and removed on
+	 * the cart page; checkout.js rebuilds the rows after a requote, since
+	 * the shown discount follows the tax display of the address.
+	 *
+	 * @param array<int,mixed> $coupons the `coupons` entry of the checkout state
+	 */
+	public static function coupon_rows( array $coupons ): string {
+		$html = '';
+		foreach ( $coupons as $coupon ) {
+			if ( ! is_array( $coupon ) || empty( $coupon['valid'] ) ) {
+				continue;
+			}
+			$html .= sprintf(
+				'<tr class="fxc-checkout__coupon" data-fxc-coupon-row><th scope="row">%1$s</th><td>-%2$s</td></tr>',
+				/* translators: %s: coupon code */
+				esc_html( sprintf( __( 'Coupon: %s', 'flexacommerce' ), (string) $coupon['label'] ) ),
+				esc_html( (string) ( $coupon['discount']['formatted'] ?? '' ) )
+			);
+		}
+		return $html;
 	}
 
 	/**
@@ -473,6 +499,8 @@ final class CheckoutForm {
 				'changed'  => __( 'Your order total changed. Review the new total and place the order again.', 'flexacommerce' ),
 				/* translators: 1: tax amount, 2: tax label such as "CA State Tax". */
 				'includes' => __( 'Includes %1$s %2$s', 'flexacommerce' ),
+				/* translators: %s: coupon code */
+				'coupon'   => __( 'Coupon: %s', 'flexacommerce' ),
 				'summary'  => __( 'Please fix the following before placing your order:', 'flexacommerce' ),
 				'noRates'  => __( 'There are no shipping options for this address. Check the address or contact us.', 'flexacommerce' ),
 				'select'   => __( 'Select an option', 'flexacommerce' ),

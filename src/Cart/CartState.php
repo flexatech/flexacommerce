@@ -6,10 +6,15 @@ namespace Flexa\Commerce\Cart;
 
 use Flexa\Commerce\Contracts\Cart\CartView;
 use Flexa\Commerce\Contracts\Money;
+use Flexa\Commerce\Coupons\Discounts;
 
 defined( 'ABSPATH' ) || exit;
 
-/** The resolved cart returned by CartService: items, subtotal, notices. */
+/**
+ * The resolved cart returned by CartService: items, subtotal, notices.
+ * `discounts` is null while the cart holds no coupon code; the subtotal is
+ * before discounts.
+ */
 final class CartState {
 	/**
 	 * @param list<CartItem>                           $items
@@ -21,7 +26,27 @@ final class CartState {
 		public readonly Money $subtotal,
 		public readonly array $notices,
 		public readonly bool $has_session,
+		public readonly ?Discounts $discounts = null,
 	) {}
+
+	/** All coupons together, in prices as entered. */
+	public function discount(): Money {
+		return $this->discounts?->total() ?? $this->subtotal->multiply( 0 );
+	}
+
+	public function discounted_subtotal(): Money {
+		return $this->subtotal->subtract( $this->discount() );
+	}
+
+	/** Discount on one line, in prices as entered. */
+	public function line_discount( string $key ): int {
+		return $this->discounts?->line( $key ) ?? 0;
+	}
+
+	/** Whether a code in the cart does not apply; checkout refuses until it is removed. */
+	public function has_rejected_coupons(): bool {
+		return $this->discounts !== null && $this->discounts->rejected !== [];
+	}
 
 	public function item_count(): int {
 		return $this->cart->item_count();

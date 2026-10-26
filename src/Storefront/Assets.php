@@ -113,6 +113,10 @@ final class Assets {
 				/* translators: %d: quantity in stock */
 				'left'        => __( '%d in stock', 'flexacommerce' ),
 				'updated'     => __( 'Cart updated.', 'flexacommerce' ),
+				/* translators: %s: coupon code */
+				'coupon'      => __( 'Coupon: %s', 'flexacommerce' ),
+				'applied'     => __( 'Coupon applied.', 'flexacommerce' ),
+				'unapplied'   => __( 'Coupon removed.', 'flexacommerce' ),
 			],
 		];
 	}

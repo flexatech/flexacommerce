@@ -26,6 +26,7 @@ final class CheckoutServices {
 		private readonly OrderServices $orders,
 		private readonly PaymentServices $payments,
 		private ?TaxServices $tax = null,
+		private readonly ?\Closure $coupons = null,
 	) {}
 
 	public function pages(): CheckoutPages {
@@ -55,6 +56,8 @@ final class CheckoutServices {
 			$this->services->logger( 'checkout' ),
 			$this->services->limiter(),
 			$this->cart_taxes(),
+			null,
+			$this->coupons,
 		);
 	}
 }

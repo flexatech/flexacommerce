@@ -31,6 +31,7 @@ final class OrderService {
 	/** @var array<int,OrderView> views built for the after-commit actions of the current write */
 	private array $views = [];
 
+	/** @param ?\Closure(int):void $release_coupons gives back the coupon uses of a cancelled order, in its transaction */
 	public function __construct(
 		private readonly OrderRepository $orders,
 		private readonly HistoryRepository $history,
@@ -39,6 +40,7 @@ final class OrderService {
 		private readonly AfterCommit $after_commit,
 		private readonly Clock $clock,
 		private readonly OrderNumber $numbers,
+		private readonly ?\Closure $release_coupons = null,
 	) {}
 
 	public function find( int $order_id ): ?Order {
@@ -551,6 +553,9 @@ final class OrderService {
 			$this->deduct( $order, $ctx );
 		} elseif ( $effect > 0 ) {
 			$this->release( $order, $ctx );
+		}
+		if ( $to === S::CANCELLED && $this->release_coupons !== null && $order->items_of_type( OrderItem::DISCOUNT ) !== [] ) {
+			( $this->release_coupons )( $order->id );
 		}
 
 		$now        = $this->clock->db_now();

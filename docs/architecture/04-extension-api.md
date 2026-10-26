@@ -187,6 +187,15 @@ Because these fire after commit, a listener that throws cannot roll back the ord
 
 Rule: filters that affect money run on the server only. The browser never receives a price it can send back.
 
+### 7.0 Coupon actions
+
+| Action | Args | Notes |
+|---|---|---|
+| `flexacommerce.coupon.saved` | `Coupon $coupon, bool $created` | After the admin creates or edits a coupon (REST or `CouponEditor::save()`). `$created` is `true` for a new code. |
+| `flexacommerce.coupon.deleted` | `Coupon $coupon` | After the row is deleted. Orders that used the code keep their `discount` lines (doc 02 §7.13.5). |
+
+Coupons have no money filters in 1.0: the discount rules are fixed (doc 02 §7.13.1) so the cart, the checkout quote and the placed order always agree. A filter on the coupon amount is a candidate for a later minor release.
+
 ### 7.1 Tax contracts
 
 Published in `Contracts\Tax` in phase 4.5 (ADR-020, doc 02 §7.12). They replace the phase 3 seam `TaxCalculator::tax(): Money`, which was experimental and never released.

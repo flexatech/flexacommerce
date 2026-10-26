@@ -10,6 +10,7 @@ use Flexa\Commerce\Cart\CartService;
 use Flexa\Commerce\Cart\CartState;
 use Flexa\Commerce\Catalog\PostTypes;
 use Flexa\Commerce\Contracts\Money;
+use Flexa\Commerce\Coupons\Coupon;
 use Flexa\Commerce\Contracts\Pricing\PriceResolution;
 use Flexa\Commerce\Pricing\PricingService;
 use Flexa\Commerce\Storefront\Assets;
@@ -25,6 +26,8 @@ defined( 'ABSPATH' ) || exit;
  * state (CartPresenter).
  */
 final class CartTable {
+	private const COUPON_FORM = 'fxc-cart-coupon';
+
 	public function __construct(
 		private readonly CartPresenter $presenter,
 		private readonly CartService $cart,
@@ -84,7 +87,42 @@ final class CartTable {
 		$html .= self::totals( $data );
 		$html .= '<p class="fxc-cart__actions"><button type="submit" class="wp-element-button">' . esc_html__( 'Update cart', 'flexacommerce' ) . '</button></p>';
 		$html .= '<p class="fxc-cart__message" role="status" aria-live="polite" data-wp-text="state.message"></p>';
-		return $html . '</form></div>';
+		$html .= '</form>';
+		return $html . self::coupon_form() . '</div>';
+	}
+
+	/**
+	 * Its own form after the cart form, so Enter in the code field applies
+	 * the code. The remove buttons in the totals submit it through `form`.
+	 */
+	private static function coupon_form(): string {
+		return '<form id="' . self::COUPON_FORM . '" class="fxc-cart__coupon" method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '" data-wp-on--submit="actions.applyCoupon">'
+			. FormHandler::hidden_fields( 'coupon' )
+			. '<label for="fxc-coupon-code">' . esc_html__( 'Coupon code', 'flexacommerce' ) . '</label> '
+			. '<input id="fxc-coupon-code" type="text" name="coupon_code" maxlength="' . Coupon::MAX_CODE_LENGTH . '" autocomplete="off" data-wp-bind--value="state.couponCode" data-wp-on--input="actions.setCouponCode"> '
+			. '<button type="submit" class="wp-element-button" data-wp-bind--disabled="state.couponBusy">' . esc_html__( 'Apply', 'flexacommerce' ) . '</button>'
+			. '<span class="fxc-cart__coupon-message" role="status" aria-live="polite" data-wp-text="state.couponMessage"></span>'
+			. '</form>';
+	}
+
+	/**
+	 * One row per code: the discount, or why the code does not apply. The
+	 * remove button posts the coupon form without JavaScript.
+	 *
+	 * @param array<string,mixed> $coupon a CartPresenter coupon row
+	 */
+	private static function coupon_row( array $coupon, bool $child ): string {
+		$code = (string) ( $coupon['code'] ?? '' );
+		return sprintf(
+			'<tr class="fxc-cart__coupon-row"%1$s><th scope="row"><span data-wp-text="state.couponLabel">%2$s</span> <button type="submit" class="fxc-cart__remove-coupon" form="%3$s" name="remove_coupon" data-wp-bind--value="context.coupon.code" value="%4$s" aria-label="%5$s" data-wp-on--click="actions.removeCoupon">&times;</button></th><td data-wp-text="state.couponAmount">%6$s</td></tr>',
+			$child ? ' data-wp-each-child' : '',
+			/* translators: %s: coupon code */
+			esc_html( sprintf( __( 'Coupon: %s', 'flexacommerce' ), (string) ( $coupon['label'] ?? '' ) ) ),
+			self::COUPON_FORM,
+			esc_attr( $code ),
+			esc_attr__( 'Remove coupon', 'flexacommerce' ),
+			esc_html( ! empty( $coupon['valid'] ) ? '-' . (string) ( $coupon['discount']['formatted'] ?? '' ) : (string) ( $coupon['message'] ?? '' ) )
+		);
 	}
 
 	/**
@@ -102,8 +140,19 @@ final class CartTable {
 			esc_html__( 'Subtotal', 'flexacommerce' ),
 			esc_html( (string) ( $totals['subtotal']['formatted'] ?? '' ) )
 		);
-		$tax    = is_array( $data['tax'] ?? null ) ? $data['tax'] : null;
+		$html  .= '<template data-wp-each--coupon="state.coupons" data-wp-each-key="context.coupon.code">' . self::coupon_row( [], false ) . '</template>';
+		foreach ( (array) ( $data['coupons'] ?? [] ) as $coupon ) {
+			$html .= self::coupon_row( (array) $coupon, true );
+		}
+		$tax = is_array( $data['tax'] ?? null ) ? $data['tax'] : null;
 		if ( $tax === null ) {
+			// Without taxes the total row only shows once a coupon takes something off.
+			$html .= sprintf(
+				'<tr class="fxc-cart__total-row" data-wp-bind--hidden="!state.hasDiscount"%1$s><th scope="row">%2$s</th><td><strong data-wp-text="state.cart.totals.total.formatted">%3$s</strong></td></tr>',
+				isset( $totals['discount'] ) ? '' : ' hidden',
+				esc_html__( 'Total', 'flexacommerce' ),
+				esc_html( (string) ( $totals['total']['formatted'] ?? '' ) )
+			);
 			return $html . '</tbody></table>';
 		}
 		if ( ! empty( $tax['pending'] ) ) {

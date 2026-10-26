@@ -41,6 +41,8 @@ final class Plugin {
 
 	private ?Tax\TaxServices $tax = null;
 
+	private ?Coupons\CouponServices $coupons = null;
+
 	private ?Migration\MigrationServices $migration = null;
 
 	private ?Notifications\NotificationServices $notifications = null;
@@ -147,7 +149,13 @@ final class Plugin {
 			$this->catalog(),
 			tax: fn (): Tax\TaxService => $this->tax()->service(),
 			totals: fn ( array $data, Cart\CartState $state ): array => $this->cart_totals( $data, $state ),
+			coupons: fn (): Coupons\CouponService => $this->coupons()->service(),
 		);
+	}
+
+	/** @internal Coupon codes, built the first time a cart holds one or the Coupons screen is opened. */
+	public function coupons(): Coupons\CouponServices {
+		return $this->coupons ??= new Coupons\CouponServices( $this->services(), $this->cart()->pricing() );
 	}
 
 	/**
@@ -168,7 +176,13 @@ final class Plugin {
 	 */
 	public function orders(): Orders\OrderServices {
 		if ( $this->orders === null ) {
-			$this->orders = new Orders\OrderServices( $this->services(), $this->cart()->stock() );
+			$this->orders = new Orders\OrderServices(
+				$this->services(),
+				$this->cart()->stock(),
+				function ( int $order_id ): void {
+					$this->coupons()->service()->release( $order_id );
+				}
+			);
 			$this->notifications()->notifier()->bind();
 		}
 		return $this->orders;
@@ -191,7 +205,7 @@ final class Plugin {
 
 	/** @internal Checkout, order confirmation and order-pay. */
 	public function checkout(): Checkout\CheckoutServices {
-		return $this->checkout ??= new Checkout\CheckoutServices( $this->services(), $this->cart(), $this->shipping(), $this->orders(), $this->payments(), $this->tax() );
+		return $this->checkout ??= new Checkout\CheckoutServices( $this->services(), $this->cart(), $this->shipping(), $this->orders(), $this->payments(), $this->tax(), fn (): Coupons\CouponService => $this->coupons()->service() );
 	}
 
 	public function tax(): Tax\TaxServices {

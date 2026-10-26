@@ -1,0 +1,336 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Flexa\Commerce\Coupons;
+
+use Flexa\Commerce\Cart\CartItem;
+use Flexa\Commerce\Catalog\PostTypes;
+use Flexa\Commerce\Contracts\Exceptions\InvalidCartRequest;
+use Flexa\Commerce\Contracts\Exceptions\InvalidCheckout;
+use Flexa\Commerce\Contracts\Money;
+use Flexa\Commerce\Pricing\PricingService;
+use Flexa\Commerce\Support\Clock;
+use Flexa\Commerce\Support\IntMath;
+
+defined( 'ABSPATH' ) || exit;
+
+/**
+ * Coupon codes in the cart and at checkout (doc 02 §7.13). The cart keeps
+ * the codes; every read checks them again and computes the discount, so a
+ * coupon that expires or runs out while it sits in a cart stops applying
+ * with a message. Coupons apply in the order they were added, each on what
+ * the earlier ones left of a line, in prices as entered. A use is taken in
+ * the checkout transaction and given back when the order is cancelled.
+ */
+final class CouponService {
+	public const MAX_CODES = 10;
+
+	public function __construct(
+		private readonly CouponRepository $coupons,
+		private readonly PricingService $pricing,
+		private readonly Clock $clock,
+	) {}
+
+	public function repository(): CouponRepository {
+		return $this->coupons;
+	}
+
+	/**
+	 * The discounts of a resolved cart. Codes that do not apply are kept in
+	 * `rejected` with the reason.
+	 *
+	 * @param list<string>   $codes normalized, in the order added
+	 * @param list<CartItem> $items
+	 */
+	public function discounts( array $codes, array $items, Money $subtotal, int $user_id ): Discounts {
+		$found     = $this->coupons->by_codes( $codes );
+		$accepted  = [];
+		$rejected  = [];
+		$exclusive = false;
+		foreach ( $codes as $code ) {
+			$coupon = $found[ $code ] ?? null;
+			if ( $coupon === null ) {
+				$rejected[ $code ] = self::unknown( $code );
+				continue;
+			}
+			$error = $this->check( $coupon, $items, $subtotal, $user_id );
+			if ( $error === null && ( $exclusive || ( $coupon->individual_use && $accepted !== [] ) ) ) {
+				/* translators: %s: coupon code. */
+				$error = sprintf( __( 'Coupon "%s" cannot be used with other coupons.', 'flexacommerce' ), $coupon->code );
+			}
+			if ( $error !== null ) {
+				$rejected[ $code ] = $error;
+				continue;
+			}
+			$accepted[] = $coupon;
+			$exclusive  = $coupon->individual_use;
+		}
+		return new Discounts( $subtotal->currency, $this->calculate( $accepted, $items ), $rejected );
+	}
+
+	/**
+	 * The code list after adding `$code` to a cart with `$current`. An
+	 * individual-use coupon replaces the other codes.
+	 *
+	 * @param list<string>   $current
+	 * @param list<CartItem> $items
+	 * @return list<string>
+	 * @throws InvalidCartRequest the code does not apply; the message says why
+	 */
+	public function accept( array $current, string $code, array $items, Money $subtotal, int $user_id ): array {
+		$code = Coupon::normalize( $code );
+		if ( $code === '' ) {
+			throw new InvalidCartRequest( __( 'Enter a coupon code.', 'flexacommerce' ), 'code', 'coupon_empty' );
+		}
+		if ( in_array( $code, $current, true ) ) {
+			/* translators: %s: coupon code. */
+			throw new InvalidCartRequest( sprintf( __( 'Coupon "%s" is already applied.', 'flexacommerce' ), $code ), 'code', 'coupon_applied' );
+		}
+		$found  = $this->coupons->by_codes( [ ...$current, $code ] );
+		$coupon = $found[ $code ] ?? null;
+		$error  = $coupon !== null ? $this->check( $coupon, $items, $subtotal, $user_id ) : self::unknown( $code );
+		if ( $coupon === null || $error !== null ) {
+			throw new InvalidCartRequest( $error ?? self::unknown( $code ), 'code', 'coupon_invalid' );
+		}
+		if ( $coupon->individual_use ) {
+			return [ $code ];
+		}
+		foreach ( $current as $other ) {
+			if ( ( $found[ $other ] ?? null )?->individual_use === true ) {
+				throw new InvalidCartRequest(
+					/* translators: %s: coupon code already in the cart. */
+					sprintf( __( 'Coupon "%s" cannot be used with other coupons. Remove it first.', 'flexacommerce' ), $found[ $other ]->code ),
+					'code',
+					'coupon_invalid'
+				);
+			}
+		}
+		if ( count( $current ) >= self::MAX_CODES ) {
+			throw new InvalidCartRequest( __( 'No more coupons can be added to this cart.', 'flexacommerce' ), 'code', 'coupon_limit' );
+		}
+		return [ ...$current, $code ];
+	}
+
+	/**
+	 * Checks that need the billing email, run when the order is placed.
+	 *
+	 * @return array<string,string> field => message, empty when all coupons may be used
+	 */
+	public function check_customer( Discounts $discounts, int $user_id, string $billing_email, string $account_email = '' ): array {
+		foreach ( $discounts->rejected as $message ) {
+			return [ 'coupon' => $message ];
+		}
+		foreach ( $discounts->applied as $applied ) {
+			$coupon = $applied->coupon;
+			if ( ! $coupon->allows_email( $billing_email ) && ( $account_email === '' || ! $coupon->allows_email( $account_email ) ) ) {
+				/* translators: %s: coupon code. */
+				return [ 'coupon' => sprintf( __( 'Coupon "%s" is not valid for your email address.', 'flexacommerce' ), $coupon->code ) ];
+			}
+			if ( $coupon->per_customer_limit > 0 && $this->coupons->uses_by( $coupon->id, $user_id, $billing_email ) >= $coupon->per_customer_limit ) {
+				return [ 'coupon' => self::used_up_by_customer( $coupon ) ];
+			}
+		}
+		return [];
+	}
+
+	/**
+	 * Takes one use of each coupon for a new order. Runs inside the checkout
+	 * transaction: the usage UPDATE locks the coupon row, so the counts read
+	 * after it are exact and a refusal rolls the order back.
+	 *
+	 * @throws InvalidCheckout a coupon ran out between the quote and the order
+	 */
+	public function redeem( Discounts $discounts, int $order_id, int $user_id, string $email ): void {
+		$now = $this->clock->db_now();
+		foreach ( $discounts->applied as $applied ) {
+			$coupon = $applied->coupon;
+			if ( ! $this->coupons->take_use( $coupon->id ) ) {
+				throw new InvalidCheckout( [ 'coupon' => self::used_up( $coupon ) ] );
+			}
+			if ( $coupon->per_customer_limit > 0 && $this->coupons->uses_by( $coupon->id, $user_id, $email ) >= $coupon->per_customer_limit ) {
+				throw new InvalidCheckout( [ 'coupon' => self::used_up_by_customer( $coupon ) ] );
+			}
+			$this->coupons->record_use( $coupon->id, $order_id, $user_id, $email, $now );
+		}
+	}
+
+	/**
+	 * Gives back the uses of a cancelled order.
+	 *
+	 * @return list<int> the coupon ids released
+	 */
+	public function release( int $order_id ): array {
+		return $this->coupons->release_order( $order_id );
+	}
+
+	/**
+	 * Sequential discounts: percent of what is left of each eligible line,
+	 * a fixed amount per unit capped at what is left, or a fixed amount for
+	 * the cart split over the eligible lines by what is left of them.
+	 *
+	 * @param list<Coupon>   $coupons
+	 * @param list<CartItem> $items
+	 * @return list<AppliedCoupon>
+	 */
+	private function calculate( array $coupons, array $items ): array {
+		$left              = [];
+		$subtotal_currency = '';
+		foreach ( $items as $item ) {
+			if ( self::priced( $item ) && $item->total !== null ) {
+				$left[ $item->line->key ] = $item->total->amount;
+				$subtotal_currency        = $item->total->currency;
+			}
+		}
+		$applied = [];
+		foreach ( $coupons as $coupon ) {
+			$eligible = $this->eligible( $coupon, $items );
+			$lines    = [];
+			if ( $coupon->type === Coupon::FIXED_CART ) {
+				$base = 0;
+				foreach ( $eligible as $item ) {
+					$base += $left[ $item->line->key ];
+				}
+				$amount = min( $coupon->amount, $base );
+				if ( $amount > 0 ) {
+					$ratios = array_map( static fn ( CartItem $item ): int => $left[ $item->line->key ], $eligible );
+					$parts  = ( new Money( $amount, $subtotal_currency ) )->allocate( $ratios );
+					foreach ( $eligible as $index => $item ) {
+						$lines[ $item->line->key ] = $parts[ $index ]->amount;
+					}
+				}
+			} else {
+				foreach ( $eligible as $item ) {
+					$key           = $item->line->key;
+					$lines[ $key ] = $coupon->type === Coupon::PERCENT
+						? IntMath::mul_div_half_up( $left[ $key ], min( $coupon->amount, Coupon::FULL_PERCENT ), Coupon::FULL_PERCENT )
+						: min( $left[ $key ], $coupon->amount * $item->line->quantity );
+				}
+			}
+			foreach ( $lines as $key => $discount ) {
+				$left[ $key ] -= $discount;
+			}
+			$applied[] = new AppliedCoupon( $coupon, array_filter( $lines, static fn ( int $d ): bool => $d > 0 ) );
+		}
+		return $applied;
+	}
+
+	/**
+	 * Why a coupon does not apply to the cart, or null when it does. The
+	 * email rules wait for the billing email at checkout.
+	 *
+	 * @param list<CartItem> $items
+	 */
+	private function check( Coupon $coupon, array $items, Money $subtotal, int $user_id ): ?string {
+		$now = $this->clock->db_now();
+		if ( $coupon->status !== Coupon::ACTIVE ) {
+			return self::unknown( $coupon->code );
+		}
+		if ( $coupon->starts_at !== null && $coupon->starts_at > $now ) {
+			/* translators: %s: coupon code. */
+			return sprintf( __( 'Coupon "%s" cannot be used yet.', 'flexacommerce' ), $coupon->code );
+		}
+		if ( $coupon->expires_at !== null && $coupon->expires_at <= $now ) {
+			/* translators: %s: coupon code. */
+			return sprintf( __( 'Coupon "%s" has expired.', 'flexacommerce' ), $coupon->code );
+		}
+		if ( $coupon->min_subtotal !== null && $subtotal->amount < $coupon->min_subtotal ) {
+			return sprintf(
+				/* translators: 1: coupon code, 2: amount. */
+				__( 'The minimum spend for coupon "%1$s" is %2$s.', 'flexacommerce' ),
+				$coupon->code,
+				$this->pricing->format( new Money( $coupon->min_subtotal, $subtotal->currency ) )
+			);
+		}
+		if ( $coupon->max_subtotal !== null && $subtotal->amount > $coupon->max_subtotal ) {
+			return sprintf(
+				/* translators: 1: coupon code, 2: amount. */
+				__( 'The maximum spend for coupon "%1$s" is %2$s.', 'flexacommerce' ),
+				$coupon->code,
+				$this->pricing->format( new Money( $coupon->max_subtotal, $subtotal->currency ) )
+			);
+		}
+		if ( $coupon->usage_limit > 0 && $coupon->usage_count >= $coupon->usage_limit ) {
+			return self::used_up( $coupon );
+		}
+		if ( $coupon->per_customer_limit > 0 && $user_id > 0 && $this->coupons->uses_by( $coupon->id, $user_id, '' ) >= $coupon->per_customer_limit ) {
+			return self::used_up_by_customer( $coupon );
+		}
+		if ( $this->eligible( $coupon, $items ) === [] ) {
+			/* translators: %s: coupon code. */
+			return sprintf( __( 'Coupon "%s" does not apply to the items in your cart.', 'flexacommerce' ), $coupon->code );
+		}
+		return null;
+	}
+
+	/**
+	 * Lines the coupon may discount. Product rules match the product or the
+	 * variation; category rules match the product's categories and their
+	 * parents. Category terms are read only when a rule needs them.
+	 *
+	 * @param list<CartItem> $items
+	 * @return list<CartItem>
+	 */
+	private function eligible( Coupon $coupon, array $items ): array {
+		$priced = array_values( array_filter( $items, [ self::class, 'priced' ] ) );
+		if ( $coupon->has_category_rules() && $priced !== [] ) {
+			update_object_term_cache( array_values( array_unique( array_map( static fn ( CartItem $i ): int => $i->line->product_id, $priced ) ) ), PostTypes::PRODUCT );
+		}
+		$out = [];
+		foreach ( $priced as $item ) {
+			$ids = [ $item->line->product_id, $item->line->variant_id ];
+			if ( $coupon->product_ids !== [] && array_intersect( $ids, $coupon->product_ids ) === [] ) {
+				continue;
+			}
+			if ( array_intersect( $ids, $coupon->exclude_product_ids ) !== [] ) {
+				continue;
+			}
+			if ( $coupon->exclude_sale_items && $item->unit?->is_reduced() === true ) {
+				continue;
+			}
+			if ( $coupon->has_category_rules() ) {
+				$terms = self::categories( $item->line->product_id );
+				if ( $coupon->category_ids !== [] && array_intersect( $terms, $coupon->category_ids ) === [] ) {
+					continue;
+				}
+				if ( array_intersect( $terms, $coupon->exclude_category_ids ) !== [] ) {
+					continue;
+				}
+			}
+			$out[] = $item;
+		}
+		return $out;
+	}
+
+	/** @return list<int> the product's categories and their ancestors */
+	private static function categories( int $product_id ): array {
+		$terms = get_the_terms( $product_id, PostTypes::CATEGORY );
+		$ids   = [];
+		foreach ( is_array( $terms ) ? $terms : [] as $term ) {
+			$ids[] = $term->term_id;
+			foreach ( get_ancestors( $term->term_id, PostTypes::CATEGORY, 'taxonomy' ) as $parent ) {
+				$ids[] = (int) $parent;
+			}
+		}
+		return array_values( array_unique( $ids ) );
+	}
+
+	private static function priced( CartItem $item ): bool {
+		return $item->unit !== null && $item->total !== null && $item->product !== null && $item->variant !== null;
+	}
+
+	private static function unknown( string $code ): string {
+		/* translators: %s: coupon code. */
+		return sprintf( __( 'Coupon "%s" does not exist.', 'flexacommerce' ), $code );
+	}
+
+	private static function used_up( Coupon $coupon ): string {
+		/* translators: %s: coupon code. */
+		return sprintf( __( 'Coupon "%s" has reached its usage limit.', 'flexacommerce' ), $coupon->code );
+	}
+
+	private static function used_up_by_customer( Coupon $coupon ): string {
+		/* translators: %s: coupon code. */
+		return sprintf( __( 'You have already used coupon "%s" as often as it allows.', 'flexacommerce' ), $coupon->code );
+	}
+}

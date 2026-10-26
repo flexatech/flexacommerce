@@ -5,7 +5,7 @@
 
 export type AppTheme = "light" | "dark";
 
-export type AdminPage = "flexacommerce" | "flexacommerce-orders" | "flexacommerce-customers" | "flexacommerce-settings" | "flexacommerce-attributes" | "flexacommerce-migration" | "product-editor";
+export type AdminPage = "flexacommerce" | "flexacommerce-orders" | "flexacommerce-customers" | "flexacommerce-coupons" | "flexacommerce-settings" | "flexacommerce-attributes" | "flexacommerce-migration" | "product-editor";
 
 export type CurrencyPosition = "left" | "right" | "left_space" | "right_space";
 

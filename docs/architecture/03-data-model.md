@@ -353,6 +353,7 @@ CREATE TABLE fxc_order_items (
 - `type`: `product`, `shipping`, `fee`, `discount`, `tax`. Only `product` lines touch stock. `tax` lines are summary lines, one per rate (rate label in `name`, rate code in `code`, items tax + shipping tax in `total`, `meta` = `{rate_id, rate, compound, items_tax, shipping_tax}`), written by the tax engine (doc 02 §7.12.10) and by migration.
 - Product, shipping and fee lines keep the per-rate split of their `tax_total` in `meta.taxes` (`{"<rate_id>": amount}`). Invariant: `orders.tax_total = Σ tax lines.total = Σ other lines.tax_total`.
 - `code`: shipping rate id (`flat_rate:3`), fee code, coupon code, tax rate code.
+- `discount` lines (doc 02 §7.13.5): one per applied coupon, `name` and `code` = the code as saved, `quantity` 1, `total` = the coupon's net share of the order discount, `meta` = `{coupon_id, type, amount, discount_tax}`. They are a record: the amount is already in the product lines' `discount_total`. Invariant: `orders.discount_total = Σ product lines.discount_total = Σ discount lines.total`.
 - Amounts are **exclusive of tax**; `tax_total` holds the line's tax. `total = subtotal − discount_total` (ex-tax).
 - `attributes`: JSON snapshot `[{"label":"Color","value":"Red"}]` with display strings at purchase time.
 - Snapshot rule: `name`, `sku`, `attributes`, `unit_price` are copied at order time and never refreshed from the catalog.
@@ -669,6 +670,63 @@ The `IN` list for postcodes holds the exact code and its prefixes with `*` (`902
 
 Tax classes are not a table; they live in `flexacommerce_settings.tax_classes` (doc 02 §7.12.1). Lifecycle: written by the Taxes screen, CSV import, presets and migration through `TaxRateRepository`; never by checkout.
 
+### 4.14 `fxc_coupons` and `fxc_coupon_uses`
+
+Added with coupons (ADR-021, doc 02 §7.13), `DB_VERSION` 4.
+
+```sql
+CREATE TABLE fxc_coupons (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  code varchar(100) NOT NULL,
+  status varchar(10) NOT NULL DEFAULT 'active',
+  type varchar(20) NOT NULL,
+  amount bigint(20) NOT NULL DEFAULT 0,
+  description text NULL,
+  starts_at datetime NULL,
+  expires_at datetime NULL,
+  min_subtotal bigint(20) NULL,
+  max_subtotal bigint(20) NULL,
+  usage_limit int(10) unsigned NOT NULL DEFAULT 0,
+  usage_count int(10) unsigned NOT NULL DEFAULT 0,
+  per_customer_limit int(10) unsigned NOT NULL DEFAULT 0,
+  individual_use tinyint(1) NOT NULL DEFAULT 0,
+  exclude_sale_items tinyint(1) NOT NULL DEFAULT 0,
+  rules longtext NULL,
+  created_at datetime NOT NULL,
+  updated_at datetime NOT NULL,
+  PRIMARY KEY  (id),
+  UNIQUE KEY code (code),
+  KEY status_expires (status,expires_at)
+) {charset_collate};
+
+CREATE TABLE fxc_coupon_uses (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  coupon_id bigint(20) unsigned NOT NULL,
+  order_id bigint(20) unsigned NOT NULL,
+  user_id bigint(20) unsigned NULL,
+  email varchar(190) NOT NULL DEFAULT '',
+  created_at datetime NOT NULL,
+  PRIMARY KEY  (id),
+  UNIQUE KEY order_coupon (order_id,coupon_id),
+  KEY coupon_user (coupon_id,user_id),
+  KEY coupon_email (coupon_id,email)
+) {charset_collate};
+```
+
+| Column | Notes |
+|---|---|
+| `code` | As the admin typed it (case kept for display), at most 100 characters. Unique without regard to case: the table collation is case-insensitive, so the `UNIQUE` key and `CouponEditor`'s check refuse `SPRING` next to `Spring`. Carts store the code trimmed and lower-cased. |
+| `status` | `active` or `disabled`. Expired and used-up are computed, not stored. |
+| `type`, `amount` | `percent` (hundredths of a percent, 1 to 10000), `fixed_cart` or `fixed_product` (minor units of the store currency). |
+| `starts_at`, `expires_at` | UTC, both optional; `expires_at` must be after `starts_at`. |
+| `min_subtotal`, `max_subtotal` | Minor units, on the cart subtotal before coupons; `NULL` = no bound. |
+| `usage_limit`, `per_customer_limit` | 0 = no limit. `usage_count` is changed only by `take_use()` and `release_order()` (doc 02 §7.13.5), never by the editor. |
+| `rules` | JSON `{product_ids, exclude_product_ids, category_ids, exclude_category_ids, emails}`, each a list of at most 1,000 entries. Emails are lower-cased and may hold `*`. Bad JSON reads as no rules. The lists are only read with the coupon row, never searched, so they need no table of their own. |
+| `coupon_uses.user_id`, `email` | The customer of the order (`NULL` for a guest) and the billing email, lower-cased. The per-customer count matches either. |
+
+- **Queries.** Pricing reads the cart's codes in one `WHERE code IN (…)` and caches the rows per request; coupon rows change at checkout, so they are not in the object cache. The admin list filters by `status` and searches `code` and `description` with `LIKE`, paged; a store has hundreds of codes, not millions. The per-customer count uses `coupon_user` or `coupon_email`.
+- **Lifecycle.** Written by the Coupons screen through `CouponEditor` (and later by migration); `coupon_uses` is written by checkout and by order cancellation only. Deleting a coupon deletes its `coupon_uses` rows and keeps the orders' `discount` lines, which hold the `coupon_id` as a plain number. Uninstall drops both tables.
+
 ## 5. Query patterns and indexes
 
 | Query | Index used |
@@ -720,4 +778,4 @@ Tax classes are not a table; they live in `flexacommerce_settings.tax_classes` (
 | Migration job items table (one row per migrated entity) | Replaced by `fxc_id_map` (success) + `fxc_migration_log` (problems) | A 500,000-order migration would write 500,000+ job item rows that duplicate the id map. |
 | Customer table | Not built | §7. |
 | Product lookup table | Deferred with a measurable revisit condition | §5. |
-| Coupons tables | Post-MVP | Discount lines in orders cover history. |
+| Coupons tables | Built after 1.0 scope work (§4.14) | One row per coupon with a JSON `rules` column, and one usage row per order and coupon for the limits. |

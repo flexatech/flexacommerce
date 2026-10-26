@@ -13,6 +13,8 @@ use Flexa\Commerce\Contracts\Tax\TaxLine;
 use Flexa\Commerce\Contracts\Tax\TaxLocation;
 use Flexa\Commerce\Contracts\Tax\TaxRequest;
 use Flexa\Commerce\Contracts\Tax\TaxResult;
+use Flexa\Commerce\Coupons\AppliedCoupon;
+use Flexa\Commerce\Coupons\Coupon;
 use Flexa\Commerce\Customers\CustomerProfile;
 use Flexa\Commerce\Support\IntMath;
 use Flexa\Commerce\Support\Settings;
@@ -34,21 +36,23 @@ final class CartTaxes {
 
 	/**
 	 * The tax request for a cart: one line per priced cart item (key = cart
-	 * line key) and one `shipping` line for the rate, when there is one. An
+	 * line key) and one `shipping` line for the rate, when there is one. Item
+	 * amounts are after the coupons, unless `$discounted` is false. An
 	 * account flagged tax exempt on the Customers screen starts exempt; the
 	 * `flexacommerce.tax.exempt` filter still has the last word.
 	 */
-	public function request( CartState $state, ?ShippingRate $rate, ?TaxLocation $location, string $context = TaxRequest::CHECKOUT, int $user_id = 0, string $email = '' ): TaxRequest {
+	public function request( CartState $state, ?ShippingRate $rate, ?TaxLocation $location, string $context = TaxRequest::CHECKOUT, int $user_id = 0, string $email = '', bool $discounted = true ): TaxRequest {
 		$enabled = $this->tax->enabled();
 		$lines   = [];
 		foreach ( $state->items as $item ) {
 			if ( $item->unit === null || $item->total === null || $item->product === null || $item->variant === null ) {
 				continue;
 			}
+			$off     = $discounted ? $state->line_discount( $item->line->key ) : 0;
 			$lines[] = new TaxLine(
 				$item->line->key,
 				TaxLine::PRODUCT,
-				$item->total,
+				$off > 0 ? $item->total->subtract( new Money( $off, $item->total->currency ) ) : $item->total,
 				$item->line->quantity,
 				$enabled ? $this->tax->known_class( $item->product->tax_class_of( $item->variant ) ) : '',
 				$item->product->tax_status_of( $item->variant ),
@@ -68,6 +72,42 @@ final class CartTaxes {
 			$context,
 			$enabled && ( new CustomerProfile() )->tax_exempt( $user_id ),
 		);
+	}
+
+	/**
+	 * The items before coupons, for the subtotal and the order lines: null
+	 * when the cart has no discount, since the discounted result serves.
+	 *
+	 * @throws TaxUnavailable
+	 */
+	public function undiscounted( CartState $state, ?TaxLocation $location, int $user_id = 0, string $email = '' ): ?TaxResult {
+		if ( $state->discount()->is_zero() ) {
+			return null;
+		}
+		return $this->tax->calculate( $this->request( $state, null, $location, TaxRequest::CART, $user_id, $email, false ) )->result;
+	}
+
+	/**
+	 * Coupon rows for a totals table: the shown discount split over the
+	 * coupons by their share of it, so the rows add up to the total shown.
+	 *
+	 * @param list<array<string,mixed>> $coupons CartPresenter coupon rows
+	 * @return list<array<string,mixed>>
+	 */
+	public function coupon_rows( array $coupons, CartState $state, Money $shown ): array {
+		$applied = $state->discounts->applied ?? [];
+		$ratios  = array_map( static fn ( AppliedCoupon $a ): int => $a->total(), $applied );
+		$parts   = array_sum( $ratios ) > 0 ? $shown->allocate( $ratios ) : [];
+		$by_code = [];
+		foreach ( $applied as $index => $a ) {
+			$by_code[ Coupon::normalize( $a->coupon->code ) ] = $parts[ $index ] ?? $shown->multiply( 0 );
+		}
+		foreach ( $coupons as $i => $row ) {
+			if ( isset( $by_code[ (string) $row['code'] ] ) ) {
+				$coupons[ $i ]['discount'] = $this->presenter->money( $by_code[ (string) $row['code'] ] );
+			}
+		}
+		return $coupons;
 	}
 
 	/**
@@ -163,6 +203,13 @@ final class CartTaxes {
 			return $data;
 		}
 
+		try {
+			$base = $this->undiscounted( $state, $location, $user_id );
+		} catch ( TaxUnavailable ) {
+			$data['tax'] = $pending;
+			return $data;
+		}
+
 		$view = $this->view( $taxes, $location->country );
 		$incl = $view['included'];
 		$zero = $state->subtotal->multiply( 0 );
@@ -170,9 +217,17 @@ final class CartTaxes {
 		foreach ( $request->lines as $line ) {
 			$net = $net->add( $taxes->line( $line->key )->net ?? $line->amount );
 		}
-		$items = [];
+		$tax = $taxes->items_total();
+		// Lines and the subtotal show prices before coupons; the discount row is the difference.
+		$shown_lines = $base ?? $taxes;
+		$base_net    = $zero;
+		foreach ( $request->lines as $line ) {
+			$base_net = $base_net->add( $shown_lines->line( $line->key )->net ?? $line->amount );
+		}
+		$subtotal = $incl ? $base_net->add( $shown_lines->items_total() ) : $base_net;
+		$items    = [];
 		foreach ( (array) $data['items'] as $item ) {
-			$result = is_array( $item ) ? $taxes->line( (string) $item['key'] ) : null;
+			$result = is_array( $item ) ? $shown_lines->line( (string) $item['key'] ) : null;
 			if ( is_array( $item ) && $result !== null ) {
 				$shown         = $incl ? $result->net->add( $result->total() ) : $result->net;
 				$item['total'] = $this->presenter->money( $shown );
@@ -187,12 +242,16 @@ final class CartTaxes {
 			}
 			$items[] = $item;
 		}
-		$tax                        = $taxes->items_total();
 		$data['items']              = $items;
-		$data['totals']['subtotal'] = $this->presenter->money( $incl ? $net->add( $tax ) : $net );
-		$data['totals']['tax']      = $this->presenter->money( $tax );
-		$data['totals']['total']    = $this->presenter->money( $net->add( $tax ) );
-		$data['tax']                = $view;
+		$data['totals']['subtotal'] = $this->presenter->money( $subtotal );
+		if ( $base !== null ) {
+			$discount                   = $subtotal->subtract( $incl ? $net->add( $tax ) : $net );
+			$data['totals']['discount'] = $this->presenter->money( $discount );
+			$data['coupons']            = $this->coupon_rows( (array) ( $data['coupons'] ?? [] ), $state, $discount );
+		}
+		$data['totals']['tax']   = $this->presenter->money( $tax );
+		$data['totals']['total'] = $this->presenter->money( $net->add( $tax ) );
+		$data['tax']             = $view;
 		return $data;
 	}
 }

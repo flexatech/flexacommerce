@@ -90,6 +90,15 @@ final class FormHandler {
 				}
 				self::redirect( $back, 'updated' );
 			}
+			if ( $operation === 'coupon' ) {
+				$remove = isset( $_POST['remove_coupon'] ) ? sanitize_text_field( wp_unslash( $_POST['remove_coupon'] ) ) : '';
+				if ( $remove !== '' ) {
+					$service->remove_coupon( $user, $remove );
+					self::redirect( $back, 'coupon_removed' );
+				}
+				$service->apply_coupon( $user, isset( $_POST['coupon_code'] ) ? sanitize_text_field( wp_unslash( $_POST['coupon_code'] ) ) : '' );
+				self::redirect( $back, 'coupon_applied' );
+			}
 		} catch ( CommerceException $e ) {
 			self::redirect( $back, self::code_for( $e ), $product );
 		}
@@ -110,7 +119,7 @@ final class FormHandler {
 		if ( $message === null ) {
 			return '';
 		}
-		$error = ! in_array( $code, [ 'added', 'updated', 'removed' ], true );
+		$error = ! in_array( $code, [ 'added', 'updated', 'removed', 'coupon_applied', 'coupon_removed' ], true );
 		$link  = $code === 'added' ? ' <a href="' . esc_url( Assets::cart_url() ) . '">' . esc_html__( 'View cart', 'flexacommerce' ) . '</a>' : '';
 		return sprintf(
 			'<p class="fxc-notice%1$s" role="%2$s">%3$s%4$s</p>',
@@ -133,6 +142,12 @@ final class FormHandler {
 			'not_purchasable'    => __( 'This product cannot be bought right now.', 'flexacommerce' ),
 			'rate_limited'       => __( 'Too many cart changes. Wait a minute and try again.', 'flexacommerce' ),
 			'invalid'            => __( 'Could not update the cart. Please try again.', 'flexacommerce' ),
+			'coupon_applied'     => __( 'Coupon applied.', 'flexacommerce' ),
+			'coupon_removed'     => __( 'Coupon removed.', 'flexacommerce' ),
+			'coupon_empty'       => __( 'Enter a coupon code.', 'flexacommerce' ),
+			'coupon_duplicate'   => __( 'That coupon is already applied.', 'flexacommerce' ),
+			'coupon_invalid'     => __( 'That coupon cannot be used with this cart.', 'flexacommerce' ),
+			'coupon_limit'       => __( 'No more coupons can be added to this cart.', 'flexacommerce' ),
 		];
 	}
 
@@ -142,6 +157,8 @@ final class FormHandler {
 			$e instanceof NotPurchasable => 'not_purchasable',
 			$e instanceof RateLimited => 'rate_limited',
 			$e instanceof InvalidCartRequest && $e->reason === 'incomplete_selection' => 'incomplete',
+			$e instanceof InvalidCartRequest && $e->reason === 'coupon_applied' => 'coupon_duplicate',
+			$e instanceof InvalidCartRequest && in_array( $e->reason, [ 'coupon_empty', 'coupon_invalid', 'coupon_limit' ], true ) => $e->reason,
 			default => 'invalid',
 		};
 	}

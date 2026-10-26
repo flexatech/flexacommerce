@@ -151,6 +151,22 @@ const { state, actions } = store( 'flexacommerce/cart', {
 		gallery: {},
 		count: 0,
 		message: '',
+		couponCode: '',
+		couponBusy: false,
+		couponMessage: '',
+		get coupons() {
+			return state.cart?.coupons ?? [];
+		},
+		get hasDiscount() {
+			return !! state.cart?.totals?.discount;
+		},
+		get couponLabel() {
+			return ( i18n.coupon || '%s' ).replace( '%s', getContext().coupon.label );
+		},
+		get couponAmount() {
+			const { coupon } = getContext();
+			return coupon.valid ? '-' + coupon.discount.formatted : coupon.message;
+		},
 		get countLabel() {
 			return state.count > 0 ? String( state.count ) : '';
 		},
@@ -331,6 +347,35 @@ const { state, actions } = store( 'flexacommerce/cart', {
 				}
 			}
 		},
+		setCouponCode( event ) {
+			state.couponCode = event.target.value;
+		},
+		applyCoupon: withSyncEvent( function* ( event ) {
+			event.preventDefault();
+			if ( state.couponBusy ) {
+				return;
+			}
+			state.couponBusy = true;
+			try {
+				applyCart( yield request( 'cart/coupons', 'POST', { code: state.couponCode } ) );
+				state.couponCode = '';
+				state.couponMessage = i18n.applied;
+			} catch ( error ) {
+				state.couponMessage = error.message || i18n.failed;
+			} finally {
+				state.couponBusy = false;
+			}
+		} ),
+		removeCoupon: withSyncEvent( function* ( event ) {
+			event.preventDefault();
+			const code = getElement().ref.value;
+			try {
+				applyCart( yield request( `cart/coupons/${ encodeURIComponent( code ) }`, 'DELETE' ) );
+				state.couponMessage = i18n.unapplied;
+			} catch ( error ) {
+				state.couponMessage = error.message || i18n.failed;
+			}
+		} ),
 		removeLine: withSyncEvent( function* ( event ) {
 			event.preventDefault();
 			const { key } = getContext();

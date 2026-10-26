@@ -9,7 +9,9 @@ defined( 'ABSPATH' ) || exit;
 /**
  * The cart as stored in the session `data` column:
  * `{v:1, lines:[...], notices:[...], rate:{window,count}, shipping_rate,
- * destination:{country,state,postcode,city}, checkout_token}` (doc 03 §4.9).
+ * destination:{country,state,postcode,city}, checkout_token, coupons?}` (doc
+ * 03 §4.9). `coupons` holds normalized codes in the order added and is
+ * written only when there is one.
  * Immutable; every change returns a new instance.
  */
 final class Cart {
@@ -22,6 +24,7 @@ final class Cart {
 	 * @param list<array{code:string,message:string}> $notices shown once, then cleared by the next write
 	 * @param array{window:int,count:int}          $rate
 	 * @param array{country:string,state:string,postcode:string,city:string} $destination last address used for shipping quotes
+	 * @param list<string>                         $coupons normalized codes
 	 */
 	public function __construct(
 		public readonly array $lines = [],
@@ -38,6 +41,7 @@ final class Cart {
 			'city'     => '',
 		],
 		public readonly string $checkout_token = '',
+		public readonly array $coupons = [],
 	) {}
 
 	/** @param array<string,mixed> $data */
@@ -58,6 +62,12 @@ final class Cart {
 				];
 			}
 		}
+		$coupons = [];
+		foreach ( is_array( $data['coupons'] ?? null ) ? $data['coupons'] : [] as $code ) {
+			if ( is_string( $code ) && $code !== '' && ! in_array( $code, $coupons, true ) ) {
+				$coupons[] = $code;
+			}
+		}
 		$rate        = is_array( $data['rate'] ?? null ) ? $data['rate'] : [];
 		$destination = is_array( $data['destination'] ?? null ) ? $data['destination'] : [];
 		return new self(
@@ -74,13 +84,14 @@ final class Cart {
 				'postcode' => is_string( $destination['postcode'] ?? null ) ? $destination['postcode'] : '',
 				'city'     => is_string( $destination['city'] ?? null ) ? $destination['city'] : '',
 			],
-			is_string( $data['checkout_token'] ?? null ) ? $data['checkout_token'] : ''
+			is_string( $data['checkout_token'] ?? null ) ? $data['checkout_token'] : '',
+			$coupons
 		);
 	}
 
 	/** @return array<string,mixed> */
 	public function to_data(): array {
-		return [
+		$data = [
 			'v'              => self::VERSION,
 			'lines'          => array_map( static fn ( CartLine $l ): array => $l->to_array(), $this->lines ),
 			'notices'        => $this->notices,
@@ -89,6 +100,10 @@ final class Cart {
 			'destination'    => $this->destination,
 			'checkout_token' => $this->checkout_token,
 		];
+		if ( $this->coupons !== [] ) {
+			$data['coupons'] = $this->coupons;
+		}
+		return $data;
 	}
 
 	public function line( string $key ): ?CartLine {
@@ -147,7 +162,7 @@ final class Cart {
 		return $this->copy( lines: array_values( array_filter( $this->lines, static fn ( CartLine $l ): bool => $l->key !== $key ) ) );
 	}
 
-	/** After an order: no lines, a new checkout token. The destination is kept for the next quote. */
+	/** After an order: no lines, no coupons, a new checkout token. The destination is kept for the next quote. */
 	public function emptied( string $checkout_token = '' ): self {
 		return new self( [], [], $this->rate, '', $this->destination, $checkout_token );
 	}
@@ -171,13 +186,19 @@ final class Cart {
 		return $this->copy( checkout_token: $token );
 	}
 
+	/** @param list<string> $codes */
+	public function with_coupons( array $codes ): self {
+		return $this->copy( coupons: $codes );
+	}
+
 	/**
 	 * @param list<CartLine>|null                                     $lines
 	 * @param list<array{code:string,message:string}>|null            $notices
 	 * @param array{window:int,count:int}|null                        $rate
 	 * @param array{country:string,state:string,postcode:string,city:string}|null $destination
+	 * @param list<string>|null                                       $coupons
 	 */
-	private function copy( ?array $lines = null, ?array $notices = null, ?array $rate = null, ?string $shipping_rate = null, ?array $destination = null, ?string $checkout_token = null ): self {
+	private function copy( ?array $lines = null, ?array $notices = null, ?array $rate = null, ?string $shipping_rate = null, ?array $destination = null, ?string $checkout_token = null, ?array $coupons = null ): self {
 		return new self(
 			$lines ?? $this->lines,
 			$notices ?? $this->notices,
@@ -185,6 +206,7 @@ final class Cart {
 			$shipping_rate ?? $this->shipping_rate,
 			$destination ?? $this->destination,
 			$checkout_token ?? $this->checkout_token,
+			$coupons ?? $this->coupons,
 		);
 	}
 }

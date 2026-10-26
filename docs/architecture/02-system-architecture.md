@@ -93,9 +93,10 @@ flexacommerce/
 | Shipping | Support, Contracts | Cart internals (receives a `ShippingPackage` DTO) |
 | Tax | Support, Database, Contracts | Cart, Orders, Checkout |
 | Payments | Orders (OrderService), Database, Contracts | Cart, Checkout, Catalog |
-| Cart | Catalog, Pricing, Inventory (availability reads), Shipping, Tax, Support | Orders, Payments, Checkout |
+| Cart | Catalog, Pricing, Inventory (availability reads), Shipping, Coupons, Tax, Support | Orders, Payments, Checkout |
+| Coupons | Cart (`CartItem` values only), Catalog, Pricing, Support, Database, Contracts | Orders, Payments, Checkout |
 | Customers | Support, Contracts (saved addresses in user meta) | every service module |
-| Checkout | Cart, Pricing, Inventory, Shipping, Tax, Orders, Payments, Customers | Storefront, Api |
+| Checkout | Cart, Coupons, Pricing, Inventory, Shipping, Tax, Orders, Payments, Customers | Storefront, Api |
 | Notifications | Orders (read), Support. Triggered by hooks only | any service write method |
 | Storefront, Api, Admin, Cli | any L1 to L4 service and read repositories | each other |
 | Migration | Catalog, Orders, Payments repositories (import mode), Contracts, Support | Checkout, Cart, Notifications |
@@ -104,6 +105,7 @@ flexacommerce/
 
 - **Payments → Orders, never the reverse.** `OrderService` does not know gateways. When a payment event arrives, `PaymentService` records the transaction and calls `OrderService::apply_payment_outcome()`.
 - **Orders → Inventory only through a narrow method** (`StockService::release_for_order_lines(list<StockLine>)`). Inventory receives plain line DTOs, never `Order`.
+- **Cart and Coupons share types, not calls back.** `CartService` asks `CouponService` for the discount; `CouponService` reads `CartItem` values it is handed and never calls into Cart.
 - **Notifications are event subscribers.** They react to `flexacommerce.order.*` actions after commit and read through `OrderRepository`. No service calls the mailer.
 - **Enforcement:** an architecture test (`tests/unit/Architecture/DependencyRulesTest.php`) tokenizes every file in `src/` and fails if a `use Flexa\Commerce\X\...` statement violates the table above. No external tool such as deptrac is needed. CI runs it on every change.
 
@@ -200,8 +202,8 @@ Full method signatures are in §8. Responsibilities:
 
 | Family | Prefix | Auth | Examples |
 |---|---|---|---|
-| Admin | `/flexacommerce/v1/admin/*` | Cookie + `X-WP-Nonce` (`wp_rest`), capability check per route | `admin/orders`, `admin/orders/{id}/transitions`, `admin/products/{id}/variants`, `admin/settings`, `admin/migrations` |
-| Store | `/flexacommerce/v1/store/*` | Public, but every mutating route requires the cart session token + `X-FXC-Nonce` (doc 06 §2.3) | `store/cart`, `store/cart/items`, `store/cart/items/{key}`, `store/shipping-rates`, `store/checkout`, `store/products/{id}/variants` |
+| Admin | `/flexacommerce/v1/admin/*` | Cookie + `X-WP-Nonce` (`wp_rest`), capability check per route | `admin/orders`, `admin/orders/{id}/transitions`, `admin/products/{id}/variants`, `admin/settings`, `admin/coupons`, `admin/coupons/{id}`, `admin/migrations` |
+| Store | `/flexacommerce/v1/store/*` | Public, but every mutating route requires the cart session token + `X-FXC-Nonce` (doc 06 §2.3) | `store/cart`, `store/cart/items`, `store/cart/items/{key}`, `store/cart/coupons`, `store/cart/coupons/{code}`, `store/shipping-rates`, `store/checkout`, `store/products/{id}/variants` |
 | Webhooks | `/flexacommerce/v1/webhooks/{gateway}` | Public, gateway signature verification | |
 
 - Responses never expose table columns directly. Each endpoint has a schema (`get_item_schema`) and maps value objects through `to_array()`.
@@ -608,7 +610,7 @@ The US case drives two design limits: a ZIP-level table for a store with nexus i
 - **Golden results (2026-10-25, WooCommerce 11.2.1).** 20 cases; `./bench.sh tax-golden` (in `tools/bench`) prices them on the `tax.bench` store through a real cart and `WC_Checkout::create_order()` and writes the expected amounts into the fixture; `tests/Integration/Tax/TaxGoldenTest.php` places the same carts through `CheckoutService::place_order()` and compares total, tax total, shipping tax, items and shipping tax per rate, and net and tax per line. 19 match to the minor unit. Two differences found by the first run were fixed: the base-location adjustment rounded the net before taxing it, and an exempt order stored a `tax` line of 0 per rate.
 - **Intended divergences.**
   - *ZIP+4.* WooCommerce normalizes `95014-1234` to `950141234`, so only wildcard rows such as `950*` match it and exact ZIPs and ZIP ranges do not. FlexaCommerce cuts a US ZIP+4 to its first five digits (§7.12.3), so the address gets the same rates as `95014`. The test asserts FlexaCommerce's totals for this case and fails if WooCommerce ever starts to agree.
-- **Not covered by the golden set.** Fees (no fee API yet), coupons (phase 5+), `tax_status = shipping` items, markets and origin sourcing (FlexaCommerce only), and the form total with `tax_based_on = billing`: the checkout form is quoted for the shipping address, so the shopper sees the billing-based total only when the order is placed (a known limit of the phase 4 requote, which sends one address).
+- **Not covered by the golden set.** Fees (no fee API yet), coupons (§7.13; covered by `tests/Integration/Coupons`, not yet priced against WooCommerce), `tax_status = shipping` items, markets and origin sourcing (FlexaCommerce only), and the form total with `tax_based_on = billing`: the checkout form is quoted for the shipping address, so the shopper sees the billing-based total only when the order is placed (a known limit of the phase 4 requote, which sends one address).
 
 #### 7.12.10 Orders and refunds
 
@@ -617,6 +619,61 @@ The US case drives two design limits: a ZIP-level table for a store with nexus i
 - Invariant asserted on insert: `orders.tax_total = Σ tax lines.total = Σ other lines.tax_total`.
 - `orders.prices_include_tax` records the setting at order time. Line amounts stay exclusive of tax (doc 03 §4.3).
 - Refunds: a line refund amount is gross, as today (`refunded_total`). The engine splits it into net and tax per rate in the line's proportions with `Money::allocate()`; the split is stored in the refund transaction meta (`taxes`), so a tax report can subtract refunded tax per rate. A refund of the whole line refunds exactly the line's tax.
+
+### 7.13 Coupons
+
+Discount codes the shopper enters in the cart. Module `Coupons` (§3.2), tables `fxc_coupons` and `fxc_coupon_uses` (doc 03 §4.14), decision ADR-021 (doc 08).
+
+#### 7.13.1 Types and rules
+
+| Type | `amount` | Effect on each eligible line |
+|---|---|---|
+| `percent` | hundredths of a percent, 1 to 10000 (10000 = 100 %) | `left × amount / 10000` |
+| `fixed_cart` | minor units | the amount split over the eligible lines in proportion to what is left of each (`Money::allocate()`), capped at what is left |
+| `fixed_product` | minor units, per unit | `min(left, amount × qty)` |
+
+- **Eligibility.** `product_ids` and `exclude_product_ids` match the product or the variation. `category_ids` and `exclude_category_ids` match the product's categories and their parents, so a rule on "Clothing" covers "Clothing > Shirts". `exclude_sale_items` skips lines whose unit price is reduced. A line with no current price (a product that left the catalog) is never eligible. Category terms are read only when a coupon has a category rule.
+- **Conditions** checked whenever the cart is priced: `status = active`, `starts_at ≤ now < expires_at` (both optional), `min_subtotal ≤ subtotal ≤ max_subtotal` (both optional, on the subtotal before coupons), `usage_count < usage_limit` (0 = no limit), the per-customer limit for a logged-in shopper, and at least one eligible line. A disabled code reads as unknown to the shopper.
+- **Checked at checkout only:** allowed emails (`emails`, `*` wildcards, case-insensitive) against the billing email or the account email, and the per-customer limit counted by user id or billing email (lower-cased).
+
+#### 7.13.2 Order of application
+
+Codes apply in the order the shopper added them, each to what the earlier ones left of every line. With a 2000 cart, `TEN` (10 %) then `FIVE` (500 fixed) takes 200 then 500, total 700; in the other order it takes 500 then 150, total 650. The cart page and the admin screen state this. This matches WooCommerce's sequential mode; FlexaCommerce has no "apply all to the full price" mode.
+
+- `individual_use`: adding such a code replaces the codes already in the cart; adding another code while one is in the cart is refused.
+- At most 10 codes per cart. A code is stored in the cart normalized (trimmed, lower-cased); the shopper sees the code as saved by the admin.
+
+#### 7.13.3 Codes that stop applying
+
+A code is checked when it is added (and refused with the reason) and again on every pricing. When it no longer applies (the cart fell under the minimum, the code expired or was disabled) it stays in the cart in `Discounts::rejected` with its message: the cart shows the row with the message and a remove button, and the discount is 0. Checkout refuses while a rejected code is in the cart (`InvalidCheckout`, field `coupon`), so the shopper never pays a different total than the one they expected without seeing why. A code that applies again (the admin cleared the minimum) applies at the next pricing. Removing an unknown code is `unknown_coupon`. On login, guest codes merge into the account cart after its own codes.
+
+#### 7.13.4 Taxes
+
+- **Exclusive prices:** tax is computed on the discounted line (`CartTaxes::request()` passes `line_discount()` per line), so a 10 % coupon on a taxed line also lowers its tax by 10 %.
+- **Inclusive prices:** the discount comes off the gross price, and the engine splits what is left into net and tax. With a 10 % tax rate, a 2200 gross cart and a 10 % coupon pay 1980 for the items, of which 180 is tax.
+- **Shown discount:** with `tax_display_cart = incl` the discount row includes tax (220 above); with `excl` it is the net (200). The subtotal row shows prices before coupons; the discount row is the difference to what the lines cost after coupons, so the rows always add up to the total. The split of the shown discount per code uses `Money::allocate()` over each code's net share.
+- Shipping is never discounted.
+
+#### 7.13.5 Orders: redeem and release
+
+- Product lines store `discount_total` (net) and `total = subtotal - discount_total`; their taxes are on the discounted amount.
+- One `discount` line per applied code: `name` and `code` = the code, `total` = its net share, `meta` = `{coupon_id, type, amount, discount_tax}`. A snapshot: editing or deleting the coupon never changes an order.
+- Invariant asserted on insert: `orders.discount_total = Σ product lines.discount_total = Σ discount lines.total` (the last only when the order has discount lines).
+- **Redeem** runs inside the `place_order()` transaction after the order row exists: for each code, `take_use()` is one `UPDATE … SET usage_count = usage_count + 1 WHERE id = ? AND status = 'active' AND (usage_limit = 0 OR usage_count < usage_limit)`, which locks the row; the per-customer count read after it is exact; then a `coupon_uses` row is inserted. A failed step throws `InvalidCheckout` and the whole order rolls back, so two shoppers racing for the last use get one order and one clear message.
+- **Release:** when an order moves to `cancelled`, `OrderService` calls the release closure in the same transaction: the order's `coupon_uses` rows are deleted (`FOR UPDATE`) and each coupon's `usage_count` goes down by one. Refunds do not release a use (WooCommerce does the same).
+
+#### 7.13.6 Cost when unused
+
+A cart with no codes builds no coupon service and runs no coupon query: `CartState::$discounts` is `null`, and the public cart and checkout responses have no `coupons` field and no `totals.discount`. The performance budgets (doc 10) are unchanged. With codes, the coupons are read once per request (cached by code), plus term reads only for category rules.
+
+#### 7.13.7 Surfaces and hooks
+
+- Store REST: `POST store/cart/coupons` `{code}` (201, the cart), `DELETE store/cart/coupons/{code}` (200, the cart). Both need the cart nonce (doc 06 §2.3). Refusals are 400 (`invalid_cart_request`) with `data.field = code` and `data.reason` (`coupon_empty`, `coupon_applied`, `coupon_invalid`, `coupon_limit`).
+- No-JS form: `fxc_op=coupon` with `coupon_code` or `remove_coupon`, redirect with a result code (`coupon_applied`, `coupon_removed`, `coupon_invalid`, `coupon_empty`, `coupon_duplicate`). Without JS the message is a fixed text per result code, not the exact reason.
+- Admin REST: `admin/coupons` (GET list with `search`, `status`, `page`, `per_page` and `X-WP-Total` / `X-WP-TotalPages`; POST create, 201) and `admin/coupons/{id}` (GET, PATCH partial, DELETE), all gated by the manage capability. Validation errors are 400 with `data.field`; an unknown id is 404.
+- Admin screen: **FlexaCommerce > Coupons**. Product and category ids are typed as comma-separated lists for now (no picker).
+- Hooks: `flexacommerce.coupon.saved` (`Coupon $coupon, bool $created`) and `flexacommerce.coupon.deleted` (`Coupon $coupon`), doc 04 §7.
+- Not yet: WooCommerce coupon migration (doc 05), discount lines in the order export reader, free-shipping coupons, BOGO rules.
 
 ## 8. Service contracts (internal, signatures illustrative)
 

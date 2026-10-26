@@ -24,6 +24,7 @@ final class Menu {
 	private const ORDER = [
 		self::SLUG . '-orders',
 		self::SLUG . '-customers',
+		self::SLUG . '-coupons',
 		'edit.php?post_type=' . PostTypes::PRODUCT,
 		'edit-tags.php?taxonomy=' . PostTypes::CATEGORY . '&post_type=' . PostTypes::PRODUCT,
 		'edit-tags.php?taxonomy=' . PostTypes::TAG . '&post_type=' . PostTypes::PRODUCT,
@@ -87,6 +88,17 @@ final class Menu {
 				__( 'Customers', 'flexacommerce' ),
 				Capabilities::VIEW_ORDERS,
 				self::SLUG . '-customers',
+				[ $this, 'render_page' ]
+			)
+		);
+		$this->add(
+			self::SLUG . '-coupons',
+			(string) add_submenu_page(
+				self::SLUG,
+				__( 'Coupons', 'flexacommerce' ),
+				__( 'Coupons', 'flexacommerce' ),
+				Capabilities::MANAGE,
+				self::SLUG . '-coupons',
 				[ $this, 'render_page' ]
 			)
 		);

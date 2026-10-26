@@ -53,13 +53,22 @@ final class NewOrder {
 		if ( $expected !== $this->total ) {
 			throw new OrderTotalsMismatch( sprintf( 'Order total %d does not equal its parts (%d).', $this->total, $expected ) );
 		}
-		$lines    = 0;
-		$shipping = 0;
-		$taxed    = 0;
-		$tax      = 0;
+		$lines     = 0;
+		$shipping  = 0;
+		$taxed     = 0;
+		$tax       = 0;
+		$taken     = 0;
+		$coupons   = 0;
+		$has_lines = false;
 		foreach ( $this->items as $item ) {
+			if ( $item->type === OrderItem::DISCOUNT ) {
+				$coupons  += $item->total;
+				$has_lines = true;
+				continue;
+			}
 			if ( $item->type === OrderItem::PRODUCT ) {
 				$lines += $item->subtotal;
+				$taken += $item->discount_total;
 				// Inclusive prices: the net line is the gross minus its tax, so it is not unit price x quantity.
 				$unit_ok = $this->prices_include_tax ? $item->subtotal >= 0 : $item->subtotal === $item->unit_price * $item->quantity;
 				if ( ! $unit_ok || $item->total !== $item->subtotal - $item->discount_total ) {
@@ -78,6 +87,9 @@ final class NewOrder {
 		}
 		if ( $lines !== $this->subtotal || $shipping !== $this->shipping_total ) {
 			throw new OrderTotalsMismatch( 'Order items do not add up to the subtotal or shipping total.' );
+		}
+		if ( $taken !== $this->discount_total || ( $has_lines && $coupons !== $this->discount_total ) ) {
+			throw new OrderTotalsMismatch( sprintf( 'Order discount %d does not equal the item discounts (%d) or the coupon lines (%d).', $this->discount_total, $taken, $coupons ) );
 		}
 		if ( $tax !== $this->tax_total || $taxed !== $this->tax_total ) {
 			throw new OrderTotalsMismatch( sprintf( 'Order tax %d does not equal its tax lines (%d) or the item taxes (%d).', $this->tax_total, $tax, $taxed ) );

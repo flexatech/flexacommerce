@@ -1,27 +1,27 @@
 {
-  "_label-PXuZ1aB7.js": {
-    "file": "assets/label-PXuZ1aB7.js",
-    "name": "label"
+  "_select-Df1LA49u.js": {
+    "file": "assets/select-Df1LA49u.js",
+    "name": "select"
   },
   "admin/main.tsx": {
-    "file": "assets/admin-CB7o7oJm.js",
+    "file": "assets/admin-Bm4JTTET.js",
     "name": "admin",
     "src": "admin/main.tsx",
     "isEntry": true,
     "imports": [
-      "_label-PXuZ1aB7.js"
+      "_select-Df1LA49u.js"
     ],
     "css": [
       "assets/admin-CLaxXOcO.css"
     ]
   },
   "admin/product-editor.tsx": {
-    "file": "assets/product-editor-lh3GSnih.js",
+    "file": "assets/product-editor-BWMGA-m0.js",
     "name": "product-editor",
     "src": "admin/product-editor.tsx",
     "isEntry": true,
     "imports": [
-      "_label-PXuZ1aB7.js"
+      "_select-Df1LA49u.js"
     ],
     "css": [
       "assets/product-editor-CFUTPD_G.css"

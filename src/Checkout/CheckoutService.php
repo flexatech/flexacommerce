@@ -42,6 +42,9 @@ use Flexa\Commerce\Support\Settings;
 use Flexa\Commerce\Contracts\Tax\TaxLine;
 use Flexa\Commerce\Contracts\Tax\TaxLocation;
 use Flexa\Commerce\Contracts\Tax\TaxRequest;
+use Flexa\Commerce\Contracts\Money;
+use Flexa\Commerce\Coupons\AppliedCoupon;
+use Flexa\Commerce\Coupons\CouponService;
 use Flexa\Commerce\Tax\TaxService;
 
 defined( 'ABSPATH' ) || exit;
@@ -74,6 +77,7 @@ final class CheckoutService {
 		private readonly RateLimiter $limiter = new RateLimiter(),
 		?CartTaxes $cart_taxes = null,
 		?CustomerProfile $profile = null,
+		private readonly ?\Closure $coupons = null,
 	) {
 		$this->cart_taxes = $cart_taxes ?? new CartTaxes( $tax, $presenter );
 		$this->profile    = $profile ?? new CustomerProfile();
@@ -111,7 +115,8 @@ final class CheckoutService {
 					$net = $net->add( $item->total );
 				}
 			}
-			return new Quote( $state, $package, $needs, $rates, $rate, $shipping, $zero, $net->add( $shipping ), null, $net );
+			$discount = $state->discount();
+			return new Quote( $state, $package, $needs, $rates, $rate, $shipping, $zero, $net->subtract( $discount )->add( $shipping ), null, $net, discount: $discount );
 		}
 		$to       = new TaxLocation( $destination->country, $destination->state, $destination->postcode, $destination->city );
 		$from     = $billing !== null ? new TaxLocation( (string) $billing->country, (string) $billing->state, (string) $billing->postcode, (string) $billing->city ) : $to;
@@ -119,15 +124,18 @@ final class CheckoutService {
 		$request  = $this->cart_taxes->request( $state, $rate, $location, TaxRequest::CHECKOUT, $user_id, (string) ( $billing->email ?? '' ) );
 		$outcome  = $this->tax->calculate( $request );
 		$taxes    = $outcome->result;
+		$base     = $this->cart_taxes->undiscounted( $state, $location, $user_id, (string) ( $billing->email ?? '' ) );
 		$net      = $zero;
+		$before   = $zero;
 		foreach ( $request->lines as $line ) {
 			if ( $line->type === TaxLine::PRODUCT ) {
-				$net = $net->add( $taxes->line( $line->key )->net ?? $line->amount );
+				$net    = $net->add( $taxes->line( $line->key )->net ?? $line->amount );
+				$before = $before->add( ( $base ?? $taxes )->line( $line->key )->net ?? $line->amount );
 			}
 		}
 		$tax = $taxes->total();
 
-		return new Quote( $state, $package, $needs, $rates, $rate, $shipping, $tax, $net->add( $shipping )->add( $tax ), $taxes, $net, $request->prices_include_tax, $outcome->failure );
+		return new Quote( $state, $package, $needs, $rates, $rate, $shipping, $tax, $net->add( $shipping )->add( $tax ), $taxes, $before, $request->prices_include_tax, $outcome->failure, $before->subtract( $net ), $base );
 	}
 
 	/**
@@ -242,6 +250,9 @@ final class CheckoutService {
 		if ( $state->has_problems() ) {
 			throw new InvalidCheckout( [ 'cart' => __( 'Some items in your cart are no longer available. Review your cart and try again.', 'flexacommerce' ) ] );
 		}
+		if ( $state->has_rejected_coupons() ) {
+			throw new InvalidCheckout( [ 'coupon' => (string) ( array_values( $state->discounts->rejected ?? [] )[0] ?? '' ) ] );
+		}
 
 		$destination = $this->validator->destination( $request );
 		$quote       = $this->quote( $state, $destination, $request->shipping_rate, null, $request->user_id );
@@ -253,6 +264,9 @@ final class CheckoutService {
 		$context  = $this->context( $quote, $addresses['billing']->country, $addresses['shipping']->country ?? '', $request->user_id );
 		$gateways = $this->payments->gateways()->available( $context );
 		$errors  += $this->validator->choices( $request, $quote, $context, $gateways );
+		if ( $errors === [] && $state->discounts !== null ) {
+			$errors += $this->coupons()->check_customer( $state->discounts, $request->user_id, $addresses['billing']->email, self::account_email( $request->user_id ) );
+		}
 		if ( $errors !== [] ) {
 			throw new InvalidCheckout( $errors );
 		}
@@ -268,10 +282,13 @@ final class CheckoutService {
 		try {
 			/** @var array{0:Order,1:?Transaction} $created */
 			$created = $this->transaction->run(
-				function () use ( $new, $number, $ctx, $gateway ): array {
+				function () use ( $new, $number, $ctx, $gateway, $state, $request ): array {
 					$order = $this->orders->create( $new, $number, $ctx );
 					if ( $order->order_number !== $number ) {
 						return [ $order, null ];
+					}
+					if ( $state->discounts !== null && $state->discounts->applied !== [] ) {
+						$this->coupons()->redeem( $state->discounts, $order->id, $request->user_id, $new->customer_email );
 					}
 					return [ $order, $gateway !== null ? $this->payments->create_payment( $order, $gateway ) : null ];
 				}
@@ -455,6 +472,18 @@ final class CheckoutService {
 		return $gateway instanceof BankTransfer ? $gateway->instructions( $order->order_number ) : '';
 	}
 
+	private function coupons(): CouponService {
+		if ( $this->coupons === null ) {
+			throw new \LogicException( 'Coupons are not available.' );
+		}
+		return ( $this->coupons )();
+	}
+
+	private static function account_email( int $user_id ): string {
+		$user = $user_id > 0 ? get_userdata( $user_id ) : false;
+		return $user instanceof \WP_User ? $user->user_email : '';
+	}
+
 	public function format( int $amount, string $currency ): string {
 		return $this->money->format( $this->money->from_minor( $amount, $currency ) );
 	}
@@ -508,19 +537,27 @@ final class CheckoutService {
 			];
 		}
 		$context = $this->context( $quote, $quote->package->destination->country, '', $user_id );
+		$totals  = [
+			'subtotal' => $this->presenter->money( $this->display_subtotal( $quote ) ),
+			'shipping' => $this->presenter->money( $quote->shipping ),
+			'tax'      => $this->presenter->money( $quote->tax ),
+			'total'    => $this->presenter->money( $quote->total ),
+		];
+		$coupons = [];
+		if ( $quote->state->discounts !== null ) {
+			$discount = $this->display_discount( $quote );
+			$totals   = array_slice( $totals, 0, 1, true ) + [ 'discount' => $this->presenter->money( $discount ) ] + $totals;
+			$coupons  = $this->cart_taxes->coupon_rows( $this->presenter->coupons( $quote->state ), $quote->state, $discount );
+		}
 
 		return [
+			'coupons'         => $coupons,
 			'needs_shipping'  => $quote->needs_shipping,
 			'needs_address'   => $quote->needs_address(),
 			'shipping_rates'  => $rates,
 			'shipping_rate'   => $quote->rate->id ?? '',
 			'payment_methods' => $quote->total->amount > 0 ? $this->methods_view( $context ) : [],
-			'totals'          => [
-				'subtotal' => $this->presenter->money( $this->display_subtotal( $quote ) ),
-				'shipping' => $this->presenter->money( $quote->shipping ),
-				'tax'      => $this->presenter->money( $quote->tax ),
-				'total'    => $this->presenter->money( $quote->total ),
-			],
+			'totals'          => $totals,
 			'tax'             => $this->cart_taxes->view( $quote->taxes, $quote->package->destination->country ),
 		];
 	}
@@ -531,7 +568,20 @@ final class CheckoutService {
 			return $quote->state->subtotal;
 		}
 		$settings = $this->tax->settings( $quote->package->destination->country );
-		return $settings['tax_display_cart'] === 'incl' ? $quote->items_net->add( $quote->taxes->items_total() ) : $quote->items_net;
+		return $settings['tax_display_cart'] === 'incl' ? $quote->items_net->add( ( $quote->undiscounted ?? $quote->taxes )->items_total() ) : $quote->items_net;
+	}
+
+	/** The coupons together, shown the way the subtotal is, so subtotal - discount matches the items with tax as shown. */
+	private function display_discount( Quote $quote ): Money {
+		if ( $quote->taxes === null ) {
+			return $quote->state->discount();
+		}
+		$settings = $this->tax->settings( $quote->package->destination->country );
+		$after    = $quote->items_net->subtract( $quote->discount() );
+		if ( $settings['tax_display_cart'] === 'incl' ) {
+			$after = $after->add( $quote->taxes->items_total() );
+		}
+		return $this->display_subtotal( $quote )->subtract( $after );
 	}
 
 	/** @return list<array<string,mixed>> */
@@ -577,6 +627,8 @@ final class CheckoutService {
 				];
 			}
 			$taxed   = $quote->taxes?->line( $item->line->key );
+			$before  = $quote->undiscounted?->line( $item->line->key ) ?? $taxed;
+			$off     = $taxed !== null && $before !== null ? $before->net->amount - $taxed->net->amount : $quote->state->line_discount( $item->line->key );
 			$items[] = NewOrderItem::product(
 				$item->line->product_id,
 				$item->line->variant_id,
@@ -586,9 +638,15 @@ final class CheckoutService {
 				$attributes,
 				$item->line->quantity,
 				$item->unit->active->amount,
-				$taxed?->net->amount,
-				$taxed?->by_rate() ?? []
+				$before?->net->amount,
+				$taxed?->by_rate() ?? [],
+				$off
 			);
+		}
+		$discount = 0;
+		foreach ( $this->discount_items( $quote ) as $line ) {
+			$items[]   = $line;
+			$discount += $line->total;
 		}
 		if ( $quote->rate !== null ) {
 			$items[] = NewOrderItem::shipping( $quote->rate->id, $quote->rate->label, $quote->rate->cost->amount, $quote->taxes?->line( TaxService::SHIPPING_KEY )?->by_rate() ?? [] );
@@ -627,6 +685,7 @@ final class CheckoutService {
 			payment_method_title: $gateway !== null ? $this->payments->gateways()->title( $gateway ) : '',
 			checkout_token: $request->checkout_token,
 			locale: determine_locale(),
+			discount_total: $discount,
 			tax_total: $quote->tax->amount,
 			meta: $quote->taxes?->exempt === true ? $meta + [ '_fxc_tax_exempt' => '1' ] : $meta,
 			prices_include_tax: $quote->prices_include_tax,
@@ -635,6 +694,55 @@ final class CheckoutService {
 				? sprintf( __( 'Tax add-on %s failed at checkout; tax was calculated from the store rate table. Check the tax on this order.', 'flexacommerce' ), $quote->tax_failure )
 				: null,
 		);
+	}
+
+	/**
+	 * One discount line per coupon. Each product line's discount without tax
+	 * (and the tax it saves) is split over the coupons by what each took
+	 * off that line, so the coupon lines add up to the order discount.
+	 *
+	 * @return list<NewOrderItem>
+	 */
+	private function discount_items( Quote $quote ): array {
+		$applied = $quote->state->discounts->applied ?? [];
+		if ( $applied === [] ) {
+			return [];
+		}
+		$net = array_fill( 0, count( $applied ), 0 );
+		$tax = $net;
+		foreach ( $quote->state->items as $item ) {
+			$key    = $item->line->key;
+			$ratios = array_map( static fn ( AppliedCoupon $a ): int => $a->lines[ $key ] ?? 0, $applied );
+			if ( array_sum( $ratios ) === 0 || $item->total === null ) {
+				continue;
+			}
+			$after  = $quote->taxes?->line( $key );
+			$before = $quote->undiscounted?->line( $key ) ?? $after;
+			$off    = $after !== null && $before !== null ? $before->net->amount - $after->net->amount : array_sum( $ratios );
+			$saved  = $after !== null && $before !== null ? $before->total()->amount - $after->total()->amount : 0;
+			foreach ( ( new Money( $off, $item->total->currency ) )->allocate( $ratios ) as $index => $part ) {
+				$net[ $index ] += $part->amount;
+			}
+			if ( $saved !== 0 ) {
+				foreach ( ( new Money( $saved, $item->total->currency ) )->allocate( $ratios ) as $index => $part ) {
+					$tax[ $index ] += $part->amount;
+				}
+			}
+		}
+		$lines = [];
+		foreach ( $applied as $index => $a ) {
+			$lines[] = NewOrderItem::discount(
+				$a->coupon->code,
+				$net[ $index ],
+				[
+					'coupon_id'    => $a->coupon->id,
+					'type'         => $a->coupon->type,
+					'amount'       => $a->coupon->amount,
+					'discount_tax' => $tax[ $index ],
+				]
+			);
+		}
+		return $lines;
 	}
 
 	private function return_url( Order $order, Transaction $txn ): string {

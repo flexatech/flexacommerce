@@ -12,6 +12,7 @@ use Flexa\Commerce\Contracts\Exceptions\InvalidAttribute;
 use Flexa\Commerce\Contracts\Exceptions\CurrencyMismatch;
 use Flexa\Commerce\Contracts\Exceptions\InvalidCartRequest;
 use Flexa\Commerce\Contracts\Exceptions\InvalidCheckout;
+use Flexa\Commerce\Contracts\Exceptions\InvalidCoupon;
 use Flexa\Commerce\Contracts\Exceptions\InvalidOrderRequest;
 use Flexa\Commerce\Contracts\Exceptions\InvalidRefund;
 use Flexa\Commerce\Contracts\Exceptions\InvalidTransition;
@@ -103,6 +104,10 @@ abstract class Endpoint {
 			],
 			$e instanceof ProductNotFound  => [ 'status' => 404 ],
 			$e instanceof InvalidAttribute => [ 'status' => 400 ],
+			$e instanceof InvalidCoupon    => [
+				'status' => $e->field === 'id' ? 404 : 400,
+				'field'  => $e->field,
+			],
 			$e instanceof InsufficientStock => [
 				'status'     => 409,
 				'variant_id' => $e->variant_id,

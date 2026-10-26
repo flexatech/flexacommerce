@@ -134,6 +134,7 @@ function ItemsCard({ order }: { order: OrderDetail }) {
     const products = order.items.filter((i) => i.type === "product");
     const extras = order.items.filter((i) => i.type === "shipping" || i.type === "fee");
     const taxes = order.items.filter((i) => i.type === "tax");
+    const coupons = order.items.filter((i) => i.type === "discount").map((i) => i.name);
 
     return (
         <Card>
@@ -172,7 +173,12 @@ function ItemsCard({ order }: { order: OrderDetail }) {
             </table>
             <div className="fxc:space-y-1 fxc:border-b fxc:last:border-b-0 fxc:px-5 fxc:py-4 fxc:text-sm">
                 <Row label={__("Subtotal")} value={money(order.subtotal)} />
-                {order.discount_total > 0 && <Row label={__("Discount")} value={"−" + money(order.discount_total)} />}
+                {order.discount_total > 0 && (
+                    <Row
+                        label={coupons.length > 0 ? sprintf(__("Discount (%s)"), coupons.join(", ")) : __("Discount")}
+                        value={"−" + money(order.discount_total)}
+                    />
+                )}
                 {order.shipping_total > 0 && <Row label={__("Shipping")} value={money(order.shipping_total)} />}
                 {order.fee_total > 0 && <Row label={__("Fees")} value={money(order.fee_total)} />}
                 {taxes.length > 0

@@ -1,4 +1,4 @@
-import { Activity, ArrowLeftRight, Receipt, Settings, Store, Tags, Users } from "lucide-react";
+import { Activity, ArrowLeftRight, Receipt, Settings, Store, Tags, TicketPercent, Users } from "lucide-react";
 
 import { cn } from "@/shared/lib/cn";
 import { __ } from "@/shared/lib/i18n";
@@ -8,6 +8,7 @@ import type { AdminPage } from "@/shared/types/global";
 const NAV: { page: AdminPage; label: string; icon: typeof Activity }[] = [
     { page: "flexacommerce-orders", label: __("Orders"), icon: Receipt },
     { page: "flexacommerce-customers", label: __("Customers"), icon: Users },
+    { page: "flexacommerce-coupons", label: __("Coupons"), icon: TicketPercent },
     { page: "flexacommerce-attributes", label: __("Attributes"), icon: Tags },
     { page: "flexacommerce", label: __("Status"), icon: Activity },
     { page: "flexacommerce-settings", label: __("Settings"), icon: Settings },

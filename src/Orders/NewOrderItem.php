@@ -40,14 +40,25 @@ final class NewOrderItem {
 
 	/**
 	 * With prices entered including tax, `$unit_price` is the shop price and
-	 * `$net` the line amount without tax (doc 03 §4.13).
+	 * `$net` the line amount without tax (doc 03 §4.13). `$discount` is the
+	 * coupons' share of the line without tax; the taxes are on what is left.
 	 *
 	 * @param list<array{label:string,value:string}> $attributes
 	 * @param array<string,int>                      $taxes rate key => tax on the line
 	 */
-	public static function product( int $product_id, int $variant_id, int $stock_id, string $name, ?string $sku, array $attributes, int $quantity, int $unit_price, ?int $net = null, array $taxes = [] ): self {
+	public static function product( int $product_id, int $variant_id, int $stock_id, string $name, ?string $sku, array $attributes, int $quantity, int $unit_price, ?int $net = null, array $taxes = [], int $discount = 0 ): self {
 		$subtotal = $net ?? $unit_price * $quantity;
-		return new self( OrderItem::PRODUCT, $name, $quantity, $unit_price, $subtotal, $subtotal, $product_id, $variant_id, $stock_id, '', $sku, $attributes, 0, array_sum( $taxes ), self::taxes_meta( $taxes ) );
+		return new self( OrderItem::PRODUCT, $name, $quantity, $unit_price, $subtotal, $subtotal - $discount, $product_id, $variant_id, $stock_id, '', $sku, $attributes, $discount, array_sum( $taxes ), self::taxes_meta( $taxes ) );
+	}
+
+	/**
+	 * One line per coupon, a record of what it took off (doc 02 §7.13). The
+	 * amount is already inside the product lines, without tax.
+	 *
+	 * @param array<string,mixed> $meta {coupon_id, type, amount, discount_tax}
+	 */
+	public static function discount( string $code, int $total, array $meta ): self {
+		return new self( OrderItem::DISCOUNT, $code, 1, $total, $total, $total, code: $code, meta: $meta );
 	}
 
 	/** @param array<string,int> $taxes rate key => tax on the shipping cost */

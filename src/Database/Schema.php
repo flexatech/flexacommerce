@@ -17,7 +17,7 @@ defined( 'ABSPATH' ) || exit;
  */
 // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- schema DDL on plugin-owned tables, no user input.
 final class Schema {
-	public const DB_VERSION        = '3';
+	public const DB_VERSION        = '4';
 	public const DB_VERSION_OPTION = 'flexacommerce_db_version';
 	public const OPTION_PREFIX     = 'flexacommerce_';
 
@@ -339,6 +339,41 @@ final class Schema {
 				KEY rate_type (rate_id,type),
 				KEY type_code (type,code),
 				KEY type_range (type,range_from)
+			) {$charset};",
+			'coupons'            => "CREATE TABLE {$p}coupons (
+				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+				code varchar(100) NOT NULL,
+				status varchar(10) NOT NULL DEFAULT 'active',
+				type varchar(20) NOT NULL,
+				amount bigint(20) NOT NULL DEFAULT 0,
+				description text NULL,
+				starts_at datetime NULL,
+				expires_at datetime NULL,
+				min_subtotal bigint(20) NULL,
+				max_subtotal bigint(20) NULL,
+				usage_limit int(10) unsigned NOT NULL DEFAULT 0,
+				usage_count int(10) unsigned NOT NULL DEFAULT 0,
+				per_customer_limit int(10) unsigned NOT NULL DEFAULT 0,
+				individual_use tinyint(1) NOT NULL DEFAULT 0,
+				exclude_sale_items tinyint(1) NOT NULL DEFAULT 0,
+				rules longtext NULL,
+				created_at datetime NOT NULL,
+				updated_at datetime NOT NULL,
+				PRIMARY KEY  (id),
+				UNIQUE KEY code (code),
+				KEY status_expires (status,expires_at)
+			) {$charset};",
+			'coupon_uses'        => "CREATE TABLE {$p}coupon_uses (
+				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+				coupon_id bigint(20) unsigned NOT NULL,
+				order_id bigint(20) unsigned NOT NULL,
+				user_id bigint(20) unsigned NULL,
+				email varchar(190) NOT NULL DEFAULT '',
+				created_at datetime NOT NULL,
+				PRIMARY KEY  (id),
+				UNIQUE KEY order_coupon (order_id,coupon_id),
+				KEY coupon_user (coupon_id,user_id),
+				KEY coupon_email (coupon_id,email)
 			) {$charset};",
 			'logs'               => "CREATE TABLE {$p}logs (
 				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,

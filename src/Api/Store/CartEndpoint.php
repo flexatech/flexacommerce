@@ -6,6 +6,7 @@ namespace Flexa\Commerce\Api\Store;
 
 use Flexa\Commerce\Cart\CartState;
 use Flexa\Commerce\Contracts\CommerceException;
+use Flexa\Commerce\Coupons\Coupon;
 use Flexa\Commerce\Plugin;
 use WP_Error;
 use WP_REST_Request;
@@ -15,7 +16,7 @@ use WP_REST_Server;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * `store/cart` and `store/cart/items` (doc 04 §2). The body is
+ * `store/cart`, `store/cart/items` and `store/cart/coupons` (doc 04 §2). The body is
  * `CartPresenter`'s shape.
  */
 final class CartEndpoint extends StoreEndpoint {
@@ -94,6 +95,37 @@ final class CartEndpoint extends StoreEndpoint {
 				],
 			]
 		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/store/cart/coupons',
+			[
+				[
+					'methods'             => WP_REST_Server::CREATABLE,
+					'callback'            => [ $this, 'apply_coupon' ],
+					'permission_callback' => [ $this, 'write_permission' ],
+					'args'                => [
+						'code' => [
+							'type'      => 'string',
+							'required'  => true,
+							'maxLength' => Coupon::MAX_CODE_LENGTH,
+						],
+					],
+				],
+			]
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/store/cart/coupons/(?P<code>[^/]+)',
+			[
+				[
+					'methods'             => WP_REST_Server::DELETABLE,
+					'callback'            => [ $this, 'remove_coupon' ],
+					'permission_callback' => [ $this, 'write_permission' ],
+				],
+			]
+		);
 	}
 
 	/** @param WP_REST_Request<array<string,mixed>> $request */
@@ -139,6 +171,18 @@ final class CartEndpoint extends StoreEndpoint {
 		return $this->run(
 			static fn (): CartState => Plugin::instance()->cart()->cart()->remove( get_current_user_id(), (string) $request->get_param( 'key' ) )
 		);
+	}
+
+	/** @param WP_REST_Request<array<string,mixed>> $request */
+	public function apply_coupon( WP_REST_Request $request ): WP_REST_Response|WP_Error {
+		$code = sanitize_text_field( (string) $request->get_param( 'code' ) );
+		return $this->run( static fn (): CartState => Plugin::instance()->cart()->cart()->apply_coupon( get_current_user_id(), $code ), 201 );
+	}
+
+	/** @param WP_REST_Request<array<string,mixed>> $request */
+	public function remove_coupon( WP_REST_Request $request ): WP_REST_Response|WP_Error {
+		$code = sanitize_text_field( rawurldecode( (string) $request->get_param( 'code' ) ) );
+		return $this->run( static fn (): CartState => Plugin::instance()->cart()->cart()->remove_coupon( get_current_user_id(), $code ) );
 	}
 
 	/** @param WP_REST_Request<array<string,mixed>> $request */

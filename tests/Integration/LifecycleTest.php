@@ -53,7 +53,7 @@ final class LifecycleTest extends \WP_UnitTestCase {
 		Settings::update( [ 'remove_data_on_uninstall' => true ] );
 		Uninstaller::run();
 
-		self::assertCount( 16, Schema::missing_tables() );
+		self::assertCount( 18, Schema::missing_tables() );
 		self::assertFalse( get_option( Settings::OPTION ) );
 		self::assertFalse( get_option( Schema::DB_VERSION_OPTION ) );
 		self::assertNull( get_role( Roles::STORE_MANAGER ) );

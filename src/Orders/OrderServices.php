@@ -20,6 +20,7 @@ final class OrderServices {
 	public function __construct(
 		private readonly Services $services,
 		private readonly StockService $stock,
+		private readonly ?\Closure $release_coupons = null,
 	) {}
 
 	public function orders(): OrderRepository {
@@ -39,6 +40,7 @@ final class OrderServices {
 			$this->services->after_commit(),
 			$this->services->clock(),
 			new OrderNumber( $this->services->sequence() ),
+			$this->release_coupons,
 		);
 	}
 

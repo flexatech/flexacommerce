@@ -71,7 +71,13 @@ final class OrderConfirmation {
 			. '<thead><tr><th scope="col">' . esc_html__( 'Product', 'flexacommerce' ) . '</th><th scope="col">' . esc_html__( 'Total', 'flexacommerce' ) . '</th></tr></thead><tbody>';
 		$shipping = [];
 		$taxes    = [];
+		$coupons  = [];
 		foreach ( $order->items as $item ) {
+			if ( $item->type === OrderItem::DISCOUNT ) {
+				/* translators: %s: coupon code */
+				$coupons[] = [ sprintf( __( 'Coupon: %s', 'flexacommerce' ), $item->name ), -$item->total ];
+				continue;
+			}
 			if ( $item->type === OrderItem::SHIPPING ) {
 				$shipping[] = $item->name;
 				continue;
@@ -96,7 +102,7 @@ final class OrderConfirmation {
 			);
 		}
 		$html .= '</tbody><tfoot>';
-		$rows  = [ [ __( 'Subtotal', 'flexacommerce' ), $order->subtotal ] ];
+		$rows  = [ [ __( 'Subtotal', 'flexacommerce' ), $order->subtotal ], ...$coupons ];
 		if ( $shipping !== [] ) {
 			$rows[] = [ __( 'Shipping', 'flexacommerce' ) . ' (' . implode( ', ', $shipping ) . ')', $order->shipping_total ];
 		}

@@ -33,8 +33,13 @@ final class CartPresenter {
 				'currency' => $state->subtotal->currency,
 			],
 			'notices'     => $state->notices,
-			'needs_fixes' => $state->has_problems(),
+			'needs_fixes' => $state->has_problems() || $state->has_rejected_coupons(),
 		];
+		if ( $state->discounts !== null ) {
+			$data['coupons']            = $this->coupons( $state );
+			$data['totals']['discount'] = $this->money( $state->discount() );
+			$data['totals']['total']    = $this->money( $state->discounted_subtotal() );
+		}
 		if ( $this->totals !== null ) {
 			$data = ( $this->totals )( $data, $state );
 		}
@@ -46,6 +51,28 @@ final class CartPresenter {
 		 * @param CartState           $state
 		 */
 		return (array) apply_filters( 'flexacommerce.rest.cart.response', $data, $state );
+	}
+
+	/**
+	 * The codes in the order added; one that does not apply carries the
+	 * reason. `code` is the form to send back to remove it.
+	 *
+	 * @return list<array{code:string,label:string,valid:bool,message:string,discount:array{amount:int,formatted:string}}>
+	 */
+	public function coupons( CartState $state ): array {
+		$discounts = $state->discounts;
+		$rows      = [];
+		foreach ( $state->cart->coupons as $code ) {
+			$applied = $discounts?->find( $code );
+			$rows[]  = [
+				'code'     => $code,
+				'label'    => $applied !== null ? $applied->coupon->code : $code,
+				'valid'    => $applied !== null,
+				'message'  => (string) ( $discounts->rejected[ $code ] ?? '' ),
+				'discount' => $this->money( new Money( $applied?->total() ?? 0, $state->subtotal->currency ) ),
+			];
+		}
+		return $rows;
 	}
 
 	/** @return array<string,mixed> */
