@@ -191,6 +191,25 @@ final class CouponMigrationTest extends \WP_UnitTestCase {
 		$this->assertContains( 'coupon_starts_later', $codes );
 	}
 
+	public function test_a_buy_x_get_y_coupon_stays_in_flexacommerce(): void {
+		$this->run_job( Direction::WC_TO_FXC );
+		$this->fxc_editor()->save(
+			[
+				'code'    => 'b2g1',
+				'type'    => Coupon::BUY_X_GET_Y,
+				'amount'  => Coupon::FULL_PERCENT,
+				'buy_qty' => 2,
+				'get_qty' => 1,
+			]
+		);
+
+		$job = $this->run_job( Direction::FXC_TO_WC );
+		$this->assertContains( $job->status, JobStatus::FINISHED );
+		$this->assertSame( 1, $job->counter( 'coupons', 'rejected' ) );
+		$this->assertSame( 0, wc_get_coupon_id_by_code( 'b2g1' ), 'WooCommerce has no buy X get Y coupon.' );
+		$this->assertContains( 'unsupported_coupon', array_column( $this->service->log( $job->id )['rows'], 'code' ) );
+	}
+
 	/** @param (callable(\WC_Coupon):mixed)|null $edit */
 	private static function wc_coupon( string $code, string $type, string $amount, ?callable $edit = null ): int {
 		$coupon = new \WC_Coupon();

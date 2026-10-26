@@ -49,7 +49,7 @@ final class FxcCouponWriter {
 		$currency = Settings::string( 'currency' );
 		$exponent = Currency::exponent( $currency );
 		$source   = strtoupper( (string) ( $data['currency'] ?? '' ) );
-		if ( $source !== '' && $source !== $currency && $type !== Coupon::PERCENT ) {
+		if ( $source !== '' && $source !== $currency && $type !== Coupon::PERCENT && $type !== Coupon::BUY_X_GET_Y ) {
 			$this->problems[] = Problem::warning( 'coupon_currency', sprintf( 'The coupon "%1$s" is in %2$s and the store uses %3$s. The amounts are copied as they are.', $code, $source, $currency ) );
 		}
 		$amount        = $this->amount( (string) ( $data['amount'] ?? '0' ), $type, $currency, $exponent, $code );
@@ -63,7 +63,10 @@ final class FxcCouponWriter {
 		$products = $this->products( (array) ( $data['products'] ?? [] ), $map, $code );
 		$excluded = $this->products( (array) ( $data['exclude_products'] ?? [] ), $map, $code );
 		$cats     = $this->terms( (array) ( $data['categories'] ?? [] ), $map, $code );
-		if ( ( $products === [ [], [] ] && (array) ( $data['products'] ?? [] ) !== [] ) || ( $cats === [] && (array) ( $data['categories'] ?? [] ) !== [] ) ) {
+		$gets     = $this->products( (array) ( $data['get_products'] ?? [] ), $map, $code );
+		$get_cats = $this->terms( (array) ( $data['get_categories'] ?? [] ), $map, $code );
+		$get_lost = $gets === [ [], [] ] && $get_cats === [] && ( (array) ( $data['get_products'] ?? [] ) !== [] || (array) ( $data['get_categories'] ?? [] ) !== [] );
+		if ( ( $products === [ [], [] ] && (array) ( $data['products'] ?? [] ) !== [] ) || ( $cats === [] && (array) ( $data['categories'] ?? [] ) !== [] ) || $get_lost ) {
 			$status           = Coupon::DISABLED;
 			$this->problems[] = Problem::warning( 'coupon_rules_lost', sprintf( 'None of the products or categories the coupon "%s" is limited to were imported. It was imported disabled so it does not apply to every product.', $code ) );
 		}
@@ -102,6 +105,12 @@ final class FxcCouponWriter {
 			'category_ids'         => $cats,
 			'exclude_category_ids' => $this->terms( (array) ( $data['exclude_categories'] ?? [] ), $map, $code ),
 			'emails'               => array_values( array_map( 'strval', (array) ( $data['emails'] ?? [] ) ) ),
+			'buy_qty'              => (int) ( $data['buy_qty'] ?? 0 ),
+			'get_qty'              => (int) ( $data['get_qty'] ?? 0 ),
+			'repeat_limit'         => max( 0, (int) ( $data['repeat_limit'] ?? 0 ) ),
+			'get_product_ids'      => $gets[0],
+			'get_variant_ids'      => $gets[1],
+			'get_category_ids'     => $get_cats,
 		];
 		try {
 			$coupon = $this->editor->save( $input, $target );
@@ -136,7 +145,7 @@ final class FxcCouponWriter {
 		if ( ! Decimal::is_decimal( $value ) ) {
 			return 0;
 		}
-		if ( $type !== Coupon::PERCENT ) {
+		if ( $type !== Coupon::PERCENT && $type !== Coupon::BUY_X_GET_Y ) {
 			[ $minor, $exact ] = Decimal::to_minor( $value, $currency, $exponent );
 			if ( ! $exact ) {
 				$this->problems[] = Problem::warning( 'coupon_rounded', sprintf( 'The amount of the coupon "%1$s" was rounded to %2$s.', $code, Decimal::from_minor( $minor, $currency, $exponent ) ) );

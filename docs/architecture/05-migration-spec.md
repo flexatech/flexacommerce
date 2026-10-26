@@ -414,6 +414,7 @@ The `coupons` stage runs last, after orders. One `coupon` record per `shop_coupo
 - WooCommerce has no start date. A FlexaCommerce coupon that starts later goes back as a draft with the warning `coupon_starts_later`.
 - A code the target already uses for another coupon rejects the record (`duplicate_code`); the target's coupon stays as it is. On WooCommerce only published coupons are checked, as WooCommerce does.
 - A money coupon from a store in another currency is copied as it is, with the warning `coupon_currency`. Percentages are not affected.
+- Buy X get Y: the record carries `buy_qty`, `get_qty`, `repeat_limit`, `get_products` and `get_categories` (references, as above). WooCommerce has no such type, so FXC→WC rejects the record (`unsupported_coupon`); FXC→FXC through a file keeps it, and a Y list emptied by missing references disables the coupon (`coupon_rules_lost`).
 
 A second run updates the coupon it created, in place, and its usage count.
 

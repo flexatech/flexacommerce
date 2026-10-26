@@ -20,6 +20,11 @@ final class CouponEditor {
 
 	private const ID_LISTS = [ 'product_ids', 'exclude_product_ids', 'variant_ids', 'exclude_variant_ids', 'category_ids', 'exclude_category_ids' ];
 
+	private const GET_LISTS = [ 'get_product_ids', 'get_variant_ids', 'get_category_ids' ];
+
+	/** Units a buy X get Y set may ask for on either side. */
+	private const MAX_SET_QTY = 999;
+
 	public function __construct(
 		private readonly CouponRepository $coupons,
 		private readonly Clock $clock,
@@ -103,8 +108,12 @@ final class CouponEditor {
 		if ( $amount === null || $amount < 0 || ( $amount === 0 && ! $free_shipping ) ) {
 			throw new InvalidCoupon( __( 'The amount must be more than zero.', 'flexacommerce' ), 'amount' );
 		}
-		if ( $type === Coupon::PERCENT && $amount > Coupon::FULL_PERCENT ) {
+		$bogo = $type === Coupon::BUY_X_GET_Y;
+		if ( ( $type === Coupon::PERCENT || $bogo ) && $amount > Coupon::FULL_PERCENT ) {
 			throw new InvalidCoupon( __( 'A percentage cannot be more than 100.', 'flexacommerce' ), 'amount' );
+		}
+		if ( $bogo && $amount === 0 ) {
+			throw new InvalidCoupon( __( 'The amount must be more than zero.', 'flexacommerce' ), 'amount' );
 		}
 
 		$status = self::text( $in['status'] ?? Coupon::ACTIVE );
@@ -146,6 +155,14 @@ final class CouponEditor {
 			$rules[ $field ] = self::ids( $in[ $field ] ?? [], $field );
 		}
 		$rules['emails'] = self::emails( $in['emails'] ?? [] );
+		$rules          += $bogo ? self::set( $in ) : [
+			'buy_qty'          => 0,
+			'get_qty'          => 0,
+			'repeat_limit'     => 0,
+			'get_product_ids'  => [],
+			'get_variant_ids'  => [],
+			'get_category_ids' => [],
+		];
 
 		return [
 			'code'               => $code,
@@ -160,12 +177,41 @@ final class CouponEditor {
 			'usage_limit'        => $limits['usage_limit'],
 			'per_customer_limit' => $limits['per_customer_limit'],
 			// A cart discount is split over the lines; an item limit has nothing to count there.
-			'item_limit'         => $type === Coupon::FIXED_CART ? 0 : $limits['item_limit'],
+			'item_limit'         => $type === Coupon::FIXED_CART || $bogo ? 0 : $limits['item_limit'],
 			'individual_use'     => ! empty( $in['individual_use'] ),
 			'exclude_sale_items' => ! empty( $in['exclude_sale_items'] ),
 			'free_shipping'      => $free_shipping,
 			'rules'              => $rules,
 		];
+	}
+
+	/**
+	 * The buy X get Y set: how many units are bought and discounted, how
+	 * often, and which units can be the discounted ones.
+	 *
+	 * @param array<string,mixed> $in
+	 * @return array<string,int|list<int>>
+	 * @throws InvalidCoupon
+	 */
+	private static function set( array $in ): array {
+		$out = [];
+		foreach ( [ 'buy_qty', 'get_qty' ] as $field ) {
+			$value = self::integer( $in[ $field ] ?? null, $field );
+			if ( $value === null || $value < 1 || $value > self::MAX_SET_QTY ) {
+				/* translators: %d: the largest quantity allowed */
+				throw new InvalidCoupon( sprintf( __( 'Enter a quantity from 1 to %d.', 'flexacommerce' ), self::MAX_SET_QTY ), $field );
+			}
+			$out[ $field ] = $value;
+		}
+		$repeat = self::integer( $in['repeat_limit'] ?? 0, 'repeat_limit' ) ?? 0;
+		if ( $repeat < 0 || $repeat > 4294967295 ) {
+			throw new InvalidCoupon( __( 'Usage limits must be zero (no limit) or more.', 'flexacommerce' ), 'repeat_limit' );
+		}
+		$out['repeat_limit'] = $repeat;
+		foreach ( self::GET_LISTS as $field ) {
+			$out[ $field ] = self::ids( $in[ $field ] ?? [], $field );
+		}
+		return $out;
 	}
 
 	private static function text( mixed $value ): string {

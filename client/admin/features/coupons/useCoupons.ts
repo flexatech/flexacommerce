@@ -2,14 +2,17 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 
 import { api } from "@/shared/lib/api";
 
-export type CouponType = "percent" | "fixed_cart" | "fixed_product";
+export type CouponType = "percent" | "fixed_cart" | "fixed_product" | "buy_x_get_y";
+
+/** Types whose amount is in hundredths of a percent. */
+export const isPercentType = (type: CouponType): boolean => type === "percent" || type === "buy_x_get_y";
 export type CouponStatus = "active" | "disabled";
 
 export interface Coupon {
     id: number;
     code: string;
     type: CouponType;
-    /** Minor units, or hundredths of a percent for `percent` (1000 = 10 %). */
+    /** Minor units, or hundredths of a percent for `percent` and `buy_x_get_y` (1000 = 10 %). */
     amount: number;
     status: CouponStatus;
     description: string;
@@ -37,6 +40,15 @@ export interface Coupon {
     category_ids: number[];
     exclude_category_ids: number[];
     emails: string[];
+    /** Buy X get Y: units bought and units discounted per set; 0 for other types. */
+    buy_qty: number;
+    get_qty: number;
+    /** Sets one order gets at most. 0 is no limit. */
+    repeat_limit: number;
+    /** What a set discounts. Empty: the same items that count as bought. */
+    get_product_ids: number[];
+    get_variant_ids: number[];
+    get_category_ids: number[];
     created_at: string | null;
     updated_at: string | null;
     currency: string;

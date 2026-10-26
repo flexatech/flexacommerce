@@ -719,13 +719,13 @@ CREATE TABLE fxc_coupon_uses (
 |---|---|
 | `code` | As the admin typed it (case kept for display), at most 100 characters. Unique without regard to case: the table collation is case-insensitive, so the `UNIQUE` key and `CouponEditor`'s check refuse `SPRING` next to `Spring`. Carts store the code trimmed and lower-cased. |
 | `status` | `active` or `disabled`. Expired and used-up are computed, not stored. |
-| `type`, `amount` | `percent` (hundredths of a percent, 1 to 10000), `fixed_cart` or `fixed_product` (minor units of the store currency). 0 only when `free_shipping` is set. |
+| `type`, `amount` | `percent` or `buy_x_get_y` (hundredths of a percent, 1 to 10000), `fixed_cart` or `fixed_product` (minor units of the store currency). 0 only when `free_shipping` is set. |
 | `free_shipping` | 1 turns on the `free_shipping` methods that ask for a coupon (doc 02 §7.13.8). |
 | `starts_at`, `expires_at` | UTC, both optional; `expires_at` must be after `starts_at`. |
 | `min_subtotal`, `max_subtotal` | Minor units, on the cart subtotal before coupons; `NULL` = no bound. |
-| `item_limit` | Units a `percent` or `fixed_product` coupon discounts at most, the dearest first (doc 02 §7.13.1). 0 = every unit; always 0 for `fixed_cart`. |
+| `item_limit` | Units a `percent` or `fixed_product` coupon discounts at most, the dearest first (doc 02 §7.13.1). 0 = every unit; always 0 for `fixed_cart` and `buy_x_get_y`. |
 | `usage_limit`, `per_customer_limit` | 0 = no limit. `usage_count` is changed only by `take_use()` and `release_order()` (doc 02 §7.13.5), never by the editor. |
-| `rules` | JSON `{product_ids, exclude_product_ids, variant_ids, exclude_variant_ids, category_ids, exclude_category_ids, emails}` (product ids are post ids, variant ids are `fxc_variants` ids), each a list of at most 1,000 entries. Emails are lower-cased and may hold `*`. Bad JSON reads as no rules. The lists are only read with the coupon row, never searched, so they need no table of their own. |
+| `rules` | JSON `{product_ids, exclude_product_ids, variant_ids, exclude_variant_ids, category_ids, exclude_category_ids, emails, buy_qty, get_qty, repeat_limit, get_product_ids, get_variant_ids, get_category_ids}` (product ids are post ids, variant ids are `fxc_variants` ids), each list at most 1,000 entries. The buy X get Y fields (doc 02 §7.13.1) are 0 and empty for other types; being in the JSON, they needed no DB_VERSION. Emails are lower-cased and may hold `*`. Bad JSON reads as no rules. The lists are only read with the coupon row, never searched, so they need no table of their own. |
 | `coupon_uses.user_id`, `email` | The customer of the order (`NULL` for a guest) and the billing email, lower-cased. The per-customer count matches either. |
 
 - **Queries.** Pricing reads the cart's codes in one `WHERE code IN (…)` and caches the rows per request; coupon rows change at checkout, so they are not in the object cache. The admin list filters by `status` and searches `code` and `description` with `LIKE`, paged; a store has hundreds of codes, not millions. The per-customer count uses `coupon_user` or `coupon_email`.

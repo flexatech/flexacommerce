@@ -12,7 +12,7 @@ import { __, sprintf } from "@/shared/lib/i18n";
 import { inputToMinor, minorToInput, parseDecimal } from "@/shared/lib/units";
 import { MoneyInput } from "../../components/MoneyInput";
 import { TargetPicker, type Pick } from "./TargetPicker";
-import { useSaveCoupon, type Coupon, type CouponInput, type CouponType } from "./useCoupons";
+import { isPercentType, useSaveCoupon, type Coupon, type CouponInput, type CouponType } from "./useCoupons";
 
 /** What the form edits; dates are `datetime-local` text in the browser's time zone. */
 interface Draft {
@@ -37,6 +37,11 @@ interface Draft {
     categories: Pick[];
     exclude_categories: Pick[];
     emails: string;
+    buy_qty: string;
+    get_qty: string;
+    repeat_limit: string;
+    get_products: Pick[];
+    get_categories: Pick[];
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -62,11 +67,12 @@ const picks = (type: Pick["type"], ids: number[] | undefined): Pick[] => (ids ??
 const idsOf = (list: Pick[], type: Pick["type"]): number[] => list.filter((p) => p.type === type).map((p) => p.id);
 
 function draftOf(coupon: Coupon | null): Draft {
+    const bogo = coupon?.type === "buy_x_get_y";
     return {
         code: coupon?.code ?? "",
         type: coupon?.type ?? "percent",
-        percent: coupon?.type === "percent" ? String(coupon.amount / 100) : "",
-        amount: coupon !== null && coupon.type !== "percent" ? coupon.amount : 0,
+        percent: coupon !== null && isPercentType(coupon.type) ? String(coupon.amount / 100) : "",
+        amount: coupon !== null && !isPercentType(coupon.type) ? coupon.amount : 0,
         status: coupon?.status ?? "active",
         description: coupon?.description ?? "",
         starts_at: toLocalInput(coupon?.starts_at ?? null),
@@ -84,15 +90,21 @@ function draftOf(coupon: Coupon | null): Draft {
         categories: picks("category", coupon?.category_ids),
         exclude_categories: picks("category", coupon?.exclude_category_ids),
         emails: (coupon?.emails ?? []).join(", "),
+        buy_qty: bogo ? String(coupon.buy_qty) : "1",
+        get_qty: bogo ? String(coupon.get_qty) : "1",
+        repeat_limit: bogo && coupon.repeat_limit > 0 ? String(coupon.repeat_limit) : "",
+        get_products: [...picks("product", coupon?.get_product_ids), ...picks("variant", coupon?.get_variant_ids)],
+        get_categories: picks("category", coupon?.get_category_ids),
     };
 }
 
 function inputOf(draft: Draft): CouponInput {
     const percent = parseDecimal(draft.percent);
+    const bogo = draft.type === "buy_x_get_y";
     return {
         code: draft.code.trim(),
         type: draft.type,
-        amount: draft.type === "percent" ? (percent === null || Number.isNaN(percent) ? 0 : Math.round(percent * 100)) : draft.amount,
+        amount: isPercentType(draft.type) ? (percent === null || Number.isNaN(percent) ? 0 : Math.round(percent * 100)) : draft.amount,
         status: draft.status,
         description: draft.description,
         starts_at: toUtc(draft.starts_at),
@@ -101,7 +113,7 @@ function inputOf(draft: Draft): CouponInput {
         max_subtotal: draft.max_subtotal,
         usage_limit: Number(draft.usage_limit) || 0,
         per_customer_limit: Number(draft.per_customer_limit) || 0,
-        item_limit: draft.type === "fixed_cart" ? 0 : Number(draft.item_limit) || 0,
+        item_limit: draft.type === "fixed_cart" || bogo ? 0 : Number(draft.item_limit) || 0,
         individual_use: draft.individual_use,
         exclude_sale_items: draft.exclude_sale_items,
         free_shipping: draft.free_shipping,
@@ -115,6 +127,12 @@ function inputOf(draft: Draft): CouponInput {
             .split(/[\s,]+/)
             .map((e) => e.trim())
             .filter(Boolean),
+        buy_qty: bogo ? Number(draft.buy_qty) || 0 : 0,
+        get_qty: bogo ? Number(draft.get_qty) || 0 : 0,
+        repeat_limit: bogo ? Number(draft.repeat_limit) || 0 : 0,
+        get_product_ids: bogo ? idsOf(draft.get_products, "product") : [],
+        get_variant_ids: bogo ? idsOf(draft.get_products, "variant") : [],
+        get_category_ids: bogo ? idsOf(draft.get_categories, "category") : [],
     };
 }
 
@@ -258,23 +276,32 @@ export function CouponDialog({ open, coupon, onOpenChange }: Props) {
                                         { value: "percent", label: __("Percentage of the items") },
                                         { value: "fixed_cart", label: __("Fixed amount off the cart") },
                                         { value: "fixed_product", label: __("Fixed amount off each item") },
+                                        { value: "buy_x_get_y", label: __("Buy X, get Y") },
                                     ]}
                                 />
                             )}
                         </Field>
                         <Field
-                            label={draft.type === "percent" ? __("Percentage") : sprintf(__("Amount (%s)"), currency.code)}
+                            label={
+                                draft.type === "buy_x_get_y"
+                                    ? __("Percentage off the Y items")
+                                    : isPercentType(draft.type)
+                                      ? __("Percentage")
+                                      : sprintf(__("Amount (%s)"), currency.code)
+                            }
                             help={
                                 draft.free_shipping
                                     ? __("May be 0 when the coupon only gives free shipping.")
                                     : draft.type === "fixed_product"
                                       ? __("Taken off every unit of the items it applies to.")
-                                      : undefined
+                                      : draft.type === "buy_x_get_y"
+                                        ? __("100 makes them free.")
+                                        : undefined
                             }
                             error={errors.amount}
                         >
                             {(id) =>
-                                draft.type === "percent" ? (
+                                isPercentType(draft.type) ? (
                                     <Input id={id} inputMode="decimal" value={draft.percent} onChange={(e) => set("percent", e.target.value)} />
                                 ) : (
                                     <MoneyInput id={id} value={draft.amount} exponent={currency.exponent} onChange={(minor) => set("amount", minor)} />
@@ -318,7 +345,7 @@ export function CouponDialog({ open, coupon, onOpenChange }: Props) {
                                 />
                             )}
                         </Field>
-                        {draft.type !== "fixed_cart" && (
+                        {draft.type !== "fixed_cart" && draft.type !== "buy_x_get_y" && (
                             <Field
                                 label={__("Limit to items")}
                                 help={__("Units in the cart it discounts at most, the most expensive first. Empty: every unit.")}
@@ -330,6 +357,87 @@ export function CouponDialog({ open, coupon, onOpenChange }: Props) {
                             </Field>
                         )}
                     </div>
+
+                    {draft.type === "buy_x_get_y" && (
+                        <fieldset className="fxc:space-y-4">
+                            <legend className="fxc:mb-2 fxc:text-sm fxc:font-medium">{__("Buy X, get Y")}</legend>
+                            <p className="fxc:text-muted-foreground fxc:text-xs">
+                                {__(
+                                    "Each set is X items bought and Y items discounted. The cheapest items it may discount go first; the products and categories under Restrictions are what counts as bought.",
+                                )}
+                            </p>
+                            <div className="fxc:grid fxc:gap-4 fxc:sm:grid-cols-3">
+                                <Field label={__("Buy (X)")} error={errors.buy_qty}>
+                                    {(id) => (
+                                        <Input
+                                            id={id}
+                                            type="number"
+                                            min={1}
+                                            max={999}
+                                            step={1}
+                                            required
+                                            value={draft.buy_qty}
+                                            onChange={(e) => set("buy_qty", e.target.value)}
+                                        />
+                                    )}
+                                </Field>
+                                <Field label={__("Get (Y)")} error={errors.get_qty}>
+                                    {(id) => (
+                                        <Input
+                                            id={id}
+                                            type="number"
+                                            min={1}
+                                            max={999}
+                                            step={1}
+                                            required
+                                            value={draft.get_qty}
+                                            onChange={(e) => set("get_qty", e.target.value)}
+                                        />
+                                    )}
+                                </Field>
+                                <Field label={__("Sets per order")} help={__("Empty: no limit.")} error={errors.repeat_limit}>
+                                    {(id) => (
+                                        <Input
+                                            id={id}
+                                            type="number"
+                                            min={0}
+                                            step={1}
+                                            value={draft.repeat_limit}
+                                            onChange={(e) => set("repeat_limit", e.target.value)}
+                                        />
+                                    )}
+                                </Field>
+                            </div>
+                            <div className="fxc:grid fxc:gap-4 fxc:sm:grid-cols-2">
+                                <Field
+                                    label={__("Y products")}
+                                    help={__("What a set discounts. Empty: the same items that count as bought.")}
+                                    error={errors.get_product_ids ?? errors.get_variant_ids}
+                                >
+                                    {(id) => (
+                                        <TargetPicker
+                                            id={id}
+                                            kind="product"
+                                            value={draft.get_products}
+                                            onChange={(v) => set("get_products", v)}
+                                            placeholder={__("Search products")}
+                                        />
+                                    )}
+                                </Field>
+                                <Field label={__("Y categories")} help={__("Subcategories are included.")} error={errors.get_category_ids}>
+                                    {(id) => (
+                                        <TargetPicker
+                                            id={id}
+                                            kind="category"
+                                            value={draft.get_categories}
+                                            onChange={(v) => set("get_categories", v)}
+                                            placeholder={__("Search categories")}
+                                        />
+                                    )}
+                                </Field>
+                            </div>
+                        </fieldset>
+                    )}
 
                     <div className="fxc:space-y-3">
                         <Check

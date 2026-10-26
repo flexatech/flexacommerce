@@ -22,6 +22,11 @@ function amountText(coupon: Coupon): string {
     if (coupon.type === "percent") {
         return `${coupon.amount / 100} %`;
     }
+    if (coupon.type === "buy_x_get_y") {
+        return coupon.amount >= 10000
+            ? sprintf(__("Buy %1$d, get %2$d free"), coupon.buy_qty, coupon.get_qty)
+            : sprintf(__("Buy %1$d, get %2$d at %3$s %% off"), coupon.buy_qty, coupon.get_qty, String(coupon.amount / 100));
+    }
     const money = orderMoney(coupon.amount, coupon.currency);
     return coupon.type === "fixed_product" ? sprintf(__("%s per item"), money) : money;
 }

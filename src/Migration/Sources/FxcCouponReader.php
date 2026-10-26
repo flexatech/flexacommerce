@@ -38,6 +38,8 @@ final class FxcCouponReader {
 		$excluded = $this->product_refs( $coupon->exclude_product_ids, $coupon->exclude_variant_ids, $depends );
 		$cats     = $this->term_refs( $coupon->category_ids, $depends );
 		$no_cats  = $this->term_refs( $coupon->exclude_category_ids, $depends );
+		$gets     = $this->product_refs( $coupon->get_product_ids, $coupon->get_variant_ids, $depends );
+		$get_cats = $this->term_refs( $coupon->get_category_ids, $depends );
 
 		return new Record(
 			Record::COUPON,
@@ -47,7 +49,7 @@ final class FxcCouponReader {
 				'status'             => $coupon->status,
 				'description'        => $coupon->description,
 				'discount_type'      => $coupon->type,
-				'amount'             => $coupon->type === Coupon::PERCENT ? Decimal::trim( Decimal::divide( (string) $coupon->amount, '100', 2 ) ) : (string) $money( $coupon->amount ),
+				'amount'             => $coupon->is_percentage() ? Decimal::trim( Decimal::divide( (string) $coupon->amount, '100', 2 ) ) : (string) $money( $coupon->amount ),
 				'currency'           => $currency,
 				'starts_at'          => Dates::from_db( $coupon->starts_at ),
 				'expires_at'         => Dates::from_db( $coupon->expires_at ),
@@ -65,6 +67,11 @@ final class FxcCouponReader {
 				'categories'         => $cats,
 				'exclude_categories' => $no_cats,
 				'emails'             => $coupon->emails,
+				'buy_qty'            => $coupon->buy_qty,
+				'get_qty'            => $coupon->get_qty,
+				'repeat_limit'       => $coupon->repeat_limit,
+				'get_products'       => $gets,
+				'get_categories'     => $get_cats,
 				'used_by'            => $this->coupons->used_by( $id ),
 				'modified_at'        => Dates::from_db( $coupon->updated_at !== '' ? $coupon->updated_at : null ),
 			],

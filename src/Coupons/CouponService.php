@@ -170,7 +170,8 @@ final class CouponService {
 	 * the cart split over the eligible lines by what is left of them. An
 	 * item limit counts units from the dearest line down, as WooCommerce
 	 * does; a line only partly counted is discounted on its share of what
-	 * is left.
+	 * is left. Buy X get Y takes its percentage off the units sets() picks,
+	 * on their share of what is left.
 	 *
 	 * @param list<Coupon>   $coupons
 	 * @param list<CartItem> $items
@@ -189,7 +190,13 @@ final class CouponService {
 		foreach ( $coupons as $coupon ) {
 			$eligible = $this->eligible( $coupon, $items );
 			$lines    = [];
-			if ( $coupon->type === Coupon::FIXED_CART ) {
+			if ( $coupon->type === Coupon::BUY_X_GET_Y ) {
+				foreach ( $this->sets( $coupon, $items ) as $key => $units ) {
+					$quantity      = $this->quantity( $items, $key );
+					$base          = $units === $quantity ? $left[ $key ] : IntMath::mul_div_half_up( $left[ $key ], $units, $quantity );
+					$lines[ $key ] = IntMath::mul_div_half_up( $base, min( $coupon->amount, Coupon::FULL_PERCENT ), Coupon::FULL_PERCENT );
+				}
+			} elseif ( $coupon->type === Coupon::FIXED_CART ) {
 				$base = 0;
 				foreach ( $eligible as $item ) {
 					$base += $left[ $item->line->key ];
@@ -204,7 +211,7 @@ final class CouponService {
 				}
 			} else {
 				$units = $coupon->item_limit > 0 ? $coupon->item_limit : PHP_INT_MAX;
-				foreach ( $coupon->item_limit > 0 ? self::dearest_first( $eligible ) : $eligible as $item ) {
+				foreach ( $coupon->item_limit > 0 ? self::by_unit_price( $eligible ) : $eligible as $item ) {
 					$key      = $item->line->key;
 					$quantity = $item->line->quantity;
 					$apply    = min( $quantity, $units );
@@ -271,6 +278,15 @@ final class CouponService {
 			/* translators: %s: coupon code. */
 			return sprintf( __( 'Coupon "%s" does not apply to the items in your cart.', 'flexacommerce' ), $coupon->code );
 		}
+		if ( $coupon->type === Coupon::BUY_X_GET_Y && $this->sets( $coupon, $items ) === [] ) {
+			return sprintf(
+				/* translators: 1: coupon code, 2: units to buy, 3: units discounted. */
+				__( 'Coupon "%1$s" is a buy %2$d, get %3$d offer. Add the items it covers to your cart to use it.', 'flexacommerce' ),
+				$coupon->code,
+				$coupon->buy_qty,
+				$coupon->get_qty
+			);
+		}
 		return null;
 	}
 
@@ -279,11 +295,20 @@ final class CouponService {
 	 * variation; category rules match the product's categories and their
 	 * parents. Category terms are read only when a rule needs them.
 	 *
+	 * Lines the coupon applies to. With $get, the lines a buy X get Y coupon
+	 * may discount: its get rules in place of the product and category
+	 * rules (the same lines when it has none), with the same exclusions.
+	 *
 	 * @param list<CartItem> $items
 	 * @return list<CartItem>
 	 */
-	private function eligible( Coupon $coupon, array $items ): array {
-		$priced = array_values( array_filter( $items, [ self::class, 'priced' ] ) );
+	private function eligible( Coupon $coupon, array $items, bool $get = false ): array {
+		$get           = $get && $coupon->has_get_rules();
+		$product_ids   = $get ? $coupon->get_product_ids : $coupon->product_ids;
+		$variant_ids   = $get ? $coupon->get_variant_ids : $coupon->variant_ids;
+		$category_ids  = $get ? $coupon->get_category_ids : $coupon->category_ids;
+		$product_rules = $product_ids !== [] || $variant_ids !== [];
+		$priced        = array_values( array_filter( $items, [ self::class, 'priced' ] ) );
 		if ( $coupon->has_category_rules() && $priced !== [] ) {
 			update_object_term_cache( array_values( array_unique( array_map( static fn ( CartItem $i ): int => $i->line->product_id, $priced ) ) ), PostTypes::PRODUCT );
 		}
@@ -291,7 +316,7 @@ final class CouponService {
 		foreach ( $priced as $item ) {
 			$product = $item->line->product_id;
 			$variant = $item->line->variant_id;
-			if ( $coupon->has_product_rules() && ! in_array( $product, $coupon->product_ids, true ) && ! in_array( $variant, $coupon->variant_ids, true ) ) {
+			if ( $product_rules && ! in_array( $product, $product_ids, true ) && ! in_array( $variant, $variant_ids, true ) ) {
 				continue;
 			}
 			if ( in_array( $product, $coupon->exclude_product_ids, true ) || in_array( $variant, $coupon->exclude_variant_ids, true ) ) {
@@ -302,7 +327,7 @@ final class CouponService {
 			}
 			if ( $coupon->has_category_rules() ) {
 				$terms = self::categories( $item->line->product_id );
-				if ( $coupon->category_ids !== [] && array_intersect( $terms, $coupon->category_ids ) === [] ) {
+				if ( $category_ids !== [] && array_intersect( $terms, $category_ids ) === [] ) {
 					continue;
 				}
 				if ( array_intersect( $terms, $coupon->exclude_category_ids ) !== [] ) {
@@ -315,17 +340,90 @@ final class CouponService {
 	}
 
 	/**
-	 * Lines by unit price before discounts, dearest first; equal prices keep
-	 * the cart order.
+	 * The units a buy X get Y coupon discounts, by line key. Each set takes
+	 * the cheapest units it may discount, then the dearest units left that
+	 * count as bought; sets are formed until one cannot be, or the repeat
+	 * limit is reached. With the same lines on both sides this discounts
+	 * the cheapest Y of every X + Y units.
+	 *
+	 * @param list<CartItem> $items
+	 * @return array<string,int>
+	 */
+	private function sets( Coupon $coupon, array $items ): array {
+		if ( $coupon->buy_qty < 1 || $coupon->get_qty < 1 ) {
+			return [];
+		}
+		$buy  = self::by_unit_price( $this->eligible( $coupon, $items ) );
+		$get  = self::by_unit_price( $this->eligible( $coupon, $items, true ), true );
+		$free = array_fill_keys( array_map( static fn ( CartItem $i ): string => $i->line->key, [ ...$buy, ...$get ] ), 0 );
+		$open = [];
+		foreach ( [ ...$buy, ...$get ] as $item ) {
+			$open[ $item->line->key ] = $item->line->quantity;
+		}
+		$sets = 0;
+		while ( $coupon->repeat_limit === 0 || $sets < $coupon->repeat_limit ) {
+			$taken = $open;
+			$given = self::take( $get, $taken, $coupon->get_qty );
+			if ( $given === null || self::take( $buy, $taken, $coupon->buy_qty ) === null ) {
+				break;
+			}
+			foreach ( $given as $key => $units ) {
+				$free[ $key ] += $units;
+			}
+			$open = $taken;
+			++$sets;
+		}
+		return array_filter( $free );
+	}
+
+	/**
+	 * Takes $need units from the lines in order, out of what is open on
+	 * each; null when there are not enough.
+	 *
+	 * @param list<CartItem>    $lines
+	 * @param array<string,int> $open
+	 * @return array<string,int>|null units taken by line key
+	 */
+	private static function take( array $lines, array &$open, int $need ): ?array {
+		$taken = [];
+		foreach ( $lines as $item ) {
+			$key   = $item->line->key;
+			$units = min( $open[ $key ], $need );
+			if ( $units > 0 ) {
+				$open[ $key ] -= $units;
+				$taken[ $key ] = $units;
+				$need         -= $units;
+			}
+			if ( $need === 0 ) {
+				return $taken;
+			}
+		}
+		return null;
+	}
+
+	/** @param list<CartItem> $items */
+	private function quantity( array $items, string $key ): int {
+		foreach ( $items as $item ) {
+			if ( $item->line->key === $key ) {
+				return $item->line->quantity;
+			}
+		}
+		return 1;
+	}
+
+	/**
+	 * Lines by unit price before discounts, dearest first (or cheapest
+	 * first); equal prices keep the cart order.
 	 *
 	 * @param list<CartItem> $items
 	 * @return list<CartItem>
 	 */
-	private static function dearest_first( array $items ): array {
+	private static function by_unit_price( array $items, bool $cheapest_first = false ): array {
+		$sign = $cheapest_first ? -1 : 1;
 		usort(
 			$items,
 			// Cross-multiplied so the unit prices are compared without rounding.
-			static fn ( CartItem $a, CartItem $b ): int => ( (int) $b->total?->amount * $a->line->quantity ) <=> ( (int) $a->total?->amount * $b->line->quantity )
+			static fn ( CartItem $a, CartItem $b ): int => $sign * ( ( (int) $b->total?->amount * $a->line->quantity ) <=> ( (int) $a->total?->amount * $b->line->quantity ) )
 		);
 		return $items;
 	}

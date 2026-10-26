@@ -13,14 +13,16 @@ defined( 'ABSPATH' ) || exit;
  * live in the `rules` JSON column. A free-shipping coupon turns on the
  * free shipping methods that ask for one; its amount may then be zero.
  * A percent or per-product coupon may be limited to a number of items, the
- * dearest first.
+ * dearest first. A buy X get Y coupon takes a percentage (its amount) off
+ * the cheapest units the shopper gets for each X units they buy.
  */
 final class Coupon {
 	public const PERCENT       = 'percent';
 	public const FIXED_CART    = 'fixed_cart';
 	public const FIXED_PRODUCT = 'fixed_product';
+	public const BUY_X_GET_Y   = 'buy_x_get_y';
 
-	public const TYPES = [ self::PERCENT, self::FIXED_CART, self::FIXED_PRODUCT ];
+	public const TYPES = [ self::PERCENT, self::FIXED_CART, self::FIXED_PRODUCT, self::BUY_X_GET_Y ];
 
 	public const ACTIVE   = 'active';
 	public const DISABLED = 'disabled';
@@ -39,6 +41,12 @@ final class Coupon {
 	 * @param list<int>    $variant_ids          single variations (fxc_variants ids) the coupon applies to
 	 * @param list<int>    $exclude_variant_ids
 	 * @param int          $item_limit           units a percent or per-product coupon discounts at most, the dearest first; 0 is every unit
+	 * @param int          $buy_qty              buy X get Y: units bought per set (X)
+	 * @param int          $get_qty              buy X get Y: units discounted per set (Y)
+	 * @param int          $repeat_limit         buy X get Y: sets one cart gets at most; 0 is as many as it holds
+	 * @param list<int>    $get_product_ids      buy X get Y: products that can be the discounted units; with no get rules, the bought ones
+	 * @param list<int>    $get_variant_ids
+	 * @param list<int>    $get_category_ids
 	 */
 	public function __construct(
 		public readonly int $id,
@@ -67,6 +75,12 @@ final class Coupon {
 		public readonly array $variant_ids = [],
 		public readonly array $exclude_variant_ids = [],
 		public readonly int $item_limit = 0,
+		public readonly int $buy_qty = 0,
+		public readonly int $get_qty = 0,
+		public readonly int $repeat_limit = 0,
+		public readonly array $get_product_ids = [],
+		public readonly array $get_variant_ids = [],
+		public readonly array $get_category_ids = [],
 	) {}
 
 	/** The form a shopper's code is compared in: trimmed, lower case. */
@@ -105,10 +119,16 @@ final class Coupon {
 			variant_ids: self::ids( $rules['variant_ids'] ?? [] ),
 			exclude_variant_ids: self::ids( $rules['exclude_variant_ids'] ?? [] ),
 			item_limit: (int) ( $row['item_limit'] ?? 0 ),
+			buy_qty: max( 0, (int) ( $rules['buy_qty'] ?? 0 ) ),
+			get_qty: max( 0, (int) ( $rules['get_qty'] ?? 0 ) ),
+			repeat_limit: max( 0, (int) ( $rules['repeat_limit'] ?? 0 ) ),
+			get_product_ids: self::ids( $rules['get_product_ids'] ?? [] ),
+			get_variant_ids: self::ids( $rules['get_variant_ids'] ?? [] ),
+			get_category_ids: self::ids( $rules['get_category_ids'] ?? [] ),
 		);
 	}
 
-	/** @return array{product_ids:list<int>,exclude_product_ids:list<int>,variant_ids:list<int>,exclude_variant_ids:list<int>,category_ids:list<int>,exclude_category_ids:list<int>,emails:list<string>} */
+	/** @return array{product_ids:list<int>,exclude_product_ids:list<int>,variant_ids:list<int>,exclude_variant_ids:list<int>,category_ids:list<int>,exclude_category_ids:list<int>,emails:list<string>,buy_qty:int,get_qty:int,repeat_limit:int,get_product_ids:list<int>,get_variant_ids:list<int>,get_category_ids:list<int>} */
 	public function rules(): array {
 		return [
 			'product_ids'          => $this->product_ids,
@@ -118,6 +138,12 @@ final class Coupon {
 			'category_ids'         => $this->category_ids,
 			'exclude_category_ids' => $this->exclude_category_ids,
 			'emails'               => $this->emails,
+			'buy_qty'              => $this->buy_qty,
+			'get_qty'              => $this->get_qty,
+			'repeat_limit'         => $this->repeat_limit,
+			'get_product_ids'      => $this->get_product_ids,
+			'get_variant_ids'      => $this->get_variant_ids,
+			'get_category_ids'     => $this->get_category_ids,
 		];
 	}
 
@@ -130,8 +156,18 @@ final class Coupon {
 		return $this->product_ids !== [] || $this->variant_ids !== [];
 	}
 
+	/** Whether a buy X get Y coupon names its own discounted units. */
+	public function has_get_rules(): bool {
+		return $this->get_product_ids !== [] || $this->get_variant_ids !== [] || $this->get_category_ids !== [];
+	}
+
+	/** Whether the amount is hundredths of a percent rather than money. */
+	public function is_percentage(): bool {
+		return $this->type === self::PERCENT || $this->type === self::BUY_X_GET_Y;
+	}
+
 	public function has_category_rules(): bool {
-		return $this->category_ids !== [] || $this->exclude_category_ids !== [];
+		return $this->category_ids !== [] || $this->exclude_category_ids !== [] || $this->get_category_ids !== [];
 	}
 
 	/** Whether a billing email may use the coupon; `*` matches any run of characters. */
