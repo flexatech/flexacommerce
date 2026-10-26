@@ -55,6 +55,7 @@ final class WooEnumerationRepository {
 			'products'   => $this->wpdb->prepare( "SELECT ID FROM %i WHERE post_type = 'product' AND post_status NOT IN ('auto-draft', 'trash') AND ID > %d AND ID <= %d ORDER BY ID LIMIT %d", $this->wpdb->posts, $after, $upper, $limit ),
 			'customers'  => $this->customers_sql( $after, $upper, $limit ),
 			'orders'     => $this->orders_sql( $after, $upper, $limit, $range ),
+			'coupons'    => $this->wpdb->prepare( "SELECT ID FROM %i WHERE post_type = 'shop_coupon' AND post_status NOT IN ('auto-draft', 'trash') AND ID > %d AND ID <= %d ORDER BY ID LIMIT %d", $this->wpdb->posts, $after, $upper, $limit ),
 			default      => null,
 		};
 		if ( $sql === null ) {
@@ -80,6 +81,7 @@ final class WooEnumerationRepository {
 			'orders'     => self::hpos()
 				? $this->wpdb->prepare( "SELECT MAX(id) FROM %i WHERE type = 'shop_order'", $this->orders_table() )
 				: $this->wpdb->prepare( "SELECT MAX(ID) FROM %i WHERE post_type = 'shop_order'", $this->wpdb->posts ),
+			'coupons'    => $this->wpdb->prepare( "SELECT MAX(ID) FROM %i WHERE post_type = 'shop_coupon'", $this->wpdb->posts ),
 			default      => null,
 		};
 		return $sql === null ? 0 : (int) $this->wpdb->get_var( $sql );

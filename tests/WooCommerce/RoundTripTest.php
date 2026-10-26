@@ -22,7 +22,7 @@ use Flexa\Commerce\Plugin;
  */
 final class RoundTripTest extends \WP_UnitTestCase {
 	/** Entities whose ids go through the id map. */
-	private const MAPPED = [ 'product', 'variant', 'term', 'attribute', 'tax_rate', 'order' ];
+	private const MAPPED = [ 'product', 'variant', 'term', 'attribute', 'tax_rate', 'order', 'coupon' ];
 
 	/** Keys that may differ by design: new ids and dates, FXC defaults, provenance. */
 	private const IGNORED = [ 'number', 'modified_at', 'source', 'dropped', 'virtual', 'downloadable', 'edit_link' ];
@@ -256,10 +256,10 @@ final class RoundTripTest extends \WP_UnitTestCase {
 	/** @var array<string,array<string,int>> */
 	private array $id_map_before = [];
 
-	/** Remove the WooCommerce catalog, orders and tax rates; FlexaCommerce data, users and options stay. */
+	/** Remove the WooCommerce catalog, orders, coupons and tax rates; FlexaCommerce data, users and options stay. */
 	private function wipe_woocommerce(): void {
 		global $wpdb;
-		$types = [ 'product', 'product_variation', 'shop_order', 'shop_order_refund', 'shop_order_placehold' ];
+		$types = [ 'product', 'product_variation', 'shop_order', 'shop_order_refund', 'shop_order_placehold', 'shop_coupon' ];
 		$in    = implode( ',', array_fill( 0, count( $types ), '%s' ) );
 		// phpcs:disable WordPress.DB
 		$wpdb->query( $wpdb->prepare( "DELETE m FROM {$wpdb->postmeta} m JOIN {$wpdb->posts} p ON p.ID = m.post_id WHERE p.post_type IN ($in)", ...$types ) );

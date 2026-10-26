@@ -66,6 +66,7 @@ final class FxcEnumerationRepository {
 				$range['to'] ?? '9999-12-31 23:59:59',
 				$limit
 			),
+			'coupons'    => $this->wpdb->prepare( 'SELECT id FROM %i WHERE id > %d AND id <= %d ORDER BY id LIMIT %d', Schema::table( 'coupons' ), $after, $upper, $limit ),
 			default      => null,
 		};
 		if ( $sql === null ) {
@@ -88,6 +89,7 @@ final class FxcEnumerationRepository {
 			'products'             => $this->wpdb->prepare( 'SELECT MAX(ID) FROM %i WHERE post_type = %s', $this->wpdb->posts, PostTypes::PRODUCT ),
 			'customers'            => $this->wpdb->prepare( 'SELECT MAX(ID) FROM %i', $this->wpdb->users ),
 			'orders'               => $this->wpdb->prepare( 'SELECT MAX(id) FROM %i', Schema::table( 'orders' ) ),
+			'coupons'              => $this->wpdb->prepare( 'SELECT MAX(id) FROM %i', Schema::table( 'coupons' ) ),
 			default                => null,
 		};
 		return $sql === null ? 0 : (int) $this->wpdb->get_var( $sql );

@@ -725,7 +725,7 @@ CREATE TABLE fxc_coupon_uses (
 | `coupon_uses.user_id`, `email` | The customer of the order (`NULL` for a guest) and the billing email, lower-cased. The per-customer count matches either. |
 
 - **Queries.** Pricing reads the cart's codes in one `WHERE code IN (…)` and caches the rows per request; coupon rows change at checkout, so they are not in the object cache. The admin list filters by `status` and searches `code` and `description` with `LIKE`, paged; a store has hundreds of codes, not millions. The per-customer count uses `coupon_user` or `coupon_email`.
-- **Lifecycle.** Written by the Coupons screen through `CouponEditor` (and later by migration); `coupon_uses` is written by checkout and by order cancellation only. Deleting a coupon deletes its `coupon_uses` rows and keeps the orders' `discount` lines, which hold the `coupon_id` as a plain number. Uninstall drops both tables.
+- **Lifecycle.** Written by the Coupons screen and by migration (doc 05 §5.8), both through `CouponEditor`; migration also sets `usage_count`. `coupon_uses` is written by checkout and by order cancellation, and rebuilt by migration from imported orders (`INSERT IGNORE`, so existing rows stay). Deleting a coupon deletes its `coupon_uses` rows and keeps the orders' `discount` lines, which hold the `coupon_id` as a plain number. Uninstall drops both tables.
 
 ## 5. Query patterns and indexes
 

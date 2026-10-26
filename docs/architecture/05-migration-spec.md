@@ -45,7 +45,7 @@ The canonical format is the contract between adapters. Same-site jobs keep it in
 
 ### 3.2 Record types
 
-`attribute`, `term` (category, tag, attribute value), `product` (with embedded `variants`), `customer`, `order` (with embedded `items`, `addresses`, `transactions`, `history`). Terms come first, then products, then customers, then orders, so references always resolve to already imported records.
+`attribute`, `term` (category, tag, attribute value), `product` (with embedded `variants`), `customer`, `order` (with embedded `items`, `addresses`, `transactions`, `history`), `coupon`. Terms come first, then products, then customers, then orders, then coupons, so references always resolve to already imported records.
 
 ### 3.3 Example: simple product
 
@@ -401,6 +401,22 @@ The `shipping` stage runs after `taxes` and, like `settings`, is one record (id 
 
 A second run replaces the zones and methods it created, in place; zones and methods made in the target by hand stay, and new zones are added after the existing ones, before "everywhere else". A method deleted in the source since the last run stays in the target.
 
+### 5.8 Coupons
+
+The `coupons` stage runs last, after orders. One `coupon` record per `shop_coupon` post (auto-drafts and trash are skipped) or `fxc_coupons` row. Amounts are decimals: a percentage as a number of percent (`12.5`), money in the store currency. FlexaCommerce keeps a percentage in hundredths and money in minor units; more decimals than that are rounded with the warning `coupon_rounded`. Products, variations and categories are references, and the coupon depends on them, so they are imported first.
+
+- Status: a published WooCommerce coupon is `active`; any other status is `disabled`. FXC→WC writes `publish` or `draft`.
+- Copied as they are: code, description, type (`percent`, `fixed_cart`, `fixed_product`), amount, expiry, minimum and maximum spend, usage limit and count, per-customer limit, individual use, exclude sale items, product and category rules (both lists), allowed emails. WooCommerce keeps codes in lower case.
+- Used by: FXC→WC writes the `_used_by` meta from `coupon_uses`. WC→FXC rebuilds `coupon_uses` from the imported orders' `discount` lines (not cancelled), once at the end of the orders stage and once at the end of the coupons stage, so per-customer limits count the old orders.
+- A coupon that gives free shipping only is rejected (`unsupported_coupon`): FlexaCommerce coupons have no free shipping yet. One that also has an amount is imported with the discount alone and the warning `coupon_free_shipping`.
+- A limit on the number of items (`limit_usage_to_x_items`) has no equivalent; the coupon is imported **disabled** with the warning `coupon_item_limit`.
+- A product or category in the rules that was not imported is dropped with `coupon_product_missing` / `coupon_category_missing`. If that empties an "only these" list, the coupon is imported disabled (`coupon_rules_lost`), so it never applies to every product.
+- WooCommerce has no start date. A FlexaCommerce coupon that starts later goes back as a draft with the warning `coupon_starts_later`.
+- A code the target already uses for another coupon rejects the record (`duplicate_code`); the target's coupon stays as it is. On WooCommerce only published coupons are checked, as WooCommerce does.
+- A money coupon from a store in another currency is copied as it is, with the warning `coupon_currency`. Percentages are not affected.
+
+A second run updates the coupon it created, in place, and its usage count.
+
 ## 6. Conflict and validation policies
 
 | Situation | Default | Options |
@@ -430,7 +446,8 @@ Errors reject one entity, never the batch. A job ends `completed_with_warnings` 
 | Product reviews | stay on the WooCommerce post (Q14) |
 | Product add-on and SEO plugin meta | `_fxc_import` bucket on the product, round-tripped on FXC→WC |
 | Unknown order and item meta | `fxc_order_meta` (`wc:` prefix) and item `meta` JSON, round-tripped |
-| Coupons (definitions), payment gateway settings | not migrated in MVP (tax rates and classes are, since ADR-020; shipping zones are, see §5.7) |
+| Payment gateway settings | not migrated in MVP (tax rates and classes are, since ADR-020; shipping zones are, see §5.7; coupons are, see §5.8) |
+| Free shipping on a coupon, item limits | see §5.8: free-shipping-only coupons are rejected, item-limited ones import disabled |
 | Subscriptions, memberships, bookings | not migrated, warning if their plugins are active |
 | WooCommerce analytics tables, customer lookup, sessions, carts | not migrated (derived or transient data) |
 

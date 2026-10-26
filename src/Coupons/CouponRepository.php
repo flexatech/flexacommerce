@@ -209,6 +209,56 @@ final class CouponRepository {
 	}
 
 	/**
+	 * Who used the coupon, one entry per use: the user id, or the email of a guest.
+	 *
+	 * @return list<string>
+	 */
+	public function used_by( int $coupon_id ): array {
+		$rows = $this->wpdb->get_results(
+			$this->wpdb->prepare( 'SELECT user_id, email FROM %i WHERE coupon_id = %d ORDER BY id', Schema::table( 'coupon_uses' ), $coupon_id ),
+			ARRAY_A
+		);
+		return array_map(
+			static fn ( array $row ): string => (int) $row['user_id'] > 0 ? (string) $row['user_id'] : (string) $row['email'],
+			is_array( $rows ) ? $rows : []
+		);
+	}
+
+	/** Sets the usage count of an imported coupon, which the editor never writes. */
+	public function set_usage_count( int $coupon_id, int $count ): void {
+		$this->wpdb->update( Schema::table( 'coupons' ), [ 'usage_count' => max( 0, $count ) ], [ 'id' => $coupon_id ], [ '%d' ], [ '%d' ] );
+		$this->by_code = [];
+	}
+
+	/**
+	 * Use rows for the order lines of type $line_type, skipping orders in
+	 * $skip_status, so per-customer limits count imported orders. The caller
+	 * passes the Orders values; this module does not depend on Orders.
+	 * Existing rows are kept. Returns the rows added.
+	 */
+	public function backfill_uses( string $line_type, string $skip_status ): int {
+		$added = $this->wpdb->query(
+			$this->wpdb->prepare(
+				'INSERT IGNORE INTO %i (coupon_id, order_id, user_id, email, created_at)
+				SELECT c.id, o.id, o.customer_id, LOWER(o.customer_email), o.created_at
+				FROM %i i JOIN %i o ON o.id = i.order_id JOIN %i c ON c.code = i.code
+				WHERE i.type = %s AND i.code <> %s AND o.status <> %s',
+				Schema::table( 'coupon_uses' ),
+				Schema::table( 'order_items' ),
+				Schema::table( 'orders' ),
+				Schema::table( 'coupons' ),
+				$line_type,
+				'',
+				$skip_status
+			)
+		);
+		if ( $added === false ) {
+			throw new QueryFailed( 'Could not record the coupon uses: ' . $this->wpdb->last_error );
+		}
+		return (int) $added;
+	}
+
+	/**
 	 * @param array<string,mixed> $fields
 	 * @return array<string,mixed>
 	 */

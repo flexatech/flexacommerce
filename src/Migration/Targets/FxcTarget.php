@@ -27,6 +27,7 @@ final class FxcTarget implements TargetAdapter {
 		private readonly FxcOrderWriter $orders,
 		private readonly ImportRepository $repository,
 		private readonly FxcShippingWriter $shipping,
+		private readonly FxcCouponWriter $coupons,
 	) {}
 
 	public function system(): string {
@@ -44,6 +45,7 @@ final class FxcTarget implements TargetAdapter {
 				Record::TERM      => $this->catalog->term( $record, $map ),
 				Record::PRODUCT   => $this->catalog->product( $record, $map, $job ),
 				Record::ORDER     => $this->orders->order( $record, $map, $job ),
+				Record::COUPON    => $this->coupons->coupon( $record, $map ),
 				default           => throw new Rejected( 'unsupported_entity', sprintf( 'FlexaCommerce cannot import "%s" records.', $record->type ) ),
 			}
 		);
@@ -53,18 +55,23 @@ final class FxcTarget implements TargetAdapter {
 		return match ( $entity ) {
 			Record::PRODUCT => $this->catalog->modified_at( $target_id ),
 			Record::ORDER   => $this->orders->modified_at( $target_id ),
+			Record::COUPON  => $this->coupons->modified_at( $target_id ),
 			default         => null,
 		};
 	}
 
 	public function finish_stage( string $stage, Job $job ): void {
-		unset( $stage, $job );
+		// Either stage can run last, and orders can be imported without their coupons.
+		if ( ( $stage === 'coupons' || $stage === 'orders' ) && ! $job->dry_run ) {
+			$this->coupons->backfill_uses();
+		}
 	}
 
 	public function delete( string $entity, int $target_id ): bool {
 		return $this->transaction->run(
 			fn (): bool => match ( $entity ) {
 				Record::ORDER => $this->orders->delete( $target_id ),
+				Record::COUPON => $this->coupons->delete( $target_id ),
 				Record::PRODUCT, Record::TERM, Record::ATTRIBUTE => $this->catalog->delete( $entity, $target_id ),
 				default => false,
 			}

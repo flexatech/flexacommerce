@@ -24,6 +24,7 @@ final class Validator {
 			Record::TAX_RATE => $this->tax_rate( $record->data ),
 			Record::TERM, Record::ATTRIBUTE => $this->named( $record->data ),
 			Record::SHIPPING => $this->shipping( $record->data ),
+			Record::COUPON   => $this->coupon( $record->data ),
 			Record::SETTINGS, Record::CUSTOMER => [],
 			default          => [ Problem::error( 'unknown_type', sprintf( 'Unknown record type "%s".', $record->type ) ) ],
 		};
@@ -63,6 +64,28 @@ final class Validator {
 			}
 		}
 		return [];
+	}
+
+	/**
+	 * @param array<string,mixed> $data
+	 * @return list<Problem>
+	 */
+	private function coupon( array $data ): array {
+		$problems = [];
+		if ( ! is_string( $data['code'] ?? null ) || trim( $data['code'] ) === '' ) {
+			$problems[] = Problem::error( 'missing_code', 'The coupon has no code.' );
+		}
+		foreach ( [ 'amount', 'min_subtotal', 'max_subtotal' ] as $key ) {
+			if ( ( $key === 'amount' || isset( $data[ $key ] ) ) && ! Decimal::is_decimal( $data[ $key ] ?? null ) ) {
+				$problems[] = Problem::error( 'invalid_amount', sprintf( 'The coupon %s is not a decimal.', $key ) );
+			}
+		}
+		foreach ( [ 'starts_at', 'expires_at', 'modified_at' ] as $key ) {
+			if ( ! Dates::is_valid( $data[ $key ] ?? null ) ) {
+				$problems[] = Problem::error( 'invalid_date', sprintf( '%s is not an ISO date.', $key ) );
+			}
+		}
+		return $problems;
 	}
 
 	/**

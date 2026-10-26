@@ -673,7 +673,8 @@ A cart with no codes builds no coupon service and runs no coupon query: `CartSta
 - Admin REST: `admin/coupons` (GET list with `search`, `status`, `page`, `per_page` and `X-WP-Total` / `X-WP-TotalPages`; POST create, 201) and `admin/coupons/{id}` (GET, PATCH partial, DELETE), all gated by the manage capability. Validation errors are 400 with `data.field`; an unknown id is 404.
 - Admin screen: **FlexaCommerce > Coupons**. Product and category ids are typed as comma-separated lists for now (no picker).
 - Hooks: `flexacommerce.coupon.saved` (`Coupon $coupon, bool $created`) and `flexacommerce.coupon.deleted` (`Coupon $coupon`), doc 04 §7.
-- Not yet: WooCommerce coupon migration (doc 05), discount lines in the order export reader, free-shipping coupons, BOGO rules.
+- Migration: WooCommerce coupons are migrated in both directions by the `coupons` stage (doc 05 §5.8), and the order export carries the `discount` lines.
+- Not yet: free-shipping coupons, BOGO rules.
 
 ## 8. Service contracts (internal, signatures illustrative)
 

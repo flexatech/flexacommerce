@@ -22,6 +22,7 @@ final class Record {
 	public const PRODUCT   = 'product';
 	public const CUSTOMER  = 'customer';
 	public const ORDER     = 'order';
+	public const COUPON    = 'coupon';
 
 	public readonly string $checksum;
 

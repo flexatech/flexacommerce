@@ -24,6 +24,7 @@ final class WooTarget implements TargetAdapter {
 		private readonly WooCatalogWriter $catalog,
 		private readonly WooOrderWriter $orders,
 		private readonly WooShippingWriter $shipping,
+		private readonly WooCouponWriter $coupons,
 	) {}
 
 	public function system(): string {
@@ -43,6 +44,7 @@ final class WooTarget implements TargetAdapter {
 			Record::TERM      => $this->catalog->term( $record, $map ),
 			Record::PRODUCT   => $this->catalog->product( $record, $map, $job ),
 			Record::ORDER     => $this->orders->order( $record, $map, $job ),
+			Record::COUPON    => $this->coupons->coupon( $record, $map ),
 			default           => throw new Rejected( 'unsupported_entity', sprintf( 'WooCommerce cannot import "%s" records.', $record->type ) ),
 		};
 	}
@@ -51,6 +53,7 @@ final class WooTarget implements TargetAdapter {
 		return match ( $entity ) {
 			Record::PRODUCT => $this->catalog->modified_at( $target_id ),
 			Record::ORDER   => $this->orders->modified_at( $target_id ),
+			Record::COUPON  => $this->coupons->modified_at( $target_id ),
 			default         => null,
 		};
 	}
@@ -79,6 +82,7 @@ final class WooTarget implements TargetAdapter {
 	public function delete( string $entity, int $target_id ): bool {
 		return match ( $entity ) {
 			Record::ORDER => $this->orders->delete( $target_id ),
+			Record::COUPON => $this->coupons->delete( $target_id ),
 			Record::PRODUCT, Record::TERM, Record::ATTRIBUTE => $this->catalog->delete( $entity, $target_id ),
 			default => false,
 		};

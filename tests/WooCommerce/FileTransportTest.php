@@ -132,7 +132,7 @@ final class FileTransportTest extends \WP_UnitTestCase {
 		$this->assertSame( $first->id_system(), $again->id_system() );
 		$this->assertArrayNotHasKey( 'created', $totals );
 		$this->assertArrayNotHasKey( 'updated', $totals );
-		$this->assertSame( 1 + 1 + 1 + 2 + 6 + 7 + 1 + 9, $totals['unchanged'] );
+		$this->assertSame( 1 + 1 + 1 + 2 + 6 + 7 + 1 + 9 + 1, $totals['unchanged'] );
 		$this->assertSame( $users, count_users()['total_users'], 'The customer is found again, not created twice.' );
 		$this->assertCount( 1, $this->downloads, 'The image is not downloaded twice.' );
 	}

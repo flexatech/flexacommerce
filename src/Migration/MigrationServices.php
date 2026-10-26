@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace Flexa\Commerce\Migration;
 
 use Flexa\Commerce\Catalog\CatalogServices;
+use Flexa\Commerce\Coupons\CouponEditor;
+use Flexa\Commerce\Coupons\CouponRepository;
 use Flexa\Commerce\Customers\CustomerProfile;
 use Flexa\Commerce\Migration\Canonical\Validator;
 use Flexa\Commerce\Migration\Sources\FxcCatalogReader;
+use Flexa\Commerce\Migration\Sources\FxcCouponReader;
 use Flexa\Commerce\Migration\Sources\FxcEnumerationRepository;
 use Flexa\Commerce\Migration\Sources\FxcOrderReader;
 use Flexa\Commerce\Migration\Sources\FxcShippingReader;
@@ -15,18 +18,21 @@ use Flexa\Commerce\Migration\Sources\FxcSource;
 use Flexa\Commerce\Migration\Sources\FxcStoreReader;
 use Flexa\Commerce\Migration\Sources\SourceAdapter;
 use Flexa\Commerce\Migration\Sources\WooCatalogReader;
+use Flexa\Commerce\Migration\Sources\WooCouponReader;
 use Flexa\Commerce\Migration\Sources\WooEnumerationRepository;
 use Flexa\Commerce\Migration\Sources\WooOrderReader;
 use Flexa\Commerce\Migration\Sources\WooShippingReader;
 use Flexa\Commerce\Migration\Sources\WooSource;
 use Flexa\Commerce\Migration\Sources\WooStoreReader;
 use Flexa\Commerce\Migration\Targets\FxcCatalogWriter;
+use Flexa\Commerce\Migration\Targets\FxcCouponWriter;
 use Flexa\Commerce\Migration\Targets\FxcOrderWriter;
 use Flexa\Commerce\Migration\Targets\FxcShippingWriter;
 use Flexa\Commerce\Migration\Targets\FxcStoreWriter;
 use Flexa\Commerce\Migration\Targets\FxcTarget;
 use Flexa\Commerce\Migration\Targets\TargetAdapter;
 use Flexa\Commerce\Migration\Targets\WooCatalogWriter;
+use Flexa\Commerce\Migration\Targets\WooCouponWriter;
 use Flexa\Commerce\Migration\Targets\WooOrderWriter;
 use Flexa\Commerce\Migration\Targets\WooShippingRepository;
 use Flexa\Commerce\Migration\Targets\WooShippingWriter;
@@ -54,6 +60,7 @@ final class MigrationServices {
 	private ?WooTarget $woo_target        = null;
 	private ?BackgroundDriver $background = null;
 	private ?Cutover $cutover             = null;
+	private ?CouponRepository $coupons    = null;
 
 	public function __construct(
 		private readonly Services $services,
@@ -61,6 +68,11 @@ final class MigrationServices {
 		private readonly TaxServices $tax,
 		private readonly ShippingServices $shipping,
 	) {}
+
+	/** The migration's own coupon repository: the cart's one caches coupons by code for a request. */
+	private function coupons(): CouponRepository {
+		return $this->coupons ??= new CouponRepository( $this->services->wpdb() );
+	}
 
 	public function jobs(): JobRepository {
 		return $this->jobs ??= new JobRepository( $this->services->wpdb() );
@@ -158,7 +170,7 @@ final class MigrationServices {
 	public function woo_source(): WooSource {
 		if ( $this->woo_source === null ) {
 			$enumeration      = new WooEnumerationRepository( $this->services->wpdb() );
-			$this->woo_source = new WooSource( $enumeration, new WooStoreReader( $enumeration ), new WooCatalogReader(), new WooOrderReader(), new WooShippingReader() );
+			$this->woo_source = new WooSource( $enumeration, new WooStoreReader( $enumeration ), new WooCatalogReader(), new WooOrderReader(), new WooShippingReader(), new WooCouponReader() );
 		}
 		return $this->woo_source;
 	}
@@ -172,13 +184,14 @@ final class MigrationServices {
 				new FxcCatalogReader( $this->catalog->attributes(), $this->catalog->product_service() ),
 				new FxcOrderReader( $enumeration ),
 				new FxcShippingReader( $this->shipping->service() ),
+				new FxcCouponReader( $this->coupons(), $this->catalog->variants() ),
 			);
 		}
 		return $this->fxc_source;
 	}
 
 	public function woo_target(): WooTarget {
-		return $this->woo_target ??= new WooTarget( new WooStoreWriter(), new WooCatalogWriter(), new WooOrderWriter(), new WooShippingWriter( new WooShippingRepository( $this->services->wpdb() ) ) );
+		return $this->woo_target ??= new WooTarget( new WooStoreWriter(), new WooCatalogWriter(), new WooOrderWriter(), new WooShippingWriter( new WooShippingRepository( $this->services->wpdb() ) ), new WooCouponWriter() );
 	}
 
 	public function fxc_target(): FxcTarget {
@@ -189,6 +202,7 @@ final class MigrationServices {
 			new FxcOrderWriter( $this->imports(), $this->catalog->product_service(), $this->services->sequence(), $this->services->clock() ),
 			$this->imports(),
 			new FxcShippingWriter( $this->shipping->service() ),
+			new FxcCouponWriter( $this->coupons(), new CouponEditor( $this->coupons(), $this->services->clock() ) ),
 		);
 	}
 }
