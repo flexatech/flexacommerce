@@ -13,6 +13,21 @@ export interface LayoutChoice {
     label: string;
 }
 
+/** `any` cart, a cart that `ships`, or one where nothing ships. */
+export type CartShipping = "any" | "ships" | "no_shipping";
+
+/** When a field of the merchant's shows. Empty lists mean no limit; products and categories are either-or. */
+export interface When {
+    countries: string[];
+    shipping: CartShipping;
+    products: number[];
+    categories: number[];
+}
+
+export const ALWAYS: When = { countries: [], shipping: "any", products: [], categories: [] };
+
+export const isConditional = (when?: When) => !!when && (when.countries.length > 0 || when.shipping !== "any" || when.products.length > 0 || when.categories.length > 0);
+
 export interface LayoutEntry {
     id: string;
     /** Empty on a core field means its translated default label. */
@@ -27,6 +42,7 @@ export interface LayoutEntry {
     options?: LayoutChoice[];
     /** Show the answer in the order emails. */
     email?: boolean;
+    when?: When;
 }
 
 export type LayoutFields = Record<Section, LayoutEntry[]>;
@@ -63,6 +79,8 @@ export interface LayoutPayload extends Layout {
     default: Layout;
     /** Default labels of the core fields, by id. */
     labels: Record<string, string>;
+    /** The countries a field can be shown for. */
+    countries: { code: string; name: string }[];
 }
 
 export const SECTIONS: Section[] = ["billing", "shipping", "additional"];
@@ -79,6 +97,7 @@ export const MAX_CONTENT = 20;
 export const HEADING_MAX = 120;
 export const PARAGRAPH_MAX = 1000;
 export const HELP_MAX = 200;
+export const MAX_TARGETS = 100;
 
 const KEY = ["checkout-layout"] as const;
 

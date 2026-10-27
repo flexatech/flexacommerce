@@ -27,9 +27,14 @@ final class FieldSchema {
 		private array $fields,
 	) {}
 
-	/** The filtered schema for a billing or shipping form. */
-	public static function for_address( string $type, string $country ): self {
-		$schema   = self::defaults( $type, $country );
+	/**
+	 * The filtered schema for a billing or shipping form. With `$cart`, a
+	 * field of the merchant's whose conditions the cart does not meet is left
+	 * out; one for other countries stays, with its `countries`, since the
+	 * customer can still change the country.
+	 */
+	public static function for_address( string $type, string $country, ?CartFacts $cart = null ): self {
+		$schema   = self::defaults( $type, $country, $cart );
 		$filtered = apply_filters( 'flexacommerce.checkout.fields', $schema, $country, $type );
 		return $filtered instanceof self && $filtered->type === $type ? $filtered : $schema;
 	}
@@ -76,10 +81,10 @@ final class FieldSchema {
 	 * (`customer_note`) and the merchant's own fields. A separate filter, so
 	 * extensions of the address forms never meet a third type.
 	 */
-	public static function additional(): self {
+	public static function additional( ?CartFacts $cart = null ): self {
 		$fields = [];
 		foreach ( CheckoutLayout::current()->section( 'additional' ) as $i => $entry ) {
-			if ( $entry['answer'] === CheckoutLayout::HIDDEN ) {
+			if ( $entry['answer'] === CheckoutLayout::HIDDEN || ! self::allowed( $entry, $cart ) ) {
 				continue;
 			}
 			$required             = $entry['answer'] === CheckoutLayout::REQUIRED;
@@ -104,7 +109,12 @@ final class FieldSchema {
 		return $filtered instanceof self && $filtered->type === 'additional' ? $filtered : $schema;
 	}
 
-	private static function defaults( string $type, string $country ): self {
+	/** @param array{when?:array{countries:list<string>,shipping:string,products:list<int>,categories:list<int>}} $entry */
+	private static function allowed( array $entry, ?CartFacts $cart ): bool {
+		return $cart === null || ! isset( $entry['when'] ) || $cart->allows( $entry['when'] );
+	}
+
+	private static function defaults( string $type, string $country, ?CartFacts $cart ): self {
 		$states = Countries::states( $country );
 		$prefix = $type === 'shipping' ? 'shipping ' : 'billing ';
 		$list   = [
@@ -132,7 +142,7 @@ final class FieldSchema {
 		foreach ( CheckoutLayout::current()->section( $type ) as $i => $entry ) {
 			$priority = max( 5, ( $i + $step ) * 10 );
 			if ( $entry['custom'] ) {
-				if ( $entry['answer'] !== CheckoutLayout::HIDDEN ) {
+				if ( $entry['answer'] !== CheckoutLayout::HIDDEN && self::allowed( $entry, $cart ) ) {
 					$fields[ $entry['id'] ] = self::custom( $entry, $priority );
 				}
 				continue;
@@ -163,7 +173,7 @@ final class FieldSchema {
 		return new self( $type, $country, $fields );
 	}
 
-	/** @param array{id:string,label:string,placeholder:string,help:string,width:string,answer:string,type?:string,options?:list<array{value:string,label:string}>} $entry */
+	/** @param array{id:string,label:string,placeholder:string,help:string,width:string,answer:string,type?:string,options?:list<array{value:string,label:string}>,when?:array{countries:list<string>,shipping:string,products:list<int>,categories:list<int>}} $entry */
 	private static function custom( array $entry, int $priority ): CheckoutField {
 		$type    = $entry['type'] ?? 'text';
 		$options = [];
@@ -189,6 +199,7 @@ final class FieldSchema {
 			$entry['placeholder'],
 			$entry['help'],
 			$entry['width'],
+			$entry['when']['countries'] ?? [],
 		);
 	}
 }

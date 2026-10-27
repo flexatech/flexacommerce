@@ -136,8 +136,10 @@ final class CheckoutPage {
 			return $this->pay->html( $this->order, $this->posted, $this->errors );
 		}
 		$this->form ??= new CheckoutForm();
-		$state        = $service->form_state( get_current_user_id() );
-		if ( $this->preview() ) {
+		// The draft goes in first: the state reads the layout for its cart conditions.
+		$preview = $this->preview();
+		$state   = $service->form_state( get_current_user_id() );
+		if ( $preview ) {
 			$state            = ( $state['cart']['items'] ?? [] ) === [] ? $service->sample_state( $state, get_current_user_id() ) : $state;
 			$state['preview'] = true;
 		}

@@ -11,6 +11,7 @@ import { __, sprintf } from "@/shared/lib/i18n";
 import { CHOICE_TYPES, NO_PLACEHOLDER, type LayoutProblem } from "./layoutModel";
 import { BY_COUNTRY, HELP_MAX, LABEL_MAX, LOCKED, MAX_CHOICES, type Answer, type CustomType, type LayoutEntry, type Section, type Width } from "./useCheckoutLayout";
 import { CUSTOM_TYPES, SECTION_NAMES, typeName } from "./fieldTypes";
+import { FieldConditions } from "./FieldConditions";
 
 interface Props {
     entry: LayoutEntry;
@@ -18,6 +19,8 @@ interface Props {
     /** The translated label of a core field, shown when the merchant leaves theirs empty. */
     defaultLabel: string;
     problem: LayoutProblem | null;
+    /** The countries a custom field can be limited to. */
+    countries: { code: string; name: string }[];
     /** A field added from the palette: its label gets the focus. */
     fresh: boolean;
     canUp: boolean;
@@ -72,7 +75,7 @@ export function Row({ id, label, hint, error, children }: { id: string; label: s
     );
 }
 
-export function FieldInspector({ entry, section, defaultLabel, problem, fresh, canUp, canDown, onChange, onMove, onSection, onDelete }: Props) {
+export function FieldInspector({ entry, section, defaultLabel, problem, countries, fresh, canUp, canDown, onChange, onMove, onSection, onDelete }: Props) {
     const id = useId();
     const type = entry.type;
     const locked = LOCKED.includes(entry.id);
@@ -211,6 +214,10 @@ export function FieldInspector({ entry, section, defaultLabel, problem, fresh, c
                     </span>
                     <Switch checked={entry.email !== false} onCheckedChange={(email) => onChange({ email })} />
                 </label>
+            )}
+
+            {entry.custom && entry.answer !== "hidden" && (
+                <FieldConditions when={entry.when} section={section} countries={countries} error={error("when")} onChange={(when) => onChange({ when })} />
             )}
 
             {section === "shipping" && entry.custom && (

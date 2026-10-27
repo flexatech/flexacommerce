@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Flexa\Commerce\Cart;
 
+use Flexa\Commerce\Catalog\PostTypes;
 use Flexa\Commerce\Contracts\Cart\CartView;
 use Flexa\Commerce\Contracts\Money;
 use Flexa\Commerce\Coupons\Discounts;
@@ -46,6 +47,35 @@ final class CartState {
 	/** Whether a code in the cart does not apply; checkout refuses until it is removed. */
 	public function has_rejected_coupons(): bool {
 		return $this->discounts !== null && $this->discounts->rejected !== [];
+	}
+
+	/** @return list<int> the products in the cart, each once */
+	public function product_ids(): array {
+		$ids = [];
+		foreach ( $this->items as $item ) {
+			$ids[ $item->line->product_id ] = $item->line->product_id;
+		}
+		return array_values( $ids );
+	}
+
+	/**
+	 * The categories of the products in the cart, with the parents of each.
+	 * It reads the terms, so callers ask only when they need them.
+	 *
+	 * @return list<int>
+	 */
+	public function category_ids(): array {
+		$ids = [];
+		foreach ( $this->product_ids() as $product ) {
+			$terms = get_the_terms( $product, PostTypes::CATEGORY );
+			foreach ( is_array( $terms ) ? $terms : [] as $term ) {
+				$ids[ $term->term_id ] = $term->term_id;
+				foreach ( get_ancestors( $term->term_id, PostTypes::CATEGORY, 'taxonomy' ) as $parent ) {
+					$ids[ (int) $parent ] = (int) $parent;
+				}
+			}
+		}
+		return array_values( $ids );
 	}
 
 	public function item_count(): int {

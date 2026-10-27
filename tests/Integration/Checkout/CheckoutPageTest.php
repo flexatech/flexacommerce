@@ -6,6 +6,7 @@ namespace Flexa\Commerce\Tests\Integration\Checkout;
 
 use Flexa\Commerce\Cart\CartServices;
 use Flexa\Commerce\Cart\MemoryTokenStore;
+use Flexa\Commerce\Catalog\PostTypes;
 use Flexa\Commerce\Checkout\CheckoutLayout;
 use Flexa\Commerce\Checkout\CheckoutService;
 use Flexa\Commerce\Contracts\Payments\PaymentGateway;
@@ -428,6 +429,57 @@ final class CheckoutPageTest extends OrderTestCase {
 		CheckoutLayout::reset();
 		$html = $this->visit( $location );
 		self::assertStringContainsString( '<dt>Delivery time</dt><dd>Afternoon</dd>', $html, 'the answer keeps its label after the field is gone' );
+	}
+
+	public function test_fields_follow_the_country_and_the_cart(): void {
+		$parent  = (int) wp_insert_term( 'Jewellery', PostTypes::CATEGORY )['term_id'];
+		$child   = (int) wp_insert_term( 'Rings', PostTypes::CATEGORY, [ 'parent' => $parent ] )['term_id'];
+		$product = $this->simple( 1000, 5 );
+		wp_set_object_terms( $product, [ $child ], PostTypes::CATEGORY );
+		CheckoutLayout::save(
+			[
+				'fields' => [
+					'billing'    => [
+						[
+							'id'     => 'vat',
+							'type'   => 'text',
+							'label'  => 'VAT number',
+							'answer' => 'required',
+							'when'   => [ 'countries' => [ 'DE', 'FR' ] ],
+						],
+					],
+					'additional' => [
+						[
+							'id'    => 'engraving',
+							'type'  => 'text',
+							'label' => 'Engraving',
+							'when'  => [ 'categories' => [ $parent ] ],
+						],
+						[
+							'id'    => 'pickup',
+							'type'  => 'text',
+							'label' => 'Pickup time',
+							'when'  => [ 'shipping' => 'no_shipping' ],
+						],
+					],
+				],
+			]
+		);
+		$this->add( $product, 1 );
+		$html = do_shortcode( '[flexacommerce_checkout]' );
+		self::assertMatchesRegularExpression( '#<p class="[^"]*fxc-field--vat[^"]*" data-fxc-countries="DE FR" hidden>#', $html, 'kept for the page to show when the country changes' );
+		self::assertMatchesRegularExpression( '#<input[^>]*name="billing\[vat\]"[^>]*disabled#', $html, 'a hidden field is not posted' );
+		self::assertStringContainsString( 'name="additional[engraving]"', $html, 'the ring is in a subcategory' );
+		self::assertStringNotContainsString( 'additional[pickup]', $html, 'the order ships' );
+
+		$token    = $this->token( $html );
+		$location = $this->post( $this->form( $token, [ 'expected_total' => '1500' ] + [ 'additional' => [ 'engraving' => 'A+G' ] ] ) );
+		self::assertNotNull( $location, 'the VAT number is for Germany and France' );
+		$order = $this->orders()->find_by_checkout_token( $token );
+		self::assertNotNull( $order );
+		self::assertSame( [ 'Engraving' ], array_column( OrderFields::for_order( Plugin::instance()->orders()->orders(), $order->id ), 'label' ) );
+		wp_delete_term( $child, PostTypes::CATEGORY );
+		wp_delete_term( $parent, PostTypes::CATEGORY );
 	}
 
 	public function test_activation_creates_missing_pages_once(): void {

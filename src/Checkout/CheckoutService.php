@@ -155,6 +155,7 @@ final class CheckoutService {
 			// The form starts with billing as the shipping address: it must match what was quoted.
 			$saved['billing'] = array_merge( $saved['billing'], $state->cart->destination );
 		}
+		$facts   = CartFacts::from_state( $state, $quote->needs_shipping );
 		$allowed = Countries::allowed();
 		$states  = [];
 		foreach ( array_keys( $allowed ) as $code ) {
@@ -171,9 +172,10 @@ final class CheckoutService {
 			'countries'      => $allowed,
 			'states'         => $states,
 			'fields'         => [
-				'billing'  => FieldSchema::for_address( 'billing', $destination->country )->to_array(),
-				'shipping' => FieldSchema::for_address( 'shipping', $destination->country )->to_array(),
+				'billing'  => FieldSchema::for_address( 'billing', $destination->country, $facts )->to_array(),
+				'shipping' => FieldSchema::for_address( 'shipping', $destination->country, $facts )->to_array(),
 			],
+			'cart_facts'     => $facts->to_array(),
 			'paused'         => Settings::bool( 'checkout_paused' ),
 			'terms_url'      => $this->pages->terms_url(),
 			'logged_in'      => $user_id > 0,
@@ -207,6 +209,7 @@ final class CheckoutService {
 		$state['coupons']         = [];
 		$state['needs_shipping']  = true;
 		$state['needs_address']   = true;
+		$state['cart_facts']      = ( new CartFacts( true ) )->to_array();
 		$state['shipping_rates']  = [
 			[
 				'id'            => $rate,
@@ -237,6 +240,7 @@ final class CheckoutService {
 	public function update_shipping( int $user_id, Destination $destination, string $rate_id ): array {
 		$state = $this->cart->state( $user_id );
 		$quote = $this->quote( $state, $destination, $rate_id, null, $user_id );
+		$facts = CartFacts::from_state( $state, $quote->needs_shipping );
 		$chose = $quote->rate->id ?? '';
 		$saved = $state->cart->destination;
 		if ( $state->has_session && ( $saved['country'] !== $destination->country || $saved['state'] !== $destination->state || $saved['postcode'] !== $destination->postcode || $saved['city'] !== $destination->city || $state->cart->shipping_rate !== $chose ) ) {
@@ -254,8 +258,8 @@ final class CheckoutService {
 		return [
 			'destination' => $destination->to_array(),
 			'fields'      => [
-				'billing'  => FieldSchema::for_address( 'billing', $destination->country )->to_array(),
-				'shipping' => FieldSchema::for_address( 'shipping', $destination->country )->to_array(),
+				'billing'  => FieldSchema::for_address( 'billing', $destination->country, $facts )->to_array(),
+				'shipping' => FieldSchema::for_address( 'shipping', $destination->country, $facts )->to_array(),
 			],
 		] + $this->quote_view( $quote, $user_id );
 	}
@@ -303,7 +307,7 @@ final class CheckoutService {
 
 		$destination = $this->validator->destination( $request );
 		$quote       = $this->quote( $state, $destination, $request->shipping_rate, null, $request->user_id );
-		$addresses   = $this->validator->addresses( $request, $quote->needs_address() );
+		$addresses   = $this->validator->addresses( $request, $quote->needs_address(), CartFacts::from_state( $state, $quote->needs_shipping ) );
 		$errors      = $addresses['errors'];
 		if ( $errors === [] ) {
 			$quote = $this->quote( $state, $destination, $request->shipping_rate, $addresses['billing'], $request->user_id );

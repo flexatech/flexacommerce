@@ -463,3 +463,20 @@ Status of every ADR: **Accepted** (plan approved 2026-10-24) unless it says othe
 
 **Revisit when.** Merchants ask for a steps layout, for content shown only to some carts, or for richer text than links, bold and italic.
 
+## ADR-033: Conditions on the merchant's checkout fields
+
+**Context.** Part 3 of doc 11 starts with fields that show only for some countries (a VAT number for the EU), for carts that ship or do not (a door code, a pickup time), or for carts with some products or categories (an engraving text). flexa-extra and the Checkout Field Editor offer this, and stores moving over expect it.
+
+**Decision.**
+1. **Conditions belong to custom fields only.** Core address fields keep Required, Optional and Hidden; the address formats already follow the country.
+2. **One `when` object per custom entry,** in the layout option: countries, a shipping choice, products and categories. Empty parts mean always, so old layouts need no upgrade.
+3. **AND between the parts, OR between products and categories.** It covers "this product or anything in Jewellery" without a rule editor. Parent categories count.
+4. **Cart conditions are evaluated on the server.** The cart is fixed on the checkout page, so a field the cart does not meet is left out of the schema and the markup. Category terms are read only when a field names a category.
+5. **Country conditions are evaluated on the page and on the server.** The field is rendered hidden and disabled for other countries and `checkout.js` toggles it; the validator skips it and stores nothing for it.
+
+**Alternatives.** A general rule builder (any field, any operator): more than merchants asked for and hard to explain in an inspector. Evaluating everything in the browser: a shopper without JavaScript would be asked for fields that do not apply, and the server would still need the rules. Conditions on core fields: hiding the postcode for one country would fight the address formats.
+
+**Consequences.** `checkout.js` gains the country toggle (still under its budget); the layout option grows by a small object per custom field. Extensions using the field filters see `CheckoutField::$countries` and must call `shown_in()` before treating a field as asked.
+
+**Revisit when.** Merchants ask for conditions on the answer of another field, on the cart total, or on the customer's role.
+

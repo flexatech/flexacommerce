@@ -35,14 +35,17 @@ final class CheckoutValidator {
 	}
 
 	/**
+	 * Fields of the merchant's whose conditions the cart or the country do
+	 * not meet are skipped: not checked, not stored.
+	 *
 	 * @return array{billing:AddressView,shipping:?AddressView,meta:array<string,string>,errors:array<string,string>}
 	 */
-	public function addresses( CheckoutRequest $request, bool $needs_shipping_address ): array {
+	public function addresses( CheckoutRequest $request, bool $needs_shipping_address, ?CartFacts $cart = null ): array {
 		$errors = [];
 		$meta   = [];
 
 		$answers                    = [];
-		[ $billing, $billing_meta ] = $this->address( 'billing', $request->billing, $errors, $answers );
+		[ $billing, $billing_meta ] = $this->address( 'billing', $request->billing, $errors, $answers, false, $cart );
 		$meta                       = $billing_meta;
 
 		$shipping = null;
@@ -50,11 +53,11 @@ final class CheckoutValidator {
 			if ( $request->shipping === null ) {
 				$shipping = new AddressView( 'shipping', ...array_diff_key( $billing->to_array(), [ 'email' => true ] ) );
 			} else {
-				[ $shipping, $shipping_meta ] = $this->address( 'shipping', $request->shipping, $errors, $answers );
+				[ $shipping, $shipping_meta ] = $this->address( 'shipping', $request->shipping, $errors, $answers, false, $cart );
 				$meta                         = array_merge( $meta, $shipping_meta );
 			}
 		}
-		$meta = array_merge( $meta, $this->additional( $request, $errors, $answers ) );
+		$meta = array_merge( $meta, $this->additional( $request, $errors, $answers, $cart ) );
 		if ( $answers !== [] ) {
 			$meta[ OrderFields::META ] = (string) wp_json_encode( $answers );
 		}
@@ -137,13 +140,17 @@ final class CheckoutValidator {
 	 * The Additional information fields. The order notes are checked here
 	 * only for being required; their length is a choice error, as before.
 	 *
-	 * @param array<string,string>                $errors
+	 * @param array<string,string>            $errors
 	 * @param list<array<string,string|bool>> $answers
 	 * @return array<string,string> meta
 	 */
-	private function additional( CheckoutRequest $request, array &$errors, array &$answers ): array {
-		$meta = [];
-		foreach ( FieldSchema::additional()->fields() as $field ) {
+	private function additional( CheckoutRequest $request, array &$errors, array &$answers, ?CartFacts $cart ): array {
+		$meta    = [];
+		$country = $this->destination( $request )->country;
+		foreach ( FieldSchema::additional( $cart )->fields() as $field ) {
+			if ( ! $field->shown_in( $country ) ) {
+				continue;
+			}
 			if ( $field->id === 'customer_note' ) {
 				if ( $field->required && trim( $request->customer_note ) === '' ) {
 					/* translators: %s: field label. */
@@ -193,9 +200,10 @@ final class CheckoutValidator {
 	 * @param array<string,string>            $errors
 	 * @param list<array<string,string|bool>> $answers
 	 * @param bool                            $core_only the account page keeps the address columns only
+	 * @param CartFacts|null                  $cart      for the conditions of the merchant's fields
 	 * @return array{0:AddressView,1:array<string,string>} address and extra field meta
 	 */
-	private function address( string $type, array $input, array &$errors, array &$answers, bool $core_only = false ): array {
+	private function address( string $type, array $input, array &$errors, array &$answers, bool $core_only = false, ?CartFacts $cart = null ): array {
 		$country = strtoupper( trim( $input['country'] ?? '' ) );
 		$allowed = Countries::allowed();
 		if ( ! isset( $allowed[ $country ] ) ) {
@@ -204,13 +212,16 @@ final class CheckoutValidator {
 				: __( 'We do not sell to this country.', 'flexacommerce' );
 		}
 
-		$schema = FieldSchema::for_address( $type, $country );
+		$schema = FieldSchema::for_address( $type, $country, $cart );
 		if ( $core_only ) {
 			$schema = $schema->core();
 		}
 		$values = [];
 		$meta   = [];
 		foreach ( $schema->fields() as $field ) {
+			if ( ! $field->shown_in( $country ) ) {
+				continue;
+			}
 			$value = $this->clean( $field, $input[ $field->id ] ?? '' );
 			$error = $this->check( $field, $value, $country );
 			if ( $error !== null && ! isset( $errors[ $type . '.' . $field->id ] ) ) {

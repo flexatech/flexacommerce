@@ -16,7 +16,10 @@ defined( 'ABSPATH' ) || exit;
 final class CheckoutField {
 	public const TYPES = [ 'text', 'email', 'tel', 'country', 'state', 'select', 'checkbox', 'textarea', 'radio', 'date', 'number' ];
 
-	/** @param array<string,string> $options */
+	/**
+	 * @param array<string,string> $options
+	 * @param list<string>         $countries shown only when the address is in one of them; empty for every country
+	 */
 	public function __construct(
 		public readonly string $id,
 		public readonly string $label,
@@ -29,6 +32,7 @@ final class CheckoutField {
 		public readonly string $placeholder = '',
 		public readonly string $help = '',
 		public readonly string $width = 'full',
+		public readonly array $countries = [],
 	) {
 		if ( preg_match( '/^[a-z0-9_]{1,64}$/', $id ) !== 1 ) {
 			throw new \InvalidArgumentException( sprintf( 'Invalid checkout field id "%s".', $id ) );
@@ -36,6 +40,11 @@ final class CheckoutField {
 		if ( ! in_array( $type, self::TYPES, true ) ) {
 			throw new \InvalidArgumentException( sprintf( 'Unknown checkout field type "%s".', $type ) );
 		}
+	}
+
+	/** Whether the field asks for an answer when the address is in `$country`. */
+	public function shown_in( string $country ): bool {
+		return $this->countries === [] || in_array( $country, $this->countries, true );
 	}
 
 	public function required( bool $required = true ): self {
@@ -60,6 +69,7 @@ final class CheckoutField {
 			'placeholder'  => $this->placeholder,
 			'help'         => $this->help,
 			'width'        => $this->width,
+			'countries'    => $this->countries,
 		];
 	}
 }

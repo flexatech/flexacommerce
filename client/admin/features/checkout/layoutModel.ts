@@ -1,5 +1,5 @@
 import { __ } from "@/shared/lib/i18n";
-import { SECTIONS, type CustomType, type LayoutEntry, type LayoutFields, type Section } from "./useCheckoutLayout";
+import { ALWAYS, SECTIONS, type CustomType, type LayoutEntry, type LayoutFields, type Section } from "./useCheckoutLayout";
 
 /** A field added since the last save carries a temporary id until it has a label. */
 export const TEMP = "__new_";
@@ -31,6 +31,7 @@ export function blankField(id: string, type: CustomType): LayoutEntry {
         type,
         options: CHOICE_TYPES.includes(type) ? [{ value: "", label: "" }, { value: "", label: "" }] : [],
         email: true,
+        when: ALWAYS,
     };
 }
 

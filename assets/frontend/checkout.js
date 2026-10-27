@@ -144,6 +144,35 @@ function setup( root ) {
 		}
 	}
 
+	/**
+	 * Fields of the merchant's for some countries only: an address's own
+	 * fields follow its country, Additional information follows the country
+	 * the order goes to. A hidden one is disabled, so it is not sent.
+	 */
+	function syncCountries() {
+		for ( const wrap of form.querySelectorAll( '[data-fxc-countries]' ) ) {
+			const type =
+				wrap.closest( '[data-fxc-address]' )?.dataset.fxcAddress;
+			const country = value( type || activeType(), 'country' );
+			const off =
+				! wrap.dataset.fxcCountries.split( ' ' ).includes( country );
+			wrap.hidden = off;
+			for ( const input of wrap.querySelectorAll(
+				'input, select, textarea'
+			) ) {
+				input.disabled = off || ( type === 'shipping' && ! elsewhere() );
+			}
+			if ( wrap.matches( 'fieldset' ) ) {
+				wrap.disabled = off;
+			}
+		}
+		for ( const box of form.querySelectorAll(
+			'.fxc-checkout__additional'
+		) ) {
+			box.hidden = ! box.querySelector( '.fxc-field:not([hidden])' );
+		}
+	}
+
 	/** Swap the state field between a select and a text input for a country. */
 	function syncState( type ) {
 		const current = control( type, 'state' );
@@ -361,6 +390,7 @@ function setup( root ) {
 				return data;
 			}
 			applyFields( type, data.fields?.[ type ] );
+			syncCountries();
 			renderRates( data );
 			renderTotals( data );
 			return data;
@@ -549,6 +579,7 @@ function setup( root ) {
 		const target = event.target;
 		if ( target === toggle ) {
 			syncShipping();
+			syncCountries();
 			requoteSoon();
 			return;
 		}
@@ -564,6 +595,7 @@ function setup( root ) {
 		const type = box.dataset.fxcAddress;
 		if ( key === 'country' ) {
 			syncState( type );
+			syncCountries();
 		}
 		if (
 			type === activeType() &&
@@ -590,6 +622,7 @@ function setup( root ) {
 		wide.addEventListener( 'change', sync );
 	}
 	syncShipping();
+	syncCountries();
 	// After a failed post without scripts the summary is already there.
 	if ( summary && ! summary.hidden ) {
 		summary.focus();

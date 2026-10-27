@@ -19,7 +19,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, arrayMove, rectSortingStrategy, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Calendar, ChevronDown, Eye, EyeOff, GripVertical, Heading, Lock, MousePointerClick, Pilcrow, RotateCcw, type LucideIcon } from "lucide-react";
+import { Calendar, ChevronDown, Eye, EyeOff, Filter, GripVertical, Heading, Lock, MousePointerClick, Pilcrow, RotateCcw, type LucideIcon } from "lucide-react";
 
 import { showToast } from "@/shared/components/showToast";
 import { Button } from "@/shared/components/ui/button";
@@ -57,6 +57,7 @@ import {
     LOCKED,
     MAX_CONTENT,
     MAX_CUSTOM,
+    isConditional,
     useCheckoutLayout,
     usePreviewCheckoutLayout,
     useResetCheckoutLayout,
@@ -110,6 +111,12 @@ function FieldSketch({ entry, label }: { entry: LayoutEntry; label: string }) {
                 <span className="fxc:bg-muted fxc:text-muted-foreground fxc:ms-auto fxc:inline-flex fxc:shrink-0 fxc:items-center fxc:gap-1 fxc:rounded-full fxc:px-2 fxc:text-[11px]">
                     <EyeOff aria-hidden className="fxc:size-3" />
                     {__("Hidden")}
+                </span>
+            )}
+            {!hidden && isConditional(entry.when) && (
+                <span className="fxc:bg-muted fxc:text-muted-foreground fxc:ms-auto fxc:inline-flex fxc:shrink-0 fxc:items-center fxc:gap-1 fxc:rounded-full fxc:px-2 fxc:text-[11px]">
+                    <Filter aria-hidden className="fxc:size-3" />
+                    {__("Conditional")}
                 </span>
             )}
         </>
@@ -891,6 +898,7 @@ export function CheckoutBuilderPage() {
                                 section={current.section}
                                 defaultLabel={server.labels[current.entry.id] ?? ""}
                                 problem={problem?.key === selected ? problem : null}
+                                countries={server.countries}
                                 fresh={fresh === selected}
                                 canUp={current.index > 0}
                                 canDown={current.index < draft[current.section].length - 1}

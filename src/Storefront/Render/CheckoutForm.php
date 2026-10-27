@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Flexa\Commerce\Storefront\Render;
 
 use Flexa\Commerce\Catalog\PostTypes;
+use Flexa\Commerce\Checkout\CartFacts;
 use Flexa\Commerce\Checkout\CheckoutLayout;
 use Flexa\Commerce\Checkout\FieldSchema;
 use Flexa\Commerce\Storefront\Assets;
@@ -112,7 +113,7 @@ final class CheckoutForm {
 					. $this->address( 'shipping', $title !== '' ? $title : __( 'Shipping address', 'flexacommerce' ), $state, $posted, $errors )
 					. '</div>';
 			case 'additional':
-				return $this->additional( $posted, $errors, $title );
+				return $this->additional( $state, $posted, $errors, $title );
 			case 'shipping_method':
 				return $this->rates( $state, $errors, $title );
 			case 'summary':
@@ -149,21 +150,25 @@ final class CheckoutForm {
 	 * The order notes and the merchant's own fields (ADR-031). With the
 	 * notes alone, they keep the markup of before the builder.
 	 *
+	 * @param array<string,mixed>  $state
 	 * @param array<string,mixed>  $posted
 	 * @param array<string,string> $errors
 	 */
-	private function additional( array $posted, array $errors, string $title = '' ): string {
-		$fields = FieldSchema::additional()->to_array();
+	private function additional( array $state, array $posted, array $errors, string $title = '' ): string {
+		$fields = FieldSchema::additional( self::facts( $state ) )->to_array();
 		if ( $fields === [] ) {
 			return '';
 		}
 		$values                  = is_array( $posted['additional'] ?? null ) ? $posted['additional'] : [];
 		$values['customer_note'] = is_string( $posted['customer_note'] ?? null ) ? $posted['customer_note'] : '';
-		$html                    = self::fields( 'additional', $fields, $values, [], $errors );
+		// They follow the country the order goes to, as the shipping rates do.
+		$country = ! empty( $posted['ship_to_different_address'] ) ? $this->country( 'shipping', $state, $posted ) : $this->country( 'billing', $state, $posted );
+		$html    = self::fields( 'additional', $fields, $values, [], $errors, true, $country );
 		if ( count( $fields ) === 1 && $fields[0]['id'] === 'customer_note' ) {
 			return $html;
 		}
-		return '<fieldset class="fxc-checkout__additional"><legend>' . esc_html( $title !== '' ? $title : __( 'Additional information', 'flexacommerce' ) ) . '</legend>' . $html . '</fieldset>';
+		$shown = array_filter( $fields, static fn ( array $f ): bool => $f['countries'] === [] || in_array( $country, $f['countries'], true ) );
+		return '<fieldset class="fxc-checkout__additional"' . ( $shown === [] ? ' hidden' : '' ) . '><legend>' . esc_html( $title !== '' ? $title : __( 'Additional information', 'flexacommerce' ) ) . '</legend>' . $html . '</fieldset>';
 	}
 
 	/** @param array<string,string> $errors */
@@ -190,12 +195,12 @@ final class CheckoutForm {
 	 */
 	private function address( string $type, string $legend, array $state, array $posted, array $errors ): string {
 		$values  = is_array( $posted[ $type ] ?? null ) ? $posted[ $type ] : $this->defaults( $state, $type );
-		$country = is_string( $values['country'] ?? null ) && $values['country'] !== '' ? strtoupper( $values['country'] ) : (string) ( $state['destination']['country'] ?? '' );
-		$fields  = FieldSchema::for_address( $type, $country )->to_array();
+		$country = $this->country( $type, $state, $posted );
+		$fields  = FieldSchema::for_address( $type, $country, self::facts( $state ) )->to_array();
 		$html    = '<fieldset class="fxc-checkout__address" data-fxc-address="' . esc_attr( $type ) . '"><legend>' . esc_html( $legend ) . '</legend>';
 		// The shipping address is hidden by CSS until its checkbox is ticked, and a
 		// hidden required control would block the submit; the server checks it.
-		$html .= self::fields( $type, $fields, $values, is_array( $state['countries'] ?? null ) ? $state['countries'] : [], $errors, $type !== 'shipping' );
+		$html .= self::fields( $type, $fields, $values, is_array( $state['countries'] ?? null ) ? $state['countries'] : [], $errors, $type !== 'shipping', $country );
 		if ( $type === 'billing' ) {
 			$html .= '<p class="fxc-checkout__refresh"><button type="submit" name="fxc_refresh" value="1" formnovalidate class="fxc-checkout__refresh-button" data-fxc-refresh>' . esc_html__( 'Update shipping and totals', 'flexacommerce' ) . '</button></p>';
 		}
@@ -203,18 +208,34 @@ final class CheckoutForm {
 	}
 
 	/**
+	 * @param array<string,mixed> $state
+	 * @param array<string,mixed> $posted
+	 */
+	private function country( string $type, array $state, array $posted ): string {
+		$values = is_array( $posted[ $type ] ?? null ) ? $posted[ $type ] : $this->defaults( $state, $type );
+		return is_string( $values['country'] ?? null ) && $values['country'] !== '' ? strtoupper( $values['country'] ) : (string) ( $state['destination']['country'] ?? '' );
+	}
+
+	/** @param array<string,mixed> $state */
+	private static function facts( array $state ): ?CartFacts {
+		return is_array( $state['cart_facts'] ?? null ) ? CartFacts::from_array( $state['cart_facts'] ) : null;
+	}
+
+	/**
 	 * The controls of one address, shared with the account page. With
 	 * `$native_required` off, required controls get `aria-required` only.
+	 * A field for other countries than `$country` is printed hidden and
+	 * disabled, for checkout.js to show when the customer picks one of them.
 	 *
 	 * @param list<array<string,mixed>> $fields    FieldSchema::to_array()
 	 * @param array<mixed>              $values    field id => value
 	 * @param array<string,string>      $countries code => name
 	 * @param array<string,string>      $errors
 	 */
-	public static function fields( string $type, array $fields, array $values, array $countries, array $errors, bool $native_required = true ): string {
+	public static function fields( string $type, array $fields, array $values, array $countries, array $errors, bool $native_required = true, string $country = '' ): string {
 		$html = '';
 		foreach ( $fields as $field ) {
-			$html .= self::field( $type, $field, is_scalar( $values[ $field['id'] ] ?? null ) ? (string) $values[ $field['id'] ] : '', $countries, $errors, $native_required );
+			$html .= self::field( $type, $field, is_scalar( $values[ $field['id'] ] ?? null ) ? (string) $values[ $field['id'] ] : '', $countries, $errors, $native_required, $country );
 		}
 		return $html;
 	}
@@ -224,7 +245,7 @@ final class CheckoutForm {
 	 * @param array<string,string> $countries
 	 * @param array<string,string> $errors
 	 */
-	private static function field( string $type, array $field, string $value, array $countries, array $errors, bool $native_required ): string {
+	private static function field( string $type, array $field, string $value, array $countries, array $errors, bool $native_required, string $country = '' ): string {
 		$id       = (string) $field['id'];
 		$note     = $type === 'additional' && $id === 'customer_note';
 		$path     = $note ? 'customer_note' : $type . '.' . $id;
@@ -236,9 +257,12 @@ final class CheckoutForm {
 		$help_id  = $help !== '' ? $dom_id . '-help' : '';
 		$invalid  = isset( $errors[ $path ] );
 		$describe = trim( $help_id . ' ' . ( $invalid ? self::error_id( $path ) : '' ) );
+		$only     = is_array( $field['countries'] ?? null ) ? $field['countries'] : [];
+		$off      = $only !== [] && ! in_array( $country, $only, true );
 		$attrs    = [
 			'id'               => $dom_id,
 			'name'             => $name,
+			'disabled'         => $off,
 			'required'         => $required && $native_required,
 			'aria-required'    => $required && ! $native_required ? 'true' : null,
 			'autocomplete'     => (string) $field['autocomplete'] !== '' ? (string) $field['autocomplete'] : null,
@@ -251,6 +275,7 @@ final class CheckoutForm {
 		$label    = sprintf( '<label for="%1$s">%2$s%3$s</label>', esc_attr( $dom_id ), esc_html( (string) $field['label'] ), $mark );
 		$after    = ( $help !== '' ? '<span class="fxc-field__help" id="' . esc_attr( $help_id ) . '">' . esc_html( $help ) . '</span>' : '' ) . self::error_for( $path, $errors );
 		$class    = 'fxc-field fxc-field--' . ( $note ? 'note' : $id ) . ( ( $field['width'] ?? '' ) === 'half' ? ' fxc-field--half' : '' );
+		$wrap     = $only !== [] ? ' data-fxc-countries="' . esc_attr( implode( ' ', $only ) ) . '"' . ( $off ? ' hidden' : '' ) : '';
 
 		$options = [];
 		if ( $kind === 'country' ) {
@@ -261,7 +286,7 @@ final class CheckoutForm {
 
 		if ( $kind === 'checkbox' ) {
 			$control = '<input type="checkbox" value="1"' . Component::attributes( $attrs ) . ( $value !== '' && $value !== '0' ? ' checked' : '' ) . '>';
-			return '<p class="' . esc_attr( str_replace( 'fxc-field--' . $id, 'fxc-field--checkbox', $class ) ) . '">' . $control . ' ' . $label . $after . '</p>';
+			return '<p class="' . esc_attr( str_replace( 'fxc-field--' . $id, 'fxc-field--checkbox', $class ) ) . '"' . $wrap . '>' . $control . ' ' . $label . $after . '</p>';
 		}
 		if ( $kind === 'radio' ) {
 			// The group carries the id, so an error links to it; each choice is required natively.
@@ -272,6 +297,7 @@ final class CheckoutForm {
 					'aria-required'    => $attrs['aria-required'],
 					'data-fxc-key'     => $id,
 					'aria-describedby' => $attrs['aria-describedby'],
+					'disabled'         => $off,
 				]
 			);
 			$choices = '';
@@ -288,7 +314,7 @@ final class CheckoutForm {
 					esc_html( (string) $text )
 				);
 			}
-			return '<fieldset class="' . esc_attr( $class . ' fxc-field--radio' ) . '"' . $group . '><legend>' . esc_html( (string) $field['label'] ) . $mark . '</legend>' . $choices . $after . '</fieldset>';
+			return '<fieldset class="' . esc_attr( $class . ' fxc-field--radio' ) . '"' . $group . $wrap . '><legend>' . esc_html( (string) $field['label'] ) . $mark . '</legend>' . $choices . $after . '</fieldset>';
 		}
 		if ( $options !== [] ) {
 			$control = '<select' . Component::attributes( array_diff_key( $attrs, [ 'placeholder' => true ] ) ) . '>';
@@ -316,7 +342,7 @@ final class CheckoutForm {
 				Component::attributes( $attrs )
 			);
 		}
-		return '<p class="' . esc_attr( $class ) . '">' . $label . $control . $after . '</p>';
+		return '<p class="' . esc_attr( $class ) . '"' . $wrap . '>' . $label . $control . $after . '</p>';
 	}
 
 	/**

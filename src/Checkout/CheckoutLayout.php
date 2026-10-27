@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Flexa\Commerce\Checkout;
 
 use Flexa\Commerce\Contracts\Exceptions\InvalidCheckoutLayout;
+use Flexa\Commerce\Support\Countries;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -20,8 +21,12 @@ defined( 'ABSPATH' ) || exit;
  * Every section always holds all of its core fields, and the page always
  * holds every section: one missing is added at the end with its defaults.
  *
+ * A field of the merchant's can show only for some countries, for carts that
+ * ship or not, and for carts with some products or categories (`when`).
+ *
  * @phpstan-type Choice array{value:string,label:string}
- * @phpstan-type Entry array{id:string,label:string,placeholder:string,help:string,width:string,answer:string,custom:bool,type?:string,options?:list<Choice>,email?:bool}
+ * @phpstan-type When array{countries:list<string>,shipping:string,products:list<int>,categories:list<int>}
+ * @phpstan-type Entry array{id:string,label:string,placeholder:string,help:string,width:string,answer:string,custom:bool,type?:string,options?:list<Choice>,email?:bool,when?:When}
  * @phpstan-type Block array{id:string,title?:string,type?:string,text?:string}
  * @phpstan-type Page array{columns:string,summary:string,main:list<Block>,side:list<Block>}
  * @api
@@ -83,6 +88,14 @@ final class CheckoutLayout {
 	/** Query argument of the preview link; its value is a nonce for PREVIEW_NONCE. */
 	public const PREVIEW_ARG   = 'fxc_preview';
 	public const PREVIEW_NONCE = 'flexacommerce-checkout-preview';
+
+	/** `when.shipping`: any cart, a cart that ships, a cart that does not. */
+	public const ANY_CART    = 'any';
+	public const SHIPS       = 'ships';
+	public const NO_SHIPPING = 'no_shipping';
+
+	/** Countries, products or categories one field can name. */
+	public const MAX_TARGETS = 100;
 
 	public const MAX_CUSTOM  = 30;
 	public const MAX_CHOICES = 30;
@@ -253,6 +266,18 @@ final class CheckoutLayout {
 	public function custom( string $section, string $id ): ?array {
 		$entry = $this->entry( $section, $id );
 		return $entry !== null && $entry['custom'] ? $entry : null;
+	}
+
+	/** Whether a field shows only for carts with some categories. */
+	public function names_categories(): bool {
+		foreach ( $this->fields as $entries ) {
+			foreach ( $entries as $entry ) {
+				if ( ( $entry['when']['categories'] ?? [] ) !== [] ) {
+					return true;
+				}
+			}
+		}
+		return false;
 	}
 
 	public function is_default(): bool {
@@ -481,11 +506,59 @@ final class CheckoutLayout {
 			'type'        => $type,
 			'options'     => [],
 			'email'       => ! array_key_exists( 'email', $raw ) || in_array( $raw['email'], [ true, 1, '1', 'true' ], true ),
+			'when'        => self::when( is_array( $raw['when'] ?? null ) ? $raw['when'] : [], $strict, $path . '.when' ),
 		];
 		if ( $type === 'select' || $type === 'radio' ) {
 			$entry['options'] = self::options( $raw['options'] ?? null, $strict, $path . '.options' );
 		}
 		return $entry;
+	}
+
+	/**
+	 * @param array<mixed> $raw
+	 * @return When
+	 * @throws InvalidCheckoutLayout In strict mode.
+	 */
+	private static function when( array $raw, bool $strict, string $path ): array {
+		$countries = [];
+		foreach ( is_array( $raw['countries'] ?? null ) ? $raw['countries'] : [] as $code ) {
+			$code = is_string( $code ) ? strtoupper( trim( $code ) ) : '';
+			if ( ! Countries::exists( $code ) ) {
+				if ( $strict ) {
+					throw new InvalidCheckoutLayout( __( 'One of the countries is not known.', 'flexacommerce' ), $path . '.countries' );
+				}
+				continue;
+			}
+			$countries[ $code ] = $code;
+		}
+		$when = [
+			'countries'  => array_values( $countries ),
+			'shipping'   => self::choice( $raw['shipping'] ?? null, [ self::ANY_CART, self::SHIPS, self::NO_SHIPPING ], self::ANY_CART, $strict, $path . '.shipping' ),
+			'products'   => self::ids( $raw['products'] ?? null ),
+			'categories' => self::ids( $raw['categories'] ?? null ),
+		];
+		foreach ( [ 'countries', 'products', 'categories' ] as $key ) {
+			if ( count( $when[ $key ] ) > self::MAX_TARGETS ) {
+				if ( $strict ) {
+					/* translators: %d: maximum number of countries, products or categories */
+					throw new InvalidCheckoutLayout( sprintf( __( 'Pick at most %d.', 'flexacommerce' ), self::MAX_TARGETS ), $path . '.' . $key );
+				}
+				$when[ $key ] = array_slice( $when[ $key ], 0, self::MAX_TARGETS );
+			}
+		}
+		return $when;
+	}
+
+	/** @return list<int> positive and once each */
+	private static function ids( mixed $raw ): array {
+		$ids = [];
+		foreach ( is_array( $raw ) ? $raw : [] as $id ) {
+			$id = is_numeric( $id ) ? (int) $id : 0;
+			if ( $id > 0 ) {
+				$ids[ $id ] = $id;
+			}
+		}
+		return array_values( $ids );
 	}
 
 	/**

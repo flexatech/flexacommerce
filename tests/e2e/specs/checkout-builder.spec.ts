@@ -114,3 +114,47 @@ test( 'the checkout builder moves a field and a section, adds a question and a h
 	await expect( page.getByText( 'Checkout reset.' ) ).toBeVisible();
 	await expect( page.getByRole( 'button', { name: 'Reset to default' } ) ).toBeDisabled();
 } );
+
+test( 'a field shown for one country follows the country the shopper picks', async ( { page, browser }, info ) => {
+	test.skip( info.project.name !== 'tt5', 'admin screen, theme independent' );
+
+	await logInAsAdmin( page );
+	await page.goto( BUILDER );
+	await page.getByRole( 'button', { name: 'Short text' } ).click();
+	const settings = page.getByLabel( 'Settings', { exact: true } );
+	await settings.getByLabel( 'Label', { exact: true } ).fill( 'VAT number' );
+	await settings.getByRole( 'radio', { name: 'Required', exact: true } ).check();
+	await settings.getByLabel( 'Only for these countries' ).selectOption( 'DE' );
+	await expect( settings.getByRole( 'button', { name: 'Remove Germany' } ) ).toBeVisible();
+	await expect( page.getByText( 'Conditional', { exact: true } ) ).toBeVisible();
+	await page.getByRole( 'button', { name: 'Save changes' } ).click();
+	await expect( page.getByText( 'Checkout saved.' ) ).toBeVisible();
+	await expectAccessible( page, info, 'checkout builder conditions' );
+
+	const guest = await browser.newContext( { extraHTTPHeaders: info.project.use.extraHTTPHeaders } );
+	const shopper = await guest.newPage();
+	await addSimple( shopper );
+	await shopper.goto( '/checkout/' );
+	const vat = shopper.locator( '#fxc-additional-vat_number' );
+	const country = shopper.locator( '#fxc-billing-country' );
+	await country.selectOption( 'US' );
+	await expect( vat ).toBeHidden();
+	await country.selectOption( 'DE' );
+	await expect( vat ).toBeVisible();
+	await expect( vat ).toBeEnabled();
+
+	// Back in the US, the hidden question does not hold the order back.
+	await fillBilling( shopper );
+	await expect( vat ).toBeHidden();
+	await shopper.locator( '#fxc-payment-method' ).getByLabel( /cash on delivery/i ).check();
+	await shopper.locator( '#fxc-terms' ).check();
+	await shopper.getByRole( 'button', { name: 'Place order' } ).click();
+	await expect( shopper.locator( '.fxc-order' ) ).toBeVisible( { timeout: 15_000 } );
+	await expect( shopper.locator( '.fxc-order' ) ).not.toContainText( 'VAT number' );
+	await guest.close();
+
+	await page.goto( BUILDER );
+	await page.getByRole( 'button', { name: 'Reset to default' } ).click();
+	await page.getByRole( 'dialog' ).getByRole( 'button', { name: 'Reset', exact: true } ).click();
+	await expect( page.getByText( 'Checkout reset.' ) ).toBeVisible();
+} );

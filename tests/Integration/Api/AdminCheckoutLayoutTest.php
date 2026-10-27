@@ -32,6 +32,13 @@ final class AdminCheckoutLayoutTest extends OrderTestCase {
 		self::assertSame( $data['page'], $data['default']['page'] );
 		self::assertSame( [ 'billing', 'shipping', 'additional' ], array_column( $data['page']['main'], 'id' ) );
 		self::assertSame( 'Email address', $data['labels']['email'] );
+		self::assertContains(
+			[
+				'code' => 'US',
+				'name' => 'United States',
+			],
+			$data['countries']
+		);
 		self::assertSame( [ 'billing', 'shipping', 'additional' ], array_keys( $data['fields'] ) );
 
 		$saved = $this->send(

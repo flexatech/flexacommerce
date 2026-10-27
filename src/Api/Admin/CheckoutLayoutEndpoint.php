@@ -8,6 +8,7 @@ use Flexa\Commerce\Api\Endpoint;
 use Flexa\Commerce\Checkout\CheckoutLayout;
 use Flexa\Commerce\Checkout\CheckoutPages;
 use Flexa\Commerce\Contracts\CommerceException;
+use Flexa\Commerce\Support\Countries;
 use WP_Error;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -89,11 +90,37 @@ final class CheckoutLayoutEndpoint extends Endpoint {
 	private static function payload( CheckoutLayout $layout ): WP_REST_Response {
 		return new WP_REST_Response(
 			$layout->to_array() + [
-				'default' => CheckoutLayout::default()->to_array(),
-				'labels'  => self::labels(),
+				'default'   => CheckoutLayout::default()->to_array(),
+				'labels'    => self::labels(),
+				'countries' => self::countries( $layout ),
 			],
 			200
 		);
+	}
+
+	/**
+	 * The countries a field can be shown for: the ones the store sells to,
+	 * and any a field names that the store no longer sells to.
+	 *
+	 * @return list<array{code:string,name:string}>
+	 */
+	private static function countries( CheckoutLayout $layout ): array {
+		$codes = Countries::allowed();
+		foreach ( $layout->to_array()['fields'] as $entries ) {
+			foreach ( $entries as $entry ) {
+				foreach ( $entry['when']['countries'] ?? [] as $code ) {
+					$codes[ $code ] ??= Countries::name( $code );
+				}
+			}
+		}
+		$out = [];
+		foreach ( $codes as $code => $name ) {
+			$out[] = [
+				'code' => (string) $code,
+				'name' => $name,
+			];
+		}
+		return $out;
 	}
 
 	/**
