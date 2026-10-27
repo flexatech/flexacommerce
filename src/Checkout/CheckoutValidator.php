@@ -9,6 +9,7 @@ use Flexa\Commerce\Contracts\Payments\CheckoutContext;
 use Flexa\Commerce\Contracts\Payments\PaymentGateway;
 use Flexa\Commerce\Contracts\Shipping\Destination;
 use Flexa\Commerce\Contracts\ValidationResult;
+use Flexa\Commerce\Orders\OrderFields;
 use Flexa\Commerce\Support\Countries;
 use Flexa\Commerce\Support\Settings;
 
@@ -40,7 +41,8 @@ final class CheckoutValidator {
 		$errors = [];
 		$meta   = [];
 
-		[ $billing, $billing_meta ] = $this->address( 'billing', $request->billing, $errors );
+		$answers                    = [];
+		[ $billing, $billing_meta ] = $this->address( 'billing', $request->billing, $errors, $answers );
 		$meta                       = $billing_meta;
 
 		$shipping = null;
@@ -48,9 +50,13 @@ final class CheckoutValidator {
 			if ( $request->shipping === null ) {
 				$shipping = new AddressView( 'shipping', ...array_diff_key( $billing->to_array(), [ 'email' => true ] ) );
 			} else {
-				[ $shipping, $shipping_meta ] = $this->address( 'shipping', $request->shipping, $errors );
+				[ $shipping, $shipping_meta ] = $this->address( 'shipping', $request->shipping, $errors, $answers );
 				$meta                         = array_merge( $meta, $shipping_meta );
 			}
+		}
+		$meta = array_merge( $meta, $this->additional( $request, $errors, $answers ) );
+		if ( $answers !== [] ) {
+			$meta[ OrderFields::META ] = (string) wp_json_encode( $answers );
 		}
 
 		return [
@@ -70,7 +76,8 @@ final class CheckoutValidator {
 	 */
 	public function single_address( string $type, array $input ): array {
 		$errors      = [];
-		[ $address ] = $this->address( $type, $input, $errors );
+		$answers     = [];
+		[ $address ] = $this->address( $type, $input, $errors, $answers, true );
 		return [ $address, $errors ];
 	}
 
@@ -118,16 +125,77 @@ final class CheckoutValidator {
 		return $errors;
 	}
 
+	/** The order notes, '' when the builder hides them. */
 	public function note( CheckoutRequest $request ): string {
+		if ( FieldSchema::additional()->field( 'customer_note' ) === null ) {
+			return '';
+		}
 		return mb_substr( sanitize_textarea_field( $request->customer_note ), 0, self::NOTE_MAX );
 	}
 
 	/**
-	 * @param array<string,string> $input
-	 * @param array<string,string> $errors
+	 * The Additional information fields. The order notes are checked here
+	 * only for being required; their length is a choice error, as before.
+	 *
+	 * @param array<string,string>                $errors
+	 * @param list<array<string,string|bool>> $answers
+	 * @return array<string,string> meta
+	 */
+	private function additional( CheckoutRequest $request, array &$errors, array &$answers ): array {
+		$meta = [];
+		foreach ( FieldSchema::additional()->fields() as $field ) {
+			if ( $field->id === 'customer_note' ) {
+				if ( $field->required && trim( $request->customer_note ) === '' ) {
+					/* translators: %s: field label. */
+					$errors['customer_note'] = sprintf( __( '%s is required.', 'flexacommerce' ), $field->label );
+				}
+				continue;
+			}
+			$value = $this->clean( $field, $request->additional[ $field->id ] ?? '' );
+			$error = $this->check( $field, $value, '' );
+			if ( $error !== null ) {
+				$errors[ 'additional.' . $field->id ] = $error;
+			}
+			if ( $value !== '' ) {
+				$meta[ '_additional_' . $field->id ] = $value;
+				$this->answer( 'additional', $field, $value, $answers );
+			}
+		}
+		return $meta;
+	}
+
+	/**
+	 * A line for the order screen, emails and the account (OrderFields), in
+	 * the words of the field when the order was placed.
+	 *
+	 * @param list<array<string,string|bool>> $answers
+	 */
+	private function answer( string $type, CheckoutField $field, string $value, array &$answers ): void {
+		$entry = CheckoutLayout::current()->custom( $type, $field->id );
+		if ( $entry === null ) {
+			return;
+		}
+		$answers[] = [
+			'key'   => '_' . $type . '_' . $field->id,
+			'label' => $field->label,
+			'value' => match ( $field->type ) {
+				'checkbox' => __( 'Yes', 'flexacommerce' ),
+				'select', 'radio' => $field->options[ $value ] ?? $value,
+				'date' => (string) mysql2date( (string) get_option( 'date_format' ), $value . ' 00:00:00' ),
+				default => $value,
+			},
+			'email' => $entry['email'] ?? true,
+		];
+	}
+
+	/**
+	 * @param array<string,string>            $input
+	 * @param array<string,string>            $errors
+	 * @param list<array<string,string|bool>> $answers
+	 * @param bool                            $core_only the account page keeps the address columns only
 	 * @return array{0:AddressView,1:array<string,string>} address and extra field meta
 	 */
-	private function address( string $type, array $input, array &$errors ): array {
+	private function address( string $type, array $input, array &$errors, array &$answers, bool $core_only = false ): array {
 		$country = strtoupper( trim( $input['country'] ?? '' ) );
 		$allowed = Countries::allowed();
 		if ( ! isset( $allowed[ $country ] ) ) {
@@ -137,6 +205,9 @@ final class CheckoutValidator {
 		}
 
 		$schema = FieldSchema::for_address( $type, $country );
+		if ( $core_only ) {
+			$schema = $schema->core();
+		}
 		$values = [];
 		$meta   = [];
 		foreach ( $schema->fields() as $field ) {
@@ -149,6 +220,7 @@ final class CheckoutValidator {
 				$values[ $field->id ] = $value;
 			} elseif ( $value !== '' ) {
 				$meta[ '_' . $type . '_' . $field->id ] = $value;
+				$this->answer( $type, $field, $value, $answers );
 			}
 		}
 		$values['country'] = $country;
@@ -176,7 +248,7 @@ final class CheckoutValidator {
 		if ( $field->type === 'checkbox' ) {
 			return in_array( $value, [ '1', 'true', 'on', 'yes' ], true ) ? '1' : '';
 		}
-		$value = trim( sanitize_text_field( $value ) );
+		$value = trim( $field->type === 'textarea' ? sanitize_textarea_field( $value ) : sanitize_text_field( $value ) );
 		if ( $field->type === 'email' ) {
 			return strtolower( $value );
 		}
@@ -204,7 +276,15 @@ final class CheckoutValidator {
 		if ( $field->type === 'tel' && preg_match( '/^[0-9+()\-.\s]{4,32}$/', $value ) !== 1 ) {
 			return __( 'Enter a valid phone number.', 'flexacommerce' );
 		}
-		if ( ( $field->type === 'select' || $field->type === 'state' ) && $field->options !== [] && ! isset( $field->options[ $value ] ) ) {
+		if ( $field->type === 'number' && ! is_numeric( $value ) ) {
+			/* translators: %s: field label. */
+			return sprintf( __( '%s must be a number.', 'flexacommerce' ), $field->label );
+		}
+		if ( $field->type === 'date' && ! self::is_date( $value ) ) {
+			/* translators: %s: field label. */
+			return sprintf( __( 'Enter %s as a date.', 'flexacommerce' ), $field->label );
+		}
+		if ( in_array( $field->type, [ 'select', 'state', 'radio' ], true ) && $field->options !== [] && ! isset( $field->options[ $value ] ) ) {
 			/* translators: %s: field label. */
 			return sprintf( __( 'Choose a valid %s.', 'flexacommerce' ), $field->label );
 		}
@@ -213,5 +293,9 @@ final class CheckoutValidator {
 			return sprintf( __( '%s is not valid for this country.', 'flexacommerce' ), $field->label );
 		}
 		return null;
+	}
+
+	private static function is_date( string $value ): bool {
+		return preg_match( '/^(\d{4})-(\d{2})-(\d{2})$/', $value, $m ) === 1 && checkdate( (int) $m[2], (int) $m[3], (int) $m[1] );
 	}
 }

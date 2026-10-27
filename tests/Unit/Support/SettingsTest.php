@@ -57,21 +57,17 @@ final class SettingsTest extends TestCase {
 		self::assertSame( [], Settings::sanitize( [ 'sell_to_countries' => 42 ] )['sell_to_countries'] );
 	}
 
-	public function test_checkout_field_modes_page_ids_and_bases(): void {
+	public function test_page_ids_and_bases(): void {
 		$clean = Settings::sanitize(
 			[
-				'checkout_company'   => 'required',
-				'checkout_phone'     => 'sometimes',
-				'checkout_address_2' => 'required',
-				'terms_page_id'      => '-3',
-				'checkout_page_id'   => '12',
-				'product_base'       => ' Shop Items! ',
-				'tag_base'           => [ 'x' ],
+				'checkout_company' => 'required',
+				'terms_page_id'    => '-3',
+				'checkout_page_id' => '12',
+				'product_base'     => ' Shop Items! ',
+				'tag_base'         => [ 'x' ],
 			]
 		);
-		self::assertSame( 'required', $clean['checkout_company'] );
-		self::assertSame( 'optional', $clean['checkout_phone'], 'unknown mode keeps the default' );
-		self::assertSame( 'optional', $clean['checkout_address_2'], 'address line 2 cannot be required' );
+		self::assertArrayNotHasKey( 'checkout_company', $clean, 'the checkout fields moved to the checkout layout (ADR-031)' );
 		self::assertSame( 0, $clean['terms_page_id'] );
 		self::assertSame( 12, $clean['checkout_page_id'] );
 		self::assertSame( 'shop-items', $clean['product_base'] );

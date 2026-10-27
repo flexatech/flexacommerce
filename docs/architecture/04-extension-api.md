@@ -174,7 +174,9 @@ Because these fire after commit, a listener that throws cannot roll back the ord
 | `flexacommerce.cart.validate_add` | `ValidationResult $result, int $variant_id, int $qty, CartView $cart` | Can add errors (min/max quantity rules). |
 | `flexacommerce.cart.line_max_quantity` | `int $max, VariantView $variant` | |
 | `flexacommerce.cart.fees` | `list<Fee> $fees, CartView $cart` | Fees become `fee` order lines. |
-| `flexacommerce.checkout.fields` | `FieldSchema $schema, string $country` | Add, remove or require fields. Values of extra fields go to `fxc_order_meta`. |
+| `flexacommerce.checkout.fields` | `FieldSchema $schema, string $country, string $type` | Add, remove or require fields of the billing or shipping address. Runs after the checkout layout (doc 11), so it sees the merchant's order, labels and custom fields. Values of extra fields go to `fxc_order_meta`. |
+| `flexacommerce.checkout.additional_fields` | `FieldSchema $schema` (type `additional`) | The same for Additional information: the order notes and the merchant's own questions. Values go to `_additional_{id}`. |
+| `flexacommerce.checkout.layout` | `CheckoutLayout $layout` | The normalised builder layout, once per request, before the schemas are built. |
 | `flexacommerce.checkout.validate` | `ValidationResult $result, CheckoutView $checkout` | |
 | `flexacommerce.shipping.rates` | `list<ShippingRate> $rates, ShippingPackage $package` | Reorder, hide, rename. |
 | `flexacommerce.product.is_purchasable` | `bool, VariantView $variant` | May only forbid. |
@@ -186,6 +188,14 @@ Because these fire after commit, a listener that throws cannot roll back the ord
 | `flexacommerce.tax.presets` | `list<TaxPreset> $presets` | Add a market preset next to the core `us` preset. |
 
 Rule: filters that affect money run on the server only. The browser never receives a price it can send back.
+
+### Checkout layout action
+
+| Action | Args | Notes |
+|---|---|---|
+| `flexacommerce.checkout.layout.saved` | `CheckoutLayout $layout` | After the builder saves or resets the layout (`CheckoutLayout::save()`, `reset()`). |
+
+Custom checkout answers are order meta `_{section}_{id}`; `_fxc_fields` (reserved) keeps the label, the value and the email switch of each one as placed. Read them with `Orders\OrderFields::for_order()`.
 
 ### 7.0 Coupon actions
 

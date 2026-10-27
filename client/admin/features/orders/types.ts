@@ -86,6 +86,8 @@ export interface OrderDetail extends OrderSummary {
     refundable: number;
     balance_due: number;
     customer_note: string;
+    /** Answers to the merchant's own checkout fields, with the label of the time of the order. */
+    fields: { label: string; value: string }[];
     customer_ip: string;
     created_via: string;
     paid_at: string | null;

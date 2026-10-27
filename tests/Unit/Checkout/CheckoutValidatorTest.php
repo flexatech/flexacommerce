@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Flexa\Commerce\Tests\Unit\Checkout;
 
 use Flexa\Commerce\Checkout\CheckoutField;
+use Flexa\Commerce\Checkout\CheckoutLayout;
 use Flexa\Commerce\Checkout\CheckoutRequest;
 use Flexa\Commerce\Checkout\CheckoutValidator;
 use Flexa\Commerce\Checkout\FieldSchema;
@@ -108,9 +109,19 @@ final class CheckoutValidatorTest extends TestCase {
 	}
 
 	public function test_hidden_fields_are_not_asked_for_and_required_ones_are(): void {
-		\WP_Test_State::$options[ Settings::OPTION ] = [
-			'checkout_company' => 'required',
-			'checkout_phone'   => 'hidden',
+		\WP_Test_State::$options[ CheckoutLayout::OPTION ] = [
+			'fields' => [
+				'billing' => [
+					[
+						'id'     => 'company',
+						'answer' => 'required',
+					],
+					[
+						'id'     => 'phone',
+						'answer' => 'hidden',
+					],
+				],
+			],
 		];
 		$result = $this->addresses( [ 'billing' => [ 'phone' => 'call me' ] + self::BILLING ] );
 		self::assertSame( [ 'billing.company' ], array_keys( $result['errors'] ) );
@@ -127,8 +138,8 @@ final class CheckoutValidatorTest extends TestCase {
 	}
 
 	public function test_destination_reads_the_raw_shipping_address_and_the_note_is_trimmed(): void {
-		$validator = new CheckoutValidator();
-		$request   = $this->request(
+		$validator   = new CheckoutValidator();
+		$request     = $this->request(
 			[
 				'billing'                   => self::BILLING,
 				'ship_to_different_address' => true,

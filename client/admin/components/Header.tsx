@@ -1,4 +1,5 @@
-import { Activity, ArrowLeftRight, ListPlus, Receipt, Settings, Store, Tags, TicketPercent, Users } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { Activity, ArrowLeftRight, ClipboardList, ListPlus, Receipt, Settings, Store, Tags, TicketPercent, Users } from "lucide-react";
 
 import { cn } from "@/shared/lib/cn";
 import { __ } from "@/shared/lib/i18n";
@@ -11,6 +12,7 @@ const NAV: { page: AdminPage; label: string; icon: typeof Activity }[] = [
     { page: "flexacommerce-attributes", label: __("Attributes"), icon: Tags },
     { page: "flexacommerce-product-options", label: __("Product options"), icon: ListPlus },
     { page: "flexacommerce-promotions", label: __("Promotions"), icon: TicketPercent },
+    { page: "flexacommerce-checkout", label: __("Checkout"), icon: ClipboardList },
     { page: "flexacommerce", label: __("Status"), icon: Activity },
     { page: "flexacommerce-settings", label: __("Settings"), icon: Settings },
     { page: "flexacommerce-migration", label: __("Migration"), icon: ArrowLeftRight },
@@ -18,10 +20,16 @@ const NAV: { page: AdminPage; label: string; icon: typeof Activity }[] = [
 
 export function Header({ page }: { page: AdminPage }) {
     const { adminUrl, version } = getPluginGlobal();
+    const nav = useRef<HTMLElement>(null);
+
+    // On a narrow screen the tabs scroll; the open one starts in view.
+    useEffect(() => {
+        nav.current?.querySelector('[aria-current="page"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }, [page]);
 
     return (
         <header className="fxc:bg-background fxc:sticky fxc:top-8 fxc:z-40 fxc:flex fxc:h-14 fxc:w-full fxc:items-center fxc:gap-6 fxc:border-b fxc:px-4">
-            <div className="fxc:flex fxc:items-center fxc:gap-3 fxc:pr-4">
+            <div className="fxc:flex fxc:shrink-0 fxc:items-center fxc:gap-3 fxc:pr-4">
                 <div className="fxc:bg-sidebar-primary fxc:text-sidebar-primary-foreground fxc:flex fxc:h-8 fxc:w-8 fxc:items-center fxc:justify-center fxc:rounded-lg">
                     <Store aria-hidden className="fxc:h-4 fxc:w-4" />
                 </div>
@@ -30,14 +38,14 @@ export function Header({ page }: { page: AdminPage }) {
                     <span className="fxc:text-muted-foreground fxc:text-[10px]">{version}</span>
                 </div>
             </div>
-            <nav className="fxc:flex fxc:h-full fxc:items-stretch fxc:gap-6">
+            <nav ref={nav} className="fxc:flex fxc:h-full fxc:min-w-0 fxc:flex-1 fxc:items-stretch fxc:gap-5 fxc:overflow-x-auto fxc:[scrollbar-width:thin]">
                 {NAV.map(({ page: target, label, icon: Icon }) => (
                     <a
                         key={target}
                         href={`${adminUrl}?page=${target}`}
                         aria-current={target === page ? "page" : undefined}
                         className={cn(
-                            "fxc:text-foreground fxc:flex fxc:items-center fxc:gap-2 fxc:border-b-2 fxc:border-transparent fxc:text-sm fxc:font-semibold fxc:no-underline fxc:hover:text-primary fxc:focus-visible:ring-2 fxc:focus-visible:ring-primary-accent fxc:outline-none",
+                            "fxc:text-foreground fxc:flex fxc:shrink-0 fxc:items-center fxc:gap-2 fxc:whitespace-nowrap fxc:border-b-2 fxc:border-transparent fxc:text-sm fxc:font-semibold fxc:no-underline fxc:hover:text-primary fxc:focus-visible:ring-2 fxc:focus-visible:ring-primary-accent fxc:outline-none",
                             target === page && "fxc:text-primary fxc:border-primary",
                         )}
                     >

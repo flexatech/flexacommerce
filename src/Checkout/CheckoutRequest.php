@@ -17,6 +17,7 @@ final class CheckoutRequest {
 	 * @param array<string,string>|null $shipping null ships to the billing address
 	 * @param array<string,mixed>       $gateway_input
 	 * @param array<string,mixed>       $extensions input of extensions, keyed by extension id
+	 * @param array<string,string>      $additional answers to the Additional information fields, by field id
 	 */
 	public function __construct(
 		public readonly string $checkout_token,
@@ -31,6 +32,7 @@ final class CheckoutRequest {
 		public readonly array $extensions = [],
 		public readonly int $user_id = 0,
 		public readonly string $customer_ip = '',
+		public readonly array $additional = [],
 	) {}
 
 	/** @param array<string,mixed> $data the decoded JSON body or form post */
@@ -49,6 +51,7 @@ final class CheckoutRequest {
 			extensions: is_array( $data['extensions'] ?? null ) ? self::string_keys( $data['extensions'] ) : [],
 			user_id: $user_id,
 			customer_ip: $customer_ip,
+			additional: self::address( $data['additional'] ?? [] ),
 		);
 	}
 

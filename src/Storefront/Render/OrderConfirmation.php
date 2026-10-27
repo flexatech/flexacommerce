@@ -7,8 +7,10 @@ namespace Flexa\Commerce\Storefront\Render;
 use Flexa\Commerce\Checkout\CheckoutService;
 use Flexa\Commerce\Contracts\Orders\AddressView;
 use Flexa\Commerce\Orders\Order;
+use Flexa\Commerce\Orders\OrderFields;
 use Flexa\Commerce\Orders\OrderItem;
 use Flexa\Commerce\Orders\OrderStatus;
+use Flexa\Commerce\Plugin;
 use Flexa\Commerce\Support\Countries;
 
 defined( 'ABSPATH' ) || exit;
@@ -58,6 +60,7 @@ final class OrderConfirmation {
 		}
 
 		$html .= $this->items( $order );
+		$html .= self::fields( $order );
 
 		$html .= '<div class="fxc-order__addresses">'
 			. self::address( __( 'Billing address', 'flexacommerce' ), $order->billing )
@@ -123,6 +126,19 @@ final class OrderConfirmation {
 			$html .= '<tr><th scope="row">' . esc_html( $label ) . '</th><td>' . esc_html( is_string( $amount ) ? $amount : $this->money( $order, $amount ) ) . '</td></tr>';
 		}
 		return $html . '</tfoot></table>';
+	}
+
+	/** The answers to the merchant's own checkout fields (ADR-031). */
+	public static function fields( Order $order ): string {
+		$answers = OrderFields::for_order( Plugin::instance()->orders()->orders(), $order->id );
+		if ( $answers === [] ) {
+			return '';
+		}
+		$html = '<section class="fxc-order__fields"><h2>' . esc_html__( 'Additional information', 'flexacommerce' ) . '</h2><dl>';
+		foreach ( $answers as $answer ) {
+			$html .= '<dt>' . esc_html( $answer['label'] ) . '</dt><dd>' . nl2br( esc_html( $answer['value'] ) ) . '</dd>';
+		}
+		return $html . '</dl></section>';
 	}
 
 	public static function address( string $title, ?AddressView $address ): string {

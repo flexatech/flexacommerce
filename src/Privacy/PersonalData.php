@@ -11,6 +11,7 @@ use Flexa\Commerce\Contracts\Orders\AddressView;
 use Flexa\Commerce\Customers\CustomerProfile;
 use Flexa\Commerce\Orders\HistoryRepository;
 use Flexa\Commerce\Orders\Order;
+use Flexa\Commerce\Orders\OrderFields;
 use Flexa\Commerce\Orders\OrderRepository;
 use Flexa\Commerce\Orders\OrderService;
 use Flexa\Commerce\Orders\OrderStatus;
@@ -234,6 +235,9 @@ final class PersonalData {
 				$fields[] = self::field( $billing ? __( 'Billing phone', 'flexacommerce' ) : __( 'Shipping phone', 'flexacommerce' ), $address->phone );
 				$fields[] = self::field( $billing ? __( 'Billing email', 'flexacommerce' ) : __( 'Shipping email', 'flexacommerce' ), $address->email );
 			}
+		}
+		foreach ( OrderFields::for_order( $this->orders, $order->id ) as $answer ) {
+			$fields[] = self::field( $answer['label'], $answer['value'] );
 		}
 		$fields[] = self::field( __( 'Messages from the store', 'flexacommerce' ), implode( "\n", array_reverse( $notes ) ) );
 		return array_values( array_filter( $fields, static fn ( array $field ): bool => $field['value'] !== '' ) );

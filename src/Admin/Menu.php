@@ -30,6 +30,7 @@ final class Menu {
 		self::SLUG . '-attributes',
 		self::SLUG . '-product-options',
 		self::SLUG . '-promotions',
+		self::SLUG . '-checkout',
 		self::SLUG . '-settings',
 		self::SLUG . '-migration',
 		self::SLUG,
@@ -106,6 +107,17 @@ final class Menu {
 				__( 'Promotions', 'flexacommerce' ),
 				Capabilities::MANAGE,
 				self::SLUG . '-promotions',
+				[ $this, 'render_page' ]
+			)
+		);
+		$this->add(
+			self::SLUG . '-checkout',
+			(string) add_submenu_page(
+				self::SLUG,
+				__( 'Checkout', 'flexacommerce' ),
+				__( 'Checkout', 'flexacommerce' ),
+				Capabilities::MANAGE,
+				self::SLUG . '-checkout',
 				[ $this, 'render_page' ]
 			)
 		);

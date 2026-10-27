@@ -75,14 +75,7 @@ final class CheckoutForm {
 				. '</div>';
 		}
 
-		$note  = is_string( $posted['customer_note'] ?? null ) ? $posted['customer_note'] : '';
-		$html .= sprintf(
-			'<p class="fxc-field fxc-field--note"><label for="fxc-customer-note">%1$s</label><textarea id="fxc-customer-note" name="customer_note" rows="3" maxlength="1000"%2$s>%3$s</textarea>%4$s</p>',
-			esc_html__( 'Order notes (optional)', 'flexacommerce' ),
-			$this->invalid( 'customer_note', $errors ),
-			esc_textarea( $note ),
-			$this->error( 'customer_note', $errors )
-		);
+		$html .= $this->additional( $posted, $errors );
 		$html .= '</div><div class="fxc-checkout__review">';
 
 		$html .= $this->rates( $state, $errors );
@@ -94,6 +87,27 @@ final class CheckoutForm {
 			. '<button type="submit" class="wp-element-button fxc-checkout__place" data-fxc-place>' . esc_html__( 'Place order', 'flexacommerce' ) . '</button>'
 			. '</p><p class="fxc-checkout__message" role="status" aria-live="polite" data-fxc-message></p>';
 		return $html . '</div></div></form></div>';
+	}
+
+	/**
+	 * The order notes and the merchant's own fields (ADR-031). With the
+	 * notes alone, they keep the markup of before the builder.
+	 *
+	 * @param array<string,mixed>  $posted
+	 * @param array<string,string> $errors
+	 */
+	private function additional( array $posted, array $errors ): string {
+		$fields = FieldSchema::additional()->to_array();
+		if ( $fields === [] ) {
+			return '';
+		}
+		$values                  = is_array( $posted['additional'] ?? null ) ? $posted['additional'] : [];
+		$values['customer_note'] = is_string( $posted['customer_note'] ?? null ) ? $posted['customer_note'] : '';
+		$html                    = self::fields( 'additional', $fields, $values, [], $errors );
+		if ( count( $fields ) === 1 && $fields[0]['id'] === 'customer_note' ) {
+			return $html;
+		}
+		return '<fieldset class="fxc-checkout__additional"><legend>' . esc_html__( 'Additional information', 'flexacommerce' ) . '</legend>' . $html . '</fieldset>';
 	}
 
 	/** @param array<string,string> $errors */
@@ -156,62 +170,97 @@ final class CheckoutForm {
 	 */
 	private static function field( string $type, array $field, string $value, array $countries, array $errors, bool $native_required ): string {
 		$id       = (string) $field['id'];
-		$path     = $type . '.' . $id;
+		$note     = $type === 'additional' && $id === 'customer_note';
+		$path     = $note ? 'customer_note' : $type . '.' . $id;
 		$dom_id   = self::field_id( $path );
-		$name     = $type . '[' . $id . ']';
+		$name     = $note ? 'customer_note' : $type . '[' . $id . ']';
+		$kind     = (string) $field['type'];
 		$required = ! empty( $field['required'] );
-		$attrs    = Component::attributes(
-			[
-				'id'            => $dom_id,
-				'name'          => $name,
-				'required'      => $required && $native_required,
-				'aria-required' => $required && ! $native_required ? 'true' : null,
-				'autocomplete'  => (string) $field['autocomplete'] !== '' ? (string) $field['autocomplete'] : null,
-				'data-fxc-key'  => $id,
-			]
-		) . self::invalid_for( $path, $errors );
-		$label    = sprintf(
-			'<label for="%1$s">%2$s%3$s</label>',
-			esc_attr( $dom_id ),
-			esc_html( (string) $field['label'] ),
-			$required ? ' <abbr class="fxc-required" title="' . esc_attr__( 'required', 'flexacommerce' ) . '">*</abbr>' : ''
-		);
+		$help     = (string) ( $field['help'] ?? '' );
+		$help_id  = $help !== '' ? $dom_id . '-help' : '';
+		$invalid  = isset( $errors[ $path ] );
+		$describe = trim( $help_id . ' ' . ( $invalid ? self::error_id( $path ) : '' ) );
+		$attrs    = [
+			'id'               => $dom_id,
+			'name'             => $name,
+			'required'         => $required && $native_required,
+			'aria-required'    => $required && ! $native_required ? 'true' : null,
+			'autocomplete'     => (string) $field['autocomplete'] !== '' ? (string) $field['autocomplete'] : null,
+			'placeholder'      => (string) ( $field['placeholder'] ?? '' ) !== '' ? (string) $field['placeholder'] : null,
+			'data-fxc-key'     => $id,
+			'aria-invalid'     => $invalid ? 'true' : null,
+			'aria-describedby' => $describe !== '' ? $describe : null,
+		];
+		$mark     = $required ? ' <abbr class="fxc-required" title="' . esc_attr__( 'required', 'flexacommerce' ) . '">*</abbr>' : '';
+		$label    = sprintf( '<label for="%1$s">%2$s%3$s</label>', esc_attr( $dom_id ), esc_html( (string) $field['label'] ), $mark );
+		$after    = ( $help !== '' ? '<span class="fxc-field__help" id="' . esc_attr( $help_id ) . '">' . esc_html( $help ) . '</span>' : '' ) . self::error_for( $path, $errors );
+		$class    = 'fxc-field fxc-field--' . ( $note ? 'note' : $id ) . ( ( $field['width'] ?? '' ) === 'half' ? ' fxc-field--half' : '' );
 
 		$options = [];
-		if ( $field['type'] === 'country' ) {
+		if ( $kind === 'country' ) {
 			$options = $countries;
-		} elseif ( in_array( $field['type'], [ 'state', 'select' ], true ) ) {
+		} elseif ( in_array( $kind, [ 'state', 'select', 'radio' ], true ) ) {
 			$options = is_array( $field['options'] ) ? $field['options'] : [];
 		}
 
-		if ( $field['type'] === 'checkbox' ) {
-			$control = '<input type="checkbox" value="1"' . $attrs . ( $value !== '' && $value !== '0' ? ' checked' : '' ) . '>';
-			return '<p class="fxc-field fxc-field--checkbox">' . $control . ' ' . $label . self::error_for( $path, $errors ) . '</p>';
+		if ( $kind === 'checkbox' ) {
+			$control = '<input type="checkbox" value="1"' . Component::attributes( $attrs ) . ( $value !== '' && $value !== '0' ? ' checked' : '' ) . '>';
+			return '<p class="' . esc_attr( str_replace( 'fxc-field--' . $id, 'fxc-field--checkbox', $class ) ) . '">' . $control . ' ' . $label . $after . '</p>';
+		}
+		if ( $kind === 'radio' ) {
+			// The group carries the id, so an error links to it; each choice is required natively.
+			$group   = Component::attributes(
+				[
+					'id'               => $dom_id,
+					'role'             => $required && ! $native_required ? 'radiogroup' : null,
+					'aria-required'    => $attrs['aria-required'],
+					'data-fxc-key'     => $id,
+					'aria-describedby' => $attrs['aria-describedby'],
+				]
+			);
+			$choices = '';
+			$i       = 0;
+			foreach ( $options as $code => $text ) {
+				$choice   = $dom_id . '-' . ( ++$i );
+				$choices .= sprintf(
+					'<span class="fxc-field__choice"><input type="radio" id="%1$s" name="%2$s" value="%3$s"%4$s%5$s> <label for="%1$s">%6$s</label></span>',
+					esc_attr( $choice ),
+					esc_attr( $name ),
+					esc_attr( (string) $code ),
+					$required && $native_required ? ' required' : '',
+					checked( (string) $code, $value, false ),
+					esc_html( (string) $text )
+				);
+			}
+			return '<fieldset class="' . esc_attr( $class . ' fxc-field--radio' ) . '"' . $group . '><legend>' . esc_html( (string) $field['label'] ) . $mark . '</legend>' . $choices . $after . '</fieldset>';
 		}
 		if ( $options !== [] ) {
-			$control = '<select' . $attrs . '>';
-			if ( $field['type'] !== 'country' ) {
+			$control = '<select' . Component::attributes( array_diff_key( $attrs, [ 'placeholder' => true ] ) ) . '>';
+			if ( $kind !== 'country' ) {
 				$control .= '<option value="">' . esc_html__( 'Select an option', 'flexacommerce' ) . '</option>';
 			}
 			foreach ( $options as $code => $text ) {
 				$control .= sprintf( '<option value="%1$s"%2$s>%3$s</option>', esc_attr( (string) $code ), selected( (string) $code, $value, false ), esc_html( (string) $text ) );
 			}
 			$control .= '</select>';
+		} elseif ( $kind === 'textarea' ) {
+			$control = sprintf( '<textarea%1$s rows="3" maxlength="%2$d">%3$s</textarea>', Component::attributes( $attrs ), (int) $field['max_length'], esc_textarea( $value ) );
 		} else {
-			$input = match ( $field['type'] ) {
-				'email' => 'email',
-				'tel' => 'tel',
+			$input = match ( $kind ) {
+				'email', 'tel', 'date', 'number' => $kind,
 				default => 'text',
 			};
+			$length  = in_array( $input, [ 'date', 'number' ], true ) ? '' : sprintf( ' maxlength="%d"', (int) $field['max_length'] );
 			$control = sprintf(
-				'<input type="%1$s" value="%2$s" maxlength="%3$d"%4$s>',
+				'<input type="%1$s" value="%2$s"%3$s%4$s%5$s>',
 				$input,
 				esc_attr( $value ),
-				(int) $field['max_length'],
-				$attrs
+				$length,
+				$input === 'number' ? ' step="any"' : '',
+				Component::attributes( $attrs )
 			);
 		}
-		return '<p class="fxc-field fxc-field--' . esc_attr( $id ) . '">' . $label . $control . self::error_for( $path, $errors ) . '</p>';
+		return '<p class="' . esc_attr( $class ) . '">' . $label . $control . $after . '</p>';
 	}
 
 	/**
@@ -578,7 +627,7 @@ final class CheckoutForm {
 
 	/** DOM id of the control for an error path; '' for errors without a field (cart). */
 	public static function field_id( string $path ): string {
-		if ( preg_match( '/^(billing|shipping)\.([a-z0-9_]+)$/', $path, $m ) === 1 ) {
+		if ( preg_match( '/^(billing|shipping|additional)\.([a-z0-9_]+)$/', $path, $m ) === 1 ) {
 			return 'fxc-' . $m[1] . '-' . $m[2];
 		}
 		return match ( $path ) {

@@ -488,6 +488,19 @@ function CustomerCard({ order }: { order: OrderDetail }) {
                     <p className="fxc:break-words fxc:whitespace-pre-line">{order.customer_note}</p>
                 </div>
             )}
+            {order.fields.length > 0 && (
+                <div className="fxc:border-b fxc:last:border-b-0 fxc:px-5 fxc:py-4 fxc:text-sm">
+                    <h3 className="fxc:text-muted-foreground fxc:mb-1 fxc:text-xs fxc:font-medium fxc:uppercase">{__("Additional information")}</h3>
+                    <dl className="fxc:space-y-2">
+                        {order.fields.map((field, i) => (
+                            <div key={i}>
+                                <dt className="fxc:text-muted-foreground fxc:text-xs">{field.label}</dt>
+                                <dd className="fxc:break-words fxc:whitespace-pre-line">{field.value}</dd>
+                            </div>
+                        ))}
+                    </dl>
+                </div>
+            )}
         </Card>
     );
 }

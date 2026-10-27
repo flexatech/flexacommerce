@@ -33,6 +33,7 @@ final class Router {
 			( new Admin\BadgesEndpoint() )->register_routes();
 			( new Admin\PriceRulesEndpoint() )->register_routes();
 			( new Admin\OptionSetsEndpoint() )->register_routes();
+			( new Admin\CheckoutLayoutEndpoint() )->register_routes();
 			( new Admin\EmailsEndpoint() )->register_routes();
 			( new Admin\MigrationsEndpoint() )->register_routes();
 			( new Admin\CutoverEndpoint() )->register_routes();

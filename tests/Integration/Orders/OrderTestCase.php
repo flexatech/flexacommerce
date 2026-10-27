@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Flexa\Commerce\Tests\Integration\Orders;
 
+use Flexa\Commerce\Checkout\CheckoutLayout;
 use Flexa\Commerce\Contracts\Orders\AddressView;
 use Flexa\Commerce\Database\Schema;
 use Flexa\Commerce\Orders\NewOrder;
@@ -30,6 +31,8 @@ abstract class OrderTestCase extends CartTestCase {
 		}
 		// Rate limit counters written before a mid-test commit outlive the rollback.
 		$wpdb->query( "DELETE FROM {$wpdb->options} WHERE option_name LIKE '\\_transient\\_%fxc\\_rl\\_%'" ); // phpcs:ignore WordPress.DB
+		// So does a checkout layout saved before the order.
+		$wpdb->delete( $wpdb->options, [ 'option_name' => CheckoutLayout::OPTION ] ); // phpcs:ignore WordPress.DB
 		wp_cache_flush();
 		$wpdb->query( 'COMMIT' );
 	}

@@ -92,7 +92,7 @@ function el( tag, attrs = {}, text = '' ) {
 }
 
 function fieldId( path ) {
-	const match = /^(billing|shipping)\.([a-z0-9_]+)$/.exec( path );
+	const match = /^(billing|shipping|additional)\.([a-z0-9_]+)$/.exec( path );
 	if ( match ) {
 		return `fxc-${ match[ 1 ] }-${ match[ 2 ] }`;
 	}
@@ -208,7 +208,7 @@ function setup( root ) {
 			if ( ! field ) {
 				continue;
 			}
-			const label = wrap.querySelector( 'label' );
+			const label = wrap.querySelector( ':scope > label, :scope > legend' );
 			if ( label ) {
 				label.replaceChildren( document.createTextNode( field.label ) );
 				if ( field.required ) {
@@ -424,7 +424,10 @@ function setup( root ) {
 					);
 				} else {
 					target.setAttribute( 'aria-invalid', 'true' );
-					target.setAttribute( 'aria-describedby', note.id );
+					target.setAttribute(
+						'aria-describedby',
+						`${ target.getAttribute( 'aria-describedby' ) || '' } ${ note.id }`.trim()
+					);
 					target.closest( '.fxc-field' )?.append( note );
 				}
 			} else {
@@ -446,12 +449,15 @@ function setup( root ) {
 		const body = {
 			billing: {},
 			shipping: {},
+			additional: {},
 			gateway_input: {},
 		};
 		const method = data.get( 'payment_method' ) || '';
 		for ( const [ name, raw ] of data.entries() ) {
 			const value = typeof raw === 'string' ? raw : '';
-			let match = /^(billing|shipping)\[([a-z0-9_]+)\]$/.exec( name );
+			let match = /^(billing|shipping|additional)\[([a-z0-9_]+)\]$/.exec(
+				name
+			);
 			if ( match ) {
 				body[ match[ 1 ] ][ match[ 2 ] ] = value;
 				continue;

@@ -17,7 +17,7 @@ defined( 'ABSPATH' ) || exit;
  */
 // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- schema DDL on plugin-owned tables, no user input.
 final class Schema {
-	public const DB_VERSION        = '7';
+	public const DB_VERSION        = '8';
 	public const DB_VERSION_OPTION = 'flexacommerce_db_version';
 	public const OPTION_PREFIX     = 'flexacommerce_';
 
@@ -31,6 +31,7 @@ final class Schema {
 	 */
 	private const STEPS = [
 		2 => Upgrades\V2VariationTaxClass::class,
+		8 => Upgrades\V8CheckoutLayout::class,
 	];
 
 	/** Full table name for a short name such as `orders`. */

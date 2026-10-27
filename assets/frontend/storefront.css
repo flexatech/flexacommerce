@@ -190,6 +190,12 @@
 .fxc-field [aria-invalid="true"] { border-color: #b32d2e; }
 .fxc-field__error { color: #b32d2e; font-size: .875em; flex-basis: 100%; display: block; }
 .fxc-field__help { font-size: .875em; }
+.fxc-checkout__address, .fxc-checkout__additional, .fxc-account__form fieldset { display: flex; flex-wrap: wrap; column-gap: 1rem; }
+:is(.fxc-checkout__address, .fxc-checkout__additional, .fxc-account__form fieldset) > * { flex: 1 1 100%; }
+:is(.fxc-checkout__address, .fxc-checkout__additional, .fxc-account__form fieldset) > .fxc-field--half { flex-basis: calc(50% - .5rem); }
+.fxc-checkout fieldset.fxc-field { margin: 0 0 .75rem; }
+.fxc-checkout .fxc-field > legend { font-weight: inherit; font-size: inherit; margin-block-end: .25rem; }
+.fxc-field__choice { display: flex; gap: .5rem; align-items: baseline; }
 .fxc-required { text-decoration: none; border: 0; }
 .fxc-checkout__form:has([data-fxc-ship-toggle]:not(:checked)) [data-fxc-shipping-address] { display: none; }
 .fxc-choice { margin: 0 0 .5rem; }
@@ -215,6 +221,8 @@
 .fxc-order__instructions { margin-block-end: 1.5rem; }
 .fxc-order__addresses { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 1.5rem; }
 .fxc-order__address address { font-style: normal; }
+.fxc-order__fields dt { font-weight: 600; }
+.fxc-order__fields dd { margin: 0 0 .5rem; }
 
 .fxc-account { display: grid; grid-template-columns: minmax(10rem, 1fr) minmax(0, 4fr); gap: 2rem; align-items: start; }
 .fxc-account--login { display: block; max-width: 28rem; }
@@ -241,6 +249,7 @@
 	.fxc-account__orders thead { display: none; }
 	.fxc-account__orders tr { display: grid; grid-template-columns: 1fr auto; border-block-end: 1px solid rgba(0, 0, 0, .1); }
 	.fxc-account__orders td { border: 0; padding: .25rem .5rem; }
+	:is(.fxc-checkout__address, .fxc-checkout__additional, .fxc-account__form fieldset) > .fxc-field--half { flex-basis: 100%; }
 }
 
 @media (max-width: 782px) {

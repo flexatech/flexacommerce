@@ -179,6 +179,7 @@ final class Account {
 		}
 
 		$html .= ( new OrderConfirmation( $this->checkout ) )->items( $order );
+		$html .= OrderConfirmation::fields( $order );
 		if ( $order->customer_note !== '' ) {
 			$html .= '<section class="fxc-account__note"><h2>' . esc_html__( 'Note', 'flexacommerce' ) . '</h2>' . wpautop( esc_html( $order->customer_note ) ) . '</section>';
 		}
@@ -218,7 +219,7 @@ final class Account {
 		$saved   = $this->profile->address( $user_id, $type );
 		$values  = is_array( $posted[ $type ] ?? null ) ? $posted[ $type ] : ( $saved !== null ? $saved->to_array() : [] );
 		$country = is_string( $values['country'] ?? null ) && $values['country'] !== '' ? strtoupper( $values['country'] ) : Settings::string( 'store_country' );
-		$fields  = FieldSchema::for_address( $type, $country )->to_array();
+		$fields  = FieldSchema::for_address( $type, $country )->core()->to_array();
 
 		$html  = '<form method="post" class="fxc-account__form" action="' . esc_url( AccountPage::url( 'edit-address', $type ) ) . '" novalidate>';
 		$html .= self::summary( $errors );

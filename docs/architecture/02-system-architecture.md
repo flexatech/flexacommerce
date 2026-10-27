@@ -351,6 +351,8 @@ Unpaid online orders: a `pending` order older than `hold_minutes` (default 60, s
     If an order with this token exists → return that order's result (no second order).
  3. Validate input (CheckoutValidator): fields per FieldSchema and country rules, email, terms checkbox if
     enabled, shipping method id is one of the rates just computed, gateway enabled and is_available().
+    The schema follows the checkout layout (doc 11): its order, labels and answers, and the merchant's
+    custom fields, whose answers the validator turns into order meta, with their labels in `_fxc_fields`.
  4. Recompute everything on the server: unit prices (PricingService), shipping (ShippingService), tax
     (TaxService::calculate, per line and per rate, §7.12), totals. If the grand total differs from the total the customer last saw
     (`expected_total`, sent only as a consistency check), stop and return "totals changed" with the new

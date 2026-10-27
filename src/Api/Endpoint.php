@@ -10,6 +10,7 @@ use Flexa\Commerce\Contracts\Exceptions\DuplicateSku;
 use Flexa\Commerce\Contracts\Exceptions\InsufficientStock;
 use Flexa\Commerce\Contracts\Exceptions\InvalidAttribute;
 use Flexa\Commerce\Contracts\Exceptions\InvalidBadge;
+use Flexa\Commerce\Contracts\Exceptions\InvalidCheckoutLayout;
 use Flexa\Commerce\Contracts\Exceptions\InvalidPriceRule;
 use Flexa\Commerce\Contracts\Exceptions\InvalidOptionSet;
 use Flexa\Commerce\Contracts\Exceptions\CurrencyMismatch;
@@ -113,6 +114,10 @@ abstract class Endpoint {
 			],
 			$e instanceof InvalidBadge     => [
 				'status' => $e->field === 'id' ? 404 : 400,
+				'field'  => $e->field,
+			],
+			$e instanceof InvalidCheckoutLayout => [
+				'status' => 400,
 				'field'  => $e->field,
 			],
 			$e instanceof InvalidPriceRule => [

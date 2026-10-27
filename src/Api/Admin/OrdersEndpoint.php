@@ -8,6 +8,7 @@ use Flexa\Commerce\Api\Endpoint;
 use Flexa\Commerce\Contracts\CommerceException;
 use Flexa\Commerce\Contracts\Orders\AddressView;
 use Flexa\Commerce\Orders\Order;
+use Flexa\Commerce\Orders\OrderFields;
 use Flexa\Commerce\Orders\OrderItem;
 use Flexa\Commerce\Orders\OrderQuery;
 use Flexa\Commerce\Orders\OrderStateMachine;
@@ -382,6 +383,13 @@ final class OrdersEndpoint extends Endpoint {
 			'refundable'     => $order->refundable(),
 			'balance_due'    => $order->balance_due(),
 			'customer_note'  => $order->customer_note,
+			'fields'         => array_map(
+				static fn ( array $answer ): array => [
+					'label' => $answer['label'],
+					'value' => $answer['value'],
+				],
+				OrderFields::for_order( Plugin::instance()->orders()->orders(), $order->id )
+			),
 			'customer_ip'    => $order->customer_ip,
 			'created_via'    => $order->created_via,
 			'paid_at'        => self::date( $order->paid_at ),

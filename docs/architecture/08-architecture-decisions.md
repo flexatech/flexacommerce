@@ -427,3 +427,21 @@ Status of every ADR: **Accepted** (plan approved 2026-10-24) unless it says othe
 **Consequences.** No DB_VERSION, no new option. A store without rules or sale dates pays nothing; with them, the product page works out a few more prices, memoised per request. On a variable product the countdown is for the soonest change among its variations, before the shopper picks one. The page is cacheable: the end is a fixed moment and the browser counts. After the end the page still shows the old price until it is reloaded, which the ended message says. Countdowns for coupons and automatic discounts are left out.
 
 **Revisit when.** Shoppers ask for a countdown per variation, or for automatic discounts that end soon.
+
+## ADR-031: A checkout builder for the fields, stored as one layout option
+
+**Context.** After the flexa-extra port (2026-10-27) the user asked for a drag and drop checkout builder. Three settings (`checkout_company`, `checkout_phone`, `checkout_address_2`) and the `flexacommerce.checkout.fields` filter were the only ways to change the form, so a store wanting a gift message or a delivery slot needed code. The full design is doc 11; this record covers part 1, the fields.
+
+**Decision.**
+1. **One option, only the differences.** `flexacommerce_checkout_layout` (autoload off) holds the three sections (billing, shipping, additional) with per-field overrides: order, label, placeholder, help, width, answer. `Checkout\CheckoutLayout` normalises it once per request; a store without it renders the form of before. A damaged option falls back to the default instead of breaking the checkout.
+2. **The schema follows the layout, extensions still have the last word.** `FieldSchema` builds the address and additional schemas from the layout, then runs `flexacommerce.checkout.fields` and the new `flexacommerce.checkout.additional_fields`. `CheckoutValidator` uses the same schema, so what the builder makes required is checked on the server.
+3. **Some fields are locked.** Email and country stay shown and required; state and postcode are shown or hidden, and the country decides whether they are required. The server refuses a layout that breaks this, with the path of the field at fault, and the builder points at that field.
+4. **Custom fields of nine types,** at most 30 per section and 30 choices per field. The id comes from the first label and never changes; a choice keeps its value when its label changes. Answers are order meta `_{section}_{id}`, and `_fxc_fields` keeps the label, value and email switch of every answer as placed, so the order screen, confirmation, account, emails and privacy export show history as it was.
+5. **The three settings move into the layout.** `V8CheckoutLayout` (DB_VERSION 8) copies them over and drops the keys; when they were the defaults it writes no layout. `Settings` goes from 64 to 61 keys.
+6. **The builder is its own admin chunk.** FlexaCommerce > Checkout, with `@dnd-kit/core` and `@dnd-kit/sortable`, lazy loaded (about 24 KB gzip). Every move works from the keyboard with spoken announcements; the inspector also has Move up and Move down. REST is `GET`, `PUT` and `DELETE /admin/checkout-layout`.
+
+**Alternatives.** Fields as rows of a table: the layout is read whole on every checkout and is small, so one option is one read. A label snapshot per answer in separate `_label` meta keys: twice the meta rows and a second read per field; one JSON list is read once per order. Rendering the builder canvas with the live theme: theme styles vary too much, so the canvas is a sketch and the real page is the preview (part 2).
+
+**Consequences.** No new storefront JavaScript; `storefront.css` gains the half-width rules (about 4.5 KB gzip in total, cap 10 KB). The checkout page reads one more option, cached by the object cache. Custom answers are not saved to the customer's address book. Section moves, one column, content items and Preview on site are part 2.
+
+**Revisit when.** Merchants ask for fields shown only for some countries or products, or for importing the WooCommerce Checkout Field Editor options.

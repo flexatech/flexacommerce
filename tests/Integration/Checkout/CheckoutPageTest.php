@@ -6,8 +6,10 @@ namespace Flexa\Commerce\Tests\Integration\Checkout;
 
 use Flexa\Commerce\Cart\CartServices;
 use Flexa\Commerce\Cart\MemoryTokenStore;
+use Flexa\Commerce\Checkout\CheckoutLayout;
 use Flexa\Commerce\Checkout\CheckoutService;
 use Flexa\Commerce\Contracts\Payments\PaymentGateway;
+use Flexa\Commerce\Orders\OrderFields;
 use Flexa\Commerce\Orders\OrderStatus;
 use Flexa\Commerce\Payments\GatewaySettings;
 use Flexa\Commerce\Plugin;
@@ -230,6 +232,100 @@ final class CheckoutPageTest extends OrderTestCase {
 		$order = $this->orders()->find_by_checkout_token( $token );
 		self::assertSame( OrderStatus::PROCESSING, $order?->status );
 		self::assertSame( 'cod', $order?->payment_method );
+	}
+
+	public function test_without_a_layout_the_form_is_the_one_of_before(): void {
+		$this->add( $this->simple( 1000, 5 ), 1 );
+		$html = do_shortcode( '[flexacommerce_checkout]' );
+		self::assertStringNotContainsString( 'name="billing[company]"', $html );
+		self::assertStringContainsString( '<p class="fxc-field fxc-field--first_name fxc-field--half"', $html );
+		self::assertStringContainsString( 'id="fxc-customer-note"', $html );
+		self::assertStringNotContainsString( 'fxc-checkout__additional', $html, 'the notes alone need no fieldset' );
+		self::assertLessThan( strpos( $html, 'name="billing[country]"' ), strpos( $html, 'name="billing[last_name]"' ) );
+	}
+
+	public function test_the_layout_orders_renames_and_adds_fields(): void {
+		CheckoutLayout::save(
+			[
+				'fields' => [
+					'billing'    => [
+						[
+							'id'    => 'phone',
+							'label' => 'Mobile number',
+							'help'  => 'The courier calls this number.',
+						],
+						[
+							'id'     => 'company',
+							'answer' => 'optional',
+						],
+					],
+					'additional' => [
+						[
+							'id'     => 'gift',
+							'type'   => 'textarea',
+							'label'  => 'Gift message',
+							'answer' => 'required',
+						],
+						[
+							'id'      => 'slot',
+							'type'    => 'radio',
+							'label'   => 'Delivery time',
+							'options' => [
+								[
+									'value' => 'am',
+									'label' => 'Morning',
+								],
+								[
+									'value' => 'pm',
+									'label' => 'Afternoon',
+								],
+							],
+						],
+						[ 'id' => 'customer_note' ],
+					],
+				],
+			]
+		);
+		$product = $this->simple( 1000, 5 );
+		$this->add( $product, 1 );
+		$html = do_shortcode( '[flexacommerce_checkout]' );
+		self::assertLessThan( strpos( $html, 'name="billing[email]"' ), strpos( $html, 'name="billing[phone]"' ), 'phone comes first' );
+		self::assertStringContainsString( '<label for="fxc-billing-phone">Mobile number</label>', $html );
+		self::assertMatchesRegularExpression( '#id="fxc-billing-phone"[^>]*aria-describedby="fxc-billing-phone-help"#', $html );
+		self::assertStringContainsString( '<span class="fxc-field__help" id="fxc-billing-phone-help">The courier calls this number.</span>', $html );
+		self::assertStringContainsString( 'name="billing[company]"', $html );
+		self::assertStringContainsString( '<fieldset class="fxc-checkout__additional"><legend>Additional information</legend>', $html );
+		self::assertMatchesRegularExpression( '#<textarea[^>]*name="additional\[gift\]"[^>]*required#', $html );
+		self::assertStringContainsString( 'id="fxc-additional-slot-1"', $html );
+
+		$token = $this->token( $html );
+		self::assertNull( $this->post( $this->form( $token, [ 'expected_total' => '1500' ] ) ), 'the gift message is required' );
+		$again = CheckoutPage::instance()->render();
+		self::assertStringContainsString( 'href="#fxc-additional-gift"', $again );
+		self::assertMatchesRegularExpression( '#<textarea[^>]*aria-invalid="true"[^>]*aria-describedby="fxc-additional-gift-error"#', $again );
+
+		$location = $this->post(
+			$this->form(
+				$token,
+				[
+					'expected_total' => '1500',
+					'additional'     => [
+						'gift' => 'Happy birthday',
+						'slot' => 'pm',
+					],
+				]
+			)
+		);
+		self::assertNotNull( $location );
+		$order = $this->orders()->find_by_checkout_token( $token );
+		self::assertNotNull( $order );
+		$repo = Plugin::instance()->orders()->orders();
+		self::assertSame( 'pm', $repo->get_meta( $order->id, '_additional_slot' ) );
+		self::assertSame( [ 'Gift message', 'Delivery time' ], array_column( OrderFields::for_order( $repo, $order->id ), 'label' ) );
+
+		CheckoutLayout::reset();
+		$html = $this->visit( $location );
+		self::assertStringContainsString( '<dt>Delivery time</dt><dd>Afternoon</dd>', $html, 'the answer keeps its label after the field is gone' );
 	}
 
 	public function test_activation_creates_missing_pages_once(): void {

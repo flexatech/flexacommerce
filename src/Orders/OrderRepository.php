@@ -361,6 +361,12 @@ final class OrderRepository {
 				'updated_at'     => $now,
 			]
 		);
+		foreach ( OrderFields::for_order( $this, $order_id ) as $answer ) {
+			if ( $answer['key'] !== '' ) {
+				$this->delete_meta( $order_id, $answer['key'] );
+			}
+		}
+		$this->delete_meta( $order_id, OrderFields::META );
 		$blank = array_fill_keys( self::ADDRESS_FIELDS, '' );
 		unset( $blank['country'] );
 		$this->wpdb->update( Schema::table( 'order_addresses' ), $blank, [ 'order_id' => $order_id ] );

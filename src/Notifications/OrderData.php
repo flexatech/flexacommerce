@@ -10,6 +10,7 @@ use Flexa\Commerce\Contracts\MoneyFactory;
 use Flexa\Commerce\Contracts\Orders\AddressView;
 use Flexa\Commerce\Contracts\Orders\OrderView;
 use Flexa\Commerce\Orders\Order;
+use Flexa\Commerce\Orders\OrderFields;
 use Flexa\Commerce\Orders\OrderRepository;
 use Flexa\Commerce\Support\Countries;
 
@@ -50,6 +51,24 @@ final class OrderData {
 			$address->email,
 		];
 		return array_values( array_filter( array_map( 'trim', $lines ), static fn ( string $line ): bool => $line !== '' ) );
+	}
+
+	/**
+	 * The answers to the merchant's own checkout fields that may go in emails (ADR-031).
+	 *
+	 * @return list<array{label:string,value:string}>
+	 */
+	public function answers( OrderView $view ): array {
+		$out = [];
+		foreach ( OrderFields::for_order( $this->repository, $view->id ) as $answer ) {
+			if ( $answer['email'] ) {
+				$out[] = [
+					'label' => $answer['label'],
+					'value' => $answer['value'],
+				];
+			}
+		}
+		return $out;
 	}
 
 	/** The order page with the order key, for the customer. */
