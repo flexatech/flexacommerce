@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Flexa\Commerce\Storefront\Render;
 
 use Flexa\Commerce\Catalog\PostTypes;
+use Flexa\Commerce\Checkout\CheckoutLayout;
 use Flexa\Commerce\Checkout\FieldSchema;
 use Flexa\Commerce\Storefront\Assets;
 use Flexa\Commerce\Storefront\CheckoutPage;
@@ -56,37 +57,92 @@ final class CheckoutForm {
 			return $html . '<p class="fxc-notice fxc-notice--error" role="alert">' . esc_html__( 'Checkout is paused for maintenance. Please try again shortly.', 'flexacommerce' ) . '</p></div>';
 		}
 
-		$html .= $this->summary( $errors );
+		$layout = CheckoutLayout::current();
+		$html  .= $this->summary( $errors );
+		if ( ! empty( $state['preview'] ) ) {
+			$html .= '<p class="fxc-notice fxc-checkout__preview" role="status">' . esc_html__( 'Preview of your unsaved checkout layout. Orders cannot be placed from this page.', 'flexacommerce' ) . '</p>';
+		}
 		$html .= '<form class="fxc-checkout__form" method="post" action="' . esc_url( CheckoutPage::form_action() ) . '">';
 		$html .= CheckoutPage::hidden_fields( (string) $state['checkout_token'], (int) ( $state['totals']['total']['amount'] ?? 0 ) );
 
-		$html .= '<div class="fxc-checkout__columns"><div class="fxc-checkout__details">';
-		$html .= $this->address( 'billing', __( 'Billing details', 'flexacommerce' ), $state, $posted, $errors );
-
-		$elsewhere = ! empty( $posted['ship_to_different_address'] );
-		if ( ! empty( $state['needs_address'] ) ) {
-			$html .= sprintf(
-				'<p class="fxc-checkout__toggle"><label><input type="checkbox" name="ship_to_different_address" value="1" aria-controls="fxc-shipping-address" data-fxc-ship-toggle%1$s> %2$s</label></p>',
-				$elsewhere ? ' checked' : '',
-				esc_html__( 'Ship to a different address', 'flexacommerce' )
-			);
-			$html .= '<div class="fxc-checkout__shipping-address" id="fxc-shipping-address" data-fxc-shipping-address>'
-				. $this->address( 'shipping', __( 'Shipping address', 'flexacommerce' ), $state, $posted, $errors )
-				. '</div>';
+		$class = 'fxc-checkout__columns'
+			. ( $layout->columns() === CheckoutLayout::ONE_COLUMN ? ' fxc-checkout__columns--one' : '' )
+			. ( $layout->summary_position() === CheckoutLayout::SUMMARY_TOP ? ' fxc-checkout__columns--fold' : '' );
+		$html .= '<div class="' . $class . '">';
+		foreach ( [
+			CheckoutLayout::MAIN => 'fxc-checkout__details',
+			CheckoutLayout::SIDE => 'fxc-checkout__review',
+		] as $column => $wrap ) {
+			$blocks = $layout->blocks( $column );
+			if ( $blocks === [] ) {
+				continue;
+			}
+			$html .= '<div class="' . $wrap . '">';
+			foreach ( $blocks as $block ) {
+				$html .= $this->block( $block, $layout, $state, $posted, $errors );
+			}
+			$html .= '</div>';
 		}
+		return $html . '</div></form></div>';
+	}
 
-		$html .= $this->additional( $posted, $errors );
-		$html .= '</div><div class="fxc-checkout__review">';
-
-		$html .= $this->rates( $state, $errors );
-		$html .= $this->review( $state );
-		$html .= $this->methods( $state, $posted, $errors );
-		$html .= $this->terms( $state, $posted, $errors );
-
-		$html .= '<p class="fxc-checkout__actions">'
-			. '<button type="submit" class="wp-element-button fxc-checkout__place" data-fxc-place>' . esc_html__( 'Place order', 'flexacommerce' ) . '</button>'
-			. '</p><p class="fxc-checkout__message" role="status" aria-live="polite" data-fxc-message></p>';
-		return $html . '</div></div></form></div>';
+	/**
+	 * One section of the page, or a heading or paragraph of the merchant's.
+	 *
+	 * @param array{id:string,title?:string,type?:string,text?:string} $block
+	 * @param array<string,mixed>                                       $state
+	 * @param array<string,mixed>                                       $posted
+	 * @param array<string,string>                                      $errors
+	 */
+	private function block( array $block, CheckoutLayout $layout, array $state, array $posted, array $errors ): string {
+		$title = (string) ( $block['title'] ?? '' );
+		switch ( $block['id'] ) {
+			case 'billing':
+				return $this->address( 'billing', $title !== '' ? $title : __( 'Billing details', 'flexacommerce' ), $state, $posted, $errors );
+			case 'shipping':
+				if ( empty( $state['needs_address'] ) ) {
+					return '';
+				}
+				return sprintf(
+					'<p class="fxc-checkout__toggle"><label><input type="checkbox" name="ship_to_different_address" value="1" aria-controls="fxc-shipping-address" data-fxc-ship-toggle%1$s> %2$s</label></p>',
+					! empty( $posted['ship_to_different_address'] ) ? ' checked' : '',
+					esc_html__( 'Ship to a different address', 'flexacommerce' )
+				)
+					. '<div class="fxc-checkout__shipping-address" id="fxc-shipping-address" data-fxc-shipping-address>'
+					. $this->address( 'shipping', $title !== '' ? $title : __( 'Shipping address', 'flexacommerce' ), $state, $posted, $errors )
+					. '</div>';
+			case 'additional':
+				return $this->additional( $posted, $errors, $title );
+			case 'shipping_method':
+				return $this->rates( $state, $errors, $title );
+			case 'summary':
+				$table = $this->review( $state, $title );
+				if ( $layout->summary_position() !== CheckoutLayout::SUMMARY_TOP ) {
+					return $table;
+				}
+				// Phones show it folded at the top; checkout.js closes it there and opens it on wider screens.
+				return '<details class="fxc-checkout__fold" open data-fxc-fold><summary>'
+					. esc_html( $title !== '' ? $title : __( 'Order summary', 'flexacommerce' ) )
+					. ' <strong data-fxc-fold-total>' . esc_html( (string) ( $state['totals']['total']['formatted'] ?? '' ) ) . '</strong></summary>'
+					. $table . '</details>';
+			case 'payment':
+				return $this->methods( $state, $posted, $errors, $title )
+					. $this->terms( $state, $posted, $errors )
+					. '<p class="fxc-checkout__actions">'
+					. '<button type="submit" class="wp-element-button fxc-checkout__place" data-fxc-place' . ( ! empty( $state['preview'] ) ? ' disabled' : '' ) . '>' . esc_html__( 'Place order', 'flexacommerce' ) . '</button>'
+					. '</p><p class="fxc-checkout__message" role="status" aria-live="polite" data-fxc-message></p>';
+		}
+		$text = (string) ( $block['text'] ?? '' );
+		if ( ( $block['type'] ?? '' ) === 'heading' ) {
+			return '<h2 class="fxc-checkout__heading">' . esc_html( $text ) . '</h2>';
+		}
+		return '<div class="fxc-checkout__text">' . wp_kses(
+			wpautop( $text ),
+			CheckoutLayout::PARAGRAPH_TAGS + [
+				'p'  => [],
+				'br' => [],
+			]
+		) . '</div>';
 	}
 
 	/**
@@ -96,7 +152,7 @@ final class CheckoutForm {
 	 * @param array<string,mixed>  $posted
 	 * @param array<string,string> $errors
 	 */
-	private function additional( array $posted, array $errors ): string {
+	private function additional( array $posted, array $errors, string $title = '' ): string {
 		$fields = FieldSchema::additional()->to_array();
 		if ( $fields === [] ) {
 			return '';
@@ -107,7 +163,7 @@ final class CheckoutForm {
 		if ( count( $fields ) === 1 && $fields[0]['id'] === 'customer_note' ) {
 			return $html;
 		}
-		return '<fieldset class="fxc-checkout__additional"><legend>' . esc_html__( 'Additional information', 'flexacommerce' ) . '</legend>' . $html . '</fieldset>';
+		return '<fieldset class="fxc-checkout__additional"><legend>' . esc_html( $title !== '' ? $title : __( 'Additional information', 'flexacommerce' ) ) . '</legend>' . $html . '</fieldset>';
 	}
 
 	/** @param array<string,string> $errors */
@@ -267,12 +323,12 @@ final class CheckoutForm {
 	 * @param array<string,mixed>  $state
 	 * @param array<string,string> $errors
 	 */
-	private function rates( array $state, array $errors ): string {
+	private function rates( array $state, array $errors, string $title = '' ): string {
 		if ( empty( $state['needs_shipping'] ) ) {
 			return '';
 		}
 		$rates = is_array( $state['shipping_rates'] ?? null ) ? $state['shipping_rates'] : [];
-		$html  = '<fieldset class="fxc-checkout__rates" id="fxc-shipping-rate"' . self::described( [ 'shipping_rate' ], $errors ) . ' data-fxc-rates><legend>' . esc_html__( 'Shipping', 'flexacommerce' ) . '</legend>';
+		$html  = '<fieldset class="fxc-checkout__rates" id="fxc-shipping-rate"' . self::described( [ 'shipping_rate' ], $errors ) . ' data-fxc-rates><legend>' . esc_html( $title !== '' ? $title : __( 'Shipping', 'flexacommerce' ) ) . '</legend>';
 		if ( $rates === [] ) {
 			$html .= '<p>' . esc_html__( 'There are no shipping options for this address. Check the address or contact us.', 'flexacommerce' ) . '</p>';
 		}
@@ -289,8 +345,8 @@ final class CheckoutForm {
 	}
 
 	/** @param array<string,mixed> $state */
-	private function review( array $state ): string {
-		$html = '<table class="fxc-checkout__summary"><caption>' . esc_html__( 'Your order', 'flexacommerce' ) . '</caption><tbody>';
+	private function review( array $state, string $title = '' ): string {
+		$html = '<table class="fxc-checkout__summary"><caption>' . esc_html( $title !== '' ? $title : __( 'Your order', 'flexacommerce' ) ) . '</caption><tbody>';
 		foreach ( (array) ( $state['cart']['items'] ?? [] ) as $item ) {
 			$attributes = '';
 			foreach ( (array) $item['attributes'] as $label ) {
@@ -410,14 +466,14 @@ final class CheckoutForm {
 	 * @param array<string,mixed>  $posted
 	 * @param array<string,string> $errors
 	 */
-	private function methods( array $state, array $posted, array $errors ): string {
+	private function methods( array $state, array $posted, array $errors, string $title = '' ): string {
 		$methods = is_array( $state['payment_methods'] ?? null ) ? $state['payment_methods'] : [];
 		if ( $methods === [] && (int) ( $state['totals']['total']['amount'] ?? 0 ) === 0 ) {
 			return '<div data-fxc-methods></div>';
 		}
 		$chosen = is_string( $posted['payment_method'] ?? null ) ? $posted['payment_method'] : (string) ( $methods[0]['id'] ?? '' );
 		$input  = is_array( $posted['gateway_input'] ?? null ) ? $posted['gateway_input'] : [];
-		return '<div data-fxc-methods>' . self::methods_html( $methods, $chosen, $input, $errors ) . '</div>';
+		return '<div data-fxc-methods>' . self::methods_html( $methods, $chosen, $input, $errors, $title ) . '</div>';
 	}
 
 	/**
@@ -428,8 +484,8 @@ final class CheckoutForm {
 	 * @param array<array-key,mixed>    $input
 	 * @param array<string,string>      $errors
 	 */
-	public static function methods_html( array $methods, string $chosen, array $input, array $errors ): string {
-		$html = '<fieldset class="fxc-checkout__methods" id="fxc-payment-method"' . self::described( array_merge( [ 'payment_method' ], array_filter( array_keys( $errors ), static fn ( string $path ): bool => str_starts_with( $path, 'gateway.' ) ) ), $errors ) . '><legend>' . esc_html__( 'Payment', 'flexacommerce' ) . '</legend>';
+	public static function methods_html( array $methods, string $chosen, array $input, array $errors, string $legend = '' ): string {
+		$html = '<fieldset class="fxc-checkout__methods" id="fxc-payment-method"' . self::described( array_merge( [ 'payment_method' ], array_filter( array_keys( $errors ), static fn ( string $path ): bool => str_starts_with( $path, 'gateway.' ) ) ), $errors ) . '><legend>' . esc_html( $legend !== '' ? $legend : __( 'Payment', 'flexacommerce' ) ) . '</legend>';
 		if ( $methods === [] ) {
 			$html .= '<p>' . esc_html__( 'No payment methods are available for this order. Contact us to complete it.', 'flexacommerce' ) . '</p>';
 		}

@@ -4,11 +4,15 @@ import { addSimple, expectAccessible, fillBilling } from './store';
 const BUILDER = '/wp-admin/admin.php?page=flexacommerce-checkout';
 
 async function logInAsAdmin( page: Page ): Promise< void > {
-	await page.goto( '/wp-login.php' );
-	await page.locator( '#user_login' ).fill( 'admin' );
-	await page.locator( '#user_pass' ).fill( 'bench' );
-	await page.locator( '#wp-submit' ).click();
-	await expect( page.locator( '#wpadminbar' ) ).toBeVisible();
+	// The login screen moves the focus to the user name once loaded, which can catch a typed password.
+	await expect( async () => {
+		await page.goto( '/wp-login.php' );
+		await page.locator( '#user_login' ).fill( 'admin' );
+		await page.locator( '#user_pass' ).fill( 'bench' );
+		await expect( page.locator( '#user_login' ) ).toHaveValue( 'admin', { timeout: 1000 } );
+		await page.locator( '#wp-submit' ).click();
+		await expect( page.locator( '#wpadminbar' ) ).toBeVisible( { timeout: 5000 } );
+	} ).toPass( { timeout: 30_000 } );
 }
 
 /** True when the first element comes before the second in the page. */
@@ -23,7 +27,7 @@ const before = ( page: Page, first: string, second: string ) =>
 	);
 
 // The builder is admin markup: the theme does not change it, so one project runs it.
-test( 'the checkout builder moves a field, adds a question and the checkout asks it', async ( { page, browser }, info ) => {
+test( 'the checkout builder moves a field and a section, adds a question and a heading, and the checkout follows', async ( { page, browser }, info ) => {
 	test.skip( info.project.name !== 'tt5', 'admin screen, theme independent' );
 
 	await logInAsAdmin( page );
@@ -45,12 +49,32 @@ test( 'the checkout builder moves a field, adds a question and the checkout asks
 
 	// A question of our own, from the palette, lands in Additional information.
 	await page.getByRole( 'button', { name: 'Short text' } ).click();
-	const settings = page.getByLabel( 'Field settings' );
+	const settings = page.getByLabel( 'Settings', { exact: true } );
 	await expect( settings.getByLabel( 'Label', { exact: true } ) ).toBeFocused();
 	await settings.getByLabel( 'Label', { exact: true } ).fill( 'Gift message' );
 	await settings.getByRole( 'radio', { name: 'Required', exact: true } ).check();
+
+	// A heading goes after the section of the selected field.
+	await page.getByRole( 'button', { name: 'Heading', exact: true } ).click();
+	await expect( settings.getByLabel( 'Text', { exact: true } ) ).toBeFocused();
+	await settings.getByLabel( 'Text', { exact: true } ).fill( 'Almost done' );
+
+	// The order summary moves to the main column, at its end.
+	await page.getByRole( 'button', { name: /^Your order/ } ).click();
+	await settings.getByLabel( 'Column' ).selectOption( 'main' );
+
+	// One column, seen on the site before saving; then back to two columns.
+	await page.getByText( 'One column', { exact: true } ).click();
+	const [ tab ] = await Promise.all( [ page.waitForEvent( 'popup' ), page.getByRole( 'button', { name: 'Preview on site' } ).click() ] );
+	await expect( tab.locator( '.fxc-checkout__preview' ) ).toBeVisible();
+	await expect( tab.locator( '.fxc-checkout__columns--one' ) ).toBeVisible();
+	await expect( tab.getByRole( 'heading', { name: 'Almost done' } ) ).toBeVisible();
+	await expect( tab.getByRole( 'button', { name: 'Place order' } ) ).toBeDisabled();
+	await tab.close();
+	await page.getByText( 'Two columns', { exact: true } ).click();
+
 	await save.click();
-	await expect( page.getByText( 'Checkout fields saved.' ) ).toBeVisible();
+	await expect( page.getByText( 'Checkout saved.' ) ).toBeVisible();
 	await expect( save ).toBeDisabled();
 	await expectAccessible( page, info, 'checkout builder' );
 
@@ -62,6 +86,10 @@ test( 'the checkout builder moves a field, adds a question and the checkout asks
 	expect( await before( shopper, '#fxc-billing-phone', '#fxc-billing-postcode' ) ).toBe( true );
 	const gift = shopper.locator( '#fxc-additional-gift_message' );
 	await expect( gift ).toBeVisible();
+	await expect( shopper.locator( '.fxc-checkout__columns--one' ) ).toHaveCount( 0 );
+	await expect( shopper.locator( '.fxc-checkout__details .fxc-checkout__summary' ) ).toBeVisible();
+	expect( await before( shopper, '#fxc-additional-gift_message', '.fxc-checkout__heading' ) ).toBe( true );
+	expect( await before( shopper, '.fxc-checkout__heading', '.fxc-checkout__summary' ) ).toBe( true );
 
 	await fillBilling( shopper );
 	await shopper.locator( '#fxc-payment-method' ).getByLabel( /cash on delivery/i ).check();
@@ -83,6 +111,6 @@ test( 'the checkout builder moves a field, adds a question and the checkout asks
 	await page.goto( BUILDER );
 	await page.getByRole( 'button', { name: 'Reset to default' } ).click();
 	await page.getByRole( 'dialog' ).getByRole( 'button', { name: 'Reset', exact: true } ).click();
-	await expect( page.getByText( 'Checkout fields reset.' ) ).toBeVisible();
+	await expect( page.getByText( 'Checkout reset.' ) ).toBeVisible();
 	await expect( page.getByRole( 'button', { name: 'Reset to default' } ) ).toBeDisabled();
 } );

@@ -1,6 +1,6 @@
 # 11. Checkout builder (design)
 
-Status: part 1 (fields) built, 2026-10-27; decision record ADR-031 in doc 08. Parts 2 and 3 are still a proposal. Where part 1 differs from the first draft of this page, §9 says so.
+Status: part 1 (fields) and part 2 (sections and layout) built, 2026-10-27; decision records ADR-031 and ADR-032 in doc 08. Part 3 is still a proposal. Where the parts differ from the first draft of this page, §9 and §10 say so.
 
 ## 1. Goal
 
@@ -132,7 +132,7 @@ Default layout = today's page: main column with Billing details, Shipping addres
 
 ## 9. What part 1 built
 
-Part 1 shipped the fields; sections, columns, content items and Preview on site wait for part 2. Differences from the draft above:
+Part 1 shipped the fields; §10 covers the sections, columns, content items and Preview on site of part 2. Differences from the draft above:
 
 - **Default widths.** First name and last name are half width in the default layout, in billing and shipping. The default form looks as before at phone width, where half fields stack.
 - **One meta for the answers.** Each custom answer is order meta `_{section}_{id}` (`_additional_gift_message`), and `_fxc_fields` is a JSON list of `{key, label, value, email}` written at checkout. Every screen and email reads that list (`Orders\OrderFields`), so a renamed or deleted field still shows on old orders. Privacy export lists the answers and erase removes both.
@@ -143,3 +143,17 @@ Part 1 shipped the fields; sections, columns, content items and Preview on site 
 - **Required custom fields** carry `required` like the address fields, so the browser stops an empty one first; the server checks it again and links the error.
 - **Admin header.** With nine tabs the header scrolls sideways inside itself on narrow screens, and the open tab is scrolled into view.
 
+
+## 10. What part 2 built
+
+Part 2 shipped the page: sections in two columns or one, the folded summary on phones, headings and paragraphs, and Preview on site. Differences from the draft above:
+
+- **The page is a second part of the layout.** The option keeps `fields` and gains `page`: `columns` (`two` or `one`), `summary` (`end` or `top`), and the `main` and `side` lists. A list holds the six sections (`billing`, `shipping`, `additional`, `shipping_method`, `summary`, `payment`), each with an optional `title`, and the merchant's headings and paragraphs. A store without `page` renders the form of before, byte for byte.
+- **Headings and paragraphs sit between sections,** in a column, not inside a section. Ids are `text_` and up to 16 lowercase letters or digits, at most 20 items. A heading is plain text (120 characters); a paragraph keeps `a[href]`, `strong` and `em` and is wrapped with `wpautop` (1000 characters). An empty one is refused at `page.{column}.{index}.text`.
+- **Every section stays on the page.** A PUT that leaves one out is refused at `page`. There is no hide switch on a section: Additional information disappears when all its fields are hidden, and Shipping address and Shipping show only when the cart needs shipping.
+- **Payment closes its column,** with the terms and the Place order button. The server refuses anything under it (`page.side.1.id`); the builder keeps it last after every move, and the drop targets never put a block under it.
+- **One column** stores every block in `main`, in reading order. Switching back in the builder puts the blocks after the last field section in the side column, or restores the split the page had when the order did not change in between.
+- **Folded summary.** With `summary: top` the order summary is a `<details open>` element. CSS moves it to the top of the form on phones (`display: contents` on the columns, `order: -1`), and `checkout.js` closes it there and keeps it open on wider screens, where its own line is hidden. The line shows the title (default "Order summary") and the total, kept current by the totals refresh. Without JavaScript it stays open.
+- **Titles.** A section title replaces the heading, legend or caption the section prints; empty means the translated default. Payment uses it as the legend of the payment methods.
+- **Preview on site.** `POST /admin/checkout-layout/preview` checks the unsaved layout like a save and keeps it in a transient for its author (one hour). It answers with the checkout URL and `fxc_preview` set to a nonce. The checkout shows the draft only to that user, with that nonce and the manage capability. An empty cart gets a sample product and a flat rate, a notice says nothing can be ordered, and Place order is disabled. Requotes over REST still use the saved layout.
+- **Builder.** The canvas draws the page: the columns side by side when the canvas is wide enough (container query, 42rem), sections as cards with their fields inside, and sketches of Shipping, the summary and Payment. Sections, headings and paragraphs drag by their grip within and between the columns; fields keep dragging inside their sections, and each kind of drag only sees its own drop targets, so the keyboard moves stay predictable. The section inspector has the title, Move up, Move down and a Column select; the content inspector the type and the text. From 768px the inspector sits beside the canvas.

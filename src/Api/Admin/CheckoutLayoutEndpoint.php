@@ -6,6 +6,7 @@ namespace Flexa\Commerce\Api\Admin;
 
 use Flexa\Commerce\Api\Endpoint;
 use Flexa\Commerce\Checkout\CheckoutLayout;
+use Flexa\Commerce\Checkout\CheckoutPages;
 use Flexa\Commerce\Contracts\CommerceException;
 use WP_Error;
 use WP_REST_Request;
@@ -15,8 +16,10 @@ use WP_REST_Server;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * The checkout builder (ADR-031). PUT takes the whole layout, checks it
- * and answers with it normalised, so the screen shows what was stored.
+ * The checkout builder (ADR-031, ADR-032). PUT takes the whole layout,
+ * checks it and answers with it normalised, so the screen shows what was
+ * stored. POST preview keeps an unsaved layout for one hour and answers
+ * with the checkout URL that shows it.
  */
 final class CheckoutLayoutEndpoint extends Endpoint {
 	public function register_routes(): void {
@@ -41,6 +44,25 @@ final class CheckoutLayoutEndpoint extends Endpoint {
 				],
 			]
 		);
+		register_rest_route(
+			self::NAMESPACE,
+			'/admin/checkout-layout/preview',
+			[
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => [ $this, 'preview' ],
+				'permission_callback' => [ $this, 'manage_permission' ],
+			]
+		);
+	}
+
+	/** @param WP_REST_Request<array<string,mixed>> $request */
+	public function preview( WP_REST_Request $request ): WP_REST_Response|WP_Error {
+		try {
+			CheckoutLayout::store_draft( get_current_user_id(), (array) $request->get_json_params() );
+		} catch ( CommerceException $e ) {
+			return self::error( $e );
+		}
+		return new WP_REST_Response( [ 'url' => add_query_arg( CheckoutLayout::PREVIEW_ARG, wp_create_nonce( CheckoutLayout::PREVIEW_NONCE ), ( new CheckoutPages() )->checkout_url() ) ], 200 );
 	}
 
 	/** @param WP_REST_Request<array<string,mixed>> $request */
@@ -67,7 +89,7 @@ final class CheckoutLayoutEndpoint extends Endpoint {
 	private static function payload( CheckoutLayout $layout ): WP_REST_Response {
 		return new WP_REST_Response(
 			$layout->to_array() + [
-				'default' => CheckoutLayout::default()->to_array()['fields'],
+				'default' => CheckoutLayout::default()->to_array(),
 				'labels'  => self::labels(),
 			],
 			200

@@ -214,6 +214,10 @@
 .fxc-checkout__refresh-button { font: inherit; }
 .fxc-checkout__errors ul { margin: .5rem 0 0; }
 .fxc-checkout__message { min-height: 1.5em; }
+.fxc-checkout__columns--one { grid-template-columns: minmax(0, 1fr); }
+.fxc-checkout__heading { font-size: 1.25em; margin: 0 0 .75rem; }
+.fxc-checkout__text { margin-block-end: 1.5rem; }
+.fxc-checkout__fold > summary { display: none; }
 
 .fxc-order__overview { list-style: none; display: flex; flex-wrap: wrap; gap: 1rem 2rem; padding: 0; margin: 1rem 0 1.5rem; }
 .fxc-order__overview li { display: flex; flex-direction: column; }
@@ -254,6 +258,11 @@
 
 @media (max-width: 782px) {
 	.fxc-checkout__columns, .fxc-account { grid-template-columns: 1fr; }
+	.fxc-checkout__columns--fold { gap: 0; }
+	.fxc-checkout__columns--fold > div { display: contents; }
+	.fxc-checkout__fold { order: -1; margin-block-end: 1.5rem; border-block-end: 1px solid rgba(0, 0, 0, .1); }
+	.fxc-checkout__fold > summary { display: list-item; padding: .75rem 0; cursor: pointer; font-weight: 600; }
+	.fxc-checkout__fold > summary strong { float: inline-end; }
 }
 
 /* Classic theme templates */

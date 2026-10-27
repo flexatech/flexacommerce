@@ -28,7 +28,9 @@ final class AdminCheckoutLayoutTest extends OrderTestCase {
 		$shown = $this->send( 'GET', '/admin/checkout-layout' );
 		self::assertSame( 200, $shown->get_status() );
 		$data = $shown->get_data();
-		self::assertSame( $data['fields'], $data['default'] );
+		self::assertSame( $data['fields'], $data['default']['fields'] );
+		self::assertSame( $data['page'], $data['default']['page'] );
+		self::assertSame( [ 'billing', 'shipping', 'additional' ], array_column( $data['page']['main'], 'id' ) );
 		self::assertSame( 'Email address', $data['labels']['email'] );
 		self::assertSame( [ 'billing', 'shipping', 'additional' ], array_keys( $data['fields'] ) );
 
@@ -82,6 +84,86 @@ final class AdminCheckoutLayoutTest extends OrderTestCase {
 
 		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
 		self::assertSame( 403, $this->send( 'GET', '/admin/checkout-layout' )->get_status() );
+	}
+
+	public function test_the_page_keeps_every_section_and_payment_last(): void {
+		$page = static fn ( array $main, array $side, string $columns = 'two' ): array => [
+			'page' => [
+				'columns' => $columns,
+				'main'    => array_map( static fn ( $id ): array => is_array( $id ) ? $id : [ 'id' => $id ], $main ),
+				'side'    => array_map( static fn ( $id ): array => is_array( $id ) ? $id : [ 'id' => $id ], $side ),
+			],
+		];
+
+		$moved = $this->send( 'PUT', '/admin/checkout-layout', $page( [ 'billing', 'summary', 'shipping' ], [ 'additional', 'shipping_method', 'payment' ] ) );
+		self::assertSame( 200, $moved->get_status() );
+		self::assertSame( [ 'additional', 'shipping_method', 'payment' ], array_column( $moved->get_data()['page']['side'], 'id' ) );
+
+		$under = $this->send( 'PUT', '/admin/checkout-layout', $page( [ 'billing', 'shipping', 'additional' ], [ 'shipping_method', 'payment', 'summary' ] ) );
+		self::assertSame( 400, $under->get_status(), 'nothing goes under Payment' );
+		self::assertSame( 'page.side.1.id', $under->get_data()['data']['field'] );
+
+		$content = $this->send(
+			'PUT',
+			'/admin/checkout-layout',
+			$page(
+				[ 'billing', 'shipping', 'additional' ],
+				[
+					'shipping_method',
+					'summary',
+					[
+						'id'   => 'text_x',
+						'type' => 'paragraph',
+						'text' => 'Above the button',
+					],
+					'payment',
+				]
+			)
+		);
+		self::assertSame( 200, $content->get_status(), 'content above Payment is fine' );
+
+		$missing = $this->send( 'PUT', '/admin/checkout-layout', $page( [ 'billing', 'shipping' ], [ 'shipping_method', 'summary', 'payment' ] ) );
+		self::assertSame( 400, $missing->get_status() );
+		self::assertSame( 'page', $missing->get_data()['data']['field'] );
+
+		$one = $this->send( 'PUT', '/admin/checkout-layout', $page( [ 'billing', 'shipping', 'additional', 'shipping_method', 'summary' ], [ 'payment' ], 'one' ) );
+		self::assertSame( 200, $one->get_status() );
+		self::assertSame( [], $one->get_data()['page']['side'], 'one column keeps everything in order in main' );
+		self::assertSame( 'payment', $one->get_data()['page']['main'][5]['id'] );
+
+		$empty = $this->send(
+			'PUT',
+			'/admin/checkout-layout',
+			$page(
+				[
+					[
+						'id'   => 'text_y',
+						'type' => 'heading',
+						'text' => '<b></b>',
+					],
+					'billing',
+					'shipping',
+					'additional',
+				],
+				[ 'shipping_method', 'summary', 'payment' ]
+			)
+		);
+		self::assertSame( 400, $empty->get_status() );
+		self::assertSame( 'page.main.0.text', $empty->get_data()['data']['field'] );
+	}
+
+	public function test_preview_keeps_the_draft_for_its_author_and_answers_a_link(): void {
+		$author  = get_current_user_id();
+		$preview = $this->send( 'POST', '/admin/checkout-layout/preview', [ 'page' => [ 'columns' => 'one' ] ] );
+		self::assertSame( 200, $preview->get_status() );
+		self::assertStringContainsString( CheckoutLayout::PREVIEW_ARG . '=', $preview->get_data()['url'] );
+		self::assertSame( 'one', CheckoutLayout::draft( $author )?->columns() );
+		self::assertFalse( get_option( CheckoutLayout::OPTION ), 'nothing is saved' );
+		self::assertSame( 400, $this->send( 'POST', '/admin/checkout-layout/preview', [ 'page' => [ 'columns' => 'three' ] ] )->get_status() );
+
+		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
+		self::assertSame( 403, $this->send( 'POST', '/admin/checkout-layout/preview', [] )->get_status() );
+		delete_transient( 'flexacommerce_checkout_preview_' . $author );
 	}
 
 	public function test_the_upgrade_keeps_the_choices_made_in_settings(): void {

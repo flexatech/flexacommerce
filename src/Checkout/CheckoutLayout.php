@@ -9,16 +9,21 @@ use Flexa\Commerce\Contracts\Exceptions\InvalidCheckoutLayout;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * The fields of the checkout page as the merchant arranged them in the
- * builder (doc 11, ADR-031): per section the order, labels, widths and
- * answers of the core fields, and the custom fields. FieldSchema applies
- * it before the `flexacommerce.checkout.fields` filter.
+ * The checkout page as the merchant arranged it in the builder (doc 11,
+ * ADR-031, ADR-032): per section the order, labels, widths and answers of
+ * the core fields, and the custom fields; then the page itself, which
+ * sections sit in which column, their titles, the headings and paragraphs
+ * between them, one or two columns and where phones show the summary.
+ * FieldSchema applies the fields before the `flexacommerce.checkout.fields`
+ * filter; CheckoutForm prints the page.
  *
- * Every section always holds all of its core fields: one missing from the
- * stored list is added at the end with its defaults.
+ * Every section always holds all of its core fields, and the page always
+ * holds every section: one missing is added at the end with its defaults.
  *
  * @phpstan-type Choice array{value:string,label:string}
  * @phpstan-type Entry array{id:string,label:string,placeholder:string,help:string,width:string,answer:string,custom:bool,type?:string,options?:list<Choice>,email?:bool}
+ * @phpstan-type Block array{id:string,title?:string,type?:string,text?:string}
+ * @phpstan-type Page array{columns:string,summary:string,main:list<Block>,side:list<Block>}
  * @api
  */
 final class CheckoutLayout {
@@ -48,6 +53,37 @@ final class CheckoutLayout {
 	/** Follow the country (some have no states or postcodes): shown or hidden only. */
 	public const BY_COUNTRY = [ 'state', 'postcode' ];
 
+	/** The parts of the page, in their default order: three in the main column, three in the side. */
+	public const BLOCKS = [ 'billing', 'shipping', 'additional', 'shipping_method', 'summary', 'payment' ];
+
+	public const MAIN = 'main';
+	public const SIDE = 'side';
+
+	public const TWO_COLUMNS = 'two';
+	public const ONE_COLUMN  = 'one';
+
+	/** Where phones show the order summary: where it is, or folded at the top. */
+	public const SUMMARY_END = 'end';
+	public const SUMMARY_TOP = 'top';
+
+	public const CONTENT_TYPES = [ 'heading', 'paragraph' ];
+	public const MAX_CONTENT   = 20;
+	public const HEADING_MAX   = 120;
+	public const PARAGRAPH_MAX = 1000;
+
+	/** Tags a paragraph keeps. */
+	public const PARAGRAPH_TAGS = [
+		'a'      => [ 'href' => true ],
+		'strong' => [],
+		'em'     => [],
+	];
+
+	public const PREVIEW_TTL = 3600;
+
+	/** Query argument of the preview link; its value is a nonce for PREVIEW_NONCE. */
+	public const PREVIEW_ARG   = 'fxc_preview';
+	public const PREVIEW_NONCE = 'flexacommerce-checkout-preview';
+
 	public const MAX_CUSTOM  = 30;
 	public const MAX_CHOICES = 30;
 	public const LABEL_MAX   = 80;
@@ -62,11 +98,17 @@ final class CheckoutLayout {
 
 	private const HALF_BY_DEFAULT = [ 'first_name', 'last_name' ];
 
+	private const PREVIEW = 'flexacommerce_checkout_preview_';
+
 	private static ?self $memo     = null;
 	private static mixed $memo_raw = null;
+	private static ?self $preview  = null;
 
-	/** @param array<string,list<Entry>> $fields */
-	private function __construct( private readonly array $fields ) {}
+	/**
+	 * @param array<string,list<Entry>> $fields
+	 * @param Page                      $page
+	 */
+	private function __construct( private readonly array $fields, private readonly array $page ) {}
 
 	public static function default(): self {
 		return self::from_array( [] );
@@ -74,6 +116,9 @@ final class CheckoutLayout {
 
 	/** The stored layout, read and normalised once per request. */
 	public static function current(): self {
+		if ( self::$preview !== null ) {
+			return self::$preview;
+		}
 		$raw = get_option( self::OPTION, [] );
 		if ( self::$memo === null || self::$memo_raw !== $raw ) {
 			$layout         = self::from_array( is_array( $raw ) ? $raw : [] );
@@ -108,10 +153,41 @@ final class CheckoutLayout {
 	}
 
 	/**
+	 * Keeps an unsaved layout for "Preview on site", for one user and one hour.
+	 *
+	 * @param array<mixed> $data
+	 * @throws InvalidCheckoutLayout When an entry breaks a rule.
+	 */
+	public static function store_draft( int $user_id, array $data ): self {
+		$layout = self::from_array( $data, true );
+		set_transient( self::PREVIEW . $user_id, $layout->to_array(), self::PREVIEW_TTL );
+		return $layout;
+	}
+
+	public static function draft( int $user_id ): ?self {
+		$raw = get_transient( self::PREVIEW . $user_id );
+		return is_array( $raw ) ? self::from_array( $raw ) : null;
+	}
+
+	/** Shows a draft instead of the stored layout for the rest of the request; null ends it. */
+	public static function preview( ?self $layout ): void {
+		if ( $layout === null ) {
+			self::$preview = null;
+			return;
+		}
+		$filtered      = apply_filters( 'flexacommerce.checkout.layout', $layout );
+		self::$preview = $filtered instanceof self ? $filtered : $layout;
+	}
+
+	public static function previewing(): bool {
+		return self::$preview !== null;
+	}
+
+	/**
 	 * With `$strict`, a broken entry throws; without, it is dropped, so a
 	 * damaged option never breaks the checkout page.
 	 *
-	 * @param array<mixed> $data `{fields:{billing:[...],shipping:[...],additional:[...]}}`
+	 * @param array<mixed> $data `{fields:{billing:[...],shipping:[...],additional:[...]},page:{columns,summary,main:[...],side:[...]}}`
 	 * @throws InvalidCheckoutLayout In strict mode, when an entry breaks a rule.
 	 */
 	public static function from_array( array $data, bool $strict = false ): self {
@@ -120,12 +196,42 @@ final class CheckoutLayout {
 		foreach ( self::SECTIONS as $section ) {
 			$fields[ $section ] = self::normalise( $section, is_array( $sections[ $section ] ?? null ) ? array_values( $sections[ $section ] ) : [], $strict );
 		}
-		return new self( $fields );
+		return new self( $fields, self::page_from( is_array( $data['page'] ?? null ) ? $data['page'] : [], $strict ) );
 	}
 
-	/** @return array{fields:array<string,list<Entry>>} */
+	/** @return array{fields:array<string,list<Entry>>,page:Page} */
 	public function to_array(): array {
-		return [ 'fields' => $this->fields ];
+		return [
+			'fields' => $this->fields,
+			'page'   => $this->page,
+		];
+	}
+
+	/** `two` or `one`. */
+	public function columns(): string {
+		return $this->page['columns'];
+	}
+
+	/** Where phones show the order summary: `end` or `top`. */
+	public function summary_position(): string {
+		return $this->page['summary'];
+	}
+
+	/** @return list<Block> the sections and content of a column, in order */
+	public function blocks( string $column ): array {
+		return $this->page[ $column ] ?? [];
+	}
+
+	/** The merchant's title for a section, '' for the default. */
+	public function title( string $block ): string {
+		foreach ( [ self::MAIN, self::SIDE ] as $column ) {
+			foreach ( $this->page[ $column ] as $item ) {
+				if ( $item['id'] === $block ) {
+					return $item['title'] ?? '';
+				}
+			}
+		}
+		return '';
 	}
 
 	/** @return list<Entry> in display order */
@@ -150,7 +256,123 @@ final class CheckoutLayout {
 	}
 
 	public function is_default(): bool {
-		return $this->fields === self::default()->fields;
+		$default = self::default();
+		return $this->fields === $default->fields && $this->page === $default->page;
+	}
+
+	/**
+	 * @param array<mixed> $raw
+	 * @return Page
+	 * @throws InvalidCheckoutLayout In strict mode.
+	 */
+	private static function page_from( array $raw, bool $strict ): array {
+		$page    = [
+			'columns' => self::choice( $raw['columns'] ?? null, [ self::TWO_COLUMNS, self::ONE_COLUMN ], self::TWO_COLUMNS, $strict, 'page.columns' ),
+			'summary' => self::choice( $raw['summary'] ?? null, [ self::SUMMARY_END, self::SUMMARY_TOP ], self::SUMMARY_END, $strict, 'page.summary' ),
+			'main'    => [],
+			'side'    => [],
+		];
+		$given   = isset( $raw[ self::MAIN ] ) || isset( $raw[ self::SIDE ] );
+		$seen    = [];
+		$content = 0;
+		foreach ( [ self::MAIN, self::SIDE ] as $column ) {
+			foreach ( is_array( $raw[ $column ] ?? null ) ? array_values( $raw[ $column ] ) : [] as $index => $item ) {
+				$path = 'page.' . $column . '.' . $index;
+				try {
+					if ( ! is_array( $item ) || ! is_string( $item['id'] ?? null ) ) {
+						throw new InvalidCheckoutLayout( __( 'Each section needs an id.', 'flexacommerce' ), $path . '.id' );
+					}
+					$id = $item['id'];
+					if ( isset( $seen[ $id ] ) ) {
+						/* translators: %s: section id */
+						throw new InvalidCheckoutLayout( sprintf( __( 'The section "%s" is on the page twice.', 'flexacommerce' ), $id ), $path . '.id' );
+					}
+					if ( in_array( $id, self::BLOCKS, true ) ) {
+						$block = [
+							'id'    => $id,
+							'title' => self::text( $item['title'] ?? '', self::LABEL_MAX, $strict, $path . '.title' ),
+						];
+					} else {
+						if ( ++$content > self::MAX_CONTENT ) {
+							/* translators: %d: maximum number of headings and paragraphs */
+							throw new InvalidCheckoutLayout( sprintf( __( 'The page can hold at most %d headings and paragraphs.', 'flexacommerce' ), self::MAX_CONTENT ), $path . '.id' );
+						}
+						$block = self::content( $id, $item, $strict, $path );
+					}
+				} catch ( InvalidCheckoutLayout $e ) {
+					if ( $strict ) {
+						throw $e;
+					}
+					continue;
+				}
+				$seen[ $id ]       = true;
+				$page[ $column ][] = $block;
+			}
+		}
+		foreach ( self::BLOCKS as $index => $id ) {
+			if ( ! isset( $seen[ $id ] ) ) {
+				if ( $strict && $given ) {
+					/* translators: %s: section id */
+					throw new InvalidCheckoutLayout( sprintf( __( 'The section "%s" must stay on the page.', 'flexacommerce' ), $id ), 'page' );
+				}
+				$page[ $index < 3 ? self::MAIN : self::SIDE ][] = [
+					'id'    => $id,
+					'title' => '',
+				];
+			}
+		}
+		if ( $page['columns'] === self::ONE_COLUMN && $page['side'] !== [] ) {
+			$page['main'] = array_merge( $page['main'], $page['side'] );
+			$page['side'] = [];
+		}
+		// Payment ends its column: the Place order button is the last thing in it.
+		foreach ( [ self::MAIN, self::SIDE ] as $column ) {
+			$ids   = array_column( $page[ $column ], 'id' );
+			$index = array_search( 'payment', $ids, true );
+			if ( is_int( $index ) && $index !== count( $ids ) - 1 ) {
+				if ( $strict ) {
+					throw new InvalidCheckoutLayout( __( 'Payment stays at the end of its column, with the Place order button.', 'flexacommerce' ), 'page.' . $column . '.' . $index . '.id' );
+				}
+				$payment           = array_splice( $page[ $column ], $index, 1 );
+				$page[ $column ][] = $payment[0];
+			}
+		}
+		return $page;
+	}
+
+	/**
+	 * A heading or a paragraph between the sections.
+	 *
+	 * @param array<mixed> $raw
+	 * @return Block
+	 * @throws InvalidCheckoutLayout When the item breaks a rule.
+	 */
+	private static function content( string $id, array $raw, bool $strict, string $path ): array {
+		if ( preg_match( '/^text_[a-z0-9]{1,16}$/', $id ) !== 1 ) {
+			/* translators: %s: section id */
+			throw new InvalidCheckoutLayout( sprintf( __( 'The section "%s" is not known.', 'flexacommerce' ), $id ), $path . '.id' );
+		}
+		$type = self::choice( $raw['type'] ?? '', self::CONTENT_TYPES, 'heading', true, $path . '.type' );
+		if ( $type === 'heading' ) {
+			$text = self::text( $raw['text'] ?? '', self::HEADING_MAX, $strict, $path . '.text' );
+		} else {
+			$text = is_string( $raw['text'] ?? null ) ? trim( wp_kses( $raw['text'], self::PARAGRAPH_TAGS ) ) : '';
+			if ( mb_strlen( $text ) > self::PARAGRAPH_MAX ) {
+				if ( $strict ) {
+					/* translators: %d: maximum number of characters */
+					throw new InvalidCheckoutLayout( sprintf( __( 'Use at most %d characters.', 'flexacommerce' ), self::PARAGRAPH_MAX ), $path . '.text' );
+				}
+				$text = trim( wp_kses( mb_substr( $text, 0, self::PARAGRAPH_MAX ), self::PARAGRAPH_TAGS ) );
+			}
+		}
+		if ( $text === '' ) {
+			throw new InvalidCheckoutLayout( __( 'Write the text, or delete the item.', 'flexacommerce' ), $path . '.text' );
+		}
+		return [
+			'id'   => $id,
+			'type' => $type,
+			'text' => $text,
+		];
 	}
 
 	/**

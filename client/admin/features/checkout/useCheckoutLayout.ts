@@ -31,9 +31,36 @@ export interface LayoutEntry {
 
 export type LayoutFields = Record<Section, LayoutEntry[]>;
 
-export interface LayoutPayload {
+/** The parts of the page: the three field sections and the three the checkout draws. */
+export type BlockId = Section | "shipping_method" | "summary" | "payment";
+export type ContentType = "heading" | "paragraph";
+export type Column = "main" | "side";
+
+/** A section of the page, or a heading or paragraph of the merchant's (id `text_…`). */
+export interface LayoutBlock {
+    id: string;
+    /** On a section: empty means its default title. */
+    title?: string;
+    type?: ContentType;
+    text?: string;
+}
+
+export interface LayoutPage {
+    columns: "two" | "one";
+    /** Where phones show the order summary: in its place, or folded at the top. */
+    summary: "end" | "top";
+    main: LayoutBlock[];
+    /** Empty with one column. */
+    side: LayoutBlock[];
+}
+
+export interface Layout {
     fields: LayoutFields;
-    default: LayoutFields;
+    page: LayoutPage;
+}
+
+export interface LayoutPayload extends Layout {
+    default: Layout;
     /** Default labels of the core fields, by id. */
     labels: Record<string, string>;
 }
@@ -48,6 +75,9 @@ export const BY_COUNTRY = ["state", "postcode"];
 export const MAX_CUSTOM = 30;
 export const MAX_CHOICES = 30;
 export const LABEL_MAX = 80;
+export const MAX_CONTENT = 20;
+export const HEADING_MAX = 120;
+export const PARAGRAPH_MAX = 1000;
 export const HELP_MAX = 200;
 
 const KEY = ["checkout-layout"] as const;
@@ -63,7 +93,7 @@ export function useCheckoutLayout() {
 export function useSaveCheckoutLayout() {
     const qc = useQueryClient();
     return useMutation({
-        mutationFn: (fields: LayoutFields) => api.put<LayoutPayload>("admin/checkout-layout", { fields }),
+        mutationFn: (layout: Layout) => api.put<LayoutPayload>("admin/checkout-layout", { ...layout }),
         onSuccess: (data) => qc.setQueryData(KEY, data),
     });
 }
@@ -73,5 +103,12 @@ export function useResetCheckoutLayout() {
     return useMutation({
         mutationFn: () => api.delete<LayoutPayload>("admin/checkout-layout"),
         onSuccess: (data) => qc.setQueryData(KEY, data),
+    });
+}
+
+/** Keeps the unsaved layout for an hour and answers with the checkout URL that shows it. */
+export function usePreviewCheckoutLayout() {
+    return useMutation({
+        mutationFn: (layout: Layout) => api.post<{ url: string }>("admin/checkout-layout/preview", { ...layout }),
     });
 }

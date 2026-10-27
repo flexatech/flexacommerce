@@ -28,7 +28,7 @@ interface Props {
     onDelete: () => void;
 }
 
-function Choice<T extends string>({ legend, value, options, onChange }: { legend: string; value: T; options: { value: T; label: string; help?: string }[]; onChange: (value: T) => void }) {
+export function Choice<T extends string>({ legend, value, options, onChange }: { legend: string; value: T; options: { value: T; label: string; help?: string }[]; onChange: (value: T) => void }) {
     const name = useId();
     return (
         <fieldset>
@@ -54,7 +54,7 @@ function Choice<T extends string>({ legend, value, options, onChange }: { legend
     );
 }
 
-function Row({ id, label, hint, error, children }: { id: string; label: string; hint?: string; error?: string; children: ReactNode }) {
+export function Row({ id, label, hint, error, children }: { id: string; label: string; hint?: string; error?: string; children: ReactNode }) {
     return (
         <div>
             <Label htmlFor={id} className="fxc:mb-1.5 fxc:block">

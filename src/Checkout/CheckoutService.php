@@ -182,6 +182,53 @@ final class CheckoutService {
 	}
 
 	/**
+	 * The form state with one sample product, for "Preview on site" with an
+	 * empty cart (ADR-032). Nothing is stored: the page only shows it.
+	 *
+	 * @param array<string,mixed> $state form_state()
+	 * @return array<string,mixed>
+	 */
+	public function sample_state( array $state, int $user_id ): array {
+		$price   = $this->money->from_decimal_string( '20' );
+		$ship    = $this->money->from_decimal_string( '5' );
+		$total   = $price->add( $ship );
+		$country = (string) ( $state['destination']['country'] ?? '' );
+		$rate    = 'flat_rate:preview';
+		$context = new CheckoutContext( $total, $country, $country, true, $rate, $user_id > 0 ? $user_id : null, 1 );
+
+		$state['cart']['items']   = [
+			[
+				'name'       => __( 'Sample product', 'flexacommerce' ),
+				'quantity'   => 1,
+				'attributes' => [],
+				'total'      => $this->presenter->money( $price ),
+			],
+		];
+		$state['coupons']         = [];
+		$state['needs_shipping']  = true;
+		$state['needs_address']   = true;
+		$state['shipping_rates']  = [
+			[
+				'id'            => $rate,
+				'label'         => __( 'Flat rate', 'flexacommerce' ),
+				'meta'          => [],
+				'cost'          => $this->presenter->money( $ship ),
+				'needs_address' => true,
+			],
+		];
+		$state['shipping_rate']   = $rate;
+		$state['payment_methods'] = $this->methods_view( $context );
+		$state['totals']          = [
+			'subtotal' => $this->presenter->money( $price ),
+			'shipping' => $this->presenter->money( $ship ),
+			'tax'      => $this->presenter->money( $this->money->from_minor( 0 ) ),
+			'total'    => $this->presenter->money( $total ),
+		];
+		$state['tax']             = [];
+		return $state;
+	}
+
+	/**
 	 * The customer changed the address or the rate: requote and remember the
 	 * choice so a reload shows the same thing.
 	 *

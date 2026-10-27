@@ -82,6 +82,7 @@ final class CheckoutPageTest extends OrderTestCase {
 		$_POST = [];
 		$_GET  = [];
 		unset( $_SERVER['HTTP_REFERER'], $_SERVER['HTTP_ORIGIN'] );
+		CheckoutLayout::preview( null );
 		foreach ( [ 'cod', 'bacs', FakeGateway::ID ] as $id ) {
 			delete_option( GatewaySettings::PREFIX . $id );
 		}
@@ -242,6 +243,107 @@ final class CheckoutPageTest extends OrderTestCase {
 		self::assertStringContainsString( 'id="fxc-customer-note"', $html );
 		self::assertStringNotContainsString( 'fxc-checkout__additional', $html, 'the notes alone need no fieldset' );
 		self::assertLessThan( strpos( $html, 'name="billing[country]"' ), strpos( $html, 'name="billing[last_name]"' ) );
+		// The page of before: billing, shipping and notes on the left; shipping, summary and payment on the right.
+		self::assertStringContainsString( '<div class="fxc-checkout__columns"><div class="fxc-checkout__details"><fieldset class="fxc-checkout__address" data-fxc-address="billing"><legend>Billing details</legend>', $html );
+		self::assertMatchesRegularExpression( '#</fieldset><p class="fxc-checkout__toggle">.*</fieldset></div><p class="fxc-field fxc-field--note">.*</p></div><div class="fxc-checkout__review"><fieldset class="fxc-checkout__rates" id="fxc-shipping-rate" data-fxc-rates><legend>Shipping</legend>#s', $html );
+		self::assertMatchesRegularExpression( '#</fieldset><table class="fxc-checkout__summary"><caption>Your order</caption>.*</table><div data-fxc-methods><fieldset class="fxc-checkout__methods" id="fxc-payment-method"><legend>Payment</legend>#s', $html );
+		self::assertStringContainsString( '<p class="fxc-checkout__actions"><button type="submit" class="wp-element-button fxc-checkout__place" data-fxc-place>Place order</button></p><p class="fxc-checkout__message" role="status" aria-live="polite" data-fxc-message></p></div></div></form></div>', $html );
+		self::assertStringNotContainsString( 'data-fxc-fold', $html );
+	}
+
+	public function test_the_page_puts_sections_in_one_column_with_headings_and_paragraphs(): void {
+		CheckoutLayout::save(
+			[
+				'page' => [
+					'columns' => 'one',
+					'summary' => 'top',
+					'main'    => [
+						[
+							'id'    => 'billing',
+							'title' => 'Your details',
+						],
+						[
+							'id'   => 'text_a1',
+							'type' => 'heading',
+							'text' => 'Delivery',
+						],
+						[ 'id' => 'shipping_method' ],
+						[ 'id' => 'shipping' ],
+						[ 'id' => 'additional' ],
+						[
+							'id'   => 'text_b2',
+							'type' => 'paragraph',
+							'text' => 'Questions? <a href="https://example.com/help">Ask us</a><script>alert(1)</script>',
+						],
+						[ 'id' => 'summary' ],
+					],
+					'side'    => [ [ 'id' => 'payment' ] ],
+				],
+			]
+		);
+		$this->add( $this->simple( 1000, 5 ), 1 );
+		$html = do_shortcode( '[flexacommerce_checkout]' );
+
+		self::assertStringContainsString( '<div class="fxc-checkout__columns fxc-checkout__columns--one fxc-checkout__columns--fold"><div class="fxc-checkout__details">', $html );
+		self::assertStringNotContainsString( 'fxc-checkout__review', $html, 'one column' );
+		self::assertStringContainsString( '<legend>Your details</legend>', $html );
+		$heading = (int) strpos( $html, '<h2 class="fxc-checkout__heading">Delivery</h2>' );
+		self::assertGreaterThan( 0, $heading );
+		self::assertLessThan( strpos( $html, 'data-fxc-rates' ), $heading );
+		self::assertLessThan( strpos( $html, 'data-fxc-ship-toggle' ), strpos( $html, 'data-fxc-rates' ), 'shipping method before the shipping address' );
+		self::assertStringContainsString( '<div class="fxc-checkout__text"><p>Questions? <a href="https://example.com/help">Ask us</a>alert(1)</p>', $html );
+		self::assertStringNotContainsString( '<script>alert', $html );
+		self::assertMatchesRegularExpression( '#<details class="fxc-checkout__fold" open data-fxc-fold><summary>Order summary <strong data-fxc-fold-total>[^<]+</strong></summary><table class="fxc-checkout__summary">#', $html );
+		self::assertStringContainsString( 'data-fxc-place>Place order</button></p><p class="fxc-checkout__message" role="status" aria-live="polite" data-fxc-message></p></div></div></form></div>', $html, 'payment ends the page' );
+
+		$token = $this->token( $html );
+		self::assertNotNull( $this->post( $this->form( $token, [ 'expected_total' => '1500' ] ) ), 'the order goes through as before' );
+	}
+
+	public function test_preview_shows_the_draft_to_its_manager_only(): void {
+		$admin = self::factory()->user->create( [ 'role' => 'administrator' ] );
+		wp_set_current_user( $admin );
+		CheckoutLayout::store_draft(
+			$admin,
+			[
+				'page' => [
+					'columns' => 'one',
+					'main'    => [
+						[
+							'id'   => 'text_a1',
+							'type' => 'heading',
+							'text' => 'Almost there',
+						],
+						[ 'id' => 'billing' ],
+						[ 'id' => 'shipping' ],
+						[ 'id' => 'additional' ],
+						[ 'id' => 'shipping_method' ],
+						[ 'id' => 'summary' ],
+						[ 'id' => 'payment' ],
+					],
+				],
+			]
+		);
+		$url = add_query_arg( CheckoutLayout::PREVIEW_ARG, wp_create_nonce( CheckoutLayout::PREVIEW_NONCE ), home_url( '/checkout/' ) );
+
+		$html = $this->visit( $url );
+		self::assertStringContainsString( 'Almost there', $html );
+		self::assertStringContainsString( 'Sample product', $html, 'an empty cart shows a sample' );
+		self::assertStringContainsString( 'fxc-checkout__preview', $html );
+		self::assertStringContainsString( 'data-fxc-place disabled', $html );
+		self::assertFalse( get_option( CheckoutLayout::OPTION ), 'the stored layout is untouched' );
+		CheckoutLayout::preview( null );
+
+		self::assertStringContainsString( 'Your cart is empty.', $this->visit( home_url( '/checkout/' ) ), 'without the link' );
+		self::assertStringContainsString( 'Your cart is empty.', $this->visit( add_query_arg( CheckoutLayout::PREVIEW_ARG, 'nope', home_url( '/checkout/' ) ) ), 'a wrong nonce' );
+
+		$editor = self::factory()->user->create( [ 'role' => 'editor' ] );
+		wp_set_current_user( $editor );
+		CheckoutLayout::store_draft( $editor, [] );
+		$html = $this->visit( add_query_arg( CheckoutLayout::PREVIEW_ARG, wp_create_nonce( CheckoutLayout::PREVIEW_NONCE ), home_url( '/checkout/' ) ) );
+		self::assertStringContainsString( 'Your cart is empty.', $html, 'only managers preview' );
+		delete_transient( 'flexacommerce_checkout_preview_' . $admin );
+		delete_transient( 'flexacommerce_checkout_preview_' . $editor );
 	}
 
 	public function test_the_layout_orders_renames_and_adds_fields(): void {

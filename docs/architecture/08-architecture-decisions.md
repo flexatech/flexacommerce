@@ -445,3 +445,21 @@ Status of every ADR: **Accepted** (plan approved 2026-10-24) unless it says othe
 **Consequences.** No new storefront JavaScript; `storefront.css` gains the half-width rules (about 4.5 KB gzip in total, cap 10 KB). The checkout page reads one more option, cached by the object cache. Custom answers are not saved to the customer's address book. Section moves, one column, content items and Preview on site are part 2.
 
 **Revisit when.** Merchants ask for fields shown only for some countries or products, or for importing the WooCommerce Checkout Field Editor options.
+
+## ADR-032: Sections, columns, content and preview in the checkout layout
+
+**Context.** Part 1 of the checkout builder (ADR-031) arranged the fields; the sections of the page stayed where the template put them. Part 2 of doc 11 lets the merchant move them, use one column, fold the summary on phones, add headings and paragraphs, and see the result before saving.
+
+**Decision.**
+1. **The page lives in the same option.** `flexacommerce_checkout_layout` gains `page` next to `fields`: the column mode, the summary position on phones, and the ordered `main` and `side` lists of sections and content items. One read per checkout, as before.
+2. **Strict on save, lenient on read.** A PUT must keep all six sections, once each, with Payment last in its column; a stored layout that breaks a rule is repaired on read (missing sections appended to their default column, Payment moved to the end), so a damaged option never breaks the checkout.
+3. **Content items are blocks of a column,** limited to 20, sanitised on save (heading as text, paragraph through `wp_kses` with links, bold and italic).
+4. **The folded summary is HTML first.** A `<details open>` that CSS moves to the top on phones and `checkout.js` closes there. No JavaScript means an open summary, never a hidden one.
+5. **Preview is a per-user transient plus a nonce.** The draft is checked like a save, kept for one hour, and shown only to its author holding the manage capability and the nonce. Place order is disabled on the preview and an empty cart gets a sample line.
+
+**Alternatives.** Content inside sections: it ties text to a section the merchant may move, and the server would need a second kind of entry in each section; between blocks is simpler and covers the notes merchants write. A hide switch per section: it would let a merchant hide Payment or Billing; hiding fields one by one covers Additional information. Preview as a saved revision: it would need a revision store and a way to discard it; a transient expires by itself.
+
+**Consequences.** `storefront.css` gains the one-column, content and fold rules (still under its 10 KB gzip cap); `checkout.js` gains a few lines for the fold. The admin chunk grows with the page canvas. REST requotes during a preview run with the saved layout, which only matters to a merchant testing shipping with the preview.
+
+**Revisit when.** Merchants ask for a steps layout, for content shown only to some carts, or for richer text than links, bold and italic.
+

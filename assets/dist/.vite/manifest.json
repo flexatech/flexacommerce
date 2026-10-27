@@ -4,7 +4,7 @@
     "name": "units"
   },
   "admin/features/checkout/CheckoutBuilderPage.tsx": {
-    "file": "assets/CheckoutBuilderPage-TDCUIhHk.js",
+    "file": "assets/CheckoutBuilderPage-C9tfOmS_.js",
     "name": "CheckoutBuilderPage",
     "src": "admin/features/checkout/CheckoutBuilderPage.tsx",
     "isDynamicEntry": true,
@@ -14,7 +14,7 @@
     ]
   },
   "admin/main.tsx": {
-    "file": "assets/admin-DNBNYTNM.js",
+    "file": "assets/admin-07WLZymh.js",
     "name": "admin",
     "src": "admin/main.tsx",
     "isEntry": true,
@@ -25,11 +25,11 @@
       "admin/features/checkout/CheckoutBuilderPage.tsx"
     ],
     "css": [
-      "assets/admin-DhApKQSk.css"
+      "assets/admin-B_3ffT6Z.css"
     ]
   },
   "admin/product-editor.tsx": {
-    "file": "assets/product-editor-DJp8Ou9T.js",
+    "file": "assets/product-editor-B_Jq5wXe.js",
     "name": "product-editor",
     "src": "admin/product-editor.tsx",
     "isEntry": true,
@@ -37,7 +37,7 @@
       "_units-EuL2AFbI.js"
     ],
     "css": [
-      "assets/product-editor-DkcI5VzE.css"
+      "assets/product-editor-CbW9xahZ.css"
     ]
   }
 }

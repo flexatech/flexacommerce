@@ -176,7 +176,7 @@ Because these fire after commit, a listener that throws cannot roll back the ord
 | `flexacommerce.cart.fees` | `list<Fee> $fees, CartView $cart` | Fees become `fee` order lines. |
 | `flexacommerce.checkout.fields` | `FieldSchema $schema, string $country, string $type` | Add, remove or require fields of the billing or shipping address. Runs after the checkout layout (doc 11), so it sees the merchant's order, labels and custom fields. Values of extra fields go to `fxc_order_meta`. |
 | `flexacommerce.checkout.additional_fields` | `FieldSchema $schema` (type `additional`) | The same for Additional information: the order notes and the merchant's own questions. Values go to `_additional_{id}`. |
-| `flexacommerce.checkout.layout` | `CheckoutLayout $layout` | The normalised builder layout, once per request, before the schemas are built. |
+| `flexacommerce.checkout.layout` | `CheckoutLayout $layout` | The normalised builder layout, once per request, before the schemas are built. It also runs on the layout of a preview (`?fxc_preview=`, doc 11 §10), so an extension sees what the page will show. |
 | `flexacommerce.checkout.validate` | `ValidationResult $result, CheckoutView $checkout` | |
 | `flexacommerce.shipping.rates` | `list<ShippingRate> $rates, ShippingPackage $package` | Reorder, hide, rename. |
 | `flexacommerce.product.is_purchasable` | `bool, VariantView $variant` | May only forbid. |
@@ -194,6 +194,8 @@ Rule: filters that affect money run on the server only. The browser never receiv
 | Action | Args | Notes |
 |---|---|---|
 | `flexacommerce.checkout.layout.saved` | `CheckoutLayout $layout` | After the builder saves or resets the layout (`CheckoutLayout::save()`, `reset()`). |
+
+The builder previews an unsaved layout through `POST flexacommerce/v1/admin/checkout-layout/preview`; the checkout reads `fxc_preview` (a nonce) only for its author. `CheckoutLayout::previewing()` tells an extension that the page shows a draft, where Place order is disabled.
 
 Custom checkout answers are order meta `_{section}_{id}`; `_fxc_fields` (reserved) keeps the label, the value and the email switch of each one as placed. Read them with `Orders\OrderFields::for_order()`.
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Flexa\Commerce\Storefront;
 
+use Flexa\Commerce\Checkout\CheckoutLayout;
 use Flexa\Commerce\Checkout\CheckoutPages;
 use Flexa\Commerce\Checkout\CheckoutRequest;
 use Flexa\Commerce\Checkout\CheckoutService;
@@ -17,6 +18,7 @@ use Flexa\Commerce\Plugin;
 use Flexa\Commerce\Storefront\Render\CheckoutForm;
 use Flexa\Commerce\Storefront\Render\OrderConfirmation;
 use Flexa\Commerce\Storefront\Render\OrderPay;
+use Flexa\Commerce\Support\Capabilities;
 use Flexa\Commerce\Support\SameSite;
 use Flexa\Commerce\Support\ClientIp;
 
@@ -134,7 +136,27 @@ final class CheckoutPage {
 			return $this->pay->html( $this->order, $this->posted, $this->errors );
 		}
 		$this->form ??= new CheckoutForm();
-		return $this->form->html( $service->form_state( get_current_user_id() ), $this->posted, $this->errors );
+		$state        = $service->form_state( get_current_user_id() );
+		if ( $this->preview() ) {
+			$state            = ( $state['cart']['items'] ?? [] ) === [] ? $service->sample_state( $state, get_current_user_id() ) : $state;
+			$state['preview'] = true;
+		}
+		return $this->form->html( $state, $this->posted, $this->errors );
+	}
+
+	/**
+	 * "Preview on site" from the checkout builder (ADR-032): a manager's
+	 * link with a nonce shows their unsaved layout for this request.
+	 */
+	private function preview(): bool {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- the value is the nonce, checked below.
+		$nonce = isset( $_GET[ CheckoutLayout::PREVIEW_ARG ] ) ? sanitize_text_field( wp_unslash( $_GET[ CheckoutLayout::PREVIEW_ARG ] ) ) : '';
+		if ( $nonce === '' || ! Capabilities::can_manage() || wp_verify_nonce( $nonce, CheckoutLayout::PREVIEW_NONCE ) === false ) {
+			return false;
+		}
+		$draft = CheckoutLayout::draft( get_current_user_id() );
+		CheckoutLayout::preview( $draft );
+		return $draft !== null;
 	}
 
 	/**

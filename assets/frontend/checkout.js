@@ -280,6 +280,10 @@ function setup( root ) {
 		}
 		renderCoupons( data.coupons );
 		renderTaxes( data.tax );
+		const foldTotal = form.querySelector( '[data-fxc-fold-total]' );
+		if ( foldTotal && data.totals?.total ) {
+			foldTotal.textContent = data.totals.total.formatted;
+		}
 		const expected = form.querySelector( '[data-fxc-expected]' );
 		if ( expected && data.totals?.total ) {
 			expected.value = String( data.totals.total.amount );
@@ -576,6 +580,14 @@ function setup( root ) {
 
 	for ( const button of form.querySelectorAll( '[data-fxc-refresh]' ) ) {
 		button.closest( 'p' ).hidden = true;
+	}
+	// The summary folded at the top on phones: closed there, always open on wider screens.
+	const fold = form.querySelector( '[data-fxc-fold]' );
+	if ( fold ) {
+		const wide = window.matchMedia( '(min-width: 783px)' );
+		const sync = () => ( fold.open = wide.matches );
+		sync();
+		wide.addEventListener( 'change', sync );
 	}
 	syncShipping();
 	// After a failed post without scripts the summary is already there.
