@@ -9,9 +9,10 @@ defined( 'ABSPATH' ) || exit;
 /**
  * The cart as stored in the session `data` column:
  * `{v:1, lines:[...], notices:[...], rate:{window,count}, shipping_rate,
- * destination:{country,state,postcode,city}, checkout_token, coupons?}` (doc
- * 03 §4.9). `coupons` holds normalized codes in the order added and is
- * written only when there is one.
+ * destination:{country,state,postcode,city}, checkout_token, coupons?,
+ * payment_method?}` (doc 03 §4.9). `coupons` holds normalized codes in the
+ * order added and is written only when there is one; `payment_method` is
+ * the gateway last chosen at checkout, for conditions (ADR-041).
  * Immutable; every change returns a new instance.
  */
 final class Cart {
@@ -42,6 +43,7 @@ final class Cart {
 		],
 		public readonly string $checkout_token = '',
 		public readonly array $coupons = [],
+		public readonly string $payment_method = '',
 	) {}
 
 	/** @param array<string,mixed> $data */
@@ -85,7 +87,8 @@ final class Cart {
 				'city'     => is_string( $destination['city'] ?? null ) ? $destination['city'] : '',
 			],
 			is_string( $data['checkout_token'] ?? null ) ? $data['checkout_token'] : '',
-			$coupons
+			$coupons,
+			is_string( $data['payment_method'] ?? null ) ? $data['payment_method'] : '',
 		);
 	}
 
@@ -102,6 +105,9 @@ final class Cart {
 		];
 		if ( $this->coupons !== [] ) {
 			$data['coupons'] = $this->coupons;
+		}
+		if ( $this->payment_method !== '' ) {
+			$data['payment_method'] = $this->payment_method;
 		}
 		return $data;
 	}
@@ -194,6 +200,10 @@ final class Cart {
 		return $this->copy( shipping_rate: $rate_id, destination: $destination );
 	}
 
+	public function with_payment_method( string $method ): self {
+		return $this->copy( payment_method: $method );
+	}
+
 	public function with_checkout_token( string $token ): self {
 		return $this->copy( checkout_token: $token );
 	}
@@ -210,7 +220,7 @@ final class Cart {
 	 * @param array{country:string,state:string,postcode:string,city:string}|null $destination
 	 * @param list<string>|null                                       $coupons
 	 */
-	private function copy( ?array $lines = null, ?array $notices = null, ?array $rate = null, ?string $shipping_rate = null, ?array $destination = null, ?string $checkout_token = null, ?array $coupons = null ): self {
+	private function copy( ?array $lines = null, ?array $notices = null, ?array $rate = null, ?string $shipping_rate = null, ?array $destination = null, ?string $checkout_token = null, ?array $coupons = null, ?string $payment_method = null ): self {
 		return new self(
 			$lines ?? $this->lines,
 			$notices ?? $this->notices,
@@ -219,6 +229,7 @@ final class Cart {
 			$destination ?? $this->destination,
 			$checkout_token ?? $this->checkout_token,
 			$coupons ?? $this->coupons,
+			$payment_method ?? $this->payment_method,
 		);
 	}
 }

@@ -51,23 +51,27 @@ final class CheckoutEndpoint extends StoreEndpoint {
 					'callback'            => [ $this, 'shipping' ],
 					'permission_callback' => [ $this, 'write_permission' ],
 					'args'                => [
-						'country'  => [
+						'country'        => [
 							'type'     => 'string',
 							'required' => true,
 						],
-						'state'    => [
+						'state'          => [
 							'type'    => 'string',
 							'default' => '',
 						],
-						'postcode' => [
+						'postcode'       => [
 							'type'    => 'string',
 							'default' => '',
 						],
-						'city'     => [
+						'city'           => [
 							'type'    => 'string',
 							'default' => '',
 						],
-						'rate_id'  => [
+						'rate_id'        => [
+							'type'    => 'string',
+							'default' => '',
+						],
+						'payment_method' => [
 							'type'    => 'string',
 							'default' => '',
 						],
@@ -124,7 +128,8 @@ final class CheckoutEndpoint extends StoreEndpoint {
 			sanitize_text_field( (string) $request->get_param( 'city' ) ),
 		);
 		$rate_id     = sanitize_text_field( (string) $request->get_param( 'rate_id' ) );
-		return $this->run( static fn ( CheckoutService $checkout ): array => $checkout->update_shipping( get_current_user_id(), $destination, $rate_id ) );
+		$method      = sanitize_key( (string) $request->get_param( 'payment_method' ) );
+		return $this->run( static fn ( CheckoutService $checkout ): array => $checkout->update_shipping( get_current_user_id(), $destination, $rate_id, $method ) );
 	}
 
 	/** @param WP_REST_Request<array<string,mixed>> $request */

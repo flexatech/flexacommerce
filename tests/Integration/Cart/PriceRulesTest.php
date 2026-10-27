@@ -171,6 +171,90 @@ final class PriceRulesTest extends CartTestCase {
 		self::assertSame( 0, $this->price( $mug, now: '2026-06-03 00:00:00' ) );
 	}
 
+	public function test_conditions_are_checked_in_the_cart(): void {
+		$id = $this->simple( 1000 );
+		$this->rules()->save(
+			[
+				'name'       => '3 or more',
+				'conditions' => [
+					'match' => 'all',
+					'items' => [
+						[
+							'type'  => 'cart_quantity',
+							'op'    => 'gte',
+							'value' => 3,
+						],
+					],
+				],
+			]
+		);
+		self::assertSame( 1000, $this->price( $id ), 'the product page has no cart' );
+		$browser = $this->shopper();
+		$browser->cart()->add( 0, $id, Plugin::instance()->catalog()->products()->find( $id )?->base->id ?? 0, 2 );
+		self::assertSame( [ 1000 ], $this->units( $browser ) );
+		$browser->cart()->set_quantity( 0, $browser->cart()->state( 0 )->items[0]->line->key, 3 );
+		self::assertSame( [ 900 ], $this->units( $browser ) );
+
+		update_option( PriceRuleRepository::OPTION, [], true );
+		$this->rules()->save(
+			[
+				'name'       => 'Germany',
+				'conditions' => [
+					'items' => [
+						[
+							'type'  => 'country',
+							'op'    => 'in',
+							'value' => [ 'DE' ],
+						],
+					],
+				],
+			]
+		);
+		self::assertSame( [ 1000 ], $this->units( $browser ), 'no address yet: the rule waits' );
+		$browser->cart()->set_shipping(
+			0,
+			[
+				'country'  => 'DE',
+				'state'    => '',
+				'postcode' => '',
+				'city'     => '',
+			],
+			''
+		);
+		self::assertSame( [ 900 ], $this->units( $browser ) );
+		$browser->cart()->set_shipping(
+			0,
+			[
+				'country'  => 'FR',
+				'state'    => '',
+				'postcode' => '',
+				'city'     => '',
+			],
+			''
+		);
+		self::assertSame( [ 1000 ], $this->units( $browser ) );
+
+		try {
+			$this->rules()->save(
+				[
+					'name'       => 'Bad',
+					'conditions' => [
+						'items' => [
+							[
+								'type'  => 'country',
+								'op'    => 'in',
+								'value' => [ 'ZZ' ],
+							],
+						],
+					],
+				]
+			);
+			self::fail( 'An unknown country was saved.' );
+		} catch ( InvalidPriceRule $e ) {
+			self::assertSame( 'conditions', $e->field );
+		}
+	}
+
 	public function test_sale_items_and_customers(): void {
 		$id = $this->product();
 		$this->save(
@@ -311,6 +395,98 @@ final class PriceRulesTest extends CartTestCase {
 		self::assertStringContainsString( '<tr data-min="1" data-max="1" class="is-current"><th scope="row">1</th><td>$9.50 each</td><td></td></tr><tr data-min="2" data-max="0"><th scope="row">2 or more</th><td>$9.00 each</td><td>Save 5%</td></tr>', $html, 'no row below the first tier, and the saving is against the price of one' );
 	}
 
+	public function test_graduated_tiers_price_each_unit_by_its_position(): void {
+		[ $id, $sizes ]     = $this->sized( 50 );
+		[ $small, $medium ] = array_values( $sizes );
+		$rule               = $this->rules()->save(
+			[
+				'name'  => 'Graduated',
+				'type'  => PriceRule::GRADUATED,
+				'count' => PriceRule::COUNT_PRODUCT,
+				'tiers' => [
+					[
+						'min'    => 3,
+						'mode'   => PriceRule::PERCENT,
+						'amount' => 1000,
+					],
+				],
+			]
+		);
+		self::assertSame( [ PriceRule::PERCENT, 0 ], [ $rule->mode, $rule->amount ], 'a graduated rule keeps only its tiers' );
+		self::assertTrue( $rule->has_tiers() );
+
+		$browser = $this->shopper();
+		$browser->cart()->add( 0, $id, $small, 2 );
+		$browser->cart()->add( 0, $id, $medium, 3 );
+		self::assertSame( [ 2000, 1800 ], $this->units( $browser ), 'the medium line goes on from unit 3' );
+		self::assertSame( [ 4000, 5400 ], $this->totals( $browser ) );
+
+		$this->rules()->save( [ 'count' => PriceRule::COUNT_VARIANT ], $rule->id );
+		self::assertSame( [ 2000, 1933 ], $this->units( $browser ), 'the unit shown is the average' );
+		self::assertSame( [ 4000, 5800 ], $this->totals( $browser ), 'the line total is exact' );
+		self::assertSame( 9800, $browser->cart()->state( 0 )->subtotal->amount );
+	}
+
+	public function test_the_lowest_line_total_wins_against_graduated_tiers(): void {
+		$id = $this->simple( 1000 );
+		$this->rules()->save(
+			[
+				'name'   => 'Sale',
+				'mode'   => PriceRule::PERCENT,
+				'amount' => 500,
+			]
+		);
+		$this->rules()->save(
+			[
+				'name'  => 'Graduated',
+				'type'  => PriceRule::GRADUATED,
+				'tiers' => [
+					[
+						'min'    => 2,
+						'mode'   => PriceRule::PERCENT,
+						'amount' => 1000,
+					],
+				],
+			]
+		);
+		$browser = $this->shopper();
+		$base    = $this->service()->get( $id )->base->id;
+		$browser->cart()->add( 0, $id, $base, 1 );
+		self::assertSame( [ 950 ], $this->totals( $browser ), 'one unit: the sale is lower' );
+		$browser->cart()->add( 0, $id, $base, 2 );
+		self::assertSame( [ 2800 ], $this->totals( $browser ), 'three units: 1000 + 900 + 900' );
+		self::assertSame( [ 933 ], $this->units( $browser ) );
+	}
+
+	public function test_the_table_of_graduated_tiers_explains_the_ranges(): void {
+		$id = $this->simple( 1000 );
+		$this->rules()->save(
+			[
+				'name'  => 'Graduated',
+				'type'  => PriceRule::GRADUATED,
+				'tiers' => [
+					[
+						'min'    => 5,
+						'mode'   => PriceRule::PERCENT,
+						'amount' => 1250,
+					],
+					[
+						'min'    => 10,
+						'mode'   => PriceRule::FIXED,
+						'amount' => 300,
+					],
+				],
+			]
+		);
+		$html = $this->form( $id );
+		self::assertStringContainsString(
+			'<tr data-min="5" data-max="9"><th scope="row">5 to 9</th><td>$8.75 each</td><td>Save 13%</td></tr>'
+			. '<tr data-min="10" data-max="0"><th scope="row">10 or more</th><td>$7.00 each</td><td>Save 30%</td></tr>',
+			$html
+		);
+		self::assertStringContainsString( '<tfoot><tr><td colspan="3">Each price applies only to the units in its range.</td></tr></tfoot>', $html );
+	}
+
 	public function test_the_routes(): void {
 		$server = $this->server();
 		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
@@ -364,7 +540,7 @@ final class PriceRulesTest extends CartTestCase {
 		self::assertNotNull( $product );
 		$row    = $product->base;
 		$active = (int) $row->active_price( $now );
-		return ( new PriceRules( $this->rules() ) )->apply( $product, $row, $active, 1, 1, $user_id, $now );
+		return ( new PriceRules( $this->rules() ) )->apply( $product, $row, $active, 1, 1, $user_id, $now )[0];
 	}
 
 	private function shopper(): CartServices {
@@ -376,6 +552,12 @@ final class PriceRulesTest extends CartTestCase {
 	private function units( CartServices $browser ): array {
 		$browser->pricing()->reset();
 		return array_map( static fn ( $item ): int => (int) $item->unit?->active->amount, $browser->cart()->state( 0 )->items );
+	}
+
+	/** @return list<int> the total of each cart line */
+	private function totals( CartServices $browser ): array {
+		$browser->pricing()->reset();
+		return array_map( static fn ( $item ): int => (int) $item->total?->amount, $browser->cart()->state( 0 )->items );
 	}
 
 	private function form( int $id ): string {

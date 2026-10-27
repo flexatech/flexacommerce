@@ -7,6 +7,8 @@ namespace Flexa\Commerce\Pricing\Rules;
 use Flexa\Commerce\Catalog\PostTypes;
 use Flexa\Commerce\Catalog\Product;
 use Flexa\Commerce\Catalog\Variant;
+use Flexa\Commerce\Support\ConditionFacts;
+use Flexa\Commerce\Support\Conditions;
 use Flexa\Commerce\Support\IntMath;
 
 defined( 'ABSPATH' ) || exit;
@@ -15,46 +17,104 @@ defined( 'ABSPATH' ) || exit;
  * Applies the pricing rules to a unit price (ADR-024). Every live rule
  * that matches the product, the customer and the quantity gives a price;
  * the lowest wins, and a rule never raises a price. Rules do not stack.
+ * A rule with conditions (ADR-041) applies only when they are met; one
+ * that waits on a checkout choice does not apply until it is made. A
+ * graduated rule (ADR-042) prices each unit by its position, so it gives
+ * a line total.
  */
 final class PriceRules {
 	/** @var array<int,list<string>> */
 	private array $roles = [];
 
-	public function __construct( private readonly PriceRuleRepository $rules ) {}
+	/** @var array<int,ConditionFacts> */
+	private array $shoppers = [];
+
+	/** @param ?\Closure():\Flexa\Commerce\Contracts\Orders\CustomerHistory $history past orders, for the customer conditions */
+	public function __construct(
+		private readonly PriceRuleRepository $rules,
+		private readonly ?\Closure $history = null,
+	) {}
 
 	/**
-	 * The unit price after the rules. `$quantity` is the units of this
-	 * variation in the cart, `$product_quantity` those of the whole product.
+	 * The unit price after the rules, and the line total when the units
+	 * cost different amounts. `$quantity` is the units of this variation in
+	 * the line, `$product_quantity` those of the whole product in the cart,
+	 * and `$before` the units of the product in the lines above this one,
+	 * which a graduated rule that counts the product starts after (ADR-042).
+	 * The lowest line total wins; a graduated total gives the average unit
+	 * price, rounded half up, with the exact total next to it.
 	 *
 	 * @param int    $active the price before rules, in minor units
 	 * @param string $now    UTC `Y-m-d H:i:s`
+	 * @param ?ConditionFacts $facts the cart's facts; null on a product page
+	 * @return array{0:int,1:?int} the unit price, and the exact line total or null for unit times quantity
 	 */
-	public function apply( Product $product, Variant $variant, int $active, int $quantity, int $product_quantity, int $user_id, string $now ): int {
-		$best = $active;
+	public function apply( Product $product, Variant $variant, int $active, int $quantity, int $product_quantity, int $user_id, string $now, ?ConditionFacts $facts = null, int $before = 0 ): array {
+		$quantity = max( 1, $quantity );
+		$best     = [ $active, null ];
+		$lowest   = $active * $quantity;
 		foreach ( $this->rules->all() as $rule ) {
 			if ( $rule->sale_items === PriceRule::SALE_SKIP && $variant->is_on_sale( $now ) ) {
 				continue;
 			}
-			if ( ! $this->matches( $rule, $product, $user_id, $now ) ) {
+			if ( ! $this->matches( $rule, $product, $user_id, $now, $facts ) ) {
+				continue;
+			}
+			if ( $rule->type === PriceRule::GRADUATED ) {
+				$first = $rule->count === PriceRule::COUNT_VARIANT ? 1 : $before + 1;
+				$total = self::graduated( $rule->tiers, $active, $first, $quantity );
+				if ( $total < $lowest ) {
+					$lowest = $total;
+					$best   = [ IntMath::mul_div_half_up( $total, 1, $quantity ), $total % $quantity === 0 ? null : $total ];
+				}
 				continue;
 			}
 			$change = $rule->change_for( $rule->count === PriceRule::COUNT_VARIANT ? $quantity : $product_quantity );
 			if ( $change !== null ) {
-				$best = min( $best, self::changed( $active, $change['mode'], $change['amount'] ) );
+				$unit = self::changed( $active, $change['mode'], $change['amount'] );
+				if ( $unit * $quantity < $lowest ) {
+					$lowest = $unit * $quantity;
+					$best   = [ $unit, null ];
+				}
 			}
 		}
 		return $best;
 	}
 
 	/**
-	 * The first live bulk rule for this product and customer, for the tier
-	 * table of the product page.
+	 * The total of `$quantity` units counted from position `$first`, each at
+	 * the tier its position reached; positions below the first tier pay
+	 * `$active`.
+	 *
+	 * @param list<array{min:int,mode:string,amount:int}> $tiers `min` ascending
+	 */
+	public static function graduated( array $tiers, int $active, int $first, int $quantity ): int {
+		$last  = $first + $quantity - 1;
+		$total = 0;
+		$bands = [ [ 1, $active ] ];
+		foreach ( $tiers as $tier ) {
+			$bands[] = [ $tier['min'], self::changed( $active, $tier['mode'], $tier['amount'] ) ];
+		}
+		foreach ( $bands as $i => [ $min, $price ] ) {
+			$max  = isset( $bands[ $i + 1 ] ) ? $bands[ $i + 1 ][0] - 1 : $last;
+			$from = max( $first, $min );
+			$to   = min( $last, $max );
+			if ( $to >= $from ) {
+				$total += ( $to - $from + 1 ) * $price;
+			}
+		}
+		return $total;
+	}
+
+	/**
+	 * The first live rule with quantity tiers for this product and
+	 * customer, for the tier table of the product page.
 	 *
 	 * @param string $now UTC `Y-m-d H:i:s`
 	 */
-	public function bulk_for( Product $product, int $user_id, string $now ): ?PriceRule {
+	public function tiered_for( Product $product, int $user_id, string $now ): ?PriceRule {
 		foreach ( $this->rules->all() as $rule ) {
-			if ( $rule->type === PriceRule::BULK && $this->matches( $rule, $product, $user_id, $now ) ) {
+			if ( $rule->has_tiers() && $this->matches( $rule, $product, $user_id, $now ) ) {
 				return $rule;
 			}
 		}
@@ -90,8 +150,13 @@ final class PriceRules {
 		);
 	}
 
-	private function matches( PriceRule $rule, Product $product, int $user_id, string $now ): bool {
-		return $rule->is_live( $now ) && $this->for_customer( $rule, $user_id ) && self::targets( $rule, $product->id );
+	private function matches( PriceRule $rule, Product $product, int $user_id, string $now, ?ConditionFacts $facts = null ): bool {
+		return $rule->is_live( $now ) && $this->for_customer( $rule, $user_id ) && self::targets( $rule, $product->id )
+			&& ( Conditions::is_empty( $rule->conditions ) || Conditions::passes( $rule->conditions, $facts ?? $this->shopper( $user_id ) ) === true );
+	}
+
+	private function shopper( int $user_id ): ConditionFacts {
+		return $this->shoppers[ $user_id ] ??= ConditionFacts::shopper( $user_id, $this->history );
 	}
 
 	private function for_customer( PriceRule $rule, int $user_id ): bool {

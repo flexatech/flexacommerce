@@ -28,7 +28,7 @@ function stateOf(rule: PriceRule): { label: string; tone: "muted" | "destructive
 }
 
 function RuleIcon({ rule }: { rule: Pick<PriceRule, "type" | "customers"> }) {
-    const Icon = rule.type === "bulk" ? Layers : rule.customers === "roles" ? Users : Percent;
+    const Icon = rule.type !== "adjust" ? Layers : rule.customers === "roles" ? Users : Percent;
     return (
         <span className="fxc:bg-muted fxc:text-muted-foreground fxc:flex fxc:size-9 fxc:shrink-0 fxc:items-center fxc:justify-center fxc:rounded-md">
             <Icon aria-hidden className="fxc:size-4" />

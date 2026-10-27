@@ -144,10 +144,10 @@ final class CheckoutService {
 	 * @return array<string,mixed>
 	 */
 	public function form_state( int $user_id ): array {
-		$state       = $this->cart->state( $user_id );
-		$destination = $this->stored_destination( $state, $user_id );
-		$quote       = $this->quote( $state, $destination, $state->cart->shipping_rate, null, $user_id );
-		$saved       = [];
+		$stored                     = $this->cart->state( $user_id );
+		$destination                = $this->stored_destination( $stored, $user_id );
+		[ $state, $quote, $method ] = $this->quoted( $user_id, $destination, $stored->cart->shipping_rate, $stored->cart->payment_method );
+		$saved                      = [];
 		foreach ( $this->profile->addresses( $user_id ) as $type => $address ) {
 			$saved[ $type ] = $address->to_array();
 		}
@@ -180,6 +180,7 @@ final class CheckoutService {
 			'terms_url'      => $this->pages->terms_url(),
 			'logged_in'      => $user_id > 0,
 			'saved'          => $saved,
+			'payment_method' => $method,
 		] + $this->quote_view( $quote, $user_id );
 	}
 
@@ -232,18 +233,18 @@ final class CheckoutService {
 	}
 
 	/**
-	 * The customer changed the address or the rate: requote and remember the
-	 * choice so a reload shows the same thing.
+	 * The customer changed the address, the rate or the payment method:
+	 * requote and remember the choice so a reload shows the same thing.
 	 *
 	 * @return array<string,mixed>
 	 */
-	public function update_shipping( int $user_id, Destination $destination, string $rate_id ): array {
-		$state = $this->cart->state( $user_id );
-		$quote = $this->quote( $state, $destination, $rate_id, null, $user_id );
-		$facts = CartFacts::from_state( $state, $quote->needs_shipping );
-		$chose = $quote->rate->id ?? '';
-		$saved = $state->cart->destination;
-		if ( $state->has_session && ( $saved['country'] !== $destination->country || $saved['state'] !== $destination->state || $saved['postcode'] !== $destination->postcode || $saved['city'] !== $destination->city || $state->cart->shipping_rate !== $chose ) ) {
+	public function update_shipping( int $user_id, Destination $destination, string $rate_id, string $payment_method = '' ): array {
+		[ $state, $quote, $method ] = $this->quoted( $user_id, $destination, $rate_id, $payment_method );
+		$facts                      = CartFacts::from_state( $state, $quote->needs_shipping );
+		$chose                      = $quote->rate->id ?? '';
+		$stored                     = $this->cart->saved( $user_id );
+		$saved                      = $stored->destination;
+		if ( $state->has_session && ( $saved['country'] !== $destination->country || $saved['state'] !== $destination->state || $saved['postcode'] !== $destination->postcode || $saved['city'] !== $destination->city || $stored->shipping_rate !== $chose || $stored->payment_method !== $method ) ) {
 			$this->cart->set_shipping(
 				$user_id,
 				[
@@ -252,12 +253,14 @@ final class CheckoutService {
 					'postcode' => $destination->postcode,
 					'city'     => $destination->city,
 				],
-				$chose
+				$chose,
+				$method
 			);
 		}
 		return [
-			'destination' => $destination->to_array(),
-			'fields'      => [
+			'destination'    => $destination->to_array(),
+			'payment_method' => $method,
+			'fields'         => [
 				'billing'  => FieldSchema::for_address( 'billing', $destination->country, $facts )->to_array(),
 				'shipping' => FieldSchema::for_address( 'shipping', $destination->country, $facts )->to_array(),
 			],
@@ -301,14 +304,24 @@ final class CheckoutService {
 		if ( $state->has_problems() ) {
 			throw new InvalidCheckout( [ 'cart' => __( 'Some items in your cart are no longer available. Review your cart and try again.', 'flexacommerce' ) ] );
 		}
+
+		// Priced for the choices on the form; a condition still unknown is not met (ADR-041).
+		$destination = $this->validator->destination( $request );
+		$state       = $this->cart->state(
+			$request->user_id,
+			[
+				'country'        => $destination->country,
+				'shipping_rate'  => $request->shipping_rate,
+				'payment_method' => $request->payment_method,
+				'final'          => true,
+			]
+		);
 		if ( $state->has_rejected_coupons() ) {
 			throw new InvalidCheckout( [ 'coupon' => (string) ( array_values( $state->discounts->rejected ?? [] )[0] ?? '' ) ] );
 		}
-
-		$destination = $this->validator->destination( $request );
-		$quote       = $this->quote( $state, $destination, $request->shipping_rate, null, $request->user_id );
-		$addresses   = $this->validator->addresses( $request, $quote->needs_address(), CartFacts::from_state( $state, $quote->needs_shipping ) );
-		$errors      = $addresses['errors'];
+		$quote     = $this->quote( $state, $destination, $request->shipping_rate, null, $request->user_id );
+		$addresses = $this->validator->addresses( $request, $quote->needs_address(), CartFacts::from_state( $state, $quote->needs_shipping ) );
+		$errors    = $addresses['errors'];
 		if ( $errors === [] ) {
 			$quote = $this->quote( $state, $destination, $request->shipping_rate, $addresses['billing'], $request->user_id );
 		}
@@ -539,6 +552,35 @@ final class CheckoutService {
 		return $this->money->format( $this->money->from_minor( $amount, $currency ) );
 	}
 
+	/**
+	 * The cart priced for the checkout choices, so conditions on the
+	 * country, the shipping or the payment method see them (ADR-041). When
+	 * the rate asked for is not offered, or no available payment method is
+	 * named, the quote picks one and the cart is priced again for it.
+	 *
+	 * @return array{0:CartState,1:Quote,2:string} the state, the quote and the payment method
+	 */
+	private function quoted( int $user_id, Destination $destination, string $rate_id, string $method ): array {
+		$choices = static fn ( string $rate, string $pay ): array => [
+			'country'        => $destination->country,
+			'shipping_rate'  => $rate,
+			'payment_method' => $pay,
+		];
+		$state   = $this->cart->state( $user_id, $choices( $rate_id, $method ) );
+		$quote   = $this->quote( $state, $destination, $rate_id, null, $user_id );
+		$rate    = $quote->rate->id ?? '';
+		$pay     = $method;
+		if ( $quote->total->amount > 0 ) {
+			$ids = array_keys( $this->payments->gateways()->available( $this->context( $quote, $destination->country, '', $user_id ) ) );
+			$pay = in_array( $method, $ids, true ) ? $method : (string) ( $ids[0] ?? '' );
+		}
+		if ( $rate !== $rate_id || $pay !== $method ) {
+			$state = $this->cart->state( $user_id, $choices( $rate, $pay ) );
+			$quote = $this->quote( $state, $destination, $rate, null, $user_id );
+		}
+		return [ $state, $quote, $pay ];
+	}
+
 	private function duplicate( Order $order ): CheckoutResult {
 		return new CheckoutResult( $order, $this->pages->confirmation_url( $order ), null, true );
 	}
@@ -689,7 +731,8 @@ final class CheckoutService {
 				$attributes,
 				$item->line->quantity,
 				$item->unit->active->amount,
-				$before?->net->amount,
+				// The line total, not unit times quantity: a graduated rule prices units apart (ADR-042).
+				$before?->net->amount ?? $item->total?->amount,
 				$taxed?->by_rate() ?? [],
 				$off,
 				$item->fee,

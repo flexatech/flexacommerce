@@ -13,6 +13,7 @@ use Flexa\Commerce\Contracts\Pricing\PriceResolution;
 use Flexa\Commerce\Pricing\Rules\PriceRule;
 use Flexa\Commerce\Pricing\Rules\PriceRules;
 use Flexa\Commerce\Support\Clock;
+use Flexa\Commerce\Support\ConditionFacts;
 use Flexa\Commerce\Support\Settings;
 use Flexa\Commerce\Tax\TaxService;
 
@@ -51,23 +52,29 @@ final class PricingService {
 	 * Unit price of a sellable row, or null when it has no price (and so
 	 * cannot be bought). Memoised per request, keyed by every input.
 	 * `$product_quantity` is the units of the whole product in the cart,
-	 * which a bulk rule may count; 0 means `$quantity`.
+	 * which a bulk rule may count; 0 means `$quantity`. `$facts` are the
+	 * cart and checkout facts rule conditions check (ADR-041); without them
+	 * the price is the one for a shopper with no cart. `$before` is the
+	 * units of the product in the cart lines above this one, where a
+	 * graduated rule counting the product starts (ADR-042).
 	 */
-	public function unit_price( Product $product, Variant $variant, int $quantity = 1, int $user_id = 0, ?\DateTimeImmutable $at = null, int $product_quantity = 0 ): ?PriceResolution {
+	public function unit_price( Product $product, Variant $variant, int $quantity = 1, int $user_id = 0, ?\DateTimeImmutable $at = null, int $product_quantity = 0, ?ConditionFacts $facts = null, int $before = 0 ): ?PriceResolution {
 		$at               = $at ?? $this->clock->now();
 		$quantity         = max( 1, $quantity );
 		$product_quantity = max( $quantity, $product_quantity );
-		$key              = $variant->id . ':' . $quantity . ':' . $product_quantity . ':' . $user_id . ':' . $at->getTimestamp();
+		$before           = max( 0, $before );
+		$key              = $variant->id . ':' . $quantity . ':' . $product_quantity . ':' . $before . ':' . $user_id . ':' . $at->getTimestamp() . ':' . ( $facts?->key() ?? '' );
 		if ( array_key_exists( $key, $this->memo ) ) {
 			return $this->memo[ $key ];
 		}
 
-		$this->memo[ $key ] = $this->resolve( $product, $variant, $quantity, $product_quantity, $user_id, $at );
+		$this->memo[ $key ] = $this->resolve( $product, $variant, $quantity, $product_quantity, $user_id, $at, $facts, $before );
 		return $this->memo[ $key ];
 	}
 
+	/** The unit price times the quantity, or the exact total of a graduated rule (ADR-042). */
 	public function line_total( PriceResolution $unit, int $quantity ): Money {
-		return $unit->active->multiply( max( 0, $quantity ) );
+		return $unit->line ?? $unit->active->multiply( max( 0, $quantity ) );
 	}
 
 	/**
@@ -177,10 +184,10 @@ final class PricingService {
 		return ( $this->rules )();
 	}
 
-	/** The bulk rule whose tiers the product page lists for this customer. */
-	public function bulk_rule( Product $product, int $user_id ): ?PriceRule {
+	/** The bulk or graduated rule whose tiers the product page lists for this customer. */
+	public function tier_rule( Product $product, int $user_id ): ?PriceRule {
 		$now = $this->clock->now()->setTimezone( new \DateTimeZone( 'UTC' ) )->format( Clock::DB_FORMAT );
-		return $this->rules()?->bulk_for( $product, $user_id, $now );
+		return $this->rules()?->tiered_for( $product, $user_id, $now );
 	}
 
 	/**
@@ -231,23 +238,26 @@ final class PricingService {
 		return $this->money->from_minor( $minor );
 	}
 
-	private function resolve( Product $product, Variant $variant, int $quantity, int $product_quantity, int $user_id, \DateTimeImmutable $at ): ?PriceResolution {
+	private function resolve( Product $product, Variant $variant, int $quantity, int $product_quantity, int $user_id, \DateTimeImmutable $at, ?ConditionFacts $facts, int $before ): ?PriceResolution {
 		$now    = $at->setTimezone( new \DateTimeZone( 'UTC' ) )->format( Clock::DB_FORMAT );
 		$active = $variant->active_price( $now );
 		if ( $active === null || $variant->regular_price === null ) {
 			return null;
 		}
-		$active = $this->rules()?->apply( $product, $variant, $active, $quantity, $product_quantity, $user_id, $now ) ?? $active;
+		[ $active, $exact ] = $this->rules()?->apply( $product, $variant, $active, $quantity, $product_quantity, $user_id, $now, $facts, $before ) ?? [ $active, null ];
 
 		$filtered = has_filter( 'flexacommerce.price.unit' )
 			? apply_filters( 'flexacommerce.price.unit', $active, $product->view_of( $variant ), new PriceContext( $user_id, $quantity, $at ) )
 			: $active;
 		$amount   = is_int( $filtered ) ? max( 0, $filtered ) : $active;
+		// A filter that changes the unit price prices every unit alike.
+		$line = $amount === $active && $exact !== null ? $this->money->from_minor( $exact ) : null;
 
 		return new PriceResolution(
 			regular: $this->money->from_minor( $variant->regular_price ),
 			active: $this->money->from_minor( $amount ),
 			on_sale: $variant->is_on_sale( $now ),
+			line: $line,
 		);
 	}
 }

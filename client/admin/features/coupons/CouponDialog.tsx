@@ -12,6 +12,8 @@ import { cn } from "@/shared/lib/cn";
 import { __, sprintf } from "@/shared/lib/i18n";
 import { inputToMinor, minorToInput, parseDecimal } from "@/shared/lib/units";
 import { MoneyInput } from "../../components/MoneyInput";
+import { ConditionsEditor } from "../conditions/ConditionsEditor";
+import { NO_CONDITIONS, type ConditionBlock } from "../conditions/useConditions";
 import { TargetPicker, type Pick } from "./TargetPicker";
 import { isPercentType, useSaveCoupon, type Coupon, type CouponInput, type CouponType } from "./useCoupons";
 
@@ -44,6 +46,7 @@ interface Draft {
     repeat_limit: string;
     get_products: Pick[];
     get_categories: Pick[];
+    conditions: ConditionBlock;
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -98,6 +101,7 @@ function draftOf(coupon: Coupon | null): Draft {
         repeat_limit: bogo && coupon.repeat_limit > 0 ? String(coupon.repeat_limit) : "",
         get_products: [...picks("product", coupon?.get_product_ids), ...picks("variant", coupon?.get_variant_ids)],
         get_categories: picks("category", coupon?.get_category_ids),
+        conditions: coupon?.conditions ?? NO_CONDITIONS,
     };
 }
 
@@ -139,6 +143,7 @@ function inputOf(draft: Draft): CouponInput {
         get_product_ids: bogo ? idsOf(draft.get_products, "product") : [],
         get_variant_ids: bogo ? idsOf(draft.get_products, "variant") : [],
         get_category_ids: bogo ? idsOf(draft.get_categories, "category") : [],
+        conditions: draft.conditions,
     };
 }
 
@@ -624,6 +629,20 @@ export function CouponDialog({ open, coupon, automatic = false, onOpenChange }: 
                                 {(id) => <Textarea id={id} rows={2} value={draft.emails} onChange={(e) => set("emails", e.target.value)} />}
                             </Field>
                         )}
+                    </fieldset>
+
+                    <fieldset className="fxc:space-y-3 fxc:border-t fxc:pt-4">
+                        <legend className="fxc:mb-1 fxc:text-sm fxc:font-medium">{__("Conditions")}</legend>
+                        <ConditionsEditor
+                            value={draft.conditions}
+                            onChange={(v) => set("conditions", v)}
+                            error={errors.conditions}
+                            emptyText={
+                                draft.automatic
+                                    ? __("No conditions: the discount applies to every cart the rules above allow.")
+                                    : __("No conditions: the coupon works on every cart the rules above allow. A condition on the country, the shipping or the payment method is checked once the shopper gives it at checkout.")
+                            }
+                        />
                     </fieldset>
 
                     <Field label={__("Description")} help={__("For your team; shoppers do not see it.")} error={errors.description}>

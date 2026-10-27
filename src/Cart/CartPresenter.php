@@ -60,19 +60,21 @@ final class CartPresenter {
 	 * The codes in the order added; one that does not apply carries the
 	 * reason. `code` is the form to send back to remove it. `free_shipping`
 	 * is set when an applied coupon gives free shipping. Automatic coupons
-	 * follow the codes with `automatic` set; they cannot be removed.
+	 * follow the codes with `automatic` set; they cannot be removed. A code
+	 * waiting on a checkout choice (ADR-041) has `waiting` set and says what.
 	 *
-	 * @return list<array{code:string,label:string,valid:bool,message:string,discount:array{amount:int,formatted:string},free_shipping:bool,automatic:bool}>
+	 * @return list<array{code:string,label:string,valid:bool,waiting:bool,message:string,discount:array{amount:int,formatted:string},free_shipping:bool,automatic:bool}>
 	 */
 	public function coupons( CartState $state ): array {
 		$discounts = $state->discounts;
 		$rows      = [];
 		foreach ( $state->cart->coupons as $code ) {
 			$applied = $discounts?->find( $code );
-			if ( $applied !== null ? $applied->coupon->automatic : ! isset( $discounts->rejected[ $code ] ) ) {
+			$waiting = $discounts->waiting[ $code ] ?? null;
+			if ( $applied !== null ? $applied->coupon->automatic : ! isset( $discounts->rejected[ $code ] ) && $waiting === null ) {
 				continue;
 			}
-			$rows[] = $this->coupon_row( $state, $code, $applied, (string) ( $discounts->rejected[ $code ] ?? '' ) );
+			$rows[] = $this->coupon_row( $state, $code, $applied, (string) ( $discounts->rejected[ $code ] ?? $waiting ?? '' ), $waiting !== null );
 		}
 		foreach ( $discounts->applied ?? [] as $applied ) {
 			if ( $applied->coupon->automatic ) {
@@ -126,12 +128,13 @@ final class CartPresenter {
 		];
 	}
 
-	/** @return array{code:string,label:string,valid:bool,message:string,discount:array{amount:int,formatted:string},free_shipping:bool,automatic:bool} */
-	private function coupon_row( CartState $state, string $code, ?AppliedCoupon $applied, string $message ): array {
+	/** @return array{code:string,label:string,valid:bool,waiting:bool,message:string,discount:array{amount:int,formatted:string},free_shipping:bool,automatic:bool} */
+	private function coupon_row( CartState $state, string $code, ?AppliedCoupon $applied, string $message, bool $waiting = false ): array {
 		return [
 			'code'          => $code,
 			'label'         => $applied !== null ? $applied->coupon->code : $code,
 			'valid'         => $applied !== null,
+			'waiting'       => $waiting,
 			'message'       => $message,
 			'discount'      => $this->money( new Money( $applied?->total() ?? 0, $state->subtotal->currency ) ),
 			'free_shipping' => $applied !== null && $applied->coupon->free_shipping,

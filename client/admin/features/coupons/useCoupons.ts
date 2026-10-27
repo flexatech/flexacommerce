@@ -1,6 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/shared/lib/api";
+import type { ConditionBlock } from "../conditions/useConditions";
 
 export type CouponType = "percent" | "fixed_cart" | "fixed_product" | "buy_x_get_y";
 
@@ -51,6 +52,8 @@ export interface Coupon {
     get_product_ids: number[];
     get_variant_ids: number[];
     get_category_ids: number[];
+    /** Extra conditions (ADR-041); none means only the rules above. */
+    conditions: ConditionBlock;
     created_at: string | null;
     updated_at: string | null;
     currency: string;

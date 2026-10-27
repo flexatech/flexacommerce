@@ -6,6 +6,7 @@ namespace Flexa\Commerce\Pricing\Rules;
 
 use Flexa\Commerce\Contracts\Exceptions\InvalidPriceRule;
 use Flexa\Commerce\Pricing\PricingService;
+use Flexa\Commerce\Support\Conditions;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -157,7 +158,7 @@ final class PriceRuleRepository {
 		}
 
 		$tiers = [];
-		if ( $in['type'] === PriceRule::BULK ) {
+		if ( in_array( $in['type'], [ PriceRule::BULK, PriceRule::GRADUATED ], true ) ) {
 			$tiers = self::tiers( $in['tiers'] );
 			$mode  = PriceRule::PERCENT;
 			$value = 0;
@@ -198,7 +199,13 @@ final class PriceRuleRepository {
 			throw new InvalidPriceRule( __( 'The end must be after the start.', 'flexacommerce' ), 'ends_at' );
 		}
 
-		$bulk = $in['type'] === PriceRule::BULK;
+		try {
+			$conditions = Conditions::clean( $in['conditions'] );
+		} catch ( \InvalidArgumentException $e ) {
+			throw new InvalidPriceRule( $e->getMessage(), 'conditions' );
+		}
+
+		$bulk = $tiers !== [];
 		return new PriceRule(
 			id: (int) $in['id'],
 			name: $name,
@@ -217,6 +224,7 @@ final class PriceRuleRepository {
 			sale_items: $in['sale_items'],
 			starts_at: $in['starts_at'],
 			ends_at: $in['ends_at'],
+			conditions: $conditions,
 		);
 	}
 

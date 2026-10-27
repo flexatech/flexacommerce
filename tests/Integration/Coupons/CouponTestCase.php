@@ -9,6 +9,7 @@ use Flexa\Commerce\Cart\MemoryTokenStore;
 use Flexa\Commerce\Checkout\CheckoutRequest;
 use Flexa\Commerce\Checkout\CheckoutService;
 use Flexa\Commerce\Checkout\CheckoutServices;
+use Flexa\Commerce\Contracts\Orders\CustomerHistory;
 use Flexa\Commerce\Coupons\Coupon;
 use Flexa\Commerce\Coupons\CouponRepository;
 use Flexa\Commerce\Coupons\CouponService;
@@ -92,6 +93,7 @@ abstract class CouponTestCase extends TaxTestCase {
 			$plugin->catalog(),
 			$tokens ?? new MemoryTokenStore(),
 			coupons: fn (): CouponService => $this->coupons()->service(),
+			history: fn (): CustomerHistory => $plugin->customer_history(),
 		);
 	}
 

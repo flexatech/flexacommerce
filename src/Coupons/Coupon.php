@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Flexa\Commerce\Coupons;
 
+use Flexa\Commerce\Support\Conditions;
+
 defined( 'ABSPATH' ) || exit;
 
 /**
@@ -17,6 +19,8 @@ defined( 'ABSPATH' ) || exit;
  * the cheapest units the shopper gets for each X units they buy.
  * An automatic coupon (ADR-026) has no code to type: it applies to every
  * cart it fits, and its code is the name the shopper sees.
+ * `conditions` (ADR-041, in `rules` too) add cart, checkout and customer
+ * conditions.
  */
 final class Coupon {
 	public const PERCENT       = 'percent';
@@ -49,6 +53,7 @@ final class Coupon {
 	 * @param list<int>    $get_product_ids      buy X get Y: products that can be the discounted units; with no get rules, the bought ones
 	 * @param list<int>    $get_variant_ids
 	 * @param list<int>    $get_category_ids
+	 * @param array<mixed> $conditions           a block from Conditions::clean()
 	 */
 	public function __construct(
 		public readonly int $id,
@@ -84,6 +89,10 @@ final class Coupon {
 		public readonly array $get_variant_ids = [],
 		public readonly array $get_category_ids = [],
 		public readonly bool $automatic = false,
+		public readonly array $conditions = [
+			'match' => Conditions::ALL,
+			'items' => [],
+		],
 	) {}
 
 	/** The form a shopper's code is compared in: trimmed, lower case. */
@@ -129,10 +138,11 @@ final class Coupon {
 			get_variant_ids: self::ids( $rules['get_variant_ids'] ?? [] ),
 			get_category_ids: self::ids( $rules['get_category_ids'] ?? [] ),
 			automatic: (bool) ( $row['automatic'] ?? false ),
+			conditions: is_array( $rules['conditions'] ?? null ) ? $rules['conditions'] : Conditions::none(),
 		);
 	}
 
-	/** @return array{product_ids:list<int>,exclude_product_ids:list<int>,variant_ids:list<int>,exclude_variant_ids:list<int>,category_ids:list<int>,exclude_category_ids:list<int>,emails:list<string>,buy_qty:int,get_qty:int,repeat_limit:int,get_product_ids:list<int>,get_variant_ids:list<int>,get_category_ids:list<int>} */
+	/** @return array{product_ids:list<int>,exclude_product_ids:list<int>,variant_ids:list<int>,exclude_variant_ids:list<int>,category_ids:list<int>,exclude_category_ids:list<int>,emails:list<string>,buy_qty:int,get_qty:int,repeat_limit:int,get_product_ids:list<int>,get_variant_ids:list<int>,get_category_ids:list<int>,conditions:array<mixed>} */
 	public function rules(): array {
 		return [
 			'product_ids'          => $this->product_ids,
@@ -148,6 +158,7 @@ final class Coupon {
 			'get_product_ids'      => $this->get_product_ids,
 			'get_variant_ids'      => $this->get_variant_ids,
 			'get_category_ids'     => $this->get_category_ids,
+			'conditions'           => $this->conditions,
 		];
 	}
 

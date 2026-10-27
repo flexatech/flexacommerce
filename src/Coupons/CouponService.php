@@ -11,7 +11,11 @@ use Flexa\Commerce\Contracts\Exceptions\InvalidCheckout;
 use Flexa\Commerce\Contracts\Money;
 use Flexa\Commerce\Pricing\PricingService;
 use Flexa\Commerce\Support\Clock;
+use Flexa\Commerce\Support\ConditionFacts;
+use Flexa\Commerce\Support\Conditions;
 use Flexa\Commerce\Support\IntMath;
+use Flexa\Commerce\Support\Settings;
+use Flexa\Commerce\Support\Units;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -43,15 +47,18 @@ final class CouponService {
 	 * individual-use code keeps them out, and an individual-use automatic
 	 * coupon only applies alone. `next` is the automatic coupon closest to
 	 * applying when only its minimum spend is missing, else the buy X get Y
-	 * one that needs the fewest more units (ADR-027).
+	 * one that needs the fewest more units (ADR-027). A code whose conditions
+	 * wait on a checkout choice is kept in `waiting`; an automatic coupon
+	 * applies only once its conditions are met (ADR-041).
 	 *
 	 * @param list<string>   $codes normalized, in the order added
 	 * @param list<CartItem> $items
 	 */
-	public function discounts( array $codes, array $items, Money $subtotal, int $user_id ): Discounts {
+	public function discounts( array $codes, array $items, Money $subtotal, int $user_id, ?ConditionFacts $facts = null ): Discounts {
 		$found     = $this->coupons->by_codes( $codes );
 		$accepted  = [];
 		$rejected  = [];
+		$waiting   = [];
 		$exclusive = false;
 		foreach ( $codes as $code ) {
 			$coupon = $found[ $code ] ?? null;
@@ -64,6 +71,14 @@ final class CouponService {
 				continue;
 			}
 			$error = $this->check( $coupon, $items, $subtotal, $user_id );
+			if ( $error === null ) {
+				$unmet = $this->unmet( $coupon, $facts, $user_id );
+				if ( $unmet !== null && $unmet[1] ) {
+					$waiting[ $code ] = $unmet[0];
+					continue;
+				}
+				$error = $unmet[0] ?? null;
+			}
 			if ( $error === null && ( $exclusive || ( $coupon->individual_use && $accepted !== [] ) ) ) {
 				/* translators: %s: coupon code. */
 				$error = sprintf( __( 'Coupon "%s" cannot be used with other coupons.', 'flexacommerce' ), $coupon->code );
@@ -78,7 +93,7 @@ final class CouponService {
 		$next  = null;
 		$short = null;
 		foreach ( $exclusive ? [] : $this->coupons->automatic() as $coupon ) {
-			if ( $coupon->individual_use && $accepted !== [] ) {
+			if ( ( $coupon->individual_use && $accepted !== [] ) || $this->unmet( $coupon, $facts, $user_id ) !== null ) {
 				continue;
 			}
 			if ( $this->check( $coupon, $items, $subtotal, $user_id ) === null ) {
@@ -109,19 +124,20 @@ final class CouponService {
 				}
 			}
 		}
-		return new Discounts( $subtotal->currency, $this->calculate( $accepted, $items ), $rejected, $next ?? $short );
+		return new Discounts( $subtotal->currency, $this->calculate( $accepted, $items ), $rejected, $next ?? $short, $waiting );
 	}
 
 	/**
 	 * The code list after adding `$code` to a cart with `$current`. An
-	 * individual-use coupon replaces the other codes.
+	 * individual-use coupon replaces the other codes. A code whose
+	 * conditions wait on a checkout choice is taken.
 	 *
 	 * @param list<string>   $current
 	 * @param list<CartItem> $items
 	 * @return list<string>
 	 * @throws InvalidCartRequest the code does not apply; the message says why
 	 */
-	public function accept( array $current, string $code, array $items, Money $subtotal, int $user_id ): array {
+	public function accept( array $current, string $code, array $items, Money $subtotal, int $user_id, ?ConditionFacts $facts = null ): array {
 		$code = Coupon::normalize( $code );
 		if ( $code === '' ) {
 			throw new InvalidCartRequest( __( 'Enter a coupon code.', 'flexacommerce' ), 'code', 'coupon_empty' );
@@ -137,6 +153,10 @@ final class CouponService {
 			$coupon = null;
 		}
 		$error = $coupon !== null ? $this->check( $coupon, $items, $subtotal, $user_id ) : self::unknown( $code );
+		if ( $coupon !== null && $error === null ) {
+			$unmet = $this->unmet( $coupon, $facts, $user_id );
+			$error = $unmet !== null && ! $unmet[1] ? $unmet[0] : null;
+		}
 		if ( $coupon === null || $error !== null ) {
 			throw new InvalidCartRequest( $error ?? self::unknown( $code ), 'code', 'coupon_invalid' );
 		}
@@ -336,6 +356,108 @@ final class CouponService {
 			);
 		}
 		return null;
+	}
+
+	/**
+	 * Why the coupon's conditions (ADR-041) are not met, or null when they
+	 * are. The flag is set when they wait on a fact not known yet.
+	 *
+	 * @return array{0:string,1:bool}|null
+	 */
+	private function unmet( Coupon $coupon, ?ConditionFacts $facts, int $user_id ): ?array {
+		if ( Conditions::is_empty( $coupon->conditions ) ) {
+			return null;
+		}
+		$facts ??= new ConditionFacts( user_id: $user_id );
+		$outcome = Conditions::outcome( $coupon->conditions, $facts );
+		if ( $outcome['pass'] === true ) {
+			return null;
+		}
+		$item = $outcome['item'] ?? [];
+		$type = (string) ( $item['type'] ?? '' );
+		if ( $outcome['pass'] === null ) {
+			$message = match ( $type ) {
+				/* translators: %s: coupon code. */
+				Conditions::COUNTRY        => __( 'Coupon "%s" applies once you enter your address.', 'flexacommerce' ),
+				/* translators: %s: coupon code. */
+				Conditions::PAYMENT_METHOD => __( 'Coupon "%s" applies once you choose a payment method.', 'flexacommerce' ),
+				/* translators: %s: coupon code. */
+				default                    => __( 'Coupon "%s" applies once you choose a shipping method.', 'flexacommerce' ),
+			};
+			return [ sprintf( $message, $coupon->code ), true ];
+		}
+		return [ $this->condition_message( $coupon, $item, $facts, ( $coupon->conditions['match'] ?? '' ) === Conditions::ANY ), false ];
+	}
+
+	/** @param array<string,mixed> $item the condition not met */
+	private function condition_message( Coupon $coupon, array $item, ConditionFacts $facts, bool $any ): string {
+		$code   = $coupon->code;
+		$type   = (string) ( $item['type'] ?? '' );
+		$most   = ( $item['op'] ?? '' ) === Conditions::AT_MOST;
+		$not    = ( $item['op'] ?? '' ) === Conditions::NOT_IN;
+		$number = is_int( $item['value'] ?? null ) ? $item['value'] : 0;
+		$list   = is_array( $item['value'] ?? null ) ? array_map( 'strval', $item['value'] ) : [];
+		if ( $any ) {
+			/* translators: %s: coupon code. */
+			return sprintf( __( 'Your order does not meet the conditions of coupon "%s".', 'flexacommerce' ), $code );
+		}
+		if ( $facts->user_id <= 0 && in_array( $type, Conditions::HISTORY, true ) && ( $type === Conditions::PURCHASED ? ! $not : ! $most && $number > 0 ) ) {
+			/* translators: %s: coupon code. */
+			return sprintf( __( 'Log in to use coupon "%s".', 'flexacommerce' ), $code );
+		}
+		switch ( $type ) {
+			case Conditions::CART_QUANTITY:
+				return $most
+					/* translators: 1: coupon code, 2: number of items. */
+					? sprintf( _n( 'Coupon "%1$s" allows at most %2$d item in the cart.', 'Coupon "%1$s" allows at most %2$d items in the cart.', $number, 'flexacommerce' ), $code, $number )
+					/* translators: 1: coupon code, 2: number of items. */
+					: sprintf( _n( 'Coupon "%1$s" needs at least %2$d item in the cart.', 'Coupon "%1$s" needs at least %2$d items in the cart.', $number, 'flexacommerce' ), $code, $number );
+			case Conditions::CART_WEIGHT:
+				$weight = round( Units::weight( $number ), 3 ) . ' ' . Settings::string( 'weight_unit' );
+				return $most
+					/* translators: 1: coupon code, 2: a weight with its unit. */
+					? sprintf( __( 'Coupon "%1$s" allows a cart weight of at most %2$s.', 'flexacommerce' ), $code, $weight )
+					/* translators: 1: coupon code, 2: a weight with its unit. */
+					: sprintf( __( 'Coupon "%1$s" needs a cart weight of at least %2$s.', 'flexacommerce' ), $code, $weight );
+			case Conditions::COUNTRY:
+				/* translators: %s: coupon code. */
+				return sprintf( __( 'Coupon "%s" is not available in your country.', 'flexacommerce' ), $code );
+			case Conditions::PAYMENT_METHOD:
+				/* translators: %s: coupon code. */
+				return sprintf( __( 'Coupon "%s" is not available with this payment method.', 'flexacommerce' ), $code );
+			case Conditions::SHIPPING_METHOD:
+				/* translators: %s: coupon code. */
+				return sprintf( __( 'Coupon "%s" is not available with this shipping method.', 'flexacommerce' ), $code );
+			case Conditions::COUPON:
+				return $not
+					/* translators: 1: coupon code, 2: other coupon codes. */
+					? sprintf( __( 'Coupon "%1$s" cannot be used with %2$s.', 'flexacommerce' ), $code, implode( ', ', array_intersect( $list, $facts->coupons ) ) )
+					/* translators: 1: coupon code, 2: other coupon codes. */
+					: sprintf( __( 'Coupon "%1$s" works only together with %2$s.', 'flexacommerce' ), $code, implode( ', ', $list ) );
+			case Conditions::LIFETIME_SPEND:
+				$spend = $this->pricing->format( $this->pricing->money( $number ) );
+				return $most
+					/* translators: 1: coupon code, 2: an amount of money. */
+					? sprintf( __( 'Coupon "%1$s" is for customers who have spent at most %2$s.', 'flexacommerce' ), $code, $spend )
+					/* translators: 1: coupon code, 2: an amount of money. */
+					: sprintf( __( 'Coupon "%1$s" is for customers who have spent at least %2$s.', 'flexacommerce' ), $code, $spend );
+			case Conditions::ORDER_COUNT:
+				if ( $most && $number === 0 ) {
+					/* translators: %s: coupon code. */
+					return sprintf( __( 'Coupon "%s" is for a first order only.', 'flexacommerce' ), $code );
+				}
+				return $most
+					/* translators: 1: coupon code, 2: number of orders. */
+					? sprintf( _n( 'Coupon "%1$s" is for customers with at most %2$d order.', 'Coupon "%1$s" is for customers with at most %2$d orders.', $number, 'flexacommerce' ), $code, $number )
+					/* translators: 1: coupon code, 2: number of orders. */
+					: sprintf( _n( 'Coupon "%1$s" is for customers with at least %2$d order.', 'Coupon "%1$s" is for customers with at least %2$d orders.', $number, 'flexacommerce' ), $code, $number );
+			default:
+				return $not
+					/* translators: %s: coupon code. */
+					? sprintf( __( 'Coupon "%s" is not for customers who bought certain products before.', 'flexacommerce' ), $code )
+					/* translators: %s: coupon code. */
+					: sprintf( __( 'Coupon "%s" is for customers who bought certain products before.', 'flexacommerce' ), $code );
+		}
 	}
 
 	/**

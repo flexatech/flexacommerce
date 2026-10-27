@@ -6,6 +6,7 @@ namespace Flexa\Commerce\Coupons;
 
 use Flexa\Commerce\Contracts\Exceptions\InvalidCoupon;
 use Flexa\Commerce\Support\Clock;
+use Flexa\Commerce\Support\Conditions;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -165,6 +166,11 @@ final class CouponEditor {
 			'get_variant_ids'  => [],
 			'get_category_ids' => [],
 		];
+		try {
+			$rules['conditions'] = Conditions::clean( $in['conditions'] ?? null );
+		} catch ( \InvalidArgumentException $e ) {
+			throw new InvalidCoupon( $e->getMessage(), 'conditions' );
+		}
 
 		return [
 			'code'               => $code,

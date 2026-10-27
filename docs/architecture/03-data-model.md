@@ -21,7 +21,7 @@ Status: **Approved 2026-10-24**. All table names below are shown without `{$wpdb
 | Plugin log | `fxc_logs` | Filterable by channel and level, pruned by cron (§4.12). |
 | Migration | `fxc_id_map`, `fxc_migration_jobs`, `fxc_migration_log` | Idempotency and resumability (doc 05). |
 | Customers | `wp_users` + user options `fxc_billing`, `fxc_shipping` (JSON, site-prefixed meta keys) | No separate customer table (§7). |
-| Settings | `wp_options`: `flexacommerce_settings` (autoload), `flexacommerce_badges` (autoload, ordered list of up to 50 badges, ADR-023), `flexacommerce_price_rules` (autoload, ordered list of up to 100 rules, ADR-024), `flexacommerce_product_options` (autoload, ordered list of up to 200 option sets, ADR-025, ADR-029), `flexacommerce_shipping_zones`, `flexacommerce_gateway_{id}`, `flexacommerce_email_{id}` (no autoload) | Small configuration data. |
+| Settings | `wp_options`: `flexacommerce_settings` (autoload), `flexacommerce_badges` (autoload, ordered list of up to 50 badges, ADR-023), `flexacommerce_price_rules` (autoload, ordered list of up to 100 rules, ADR-024, type `adjust`, `bulk` or `graduated` (ADR-042), each with its `conditions`, ADR-041), `flexacommerce_product_options` (autoload, ordered list of up to 200 option sets, ADR-025, ADR-029), `flexacommerce_shipping_zones`, `flexacommerce_gateway_{id}`, `flexacommerce_email_{id}` (no autoload) | Small configuration data. |
 | Media | Media Library attachments | Product meta and variants store attachment IDs only. |
 
 ## 2. Cross-cutting rules
@@ -510,7 +510,7 @@ CREATE TABLE fxc_sessions (
 ) {charset_collate};
 ```
 
-`data` JSON: `{ "v":1, "lines":[{ "key":"<sha1 of variant+attributes>", "variant_id":0, "qty":1, "attributes":{}, "added_at":"" }], "shipping_rate":"", "destination":{country,state,postcode,city}, "checkout_token":"", "notices":[] }`. No prices and no personal data besides the shipping destination needed for rate and tax quotes (the city matters for city tax rates). Checkout form drafts stay in the browser (`sessionStorage`). Purge: daily cron deletes `expires_at < now` in batches of 1,000.
+`data` JSON: `{ "v":1, "lines":[{ "key":"<sha1 of variant+attributes>", "variant_id":0, "qty":1, "attributes":{}, "added_at":"" }], "shipping_rate":"", "payment_method":"", "destination":{country,state,postcode,city}, "checkout_token":"", "notices":[] }`. No prices and no personal data besides the shipping destination needed for rate and tax quotes (the city matters for city tax rates). Checkout form drafts stay in the browser (`sessionStorage`). Purge: daily cron deletes `expires_at < now` in batches of 1,000.
 
 ### 4.10 `fxc_sequences`
 
@@ -731,7 +731,7 @@ CREATE TABLE fxc_coupon_uses (
 | `min_subtotal`, `max_subtotal` | Minor units, on the cart subtotal before coupons; `NULL` = no bound. |
 | `item_limit` | Units a `percent` or `fixed_product` coupon discounts at most, the dearest first (doc 02 §7.13.1). 0 = every unit; always 0 for `fixed_cart` and `buy_x_get_y`. |
 | `usage_limit`, `per_customer_limit` | 0 = no limit. `usage_count` is changed only by `take_use()` and `release_order()` (doc 02 §7.13.5), never by the editor. |
-| `rules` | JSON `{product_ids, exclude_product_ids, variant_ids, exclude_variant_ids, category_ids, exclude_category_ids, emails, buy_qty, get_qty, repeat_limit, get_product_ids, get_variant_ids, get_category_ids}` (product ids are post ids, variant ids are `fxc_variants` ids), each list at most 1,000 entries. The buy X get Y fields (doc 02 §7.13.1) are 0 and empty for other types; being in the JSON, they needed no DB_VERSION. Emails are lower-cased and may hold `*`. Bad JSON reads as no rules. The lists are only read with the coupon row, never searched, so they need no table of their own. |
+| `rules` | JSON `{product_ids, exclude_product_ids, variant_ids, exclude_variant_ids, category_ids, exclude_category_ids, emails, buy_qty, get_qty, repeat_limit, get_product_ids, get_variant_ids, get_category_ids, conditions}` (product ids are post ids, variant ids are `fxc_variants` ids), each list at most 1,000 entries. The buy X get Y fields (doc 02 §7.13.1) are 0 and empty for other types; being in the JSON, they needed no DB_VERSION. `conditions` is the block of ADR-041 (`{match, items}`, at most 10 items). Emails are lower-cased and may hold `*`. Bad JSON reads as no rules. The lists are only read with the coupon row, never searched, so they need no table of their own. |
 | `coupon_uses.user_id`, `email` | The customer of the order (`NULL` for a guest) and the billing email, lower-cased. The per-customer count matches either. |
 
 - **Queries.** Pricing reads the cart's codes in one `WHERE code IN (…)` and caches the rows per request; when the autoloaded `flexacommerce_automatic_coupons` flag is on, it also reads the active automatic coupons through `automatic_status`, once per request; coupon rows change at checkout, so they are not in the object cache. The admin list filters by `status` and searches `code` and `description` with `LIKE`, paged; a store has hundreds of codes, not millions. The per-customer count uses `coupon_user` or `coupon_email`.

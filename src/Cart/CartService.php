@@ -14,6 +14,7 @@ use Flexa\Commerce\Contracts\Exceptions\InvalidCartRequest;
 use Flexa\Commerce\Contracts\Exceptions\NotPurchasable;
 use Flexa\Commerce\Contracts\Exceptions\RateLimited;
 use Flexa\Commerce\Contracts\Money;
+use Flexa\Commerce\Contracts\Orders\CustomerHistory;
 use Flexa\Commerce\Contracts\Pricing\PriceResolution;
 use Flexa\Commerce\Contracts\Shipping\Destination;
 use Flexa\Commerce\Contracts\Shipping\PackageLine;
@@ -26,6 +27,7 @@ use Flexa\Commerce\Inventory\StockService;
 use Flexa\Commerce\Options\ProductOptions;
 use Flexa\Commerce\Pricing\PricingService;
 use Flexa\Commerce\Support\Clock;
+use Flexa\Commerce\Support\ConditionFacts;
 use Flexa\Commerce\Support\Currency;
 use Flexa\Commerce\Support\Settings;
 
@@ -43,6 +45,7 @@ final class CartService {
 	/**
 	 * @param ?\Closure():CouponService  $coupons built only when a cart holds a code
 	 * @param ?\Closure():ProductOptions $options built only when the store has option sets
+	 * @param ?\Closure():CustomerHistory $history built only when a condition reads past orders
 	 */
 	public function __construct(
 		private readonly SessionStore $sessions,
@@ -53,21 +56,49 @@ final class CartService {
 		private readonly Clock $clock,
 		private readonly ?\Closure $coupons = null,
 		private readonly ?\Closure $options = null,
+		private readonly ?\Closure $history = null,
 	) {}
 
-	/** The cart without a session lookup when no cookie is present (P11). */
-	public function state( int $user_id ): CartState {
+	/**
+	 * The cart without a session lookup when no cookie is present (P11).
+	 * `$choices` are what checkout is about to use, read in place of the
+	 * stored ones without being saved; with `final` the order is being
+	 * placed, so a condition on a choice still unknown is not met (ADR-041).
+	 *
+	 * @param array{country?:string,shipping_rate?:string,payment_method?:string,final?:bool}|null $choices
+	 */
+	public function state( int $user_id, ?array $choices = null ): CartState {
 		if ( $user_id <= 0 && ! $this->sessions->has_token() ) {
 			return $this->resolve( new Cart(), $user_id, false );
 		}
 		$loaded = $this->sessions->load( $user_id );
 		if ( $loaded['guest'] !== null ) {
-			return $this->mutate( $user_id, static fn ( Cart $cart ): Cart => $cart, false );
+			$state = $this->mutate( $user_id, static fn ( Cart $cart ): Cart => $cart, false );
+			return $choices !== null ? $this->resolve( self::chosen( $state->cart, $choices ), $user_id, true, (bool) ( $choices['final'] ?? false ) ) : $state;
 		}
 		$cart = $loaded['session'] !== null ? Cart::from_data( $loaded['session']->data ) : new Cart();
 		// A logged-in shopper on a new browser has no count cookie yet.
 		$this->sessions->publish_count( $cart->item_count(), $user_id );
-		return $this->resolve( $cart, $user_id, $loaded['session'] !== null );
+		return $this->resolve( $choices !== null ? self::chosen( $cart, $choices ) : $cart, $user_id, $loaded['session'] !== null, (bool) ( $choices['final'] ?? false ) );
+	}
+
+	/** The cart as stored, not priced: checkout compares its choices with it. */
+	public function saved( int $user_id ): Cart {
+		if ( $user_id <= 0 && ! $this->sessions->has_token() ) {
+			return new Cart();
+		}
+		$loaded = $this->sessions->load( $user_id );
+		return $loaded['session'] !== null ? Cart::from_data( $loaded['session']->data ) : new Cart();
+	}
+
+	/** @param array{country?:string,shipping_rate?:string,payment_method?:string,final?:bool} $choices */
+	private static function chosen( Cart $cart, array $choices ): Cart {
+		$destination = $cart->destination;
+		if ( isset( $choices['country'] ) ) {
+			$destination['country'] = $choices['country'];
+		}
+		return $cart->with_shipping( $destination, $choices['shipping_rate'] ?? $cart->shipping_rate )
+			->with_payment_method( $choices['payment_method'] ?? $cart->payment_method );
 	}
 
 	/**
@@ -250,7 +281,7 @@ final class CartService {
 					throw new InvalidCartRequest( __( 'Add a product to your cart before you apply a coupon.', 'flexacommerce' ), 'code', 'coupon_invalid' );
 				}
 				$state = $this->resolve( $cart->with_coupons( [] ), $user_id, true );
-				return $cart->with_coupons( $service->accept( $cart->coupons, $code, $state->items, $state->subtotal, $user_id ) );
+				return $cart->with_coupons( $service->accept( $cart->coupons, $code, $state->items, $state->subtotal, $user_id, $this->facts( $cart, $user_id ) ) );
 			}
 		);
 	}
@@ -273,11 +304,13 @@ final class CartService {
 	 * Remember the address used for quotes and the chosen rate. The rate is
 	 * not checked here: checkout checks it against fresh rates.
 	 *
+	 * A null `$payment_method` keeps the one stored.
+	 *
 	 * @param array{country:string,state:string,postcode:string,city:string} $destination
 	 * @throws RateLimited
 	 */
-	public function set_shipping( int $user_id, array $destination, string $rate_id ): CartState {
-		return $this->mutate( $user_id, static fn ( Cart $cart ): Cart => $cart->with_shipping( $destination, $rate_id ) );
+	public function set_shipping( int $user_id, array $destination, string $rate_id, ?string $payment_method = null ): CartState {
+		return $this->mutate( $user_id, static fn ( Cart $cart ): Cart => $cart->with_shipping( $destination, $rate_id )->with_payment_method( $payment_method ?? $cart->payment_method ) );
 	}
 
 	/**
@@ -433,19 +466,24 @@ final class CartService {
 		);
 	}
 
-	private function resolve( Cart $cart, int $user_id, bool $has_session ): CartState {
+	private function resolve( Cart $cart, int $user_id, bool $has_session, bool $final = false ): CartState {
 		$this->load_products( array_map( static fn ( CartLine $l ): int => $l->product_id, $cart->lines ) );
+		$facts = $this->facts( $cart, $user_id, $final );
 
 		$items   = [];
 		$totals  = [];
 		$notices = $cart->notices;
 		$units   = [];
+		$above   = [];
 		foreach ( $cart->lines as $line ) {
 			$units[ $line->product_id ] = ( $units[ $line->product_id ] ?? 0 ) + $line->quantity;
 		}
 		foreach ( $cart->lines as $line ) {
-			$product = $this->products->find( $line->product_id );
-			$variant = $product?->sellable( $line->variant_id );
+			// Units of the product in the lines above, where a graduated rule goes on counting (ADR-042).
+			$before                     = $above[ $line->product_id ] ?? 0;
+			$above[ $line->product_id ] = $before + $line->quantity;
+			$product                    = $this->products->find( $line->product_id );
+			$variant                    = $product?->sellable( $line->variant_id );
 			if ( $product === null || $variant === null || ! $this->is_purchasable( $product, $variant ) ) {
 				$items[]   = new CartItem( $line, $product, $variant, null, null, null, CartItem::UNAVAILABLE );
 				$notices[] = [
@@ -461,14 +499,14 @@ final class CartService {
 			$availability = $this->stock->availability( $product, $variant );
 			$owner_total  = $this->owner_quantity( $cart, $product, $variant );
 			$status       = $availability->allows( $owner_total ) ? CartItem::OK : CartItem::INSUFFICIENT_STOCK;
-			$unit         = $this->pricing->unit_price( $product, $variant, $line->quantity, $user_id, product_quantity: $units[ $line->product_id ] );
+			$unit         = $this->pricing->unit_price( $product, $variant, $line->quantity, $user_id, product_quantity: $units[ $line->product_id ], facts: $facts, before: $before );
 			$fee          = 0;
 			$tracked      = [];
 			if ( $unit !== null && $line->options !== [] && $this->options !== null ) {
 				$options = ( $this->options )();
 				$fee     = $options->fee( $line->options );
 				$tracked = $options->tracked( $line->options );
-				$unit    = self::with_extra( $unit, $options->extra( $line->options, $unit->active->amount, $line->quantity, Currency::exponent( $unit->active->currency ) ) );
+				$unit    = self::with_extra( $unit, $options->extra( $line->options, $unit->active->amount, $line->quantity, Currency::exponent( $unit->active->currency ) ), $line->quantity );
 			}
 			$total = $unit !== null ? $this->pricing->line_total( $unit, $line->quantity ) : null;
 			if ( $total !== null && $fee > 0 ) {
@@ -503,7 +541,7 @@ final class CartService {
 		$discounts = null;
 		// With no codes the coupons are still read when an automatic one may fit.
 		if ( $items !== [] && $this->coupons !== null && ( $cart->coupons !== [] || CouponRepository::has_automatic() ) ) {
-			$discounts = $this->coupons()->discounts( $cart->coupons, $items, $subtotal, $user_id );
+			$discounts = $this->coupons()->discounts( $cart->coupons, $items, $subtotal, $user_id, $facts );
 			if ( $cart->coupons === [] && $discounts->applied === [] && $discounts->next === null ) {
 				$discounts = null;
 			}
@@ -518,13 +556,43 @@ final class CartService {
 		return new CartState( $cart, $items, $subtotal, $notices, $has_session, $discounts );
 	}
 
+	/**
+	 * What rule and coupon conditions check (ADR-041): the units and the
+	 * weight of the cart, the address and the choices made at checkout,
+	 * the codes, and the customer's past orders when a condition reads them.
+	 */
+	private function facts( Cart $cart, int $user_id, bool $final = false ): ConditionFacts {
+		$quantity = 0;
+		$weight   = 0;
+		foreach ( $cart->lines as $line ) {
+			$quantity += $line->quantity;
+			$product   = $this->products->find( $line->product_id );
+			$variant   = $product?->sellable( $line->variant_id );
+			$grams     = $variant->weight ?? $product?->base->weight;
+			if ( $grams !== null && is_numeric( $grams ) ) {
+				$weight += (int) round( (float) $grams ) * $line->quantity;
+			}
+		}
+		return new ConditionFacts(
+			quantity: $quantity,
+			weight_g: $weight,
+			country: $cart->destination['country'] !== '' ? $cart->destination['country'] : null,
+			payment_method: $cart->payment_method !== '' ? $cart->payment_method : null,
+			shipping_rate: $cart->shipping_rate !== '' ? $cart->shipping_rate : null,
+			coupons: $cart->coupons,
+			user_id: $user_id,
+			history: $this->history,
+			final: $final,
+		);
+	}
+
 	/** The unit price with what the product options add to it. */
-	private static function with_extra( PriceResolution $unit, int $extra ): PriceResolution {
+	private static function with_extra( PriceResolution $unit, int $extra, int $quantity ): PriceResolution {
 		if ( $extra <= 0 ) {
 			return $unit;
 		}
 		$add = new Money( $extra, $unit->active->currency );
-		return new PriceResolution( $unit->regular->add( $add ), $unit->active->add( $add ), $unit->on_sale );
+		return new PriceResolution( $unit->regular->add( $add ), $unit->active->add( $add ), $unit->on_sale, $unit->line?->add( $add->multiply( $quantity ) ) );
 	}
 
 	/**

@@ -597,3 +597,39 @@ Status of every ADR: **Accepted** (plan approved 2026-10-24) unless it says othe
 
 **Revisit when.** Merchants ask for low-stock emails per choice, for stock shared by a choice across sets, or to see option stock on the order screen.
 
+
+## ADR-041: Conditions for pricing rules and coupons
+
+**Context.** flexa-extra let a discount depend on more than the products in the cart: how many items or how much weight, the country, the shipping or payment method, another coupon, and what the customer bought before. A merchant who wants "10 % off with cash on delivery", "free gift from 5 kg" or "first order only" had no way to say it with dates, roles and a minimum spend alone.
+
+**Decision.**
+1. **One block, two users.** A pricing rule and a coupon each keep `conditions`: `{match: "all"|"any", items: [{type, op, value}]}`, at most 10 items. Types: `cart_quantity`, `cart_weight` (grams), `lifetime_spend` (minor units) and `order_count` with `gte`/`lte` and a whole number; `country`, `payment_method`, `shipping_method` and `coupon` with `in`/`not_in` and a list; `purchased` with `in`/`not_in` and product ids. `Support\Conditions::clean()` checks the block on save and names the bad item; an empty block means no condition. The rule keeps it in its option entry, the coupon in its `rules` JSON, so neither needed a `DB_VERSION`.
+2. **Three answers.** `Conditions::check()` returns true, false, or null when a fact is not known yet (no address, no payment method chosen, no shipping rate). With `final` set, an unknown fact counts as false. `all` is false as soon as one item is false; `any` is true as soon as one is true.
+3. **Facts come from the cart, then from checkout.** `ConditionFacts` holds the cart's items, quantity and weight, the coupon codes, and the country, shipping rate and payment method once known. The cart stores the destination, the rate and now the payment method. Checkout prices with the shopper's live choices (`CheckoutService::quoted()`), and the shipping requote sends the chosen payment method, so switching to cash on delivery updates the total at once. Placing the order checks again with the submitted choices and `final` set.
+4. **Shipping methods** match a rate id exactly (`flat_rate:3`, one method in one zone) or by its type (`flat_rate`, that kind in any zone).
+5. **Customer history** counts paid orders only (processing and completed), and spend is paid minus refunded in the store currency (`Contracts\Orders\CustomerHistory`, from `CustomerRepository`). It is read only when a condition needs it, once per request. Guests have no orders and have spent 0, so "first order only" works for a guest and a returning-customer condition tells the guest to log in.
+6. **Pricing rules apply only on true.** The product page knows only the shopper (account and past orders), so a rule that needs a cart or checkout fact shows its price in the cart, not on the product page.
+7. **Coupons.** False refuses the code with a message that names the condition ("Coupon "COD" is not available with this payment method."). Null keeps the code in the cart in `Discounts::waiting` with "applies once you choose a payment method": no discount yet, and checkout does not refuse it. An automatic coupon applies only on true.
+
+**Alternatives.** A separate rule engine with its own table and screen: two places to set one discount. Treating an unknown fact as false in the cart: the shopper would see "not available" for a coupon that will work as soon as they pick cash on delivery.
+
+**Consequences.** No new setting (61 keys). A cart or rule without conditions runs no extra code and no query. `checkout.js` sends the payment method with the requote. The admin reads the countries, gateways and shipping methods from `admin/conditions/choices`.
+
+**Revisit when.** Merchants ask for conditions on the day or time, the customer's city or postcode, or on product attributes in the cart.
+
+## ADR-042: Graduated quantity tiers
+
+**Context.** A bulk rule (ADR-024) prices every unit of a line at the tier the quantity reaches: at 10 units, all 10 get the 10-unit price. Wholesale and print shops often price the other way, as flexa-extra's graduated mode did: units 1 to 4 at the full price, units 5 to 9 at the next price, units from 10 at the lowest. Merchants used it to keep the step at 10 from giving away the first nine units.
+
+**Decision.**
+1. **A third rule type, `graduated`.** It keeps the same tiers and the same count setting as `bulk` (all variations together or each one alone). Each unit pays the price of the tier its position reaches; positions below the first tier pay the active price. `PriceRules::graduated()` adds up the bands that the line covers.
+2. **Positions across lines.** Counting each variation alone starts every line at unit 1. Counting the product together goes on from the units of that product in the cart lines above, so 2 small and 3 medium shirts with a tier from 3 price the medium line at the tier.
+3. **Exact line totals.** `PriceRules::apply()` now returns the unit price and, for a graduated line, the exact line total; the lowest line total wins among the matching rules. `PriceResolution` gains `line`, and `PricingService::line_total()` uses it before unit times quantity. The unit price shown is the average rounded half up. A `flexacommerce.price.unit` filter that changes the unit price drops the exact total, so every unit is then priced alike.
+4. **Orders.** The product item's subtotal is the line total, and the order check allows the rounded average: the subtotal less the once-per-line fee may differ from unit price times quantity by at most half a minor unit per unit.
+5. **The tier table** shows each range with its band price and adds a footer line: "Each price applies only to the units in its range." The admin preview lists the ranges and the total for a sample quantity.
+
+**Alternatives.** Splitting a line into one line per band: the cart, coupons and the order would show three lines for one product. Keeping only the average unit price: rounding would make the line total drift from the bands by up to a minor unit per unit.
+
+**Consequences.** No new setting (61 keys) and no `DB_VERSION`. Coupons that limit or give away units by price (`item_limit`, BOGO) see the average unit price of a graduated line. The order screen shows the average unit price times the quantity next to the exact subtotal.
+
+**Revisit when.** Merchants ask for the bands on the cart line, for graduated tiers that count the whole cart across products, or for a band price shown per unit on the order screen.

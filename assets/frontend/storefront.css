@@ -29,6 +29,7 @@
 .fxc-tiers tbody th { font-weight: 400; }
 .fxc-tiers tr.is-current { background: color-mix(in srgb, currentcolor 8%, transparent); }
 .fxc-tiers tr.is-current th { font-weight: 600; }
+.fxc-tiers tfoot td { border: 0; padding-inline: 0; font-size: .875em; opacity: .75; }
 
 /* Countdown (ADR-030): a date sentence, ticked as boxes by cart.js. */
 .fxc-countdown { flex-basis: 100%; }

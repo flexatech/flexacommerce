@@ -22,10 +22,9 @@ export function changed(price: number, mode: RuleMode, amount: number): number {
 
 /** One line on what the rule does, to which products and for whom. */
 export function summary(rule: PriceRule, roles: Role[]): string {
+    const tiers = rule.tiers.map((t) => sprintf(__("%1$d+: %2$s"), t.min, changeText(t.mode, t.amount))).join(", ");
     const what =
-        rule.type === "bulk"
-            ? rule.tiers.map((t) => sprintf(__("%1$d+: %2$s"), t.min, changeText(t.mode, t.amount))).join(", ")
-            : changeText(rule.mode, rule.amount);
+        rule.type === "bulk" ? tiers : rule.type === "graduated" ? sprintf(__("Graduated %s"), tiers) : changeText(rule.mode, rule.amount);
     const which =
         rule.applies_to === "products"
             ? sprintf(__("%d products"), rule.product_ids.length)

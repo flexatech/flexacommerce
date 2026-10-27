@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Flexa\Commerce\Orders;
 
+use Flexa\Commerce\Contracts\Orders\CustomerHistory;
 use Flexa\Commerce\Database\Schema;
+use Flexa\Commerce\Support\Settings;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -12,11 +14,12 @@ defined( 'ABSPATH' ) || exit;
  * The customers list (doc 02 §6.2): read-only, derived from the orders
  * table. A customer is a user id when the order has one, else the guest
  * email, so a user who changed their address stays one row. Anonymized
- * orders are left out.
+ * orders are left out. It also answers the customer conditions of rules
+ * and coupons (ADR-041).
  */
 // phpcs:disable WordPress.DB.DirectDatabaseQuery -- plugin table, all values prepared, the list is an admin report.
 // phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- the key, conditions and ORDER BY are fixed fragments from this class.
-final class CustomerRepository {
+final class CustomerRepository implements CustomerHistory {
 	public const ORDER_BY = [ 'last_order', 'orders', 'spent' ];
 
 	public const TYPES = [ 'registered', 'guest' ];
@@ -24,6 +27,58 @@ final class CustomerRepository {
 	private const KEY = "IF( COALESCE( customer_id, 0 ) > 0, CONCAT( 'u', customer_id ), CONCAT( 'e', customer_email ) )";
 
 	public function __construct( private readonly \wpdb $wpdb ) {}
+
+	public function order_count( int $user_id ): int {
+		if ( $user_id <= 0 ) {
+			return 0;
+		}
+		return (int) $this->wpdb->get_var(
+			$this->wpdb->prepare(
+				'SELECT COUNT(*) FROM %i WHERE customer_id = %d AND status IN (%s, %s) AND deleted_at IS NULL',
+				Schema::table( 'orders' ),
+				$user_id,
+				OrderStatus::PROCESSING,
+				OrderStatus::COMPLETED
+			)
+		);
+	}
+
+	public function spent( int $user_id ): int {
+		if ( $user_id <= 0 ) {
+			return 0;
+		}
+		return (int) $this->wpdb->get_var(
+			$this->wpdb->prepare(
+				'SELECT COALESCE( SUM( amount_paid - amount_refunded ), 0 ) FROM %i WHERE customer_id = %d AND currency = %s AND deleted_at IS NULL',
+				Schema::table( 'orders' ),
+				$user_id,
+				Settings::string( 'currency' )
+			)
+		);
+	}
+
+	/** @param list<int> $product_ids */
+	public function bought( int $user_id, array $product_ids ): bool {
+		$product_ids = array_values( array_filter( array_map( 'intval', $product_ids ), static fn ( int $id ): bool => $id > 0 ) );
+		if ( $user_id <= 0 || $product_ids === [] ) {
+			return false;
+		}
+		$placeholders = implode( ',', array_fill( 0, count( $product_ids ), '%d' ) );
+		return (bool) $this->wpdb->get_var(
+			$this->wpdb->prepare(
+				"SELECT 1 FROM %i o JOIN %i i ON i.order_id = o.id
+				WHERE o.customer_id = %d AND o.status IN (%s, %s) AND o.deleted_at IS NULL
+					AND i.type = %s AND i.product_id IN ({$placeholders}) LIMIT 1",
+				Schema::table( 'orders' ),
+				Schema::table( 'order_items' ),
+				$user_id,
+				OrderStatus::PROCESSING,
+				OrderStatus::COMPLETED,
+				OrderItem::PRODUCT,
+				...$product_ids
+			)
+		);
+	}
 
 	/**
 	 * `spent` is what was paid less refunds, in minor units, counting only

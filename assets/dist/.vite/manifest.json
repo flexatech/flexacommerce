@@ -1,25 +1,25 @@
 {
-  "_units-EuL2AFbI.js": {
-    "file": "assets/units-EuL2AFbI.js",
+  "_units-ra-kOABj.js": {
+    "file": "assets/units-ra-kOABj.js",
     "name": "units"
   },
   "admin/features/checkout/CheckoutBuilderPage.tsx": {
-    "file": "assets/CheckoutBuilderPage-ByxeOjy5.js",
+    "file": "assets/CheckoutBuilderPage-DpfcyUJ7.js",
     "name": "CheckoutBuilderPage",
     "src": "admin/features/checkout/CheckoutBuilderPage.tsx",
     "isDynamicEntry": true,
     "imports": [
-      "_units-EuL2AFbI.js",
+      "_units-ra-kOABj.js",
       "admin/main.tsx"
     ]
   },
   "admin/main.tsx": {
-    "file": "assets/admin-Br34YKCP.js",
+    "file": "assets/admin-BAoRWTXU.js",
     "name": "admin",
     "src": "admin/main.tsx",
     "isEntry": true,
     "imports": [
-      "_units-EuL2AFbI.js"
+      "_units-ra-kOABj.js"
     ],
     "dynamicImports": [
       "admin/features/checkout/CheckoutBuilderPage.tsx"
@@ -29,12 +29,12 @@
     ]
   },
   "admin/product-editor.tsx": {
-    "file": "assets/product-editor-B63mTHeN.js",
+    "file": "assets/product-editor-BX2zYZ9n.js",
     "name": "product-editor",
     "src": "admin/product-editor.tsx",
     "isEntry": true,
     "imports": [
-      "_units-EuL2AFbI.js"
+      "_units-ra-kOABj.js"
     ],
     "css": [
       "assets/product-editor-DYr09kq5.css"

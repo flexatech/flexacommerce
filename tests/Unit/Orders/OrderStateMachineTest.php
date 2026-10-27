@@ -77,12 +77,14 @@ final class OrderStateMachineTest extends TestCase {
 		$item = NewOrderItem::product( 1, 1, 1, 'Mug', null, [], 2, 500 );
 		$ship = NewOrderItem::shipping( 'flat_rate:1', 'Flat rate', 300 );
 		( new NewOrder( S::PENDING, 'USD', 2, [ $item, $ship ], 1000, 300, 1300, 'a@example.com' ) )->assert_totals();
+		// A graduated line shows its average, rounded (ADR-042): 9.99 for two is 5.00 each.
+		( new NewOrder( S::PENDING, 'USD', 2, [ new NewOrderItem( 'product', 'Mug', 2, 500, 999, 999 ) ], 999, 0, 999, 'a@example.com' ) )->assert_totals();
 
 		$bad = [
 			'total'    => new NewOrder( S::PENDING, 'USD', 2, [ $item, $ship ], 1000, 300, 1301, 'a@example.com' ),
 			'subtotal' => new NewOrder( S::PENDING, 'USD', 2, [ $item, $ship ], 900, 300, 1200, 'a@example.com' ),
 			'shipping' => new NewOrder( S::PENDING, 'USD', 2, [ $item ], 1000, 300, 1300, 'a@example.com' ),
-			'line'     => new NewOrder( S::PENDING, 'USD', 2, [ new NewOrderItem( 'product', 'Mug', 2, 500, 999, 999 ) ], 999, 0, 999, 'a@example.com' ),
+			'line'     => new NewOrder( S::PENDING, 'USD', 2, [ new NewOrderItem( 'product', 'Mug', 2, 500, 990, 990 ) ], 990, 0, 990, 'a@example.com' ),
 		];
 		foreach ( $bad as $case => $order ) {
 			try {

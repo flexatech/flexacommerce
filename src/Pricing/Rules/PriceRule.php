@@ -4,13 +4,16 @@ declare(strict_types=1);
 
 namespace Flexa\Commerce\Pricing\Rules;
 
+use Flexa\Commerce\Support\Conditions;
+
 defined( 'ABSPATH' ) || exit;
 
 /**
  * An automatic price change (ADR-024): a lower unit price for some
  * products, some customers, and for a bulk rule from a quantity up. A
  * percent amount is in hundredths (2500 is 25%); a fixed amount or price
- * is in minor units. Dates are UTC `Y-m-d H:i:s`.
+ * is in minor units. Dates are UTC `Y-m-d H:i:s`. `conditions` are the
+ * cart, checkout and customer conditions of ADR-041.
  *
  * @phpstan-type Tier array{min:int,mode:string,amount:int}
  */
@@ -18,8 +21,10 @@ final class PriceRule {
 	/** Every unit gets the change. */
 	public const ADJUST = 'adjust';
 	/** The tier for the quantity bought, the largest `min` reached. */
-	public const BULK  = 'bulk';
-	public const TYPES = [ self::ADJUST, self::BULK ];
+	public const BULK = 'bulk';
+	/** Each unit at the tier its position falls in: the first 9 at full price, the 10th on at the next (ADR-042). */
+	public const GRADUATED = 'graduated';
+	public const TYPES     = [ self::ADJUST, self::BULK, self::GRADUATED ];
 
 	public const PERCENT = 'percent';
 	public const FIXED   = 'fixed';
@@ -49,11 +54,12 @@ final class PriceRule {
 	public const SALE_ITEMS = [ self::SALE_APPLY, self::SALE_SKIP ];
 
 	/**
-	 * @param list<Tier>   $tiers               with BULK, `min` ascending
+	 * @param list<Tier>   $tiers               with BULK and GRADUATED, `min` ascending
 	 * @param list<int>    $product_ids         with PRODUCTS
 	 * @param list<int>    $category_ids        with CATEGORIES, children included
 	 * @param list<int>    $exclude_product_ids never changed
 	 * @param list<string> $roles               with ROLES
+	 * @param array<mixed> $conditions          a block from Conditions::clean()
 	 */
 	public function __construct(
 		public readonly int $id,
@@ -73,6 +79,10 @@ final class PriceRule {
 		public readonly string $sale_items = self::SALE_APPLY,
 		public readonly ?string $starts_at = null,
 		public readonly ?string $ends_at = null,
+		public readonly array $conditions = [
+			'match' => Conditions::ALL,
+			'items' => [],
+		],
 	) {}
 
 	/** @param array<string,mixed> $row a stored row, already checked */
@@ -108,6 +118,7 @@ final class PriceRule {
 			sale_items: $one( 'sale_items', self::SALE_ITEMS ),
 			starts_at: $opt( 'starts_at' ),
 			ends_at: $opt( 'ends_at' ),
+			conditions: is_array( $row['conditions'] ?? null ) ? $row['conditions'] : Conditions::none(),
 		);
 	}
 
@@ -131,6 +142,7 @@ final class PriceRule {
 			'sale_items'          => $this->sale_items,
 			'starts_at'           => $this->starts_at,
 			'ends_at'             => $this->ends_at,
+			'conditions'          => $this->conditions,
 		];
 	}
 
@@ -164,5 +176,10 @@ final class PriceRule {
 			}
 		}
 		return $found;
+	}
+
+	/** Whether the rule has quantity tiers. */
+	public function has_tiers(): bool {
+		return $this->type === self::BULK || $this->type === self::GRADUATED;
 	}
 }

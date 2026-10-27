@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace Flexa\Commerce\Storefront\Render;
 
 use Flexa\Commerce\Catalog\Product;
+use Flexa\Commerce\Contracts\Pricing\PriceResolution;
 use Flexa\Commerce\Pricing\PricingService;
 use Flexa\Commerce\Pricing\Rules\PriceRule;
+use Flexa\Commerce\Pricing\Rules\PriceRules;
 use Flexa\Commerce\Support\Settings;
 
 defined( 'ABSPATH' ) || exit;
@@ -18,7 +20,9 @@ defined( 'ABSPATH' ) || exit;
  * price and the saving at each range, worked out like the cart does; a
  * product with variations lists what each range takes off, since the price
  * depends on the variation. The row for the quantity in the form is marked
- * `is-current`, and cart.js moves the mark as the quantity changes.
+ * `is-current`, and cart.js moves the mark as the quantity changes. A
+ * graduated rule (ADR-042) prices only the units in each range, which a
+ * note under the table says.
  */
 final class QuantityTiers {
 	/** @param ?string $shown_end the end the offer countdown already shows, so the table does not repeat it */
@@ -26,13 +30,14 @@ final class QuantityTiers {
 		if ( ! Settings::bool( 'tier_table' ) ) {
 			return '';
 		}
-		$rule = $pricing->bulk_rule( $product, $user_id );
+		$rule = $pricing->tier_rule( $product, $user_id );
 		if ( $rule === null || $rule->tiers === [] ) {
 			return '';
 		}
-		$rows = array_values( array_filter( $product->sellable_rows(), static fn ( $row ): bool => $row->enabled ) );
-		$one  = count( $rows ) === 1 ? $rows[0] : null;
-		$base = $one !== null ? $pricing->unit_price( $product, $one, 1, $user_id ) : null;
+		$graduated = $rule->type === PriceRule::GRADUATED;
+		$rows      = array_values( array_filter( $product->sellable_rows(), static fn ( $row ): bool => $row->enabled ) );
+		$one       = count( $rows ) === 1 ? $rows[0] : null;
+		$base      = $one !== null ? $pricing->unit_price( $product, $one, 1, $user_id ) : null;
 
 		$ranges = [];
 		if ( $rule->tiers[0]['min'] > 1 ) {
@@ -50,7 +55,12 @@ final class QuantityTiers {
 				$cells[] = [ $tier === null ? __( 'Full price', 'flexacommerce' ) : self::change( $pricing, $tier['mode'], $tier['amount'] ), '' ];
 				continue;
 			}
-			$unit = $tier === null ? $base : $pricing->unit_price( $product, $one, $min, $user_id );
+			$unit = match ( true ) {
+				$tier === null => $base,
+				// Graduated: what each unit in the range costs, as the cart works it out.
+				$graduated     => $base !== null ? new PriceResolution( $base->regular, $pricing->money( PriceRules::changed( $base->active->amount, $tier['mode'], $tier['amount'] ) ), $base->on_sale ) : null,
+				default        => $pricing->unit_price( $product, $one, $min, $user_id ),
+			};
 			if ( $unit === null ) {
 				$cells[] = [ $tier === null ? '' : self::change( $pricing, $tier['mode'], $tier['amount'] ), '' ];
 				continue;
@@ -83,12 +93,13 @@ final class QuantityTiers {
 		}
 		$title = Settings::string( 'tier_table_title' );
 		$html  = sprintf(
-			'<table class="fxc-tiers"><caption>%1$s</caption><thead><tr><th scope="col">%2$s</th><th scope="col">%3$s</th>%4$s</tr></thead><tbody>%5$s</tbody></table>',
+			'<table class="fxc-tiers"><caption>%1$s</caption><thead><tr><th scope="col">%2$s</th><th scope="col">%3$s</th>%4$s</tr></thead><tbody>%5$s</tbody>%6$s</table>',
 			esc_html( $title !== '' ? $title : __( 'Buy more, pay less', 'flexacommerce' ) ),
 			esc_html__( 'Quantity', 'flexacommerce' ),
 			esc_html( $one !== null ? __( 'Price', 'flexacommerce' ) : __( 'Discount', 'flexacommerce' ) ),
 			$saves ? '<th scope="col">' . esc_html__( 'You save', 'flexacommerce' ) . '</th>' : '',
-			$body
+			$body,
+			$graduated ? sprintf( '<tfoot><tr><td colspan="%1$d">%2$s</td></tr></tfoot>', $saves ? 3 : 2, esc_html__( 'Each price applies only to the units in its range.', 'flexacommerce' ) ) : ''
 		);
 		if ( Settings::int( 'countdown_days' ) > 0 && $rule->ends_at !== $shown_end && $pricing->ends_within( $rule->ends_at, Settings::int( 'countdown_days' ) ) ) {
 			$html .= Countdown::html( (string) $rule->ends_at, Countdown::TIERS );

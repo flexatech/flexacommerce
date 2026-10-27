@@ -197,7 +197,7 @@ final class CheckoutPage {
 			// Requote for the posted address first, so a re-rendered form shows its rates.
 			$destination = ( new CheckoutValidator() )->destination( $request );
 			if ( $destination->country !== '' ) {
-				$service->update_shipping( $user, $destination, $request->shipping_rate );
+				$service->update_shipping( $user, $destination, $request->shipping_rate, $method );
 			}
 			if ( isset( $this->posted[ self::REFRESH ] ) ) {
 				return;

@@ -398,6 +398,7 @@ function setup( root ) {
 			postcode: value( type, 'postcode' ),
 			city: value( type, 'city' ),
 			rate_id: rate ? rate.value : '',
+			payment_method: form.querySelector( 'input[name="payment_method"]:checked' )?.value || '',
 		};
 		if ( ! body.country ) {
 			return null;
@@ -818,7 +819,7 @@ function setup( root ) {
 			requoteSoon();
 			return;
 		}
-		if ( target.matches( '[data-fxc-rate]' ) ) {
+		if ( target.matches( '[data-fxc-rate], input[name="payment_method"]' ) ) {
 			requoteSoon();
 			return;
 		}

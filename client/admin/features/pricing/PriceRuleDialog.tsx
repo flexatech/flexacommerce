@@ -12,6 +12,8 @@ import { cn } from "@/shared/lib/cn";
 import { __, sprintf } from "@/shared/lib/i18n";
 import { formatMoney, parseDecimal } from "@/shared/lib/units";
 import { MoneyInput } from "../../components/MoneyInput";
+import { ConditionsEditor } from "../conditions/ConditionsEditor";
+import { NO_CONDITIONS, type ConditionBlock } from "../conditions/useConditions";
 import { TargetPicker, type Pick as Choice } from "../coupons/TargetPicker";
 import { changed, changeText } from "./ruleText";
 import {
@@ -48,6 +50,22 @@ export const RULE_PRESETS: RulePreset[] = [
         description: __("A lower unit price from 5 and from 10 units."),
         values: {
             type: "bulk",
+            mode: "percent",
+            amount: 0,
+            tiers: [
+                { min: 5, mode: "percent", amount: 500 },
+                { min: 10, mode: "percent", amount: 1000 },
+            ],
+            applies_to: "all",
+            customers: "all",
+        },
+    },
+    {
+        key: "graduated",
+        name: __("Graduated tiers"),
+        description: __("Units 5 to 9 cost less, and units from 10 cost less again."),
+        values: {
+            type: "graduated",
             mode: "percent",
             amount: 0,
             tiers: [
@@ -99,6 +117,7 @@ interface Draft extends ChangeDraft {
     sale_items: RuleSaleItems;
     starts_at: string;
     ends_at: string;
+    conditions: ConditionBlock;
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -147,7 +166,7 @@ function draftOf(rule: PriceRule | null, preset: RulePreset | undefined): Draft 
         name: rule?.name ?? (preset !== undefined && preset.key !== "custom" ? preset.name : ""),
         enabled: rule?.enabled ?? true,
         type: start.type,
-        ...changeDraft(start.mode, start.type === "bulk" ? 1000 : start.amount),
+        ...changeDraft(start.mode, start.type !== "adjust" ? 1000 : start.amount),
         tiers: start.tiers.map(tierDraft),
         count: rule?.count ?? "product",
         applies_to: start.applies_to,
@@ -159,11 +178,12 @@ function draftOf(rule: PriceRule | null, preset: RulePreset | undefined): Draft 
         sale_items: rule?.sale_items ?? "apply",
         starts_at: toLocalInput(rule?.starts_at ?? null),
         ends_at: toLocalInput(rule?.ends_at ?? null),
+        conditions: rule?.conditions ?? NO_CONDITIONS,
     };
 }
 
 function inputOf(draft: Draft): PriceRuleInput {
-    const bulk = draft.type === "bulk";
+    const bulk = draft.type !== "adjust";
     return {
         name: draft.name.trim(),
         enabled: draft.enabled,
@@ -181,6 +201,7 @@ function inputOf(draft: Draft): PriceRuleInput {
         sale_items: draft.sale_items,
         starts_at: toUtc(draft.starts_at),
         ends_at: toUtc(draft.ends_at),
+        conditions: draft.conditions,
     };
 }
 
@@ -260,18 +281,34 @@ function ChangeInputs({ value, onChange, label }: { value: ChangeDraft; onChange
     );
 }
 
+function rangeText(from: number, to: number): string {
+    return from === to ? String(from) : sprintf(__("%1$d to %2$d"), from, to);
+}
+
+/** Units 1 to `quantity`, each at the price of the tier its position reaches (ADR-042). */
+function graduatedTotal(price: number, tiers: Tier[], quantity: number): number {
+    let total = 0;
+    for (let unit = 1; unit <= quantity; unit++) {
+        const tier = tiers.filter((t) => t.min <= unit).pop();
+        total += tier === undefined ? price : changed(price, tier.mode, tier.amount);
+    }
+    return total;
+}
+
 /** What a product at 100 would cost, so the numbers are easy to check. */
 function Preview({ draft }: { draft: Draft }) {
     const { currency } = getPluginGlobal();
     const price = 100 * 10 ** currency.exponent;
     const money = (minor: number) => formatMoney(minor, currency);
     const rows =
-        draft.type === "bulk"
+        draft.type !== "adjust"
             ? [...draft.tiers]
                   .map((t) => ({ min: Number(t.min) || 0, mode: t.mode, amount: amountOf(t) }))
                   .filter((t) => t.min > 0)
                   .sort((a, b) => a.min - b.min)
             : [];
+    const graduated = draft.type === "graduated";
+    const sample = rows.length > 0 ? rows[rows.length - 1].min + 2 : 0;
     return (
         <div aria-hidden className="fxc:space-y-3">
             <p className="fxc:text-muted-foreground fxc:text-xs fxc:font-medium fxc:uppercase">{__("Example")}</p>
@@ -286,17 +323,34 @@ function Preview({ draft }: { draft: Draft }) {
             ) : (
                 <table className="fxc:w-full fxc:text-sm">
                     <tbody>
-                        {rows.map((t) => (
+                        {graduated && rows[0].min > 1 && (
+                            <tr className="fxc:border-b">
+                                <td className="fxc:py-1">{rangeText(1, rows[0].min - 1)}</td>
+                                <td className="fxc:py-1 fxc:text-end fxc:font-medium">{money(price)}</td>
+                            </tr>
+                        )}
+                        {rows.map((t, index) => (
                             <tr key={t.min} className="fxc:border-b fxc:last:border-b-0">
-                                <td className="fxc:py-1">{sprintf(__("%d or more"), t.min)}</td>
+                                <td className="fxc:py-1">
+                                    {graduated && index + 1 < rows.length ? rangeText(t.min, rows[index + 1].min - 1) : sprintf(__("%d or more"), t.min)}
+                                </td>
                                 <td className="fxc:py-1 fxc:text-end fxc:font-medium">{money(changed(price, t.mode, t.amount))}</td>
                             </tr>
                         ))}
                     </tbody>
                 </table>
             )}
-            {draft.type === "bulk" && rows.length > 0 && (
-                <p className="fxc:text-muted-foreground fxc:text-xs">{__("The product page lists these tiers under the Add to cart button.")}</p>
+            {graduated && rows.length > 0 && (
+                <p className="fxc:text-sm">
+                    {sprintf(__("%1$d units cost %2$s in all."), sample, money(graduatedTotal(price, rows, sample)))}
+                </p>
+            )}
+            {draft.type !== "adjust" && rows.length > 0 && (
+                <p className="fxc:text-muted-foreground fxc:text-xs">
+                    {graduated
+                        ? __("Each price applies only to the units in its range. The product page lists the ranges under the Add to cart button.")
+                        : __("The product page lists these tiers under the Add to cart button.")}
+                </p>
             )}
         </div>
     );
@@ -426,12 +480,13 @@ export function PriceRuleDialog({ open, rule, preset, roles, onOpenChange }: Pro
                                             setDraft((d) => ({
                                                 ...d,
                                                 type,
-                                                tiers: type === "bulk" && d.tiers.length === 0 ? RULE_PRESETS[1].values.tiers.map(tierDraft) : d.tiers,
+                                                tiers: type !== "adjust" && d.tiers.length === 0 ? RULE_PRESETS[1].values.tiers.map(tierDraft) : d.tiers,
                                             }));
                                         }}
                                         options={[
                                             { value: "adjust", label: __("The same for any quantity") },
                                             { value: "bulk", label: __("By quantity bought (bulk)") },
+                                            { value: "graduated", label: __("Each unit at its tier (graduated)") },
                                         ]}
                                     />
                                 )}
@@ -446,7 +501,7 @@ export function PriceRuleDialog({ open, rule, preset, roles, onOpenChange }: Pro
                                 <div className="fxc:space-y-3">
                                     <div className="fxc:space-y-2">
                                         <div className="fxc:text-muted-foreground fxc:grid fxc:grid-cols-[6rem_minmax(0,1fr)_2.25rem] fxc:gap-2 fxc:text-xs fxc:font-medium">
-                                            <span>{__("From quantity")}</span>
+                                            <span>{draft.type === "graduated" ? __("From unit") : __("From quantity")}</span>
                                             <span>{__("Unit price")}</span>
                                         </div>
                                         {draft.tiers.map((tier, index) => (
@@ -625,6 +680,16 @@ export function PriceRuleDialog({ open, rule, preset, roles, onOpenChange }: Pro
                                     {(id) => <Input id={id} type="datetime-local" value={draft.ends_at} onChange={(e) => set("ends_at", e.target.value)} />}
                                 </Field>
                             </div>
+                        </section>
+
+                        <section className="fxc:space-y-4 fxc:border-t fxc:pt-5">
+                            <h3 className="fxc:text-sm fxc:font-semibold">{__("Conditions")}</h3>
+                            <ConditionsEditor
+                                value={draft.conditions}
+                                onChange={(v) => set("conditions", v)}
+                                error={errors.conditions}
+                                emptyText={__("No conditions: the rule applies whenever the products, customers and dates match. Cart conditions are checked in the cart, so the product page shows the normal price.")}
+                            />
                         </section>
                     </div>
 

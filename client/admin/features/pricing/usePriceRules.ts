@@ -1,8 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/shared/lib/api";
+import type { ConditionBlock } from "../conditions/useConditions";
 
-export type RuleType = "adjust" | "bulk";
+/** `bulk` prices every unit by the tier reached; `graduated` prices each unit by the tier its position reaches (ADR-042). */
+export type RuleType = "adjust" | "bulk" | "graduated";
 /** Percent off (hundredths), an amount off each unit, or a set unit price (minor units). */
 export type RuleMode = "percent" | "fixed" | "price";
 export type RuleCount = "product" | "variant";
@@ -23,7 +25,7 @@ export interface PriceRule {
     type: RuleType;
     mode: RuleMode;
     amount: number;
-    /** With `bulk`, sorted by `min`. */
+    /** With `bulk` and `graduated`, sorted by `min`. */
     tiers: Tier[];
     count: RuleCount;
     applies_to: RuleScope;
@@ -36,6 +38,8 @@ export interface PriceRule {
     /** UTC, ISO 8601 with Z. */
     starts_at: string | null;
     ends_at: string | null;
+    /** Extra conditions (ADR-041); none means the rule always applies. */
+    conditions: ConditionBlock;
 }
 
 export type PriceRuleInput = Omit<PriceRule, "id">;

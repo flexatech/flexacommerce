@@ -159,6 +159,7 @@ final class Plugin {
 			coupons: fn (): Coupons\CouponService => $this->coupons()->service(),
 			rules: fn (): Pricing\Rules\PriceRules => $this->price_rules(),
 			product_options: fn (): Options\ProductOptions => $this->product_options(),
+			history: fn (): Contracts\Orders\CustomerHistory => $this->customer_history(),
 		);
 	}
 
@@ -174,7 +175,12 @@ final class Plugin {
 
 	/** Applies the pricing rules to unit prices (ADR-024). */
 	public function price_rules(): Pricing\Rules\PriceRules {
-		return $this->price_rules ??= new Pricing\Rules\PriceRules( $this->price_rule_repository() );
+		return $this->price_rules ??= new Pricing\Rules\PriceRules( $this->price_rule_repository(), fn (): Contracts\Orders\CustomerHistory => $this->customer_history() );
+	}
+
+	/** Past orders of a customer, for rule and coupon conditions (ADR-041). */
+	public function customer_history(): Contracts\Orders\CustomerHistory {
+		return $this->orders()->customers();
 	}
 
 	/** The stored option sets (ADR-025). */

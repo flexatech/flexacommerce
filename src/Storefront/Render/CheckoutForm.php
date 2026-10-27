@@ -566,8 +566,11 @@ final class CheckoutForm {
 		if ( $methods === [] && (int) ( $state['totals']['total']['amount'] ?? 0 ) === 0 ) {
 			return '<div data-fxc-methods></div>';
 		}
-		$chosen = is_string( $posted['payment_method'] ?? null ) ? $posted['payment_method'] : (string) ( $methods[0]['id'] ?? '' );
-		$input  = is_array( $posted['gateway_input'] ?? null ) ? $posted['gateway_input'] : [];
+		$chosen = is_string( $posted['payment_method'] ?? null ) ? $posted['payment_method'] : (string) ( $state['payment_method'] ?? '' );
+		if ( ! in_array( $chosen, array_column( $methods, 'id' ), true ) ) {
+			$chosen = (string) ( $methods[0]['id'] ?? '' );
+		}
+		$input = is_array( $posted['gateway_input'] ?? null ) ? $posted['gateway_input'] : [];
 		return '<div data-fxc-methods>' . self::methods_html( $methods, $chosen, $input, $errors, $title ) . '</div>';
 	}
 
