@@ -640,7 +640,8 @@ final class CheckoutService {
 				$item->unit->active->amount,
 				$before?->net->amount,
 				$taxed?->by_rate() ?? [],
-				$off
+				$off,
+				$item->fee
 			);
 		}
 		$discount = 0;

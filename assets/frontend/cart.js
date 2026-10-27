@@ -184,9 +184,9 @@ function optionVisible( logic, seen ) {
 	return logic.action === 'show' ? met : ! met;
 }
 
-/** What a price adds to one unit; NaN for a percent before the unit price is known. */
+/** What a price adds to one unit (a once-per-line price as is); NaN for a percent before the unit price is known. */
 function charge( [ mode, amount ], base ) {
-	if ( mode === 'fixed' ) {
+	if ( mode === 'fixed' || mode === 'once' ) {
 		return amount;
 	}
 	return base === null || base === undefined ? NaN : Math.round( ( base * Math.min( amount, 10000 ) ) / 10000 );

@@ -4,7 +4,7 @@ import { api } from "@/shared/lib/api";
 
 export type FieldType = "text" | "textarea" | "number" | "date" | "color" | "select" | "radio" | "checkboxes" | "swatch" | "button" | "heading";
 /** An amount in minor units, or a percent of the unit price in hundredths. */
-export type PriceMode = "none" | "fixed" | "percent";
+export type PriceMode = "none" | "fixed" | "percent" | "once";
 export type SetScope = "all" | "products" | "categories";
 export type LogicOp = "is" | "is_not" | "empty" | "not_empty";
 

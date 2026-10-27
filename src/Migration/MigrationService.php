@@ -24,7 +24,7 @@ defined( 'ABSPATH' ) || exit;
  */
 final class MigrationService {
 	/** Entities purge removes, children before parents (doc 05 §9.3). */
-	private const PURGE_ORDER = [ Record::COUPON, Record::ORDER, Record::PRODUCT, Record::TERM, Record::ATTRIBUTE ];
+	private const PURGE_ORDER = [ Record::OPTION_SET, Record::COUPON, Record::ORDER, Record::PRODUCT, Record::TERM, Record::ATTRIBUTE ];
 
 	/**
 	 * @param \Closure(Job):array{0:SourceAdapter,1:TargetAdapter} $adapters

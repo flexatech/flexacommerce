@@ -56,6 +56,7 @@ final class WooEnumerationRepository {
 			'customers'  => $this->customers_sql( $after, $upper, $limit ),
 			'orders'     => $this->orders_sql( $after, $upper, $limit, $range ),
 			'coupons'    => $this->wpdb->prepare( "SELECT ID FROM %i WHERE post_type = 'shop_coupon' AND post_status NOT IN ('auto-draft', 'trash') AND ID > %d AND ID <= %d ORDER BY ID LIMIT %d", $this->wpdb->posts, $after, $upper, $limit ),
+			'options'    => $this->options_sql( $after, $upper, $limit ),
 			default      => null,
 		};
 		if ( $sql === null ) {
@@ -82,6 +83,7 @@ final class WooEnumerationRepository {
 				? $this->wpdb->prepare( "SELECT MAX(id) FROM %i WHERE type = 'shop_order'", $this->orders_table() )
 				: $this->wpdb->prepare( "SELECT MAX(ID) FROM %i WHERE post_type = 'shop_order'", $this->wpdb->posts ),
 			'coupons'    => $this->wpdb->prepare( "SELECT MAX(ID) FROM %i WHERE post_type = 'shop_coupon'", $this->wpdb->posts ),
+			'options'    => $this->wpdb->prepare( "SELECT MAX(ID) FROM %i WHERE post_type IN ('product', 'global_product_addon')", $this->wpdb->posts ),
 			default      => null,
 		};
 		return $sql === null ? 0 : (int) $this->wpdb->get_var( $sql );
@@ -215,6 +217,68 @@ final class WooEnumerationRepository {
 
 	public function shipping_zones(): int {
 		return (int) $this->wpdb->get_var( $this->wpdb->prepare( 'SELECT COUNT(*) FROM %i', $this->wpdb->prefix . 'woocommerce_shipping_zones' ) );
+	}
+
+	/**
+	 * The products whose Product Add-ons list is the same as this one's,
+	 * this one included, ascending (ADR-029).
+	 *
+	 * @return list<int>
+	 */
+	public function addon_products( int $product_id ): array {
+		$ids = $this->wpdb->get_col(
+			$this->wpdb->prepare(
+				"SELECT p.ID FROM %i p JOIN %i m ON m.post_id = p.ID AND m.meta_key = '_product_addons'
+				WHERE p.post_type = 'product' AND p.post_status NOT IN ('auto-draft', 'trash')
+				AND m.meta_value = ( SELECT meta_value FROM %i WHERE post_id = %d AND meta_key = '_product_addons' LIMIT 1 )
+				ORDER BY p.ID",
+				$this->wpdb->posts,
+				$this->wpdb->postmeta,
+				$this->wpdb->postmeta,
+				$product_id
+			)
+		);
+		return array_map( 'intval', $ids );
+	}
+
+	/**
+	 * Products set to leave out the global add-on groups.
+	 *
+	 * @return list<int>
+	 */
+	public function addon_excluded_products(): array {
+		$ids = $this->wpdb->get_col(
+			$this->wpdb->prepare(
+				"SELECT p.ID FROM %i p JOIN %i m ON m.post_id = p.ID AND m.meta_key = '_product_addons_exclude_global' AND m.meta_value = '1'
+				WHERE p.post_type = 'product' AND p.post_status NOT IN ('auto-draft', 'trash') ORDER BY p.ID",
+				$this->wpdb->posts,
+				$this->wpdb->postmeta
+			)
+		);
+		return array_map( 'intval', $ids );
+	}
+
+	/**
+	 * Product Add-ons (ADR-029): the global groups, and for each distinct
+	 * product add-on list the first product that has it. Products with the
+	 * same list share one option set.
+	 */
+	private function options_sql( int $after, int $upper, int $limit ): string {
+		return (string) $this->wpdb->prepare(
+			"SELECT id FROM (
+				SELECT ID AS id FROM %i WHERE post_type = 'global_product_addon' AND post_status NOT IN ('auto-draft', 'trash')
+				UNION ALL
+				SELECT MIN(p.ID) AS id FROM %i p JOIN %i m ON m.post_id = p.ID AND m.meta_key = '_product_addons'
+				WHERE p.post_type = 'product' AND p.post_status NOT IN ('auto-draft', 'trash') AND m.meta_value NOT IN ('', 'a:0:{}')
+				GROUP BY MD5(m.meta_value)
+			) addons WHERE id > %d AND id <= %d ORDER BY id LIMIT %d",
+			$this->wpdb->posts,
+			$this->wpdb->posts,
+			$this->wpdb->postmeta,
+			$after,
+			$upper,
+			$limit
+		);
 	}
 
 	private function terms_sql( int $after, int $upper, int $limit ): string {

@@ -237,23 +237,24 @@ function PercentInput({ value, onChange, label }: { value: number; onChange: (v:
     );
 }
 
-/** No charge, a fixed amount, or a percent of the unit price. */
+/** No charge, a fixed amount per item or once per cart line, or a percent of the unit price. */
 function PriceInputs({ mode, price, onChange, label }: { mode: PriceMode; price: number; onChange: (mode: PriceMode, price: number) => void; label: string }) {
     const { currency } = getPluginGlobal();
     return (
         <div className="fxc:flex fxc:items-center fxc:gap-2">
             <Select
                 aria-label={sprintf(__("%s: extra charge"), label)}
-                className="fxc:w-36"
+                className="fxc:w-40"
                 value={mode}
                 onChange={(e) => onChange(e.target.value as PriceMode, 0)}
                 options={[
                     { value: "none", label: __("No charge") },
                     { value: "fixed", label: __("Fixed amount") },
+                    { value: "once", label: __("Once per order line") },
                     { value: "percent", label: __("Percent of price") },
                 ]}
             />
-            {mode === "fixed" && (
+            {(mode === "fixed" || mode === "once") && (
                 <div className="fxc:flex fxc:items-center fxc:gap-1">
                     <span className="fxc:text-muted-foreground fxc:text-sm">{currency.symbol}</span>
                     <MoneyInput
@@ -265,6 +266,7 @@ function PriceInputs({ mode, price, onChange, label }: { mode: PriceMode; price:
                     />
                 </div>
             )}
+            {mode === "once" && <span className="fxc:text-muted-foreground fxc:text-xs">{__("whatever the quantity")}</span>}
             {mode === "percent" && <PercentInput key={mode} label={sprintf(__("%s: percent"), label)} value={price} onChange={(v) => onChange(mode, v)} />}
         </div>
     );

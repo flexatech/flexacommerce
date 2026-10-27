@@ -410,10 +410,17 @@ final class CartService {
 			$owner_total  = $this->owner_quantity( $cart, $product, $variant );
 			$status       = $availability->allows( $owner_total ) ? CartItem::OK : CartItem::INSUFFICIENT_STOCK;
 			$unit         = $this->pricing->unit_price( $product, $variant, $line->quantity, $user_id, product_quantity: $units[ $line->product_id ] );
+			$fee          = 0;
 			if ( $unit !== null && $line->options !== [] && $this->options !== null ) {
-				$unit = self::with_extra( $unit, ( $this->options )()->extra( $line->options, $unit->active->amount ) );
+				$options = ( $this->options )();
+				$fee     = $options->fee( $line->options );
+				$unit    = self::with_extra( $unit, $options->extra( $line->options, $unit->active->amount ) );
 			}
 			$total = $unit !== null ? $this->pricing->line_total( $unit, $line->quantity ) : null;
+			if ( $total !== null && $fee > 0 ) {
+				// An option charged once per line, whatever the quantity (ADR-029).
+				$total = $total->add( new Money( $fee, $total->currency ) );
+			}
 			if ( $total !== null ) {
 				$totals[] = $total;
 			}
@@ -435,7 +442,7 @@ final class CartService {
 						),
 				];
 			}
-			$items[] = new CartItem( $line, $product, $variant, $unit, $total, $availability, $status );
+			$items[] = new CartItem( $line, $product, $variant, $unit, $total, $availability, $status, $fee );
 		}
 
 		$subtotal  = $this->pricing->sum( $totals );

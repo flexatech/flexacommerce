@@ -42,13 +42,16 @@ final class NewOrderItem {
 	 * With prices entered including tax, `$unit_price` is the shop price and
 	 * `$net` the line amount without tax (doc 03 §4.13). `$discount` is the
 	 * coupons' share of the line without tax; the taxes are on what is left.
+	 * `$fee` is what the product options charge once for the line, on top
+	 * of unit price x quantity (ADR-029); it is kept in the meta.
 	 *
 	 * @param list<array{label:string,value:string}> $attributes
 	 * @param array<string,int>                      $taxes rate key => tax on the line
 	 */
-	public static function product( int $product_id, int $variant_id, int $stock_id, string $name, ?string $sku, array $attributes, int $quantity, int $unit_price, ?int $net = null, array $taxes = [], int $discount = 0 ): self {
-		$subtotal = $net ?? $unit_price * $quantity;
-		return new self( OrderItem::PRODUCT, $name, $quantity, $unit_price, $subtotal, $subtotal - $discount, $product_id, $variant_id, $stock_id, '', $sku, $attributes, $discount, array_sum( $taxes ), self::taxes_meta( $taxes ) );
+	public static function product( int $product_id, int $variant_id, int $stock_id, string $name, ?string $sku, array $attributes, int $quantity, int $unit_price, ?int $net = null, array $taxes = [], int $discount = 0, int $fee = 0 ): self {
+		$subtotal = $net ?? $unit_price * $quantity + $fee;
+		$meta     = self::taxes_meta( $taxes ) + ( $fee > 0 ? [ 'fee' => $fee ] : [] );
+		return new self( OrderItem::PRODUCT, $name, $quantity, $unit_price, $subtotal, $subtotal - $discount, $product_id, $variant_id, $stock_id, '', $sku, $attributes, $discount, array_sum( $taxes ), $meta );
 	}
 
 	/**

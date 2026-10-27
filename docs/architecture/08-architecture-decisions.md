@@ -392,3 +392,20 @@ Status of every ADR: **Accepted** (plan approved 2026-10-24) unless it says othe
 **Consequences.** No DB_VERSION, no new option. Sets saved before this keep working: a choice without `color` reads as empty. The date range uses today when the page renders, so a page cached past midnight can offer one day the server then refuses, with a message. A color field cannot be optional; a store that needs "no color" should use swatches with a "None" choice. File uploads and per-variation option sets are still left out.
 
 **Revisit when.** A store needs blocked weekdays or holidays on the date field, time slots, or several swatches picked at once.
+
+
+## ADR-029: WooCommerce Product Add-ons into option sets, with a once-per-line price
+
+**Context.** Item 4 after the flexa-extra port (2026-10-27): stores leaving WooCommerce often use the official Product Add-ons extension, and their add-ons were left in the `_fxc_import` bucket. The extension has a flat fee charged once per cart line, which option sets could not express, and stores with add-ons on many products would pass the limit of 30 sets.
+
+**Decision.**
+1. **A new `once` price mode.** A field or a choice priced `once` adds its amount to the line total, not to the unit price, so it stays the same at any quantity. `ProductOptions::fee()` sums it; `CartItem::$fee` carries it and `CartService` adds it after `line_total`. Coupons and taxes work on the line total, so the fee is discounted and taxed with the line. The order item keeps `subtotal = unit price × quantity + fee` and records the fee as `meta.fee`. The form shows "(+$5.00 once)" and `cart.js` adds it to the live total like a fixed price.
+2. **An `options` migration stage**, WC→FXC only, right after products (doc 05 §5.9). The reader keeps the add-ons as the extension stores them and the writer maps them, so the report can name each field it changed or left out. Products with identical add-on lists share one set. When the stage ends the imported sets are sorted in WooCommerce's display order.
+3. **Convenience over completeness.** Fields FlexaCommerce lacks are left out with a warning naming the set and the field; images become buttons; conditional logic and character rules are dropped while the field stays. A group that targets nothing is imported turned off.
+4. **Up to 200 sets**, with a search box on the Product options screen once there are 8. The arrows to reorder wait while a search is on, since the order is that of the whole list.
+
+**Alternatives.** Reading the add-ons through the extension's classes: the extension is often inactive by the time a store migrates. One set per product: hundreds of identical sets. A FXC→WC writer: the extension's format changes between versions and is not part of WooCommerce.
+
+**Consequences.** No DB_VERSION. The order of imported sets waits in `flexacommerce_migration_option_order` (not autoloaded) during the stage, keyed by job. A price that charges per entered unit (the quantity add-on) has no FlexaCommerce equivalent and is imported without its charge. The option set list is still one autoloaded option; at 200 large sets it can pass 1 MB, which a store with that many would notice on every page.
+
+**Revisit when.** A store needs file uploads, a charge per entered unit, or more sets than one option can hold.

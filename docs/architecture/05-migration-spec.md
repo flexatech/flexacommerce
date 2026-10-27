@@ -45,7 +45,7 @@ The canonical format is the contract between adapters. Same-site jobs keep it in
 
 ### 3.2 Record types
 
-`attribute`, `term` (category, tag, attribute value), `product` (with embedded `variants`), `customer`, `order` (with embedded `items`, `addresses`, `transactions`, `history`), `coupon`. Terms come first, then products, then customers, then orders, then coupons, so references always resolve to already imported records.
+`attribute`, `term` (category, tag, attribute value), `product` (with embedded `variants`), `customer`, `order` (with embedded `items`, `addresses`, `transactions`, `history`), `coupon`, `option_set` (WC→FXC only, §5.9). Terms come first, then products, then option sets, then customers, then orders, then coupons, so references always resolve to already imported records.
 
 ### 3.3 Example: simple product
 
@@ -418,6 +418,19 @@ The `coupons` stage runs last, after orders. One `coupon` record per `shop_coupo
 
 A second run updates the coupon it created, in place, and its usage count.
 
+### 5.9 Product add-ons
+
+The `options` stage runs after products and only from WooCommerce (ADR-029). It reads the data of the official WooCommerce Product Add-ons extension, which stays in the database when the extension is turned off. Other add-on plugins are not read.
+
+- Records: one `option_set` per `global_product_addon` post, and one per distinct `_product_addons` list saved on products. Products with the same list (same serialized value) share one record, read from the product with the lowest id and naming every product in the group; the set is called "Name and N more".
+- Targets: a global group marked "All products" (or, as older versions saved it, without categories) applies to all products; a group with categories applies to them. A group for neither is imported turned off (`option_set_untargeted`). Products that left out global add-ons (`_product_addons_exclude_global`) become the excluded products of every global set. A product list emptied by products that were not imported rejects the record (`option_products_missing`).
+- Order: when the stage ends, the imported sets are sorted as WooCommerce shows them: by `_priority`, a product's own add-ons (priority 10) before global groups of the same priority, then by source id. Sets made in FlexaCommerce keep their place after them.
+- Field types: dropdown, radio buttons and images (as buttons, `option_images_buttons`) map to `select`, `radio` and `button`; checkboxes to `checkboxes`; short and long text to `text` and `textarea`, with the upper character limit; heading, date picker and quantity (as `number` with its range) map directly. The 2.x text types become one text field per option.
+- Prices: a flat fee is charged once per cart line (`once`, ADR-029), a quantity based price for every unit (`fixed`), a percentage of the product price (`percent`). A text, date or quantity add-on has a price only when "Adjust price" is ticked. A negative price is imported free (`option_price_negative`), more decimals than the currency has are rounded (`option_price_rounded`), and the charge of a quantity add-on is left out (`option_multiplier_price`).
+- Left out, each with a warning that names the set and the field: file uploads (`option_file_upload`), customer defined prices (`option_custom_price`) and unknown types (`option_unknown_type`). Conditional logic is dropped and the field is no longer required (`option_logic_dropped`). Character rules other than a length (letters only, email) and a lower length are info lines. More than 20 fields or 30 choices are cut with a warning. A record with no field FlexaCommerce has is rejected (`no_option_fields`).
+
+A second run updates the set it created, in place. FXC→WC does not write add-ons; the FlexaCommerce option sets stay where they are.
+
 ## 6. Conflict and validation policies
 
 | Situation | Default | Options |
@@ -445,7 +458,7 @@ Errors reject one entity, never the batch. A job ends `completed_with_warnings` 
 | Grouped, external, and other product types; bundles; subscriptions | skipped, listed in report with ids and edit links |
 | Downloadable/virtual flags on simple products | imported as physical product, warning (A5) |
 | Product reviews | stay on the WooCommerce post (Q14) |
-| Product add-on and SEO plugin meta | `_fxc_import` bucket on the product, round-tripped on FXC→WC |
+| Product add-on and SEO plugin meta | `_fxc_import` bucket on the product, round-tripped on FXC→WC; the official Product Add-ons data also becomes option sets (§5.9) |
 | Unknown order and item meta | `fxc_order_meta` (`wc:` prefix) and item `meta` JSON, round-tripped |
 | Payment gateway settings | not migrated in MVP (tax rates and classes are, since ADR-020; shipping zones are, see §5.7; coupons are, see §5.8) |
 | Subscriptions, memberships, bookings | not migrated, warning if their plugins are active |

@@ -132,6 +132,20 @@ final class ProductOptions {
 	}
 
 	/**
+	 * What the values add once to the cart line, whatever its quantity.
+	 *
+	 * @param Values $values
+	 */
+	public function fee( array $values ): int {
+		$fee = 0;
+		foreach ( $values as $key => $value ) {
+			[ $set_id, $field_id ] = array_map( 'intval', array_pad( explode( '-', (string) $key, 2 ), 2, '0' ) );
+			$fee                  += (int) $this->sets->find( $set_id )?->field( $field_id )?->fee( $value );
+		}
+		return $fee;
+	}
+
+	/**
 	 * @return string|list<string> '' or [] when empty
 	 * @throws InvalidCartRequest
 	 */

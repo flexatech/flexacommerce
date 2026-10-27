@@ -14,15 +14,16 @@ defined( 'ABSPATH' ) || exit;
 final class Record {
 	public const FORMAT_VERSION = '1.0';
 
-	public const SETTINGS  = 'settings';
-	public const TAX_RATE  = 'tax_rate';
-	public const SHIPPING  = 'shipping';
-	public const ATTRIBUTE = 'attribute';
-	public const TERM      = 'term';
-	public const PRODUCT   = 'product';
-	public const CUSTOMER  = 'customer';
-	public const ORDER     = 'order';
-	public const COUPON    = 'coupon';
+	public const SETTINGS   = 'settings';
+	public const TAX_RATE   = 'tax_rate';
+	public const SHIPPING   = 'shipping';
+	public const ATTRIBUTE  = 'attribute';
+	public const TERM       = 'term';
+	public const PRODUCT    = 'product';
+	public const CUSTOMER   = 'customer';
+	public const ORDER      = 'order';
+	public const COUPON     = 'coupon';
+	public const OPTION_SET = 'option_set';
 
 	public readonly string $checksum;
 

@@ -70,7 +70,7 @@ final class NewOrder {
 				$lines += $item->subtotal;
 				$taken += $item->discount_total;
 				// Inclusive prices: the net line is the gross minus its tax, so it is not unit price x quantity.
-				$unit_ok = $this->prices_include_tax ? $item->subtotal >= 0 : $item->subtotal === $item->unit_price * $item->quantity;
+				$unit_ok = $this->prices_include_tax ? $item->subtotal >= 0 : $item->subtotal === $item->unit_price * $item->quantity + (int) ( $item->meta['fee'] ?? 0 );
 				if ( ! $unit_ok || $item->total !== $item->subtotal - $item->discount_total ) {
 					throw new OrderTotalsMismatch( sprintf( 'Item "%s" does not add up.', $item->name ) );
 				}

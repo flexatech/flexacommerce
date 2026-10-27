@@ -25,6 +25,7 @@ final class Validator {
 			Record::TERM, Record::ATTRIBUTE => $this->named( $record->data ),
 			Record::SHIPPING => $this->shipping( $record->data ),
 			Record::COUPON   => $this->coupon( $record->data ),
+			Record::OPTION_SET => $this->option_set( $record->data ),
 			Record::SETTINGS, Record::CUSTOMER => [],
 			default          => [ Problem::error( 'unknown_type', sprintf( 'Unknown record type "%s".', $record->type ) ) ],
 		};
@@ -64,6 +65,24 @@ final class Validator {
 			}
 		}
 		return [];
+	}
+
+	/**
+	 * @param array<string,mixed> $data
+	 * @return list<Problem>
+	 */
+	private function option_set( array $data ): array {
+		$problems = [];
+		if ( ! is_array( $data['addons'] ?? null ) || ! array_is_list( $data['addons'] ) ) {
+			$problems[] = Problem::error( 'invalid_addons', 'The option set has no list of add-ons.' );
+		}
+		if ( ! in_array( $data['scope'] ?? null, [ 'global', 'product' ], true ) ) {
+			$problems[] = Problem::error( 'invalid_scope', 'The option set is neither global nor for products.' );
+		}
+		if ( ! Dates::is_valid( $data['modified_at'] ?? null ) ) {
+			$problems[] = Problem::error( 'invalid_date', 'modified_at is not an ISO date.' );
+		}
+		return $problems;
 	}
 
 	/**

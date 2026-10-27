@@ -28,6 +28,7 @@ final class FxcTarget implements TargetAdapter {
 		private readonly ImportRepository $repository,
 		private readonly FxcShippingWriter $shipping,
 		private readonly FxcCouponWriter $coupons,
+		private readonly FxcOptionWriter $options,
 	) {}
 
 	public function system(): string {
@@ -46,6 +47,7 @@ final class FxcTarget implements TargetAdapter {
 				Record::PRODUCT   => $this->catalog->product( $record, $map, $job ),
 				Record::ORDER     => $this->orders->order( $record, $map, $job ),
 				Record::COUPON    => $this->coupons->coupon( $record, $map ),
+				Record::OPTION_SET => $this->options->option_set( $record, $map, $job->id ),
 				default           => throw new Rejected( 'unsupported_entity', sprintf( 'FlexaCommerce cannot import "%s" records.', $record->type ) ),
 			}
 		);
@@ -65,6 +67,9 @@ final class FxcTarget implements TargetAdapter {
 		if ( ( $stage === 'coupons' || $stage === 'orders' ) && ! $job->dry_run ) {
 			$this->coupons->backfill_uses();
 		}
+		if ( $stage === 'options' && ! $job->dry_run ) {
+			$this->options->reorder( $job->id );
+		}
 	}
 
 	public function delete( string $entity, int $target_id ): bool {
@@ -72,6 +77,7 @@ final class FxcTarget implements TargetAdapter {
 			fn (): bool => match ( $entity ) {
 				Record::ORDER => $this->orders->delete( $target_id ),
 				Record::COUPON => $this->coupons->delete( $target_id ),
+				Record::OPTION_SET => $this->options->delete( $target_id ),
 				Record::PRODUCT, Record::TERM, Record::ATTRIBUTE => $this->catalog->delete( $entity, $target_id ),
 				default => false,
 			}

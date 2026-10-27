@@ -29,6 +29,7 @@ final class CartItem {
 		public readonly ?Money $total,
 		public readonly ?Availability $availability,
 		public readonly string $status,
+		public readonly int $fee = 0,
 	) {}
 
 	public function is_ok(): bool {

@@ -60,7 +60,7 @@ final class MigrateCommand {
 	 * ---
 	 *
 	 * [--stages=<stages>]
-	 * : Comma-separated stages: settings, taxes, shipping, attributes, terms, products, customers, orders, coupons.
+	 * : Comma-separated stages: settings, taxes, shipping, attributes, terms, products, options, customers, orders, coupons.
 	 *
 	 * [--format=<format>]
 	 * : table, json, csv or yaml.

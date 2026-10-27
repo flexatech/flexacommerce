@@ -43,7 +43,8 @@ final class OptionField {
 	public const NONE         = 'none';
 	public const FIXED        = 'fixed';
 	public const PERCENT      = 'percent';
-	public const PRICE_MODES  = [ self::NONE, self::FIXED, self::PERCENT ];
+	public const ONCE         = 'once';
+	public const PRICE_MODES  = [ self::NONE, self::FIXED, self::PERCENT, self::ONCE ];
 	public const FULL_PERCENT = 10000;
 
 	public const SHOW    = 'show';
@@ -168,19 +169,37 @@ final class OptionField {
 	}
 
 	/**
-	 * What a value adds to one unit, given the unit price `$base`.
+	 * What a value adds to one unit, given the unit price `$base`. A price
+	 * charged once per line adds nothing here; see fee().
 	 *
 	 * @param string|list<string> $value
 	 */
 	public function charge( string|array $value, int $base ): int {
+		return $this->priced( $value, static fn ( string $mode, int $price ): int => self::price_of( $mode, $price, $base ) );
+	}
+
+	/**
+	 * What a value adds once to the cart line, whatever the quantity.
+	 *
+	 * @param string|list<string> $value
+	 */
+	public function fee( string|array $value ): int {
+		return $this->priced( $value, static fn ( string $mode, int $price ): int => $mode === self::ONCE ? $price : 0 );
+	}
+
+	/**
+	 * @param string|list<string>          $value
+	 * @param callable(string,int):int $price_of
+	 */
+	private function priced( string|array $value, callable $price_of ): int {
 		if ( ! $this->has_choices() ) {
-			return $value === '' || $value === [] ? 0 : self::price_of( $this->price_mode, $this->price, $base );
+			return $value === '' || $value === [] ? 0 : $price_of( $this->price_mode, $this->price );
 		}
 		$total = 0;
 		foreach ( (array) $value as $id ) {
 			$choice = $this->choice( (int) $id );
 			if ( $choice !== null ) {
-				$total += self::price_of( $choice['price_mode'], $choice['price'], $base );
+				$total += $price_of( $choice['price_mode'], $choice['price'] );
 			}
 		}
 		return $total;

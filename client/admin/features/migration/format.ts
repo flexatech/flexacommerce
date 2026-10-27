@@ -17,6 +17,7 @@ export const STAGE_LABELS: Record<Stage, string> = {
     attributes: __("Attributes"),
     terms: __("Categories, tags and values"),
     products: __("Products"),
+    options: __("Product options"),
     customers: __("Customers"),
     orders: __("Orders"),
     coupons: __("Coupons"),

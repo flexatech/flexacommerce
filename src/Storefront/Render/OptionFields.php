@@ -223,7 +223,7 @@ final class OptionFields {
 		return sprintf( '<div %1$s>%2$s%3$s%4$s</div>', $attrs, $label, $control, $help );
 	}
 
-	/** ` (+$2.00)` or ` (+10%)`, empty for a free choice. */
+	/** ` (+$2.00)`, ` (+10%)` or ` (+$5.00 once)`, empty for a free choice. */
 	private static function price_tag( string $mode, int $price, PricingService $money ): string {
 		if ( $mode === OptionField::NONE || $price <= 0 ) {
 			return '';
@@ -231,6 +231,10 @@ final class OptionFields {
 		$text = $mode === OptionField::PERCENT
 			? rtrim( rtrim( number_format( $price / 100, 2, '.', '' ), '0' ), '.' ) . '%'
 			: $money->format( $money->money( $price ) );
+		if ( $mode === OptionField::ONCE ) {
+			/* translators: %s: an amount charged once per cart line, whatever the quantity. */
+			$text = sprintf( __( '%s once', 'flexacommerce' ), $text );
+		}
 		return ' <span class="fxc-option__price">(+' . esc_html( $text ) . ')</span>';
 	}
 

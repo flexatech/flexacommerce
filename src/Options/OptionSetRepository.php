@@ -17,7 +17,7 @@ defined( 'ABSPATH' ) || exit;
 final class OptionSetRepository {
 	public const OPTION = ProductOptions::OPTION;
 
-	public const MAX_SETS    = 30;
+	public const MAX_SETS    = 200;
 	public const MAX_FIELDS  = 20;
 	public const MAX_CHOICES = 30;
 	public const MAX_RULES   = 10;

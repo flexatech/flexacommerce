@@ -1,6 +1,6 @@
 export type Direction = "wc_to_fxc" | "fxc_to_wc";
 
-export type Stage = "settings" | "taxes" | "shipping" | "attributes" | "terms" | "products" | "customers" | "orders" | "coupons";
+export type Stage = "settings" | "taxes" | "shipping" | "attributes" | "terms" | "products" | "options" | "customers" | "orders" | "coupons";
 
 export type JobStatus =
     | "draft"
