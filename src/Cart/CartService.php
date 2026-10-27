@@ -26,6 +26,7 @@ use Flexa\Commerce\Coupons\CouponService;
 use Flexa\Commerce\Inventory\StockService;
 use Flexa\Commerce\Options\ProductOptions;
 use Flexa\Commerce\Pricing\PricingService;
+use Flexa\Commerce\Pricing\Rules\PriceRule;
 use Flexa\Commerce\Support\Clock;
 use Flexa\Commerce\Support\ConditionFacts;
 use Flexa\Commerce\Support\Currency;
@@ -80,6 +81,76 @@ final class CartService {
 		// A logged-in shopper on a new browser has no count cookie yet.
 		$this->sessions->publish_count( $cart->item_count(), $user_id );
 		return $this->resolve( $choices !== null ? self::chosen( $cart, $choices ) : $cart, $user_id, $loaded['session'] !== null, (bool) ( $choices['final'] ?? false ) );
+	}
+
+	/**
+	 * A cart that is never stored, priced as a shopper's would be: the rule
+	 * simulator (ADR-046). `$final` counts what is still unknown as not met.
+	 */
+	public function preview( Cart $cart, int $user_id, bool $final = false ): CartState {
+		return $this->resolve( $cart, $user_id, false, $final );
+	}
+
+	/**
+	 * A line for preview(): the product or one of its variations, with no
+	 * product options and no stock check.
+	 *
+	 * @throws InvalidCartRequest|NotPurchasable
+	 */
+	public function preview_line( int $product_id, int $variant_id, int $quantity ): CartLine {
+		$product = $this->products->find( $product_id );
+		if ( $product === null ) {
+			throw new NotPurchasable( $variant_id, __( 'This product does not exist.', 'flexacommerce' ) );
+		}
+		[ $variant, $selection ] = $this->select( $product, $variant_id, [] );
+		$this->assert_purchasable( $product, $variant );
+		return new CartLine(
+			key: CartLine::key_for( $variant->id, $selection ),
+			product_id: $product->id,
+			variant_id: $variant->id,
+			quantity: max( 1, min( $quantity, $this->line_max( $product, $variant ) ) ),
+			attributes: $selection,
+			labels: $this->labels( $product, $selection ),
+			added_at: $this->clock->db_now(),
+		);
+	}
+
+	/**
+	 * What every price rule did to each line of a priced cart and what
+	 * every fee rule did to the cart (ADR-046), with the same facts and
+	 * counts resolve() used.
+	 *
+	 * @return array{lines:array<string,?array{active:int,rules:list<array{rule:PriceRule,status:string,total:?int,condition:?array<string,mixed>}>}>,fees:list<array{rule:PriceRule,status:string,total:?int,condition:?array<string,mixed>}>}
+	 */
+	public function explain( CartState $state, int $user_id, bool $final = false ): array {
+		if ( $this->pricing->rules() === null ) {
+			return [
+				'lines' => [],
+				'fees'  => [],
+			];
+		}
+		$facts = $this->facts( $state->cart, $user_id, $final );
+		$units = [];
+		$above = [];
+		foreach ( $state->items as $item ) {
+			$units[ $item->line->product_id ] = ( $units[ $item->line->product_id ] ?? 0 ) + $item->line->quantity;
+		}
+		$lines = [];
+		$fees  = [];
+		foreach ( $state->items as $item ) {
+			$id           = $item->line->product_id;
+			$before       = $above[ $id ] ?? 0;
+			$above[ $id ] = $before + $item->line->quantity;
+			if ( $item->product === null || $item->variant === null || $item->total === null ) {
+				continue;
+			}
+			$lines[ $item->line->key ] = $this->pricing->explain( $item->product, $item->variant, $item->line->quantity, $user_id, $units[ $id ], $facts, $before );
+			$fees[]                    = [ $item->product->id, max( 0, $item->total->amount - $state->line_discount( $item->line->key ) ) ];
+		}
+		return [
+			'lines' => $lines,
+			'fees'  => $this->pricing->explain_fees( $fees, $user_id, $facts ),
+		];
 	}
 
 	/** The cart as stored, not priced: checkout compares its choices with it. */
@@ -572,7 +643,7 @@ final class CartService {
 	 * weight of the cart, the address and the choices made at checkout,
 	 * the codes, and the customer's past orders when a condition reads them.
 	 */
-	private function facts( Cart $cart, int $user_id, bool $final = false ): ConditionFacts {
+	public function facts( Cart $cart, int $user_id, bool $final = false ): ConditionFacts {
 		$quantity = 0;
 		$weight   = 0;
 		foreach ( $cart->lines as $line ) {

@@ -195,6 +195,36 @@ final class PricingService {
 		return $this->rules()?->fees( $lines, $currency, $user_id, $now, $facts ) ?? [];
 	}
 
+	/**
+	 * What every price rule does to one cart line, with the price before
+	 * rules (ADR-046); the inputs are those of unit_price(). Null when the
+	 * row has no price.
+	 *
+	 * @return ?array{active:int,rules:list<array{rule:PriceRule,status:string,total:?int,condition:?array<string,mixed>}>}
+	 */
+	public function explain( Product $product, Variant $variant, int $quantity, int $user_id, int $product_quantity, ConditionFacts $facts, int $before ): ?array {
+		$now    = $this->clock->now()->setTimezone( new \DateTimeZone( 'UTC' ) )->format( Clock::DB_FORMAT );
+		$active = $variant->active_price( $now );
+		if ( $active === null || $variant->regular_price === null ) {
+			return null;
+		}
+		return [
+			'active' => $active,
+			'rules'  => $this->rules()?->explain( $product, $variant, $active, max( 1, $quantity ), max( $quantity, $product_quantity ), $user_id, $now, $facts, max( 0, $before ) ) ?? [],
+		];
+	}
+
+	/**
+	 * What every fee rule does to a priced cart (ADR-046).
+	 *
+	 * @param list<array{int,int}> $lines product post id and the line total after coupons
+	 * @return list<array{rule:PriceRule,status:string,total:?int,condition:?array<string,mixed>}>
+	 */
+	public function explain_fees( array $lines, int $user_id, ConditionFacts $facts ): array {
+		$now = $this->clock->now()->setTimezone( new \DateTimeZone( 'UTC' ) )->format( Clock::DB_FORMAT );
+		return $this->rules()?->explain_fees( $lines, $user_id, $now, $facts ) ?? [];
+	}
+
 	/** The bulk or graduated rule whose tiers the product page lists for this customer. */
 	public function tier_rule( Product $product, int $user_id ): ?PriceRule {
 		$now = $this->clock->now()->setTimezone( new \DateTimeZone( 'UTC' ) )->format( Clock::DB_FORMAT );

@@ -686,3 +686,20 @@ Status of every ADR: **Accepted** (plan approved 2026-10-24) unless it says othe
 
 **Revisit when.** Merchants ask for more than one unit of a product per set, a choice between products in one slot ("any 3 from this category"), or a bundle shown on the product page with a single add-to-cart button.
 
+
+## ADR-046: Rule simulator
+
+**Context.** flexa-extra has a rule simulator: the merchant picks products and a customer and sees which rules apply. With pricing rules (ADR-024), graduated tiers (ADR-042), conditions (ADR-041), fees (ADR-043) and automatic coupons (ADR-026, ADR-045) a merchant can no longer tell from the rule list why a price came out as it did, or why a discount did not apply.
+
+**Decision.**
+1. **A tab.** Promotions > Simulator holds a test cart: products or variations with quantities (up to 20 lines), a guest or any account (`admin/simulator/customers` searches every account with its roles, ordered before or not), a country, state and postcode, a shipping rate and payment method (or what checkout would pick), and coupon codes. The result updates as the inputs change.
+2. **The real code paths.** `POST admin/simulator` builds a `Cart` in memory and runs it through `CartService::preview()` and `CheckoutService::preview()`, which call the same resolve and requote steps as a shopper's cart and checkout. Nothing is stored: no session, no cart token, no coupon use.
+3. **One test per question.** `PriceRules::explain()` and `explain_fees()` share `why_not()` and the line pricing with `apply()` and `fees()`, so the reason shown is the one the cart used. Each rule gets a status: `applied`, `beaten` (another rule gives a lower price), `no_change`, `no_tier`, `off`, `scheduled`, `ended`, `customer`, `not_targeted`, `on_sale`, `unmet` or `waiting`, with the condition behind the last two.
+4. **Coupons.** Each code entered is applied, rejected or waiting, with the reason the cart would give. Each automatic coupon that did not apply says why (`CouponService::skipped()`): a code in the cart that stands alone, its own conditions, its minimum spend, or an earlier automatic discount that stands alone.
+5. **The rest of checkout.** The response also carries the shipping rates, the chosen rate and method, the totals with tax, the next-discount line and the problems (a product that cannot be added says so instead of failing the whole run).
+
+**Alternatives.** A copy of the rule logic in JavaScript: fast, but it would drift from the server. A real cart under a test session: it would leave rows behind and count against stock checks and coupon limits.
+
+**Consequences.** No `DB_VERSION` and still 61 settings. Product options are not simulated; a variable product must be added as one of its variations. There is no "as of a date" run: a rule with a future start or a past end shows as `scheduled` or `ended`.
+
+**Revisit when.** Merchants ask to test a cart on a future date, with product options, or to save test carts and rerun them after editing rules.

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Flexa\Commerce\Checkout;
 
+use Flexa\Commerce\Cart\Cart;
 use Flexa\Commerce\Cart\CartPresenter;
 use Flexa\Commerce\Cart\CartService;
 use Flexa\Commerce\Cart\CartState;
@@ -562,21 +563,63 @@ final class CheckoutService {
 	 * @return array{0:CartState,1:Quote,2:string} the state, the quote and the payment method
 	 */
 	private function quoted( int $user_id, Destination $destination, string $rate_id, string $method ): array {
-		$choices = static fn ( string $rate, string $pay ): array => [
-			'country'        => $destination->country,
-			'shipping_rate'  => $rate,
-			'payment_method' => $pay,
+		return $this->requote(
+			fn ( string $rate, string $pay ): CartState => $this->cart->state(
+				$user_id,
+				[
+					'country'        => $destination->country,
+					'shipping_rate'  => $rate,
+					'payment_method' => $pay,
+				]
+			),
+			$user_id,
+			$destination,
+			$rate_id,
+			$method
+		);
+	}
+
+	/**
+	 * A cart that is never stored, quoted as checkout would quote it, for
+	 * the rule simulator (ADR-046): the rate and the payment method chosen,
+	 * or the first ones offered.
+	 *
+	 * @return array{0:CartState,1:Quote,2:string} the state, the quote and the payment method
+	 */
+	public function preview( Cart $cart, int $user_id, Destination $destination, bool $final = false ): array {
+		$address = [
+			'country'  => $destination->country,
+			'state'    => $destination->state,
+			'postcode' => $destination->postcode,
+			'city'     => $destination->city,
 		];
-		$state   = $this->cart->state( $user_id, $choices( $rate_id, $method ) );
-		$quote   = $this->quote( $state, $destination, $rate_id, null, $user_id );
-		$rate    = $quote->rate->id ?? '';
-		$pay     = $method;
+		return $this->requote(
+			fn ( string $rate, string $pay ): CartState => $this->cart->preview( $cart->with_shipping( $address, $rate )->with_payment_method( $pay ), $user_id, $final ),
+			$user_id,
+			$destination,
+			$cart->shipping_rate,
+			$cart->payment_method
+		);
+	}
+
+	/**
+	 * Quotes the cart with the rate and the payment method named; when one
+	 * is not offered the first one is used and the cart is priced again.
+	 *
+	 * @param \Closure(string,string):CartState $priced the cart priced with a rate and a payment method
+	 * @return array{0:CartState,1:Quote,2:string}
+	 */
+	private function requote( \Closure $priced, int $user_id, Destination $destination, string $rate_id, string $method ): array {
+		$state = $priced( $rate_id, $method );
+		$quote = $this->quote( $state, $destination, $rate_id, null, $user_id );
+		$rate  = $quote->rate->id ?? '';
+		$pay   = $method;
 		if ( $quote->total->amount > 0 ) {
 			$ids = array_keys( $this->payments->gateways()->available( $this->context( $quote, $destination->country, '', $user_id ) ) );
 			$pay = in_array( $method, $ids, true ) ? $method : (string) ( $ids[0] ?? '' );
 		}
 		if ( $rate !== $rate_id || $pay !== $method ) {
-			$state = $this->cart->state( $user_id, $choices( $rate, $pay ) );
+			$state = $priced( $rate, $pay );
 			$quote = $this->quote( $state, $destination, $rate, null, $user_id );
 		}
 		return [ $state, $quote, $pay ];

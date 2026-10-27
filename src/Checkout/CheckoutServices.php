@@ -18,6 +18,7 @@ final class CheckoutServices {
 	private ?CheckoutService $service = null;
 	private ?CheckoutPages $pages     = null;
 	private ?CartTaxes $cart_taxes    = null;
+	private ?Simulator $simulator     = null;
 
 	public function __construct(
 		private readonly Services $services,
@@ -59,5 +60,9 @@ final class CheckoutServices {
 			null,
 			$this->coupons,
 		);
+	}
+
+	public function simulator(): Simulator {
+		return $this->simulator ??= new Simulator( $this->cart->cart(), $this->service(), $this->cart->presenter(), $this->coupons );
 	}
 }

@@ -305,6 +305,40 @@ final class CouponService {
 	}
 
 	/**
+	 * Why each automatic coupon did not apply to the cart, for the rule
+	 * simulator (ADR-046), with the tests discounts() runs: coupon id =>
+	 * the message, in the order the coupons are tried. Applied ones are not
+	 * listed; their amounts are in `$discounts`.
+	 *
+	 * @param list<CartItem> $items
+	 * @return array<int,string>
+	 */
+	public function skipped( Discounts $discounts, array $items, Money $subtotal, int $user_id, ?ConditionFacts $facts = null ): array {
+		$exclusive = false;
+		foreach ( $discounts->applied as $applied ) {
+			$exclusive = $exclusive || ( ! $applied->coupon->automatic && $applied->coupon->individual_use );
+		}
+		$out = [];
+		foreach ( $this->coupons->automatic() as $coupon ) {
+			if ( $discounts->find( $coupon->code ) !== null ) {
+				continue;
+			}
+			$unmet              = $this->unmet( $coupon, $facts, $user_id );
+			$out[ $coupon->id ] = match ( true ) {
+				$exclusive                                            => __( 'A coupon in the cart cannot be used with other coupons.', 'flexacommerce' ),
+				$coupon->individual_use && $discounts->applied !== [] => sprintf(
+					/* translators: %s: coupon code. */
+					__( 'Coupon "%s" cannot be used with other coupons.', 'flexacommerce' ),
+					$coupon->code
+				),
+				$unmet !== null                                       => $unmet[0],
+				default                                               => $this->check( $coupon, $items, $subtotal, $user_id ) ?? __( 'An automatic discount before it cannot be used with other coupons.', 'flexacommerce' ),
+			};
+		}
+		return $out;
+	}
+
+	/**
 	 * Why a coupon does not apply to the cart, or null when it does. The
 	 * email rules wait for the billing email at checkout. Without $sets a
 	 * buy X get Y coupon passes when the cart has none of its sets yet.

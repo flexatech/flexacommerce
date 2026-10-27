@@ -6,7 +6,7 @@ import { Input } from "@/shared/components/ui/input";
 import { Select } from "@/shared/components/ui/select";
 import { getPluginGlobal } from "@/shared/lib/api";
 import { __, sprintf } from "@/shared/lib/i18n";
-import { gramsToInput, inputToGrams, inputToMinor, minorToInput } from "@/shared/lib/units";
+import { formatMoney, gramsToInput, inputToGrams, inputToMinor, minorToInput } from "@/shared/lib/units";
 import { TargetPicker } from "../coupons/TargetPicker";
 import {
     isNumber,
@@ -44,6 +44,38 @@ const HELP: Partial<Record<ConditionType, string>> = {
 };
 
 const isMoney = (type: ConditionType) => type === "lifetime_spend" || type === "cart_subtotal";
+
+/** A condition as a sentence, for the rule simulator: "Country is France, Germany". */
+export function conditionText(item: Condition, choices?: { countries: Choice[]; payment_methods: Choice[]; shipping_methods: Choice[] }): string {
+    const { currency, units } = getPluginGlobal();
+    const type = TYPE_OPTIONS.find((o) => o.value === item.type)?.label ?? item.type;
+    if (isNumber(item)) {
+        const value =
+            item.type === "cart_weight"
+                ? `${gramsToInput(String(item.value), units.weight)} ${units.weight}`
+                : isMoney(item.type)
+                  ? formatMoney(item.value, currency)
+                  : String(item.value);
+        return item.op === "gte" ? sprintf(__("%1$s at least %2$s"), type, value) : sprintf(__("%1$s at most %2$s"), type, value);
+    }
+    const pool =
+        item.type === "country"
+            ? choices?.countries
+            : item.type === "payment_method"
+              ? choices?.payment_methods
+              : item.type === "shipping_method"
+                ? choices?.shipping_methods
+                : undefined;
+    const values =
+        item.type === "purchased"
+            ? sprintf(__("%d products"), item.value.length)
+            : item.value.map((v) => pool?.find((c) => c.id === String(v))?.title ?? String(v)).join(", ");
+    const many = item.type === "purchased" || item.type === "coupon";
+    if (item.op === "in") {
+        return many ? sprintf(__("%1$s: any of %2$s"), type, values) : sprintf(__("%1$s is %2$s"), type, values);
+    }
+    return many ? sprintf(__("%1$s: none of %2$s"), type, values) : sprintf(__("%1$s is not %2$s"), type, values);
+}
 
 function fresh(type: ConditionType): Condition {
     if ((NUMBER_TYPES as string[]).includes(type)) {

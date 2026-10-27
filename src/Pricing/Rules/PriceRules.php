@@ -25,6 +25,20 @@ defined( 'ABSPATH' ) || exit;
  * the charges it adds to the cart.
  */
 final class PriceRules {
+	/** What explain() says a rule did (ADR-046). */
+	public const APPLIED      = 'applied';
+	public const BEATEN       = 'beaten';
+	public const NO_CHANGE    = 'no_change';
+	public const NO_TIER      = 'no_tier';
+	public const OFF          = 'off';
+	public const SCHEDULED    = 'scheduled';
+	public const ENDED        = 'ended';
+	public const CUSTOMER     = 'customer';
+	public const NOT_TARGETED = 'not_targeted';
+	public const ON_SALE      = 'on_sale';
+	public const UNMET        = 'unmet';
+	public const WAITING      = 'waiting';
+
 	/** @var array<int,list<string>> */
 	private array $roles = [];
 
@@ -62,25 +76,57 @@ final class PriceRules {
 			if ( ! $this->matches( $rule, $product, $user_id, $now, $facts ) ) {
 				continue;
 			}
-			if ( $rule->type === PriceRule::GRADUATED ) {
-				$first = $rule->count === PriceRule::COUNT_VARIANT ? 1 : $before + 1;
-				$total = self::graduated( $rule->tiers, $active, $first, $quantity );
-				if ( $total < $lowest ) {
-					$lowest = $total;
-					$best   = [ IntMath::mul_div_half_up( $total, 1, $quantity ), $total % $quantity === 0 ? null : $total ];
-				}
-				continue;
-			}
-			$change = $rule->change_for( $rule->count === PriceRule::COUNT_VARIANT ? $quantity : $product_quantity );
-			if ( $change !== null ) {
-				$unit = self::changed( $active, $change['mode'], $change['amount'] );
-				if ( $unit * $quantity < $lowest ) {
-					$lowest = $unit * $quantity;
-					$best   = [ $unit, null ];
-				}
+			$line = self::line( $rule, $active, $quantity, $product_quantity, $before );
+			if ( $line !== null && $line[2] < $lowest ) {
+				$lowest = $line[2];
+				$best   = [ $line[0], $line[1] ];
 			}
 		}
 		return $best;
+	}
+
+	/**
+	 * What each price rule does to one cart line, in list order, for the
+	 * rule simulator (ADR-046): the status, the line total the rule gives
+	 * and the condition behind an unmet or waiting status. The same tests
+	 * as apply(), so the applied rule is the one that priced the line.
+	 *
+	 * @param int    $active the price before rules, in minor units
+	 * @param string $now    UTC `Y-m-d H:i:s`
+	 * @return list<array{rule:PriceRule,status:string,total:?int,condition:?array<string,mixed>}>
+	 */
+	public function explain( Product $product, Variant $variant, int $active, int $quantity, int $product_quantity, int $user_id, string $now, ?ConditionFacts $facts = null, int $before = 0 ): array {
+		$quantity = max( 1, $quantity );
+		$facts  ??= $this->shopper( $user_id );
+		$out      = [];
+		$winner   = null;
+		$lowest   = $active * $quantity;
+		foreach ( $this->rules->all() as $rule ) {
+			if ( $rule->is_fee() ) {
+				continue;
+			}
+			$why = $this->why_not( $rule, static fn (): bool => self::targets( $rule, $product->id ), $user_id, $now, $facts );
+			if ( $why === null && $rule->sale_items === PriceRule::SALE_SKIP && $variant->is_on_sale( $now ) ) {
+				$why = [ self::ON_SALE, null ];
+			}
+			$line = $why === null ? self::line( $rule, $active, $quantity, $product_quantity, $before ) : null;
+			if ( $line !== null && $line[2] < $lowest ) {
+				$lowest = $line[2];
+				$winner = count( $out );
+			}
+			$out[] = [
+				'rule'      => $rule,
+				'status'    => $why !== null ? $why[0] : ( $line === null ? self::NO_TIER : self::NO_CHANGE ),
+				'total'     => $line[2] ?? null,
+				'condition' => $why[1] ?? null,
+			];
+		}
+		foreach ( $out as $i => $entry ) {
+			if ( $entry['total'] !== null && $entry['total'] < $active * $quantity ) {
+				$out[ $i ]['status'] = $i === $winner ? self::APPLIED : self::BEATEN;
+			}
+		}
+		return $out;
 	}
 
 	/**
@@ -96,36 +142,60 @@ final class PriceRules {
 	 * @return list<Fee>
 	 */
 	public function fees( array $lines, string $currency, int $user_id, string $now, ConditionFacts $facts ): array {
-		if ( $lines === [] ) {
-			return [];
-		}
-		$all   = array_sum( array_column( $lines, 1 ) );
-		$facts = $facts->with_subtotal( $all );
-		$fees  = [];
-		foreach ( $this->rules->all() as $rule ) {
-			if ( ! $rule->is_fee() || ! $rule->is_live( $now ) || ! $this->for_customer( $rule, $user_id ) ) {
-				continue;
-			}
-			$base    = 0;
-			$matched = false;
-			foreach ( $lines as [ $product_id, $amount ] ) {
-				if ( self::targets( $rule, $product_id ) ) {
-					$matched = true;
-					$base   += $amount;
-				}
-			}
-			if ( ! $matched || ( ! Conditions::is_empty( $rule->conditions ) && Conditions::passes( $rule->conditions, $facts ) !== true ) ) {
-				continue;
-			}
-			$fee = $rule->mode === PriceRule::PERCENT ? IntMath::mul_div_half_up( $base, min( $rule->amount, PriceRule::FULL_PERCENT ), PriceRule::FULL_PERCENT ) : $rule->amount;
-			if ( $rule->mode === PriceRule::PERCENT && $rule->cap > 0 ) {
-				$fee = min( $fee, $rule->cap );
-			}
-			if ( $fee > 0 ) {
-				$fees[] = new Fee( $rule->id, $rule->name, new Money( $fee, $currency ) );
+		$fees = [];
+		foreach ( $this->explain_fees( $lines, $user_id, $now, $facts ) as $entry ) {
+			if ( $entry['status'] === self::APPLIED ) {
+				$fees[] = new Fee( $entry['rule']->id, $entry['rule']->name, new Money( (int) $entry['total'], $currency ) );
 			}
 		}
 		return $fees;
+	}
+
+	/**
+	 * What each fee rule does to the cart, in list order (ADR-046): the
+	 * status, the fee and the condition behind an unmet or waiting status.
+	 *
+	 * @param list<array{int,int}> $lines each product post id and its line total after coupons, minor units
+	 * @param string               $now   UTC `Y-m-d H:i:s`
+	 * @return list<array{rule:PriceRule,status:string,total:?int,condition:?array<string,mixed>}>
+	 */
+	public function explain_fees( array $lines, int $user_id, string $now, ConditionFacts $facts ): array {
+		if ( $lines === [] ) {
+			return [];
+		}
+		$facts = $facts->with_subtotal( array_sum( array_column( $lines, 1 ) ) );
+		$out   = [];
+		foreach ( $this->rules->all() as $rule ) {
+			if ( ! $rule->is_fee() ) {
+				continue;
+			}
+			$base     = 0;
+			$targeted = static function () use ( $rule, $lines, &$base ): bool {
+				$matched = false;
+				foreach ( $lines as [ $product_id, $amount ] ) {
+					if ( self::targets( $rule, $product_id ) ) {
+						$matched = true;
+						$base   += $amount;
+					}
+				}
+				return $matched;
+			};
+			$why      = $this->why_not( $rule, $targeted, $user_id, $now, $facts );
+			$fee      = null;
+			if ( $why === null ) {
+				$fee = $rule->mode === PriceRule::PERCENT ? IntMath::mul_div_half_up( $base, min( $rule->amount, PriceRule::FULL_PERCENT ), PriceRule::FULL_PERCENT ) : $rule->amount;
+				if ( $rule->mode === PriceRule::PERCENT && $rule->cap > 0 ) {
+					$fee = min( $fee, $rule->cap );
+				}
+			}
+			$out[] = [
+				'rule'      => $rule,
+				'status'    => $why !== null ? $why[0] : ( $fee > 0 ? self::APPLIED : self::NO_CHANGE ),
+				'total'     => $fee,
+				'condition' => $why[1] ?? null,
+			];
+		}
+		return $out;
 	}
 
 	/**
@@ -198,8 +268,55 @@ final class PriceRules {
 	}
 
 	private function matches( PriceRule $rule, Product $product, int $user_id, string $now, ?ConditionFacts $facts = null ): bool {
-		return $rule->is_live( $now ) && $this->for_customer( $rule, $user_id ) && self::targets( $rule, $product->id )
-			&& ( Conditions::is_empty( $rule->conditions ) || Conditions::passes( $rule->conditions, $facts ?? $this->shopper( $user_id ) ) === true );
+		return $this->why_not( $rule, static fn (): bool => self::targets( $rule, $product->id ), $user_id, $now, $facts ?? $this->shopper( $user_id ) ) === null;
+	}
+
+	/**
+	 * Why a rule does not apply, or null when it does: the status and the
+	 * condition behind an unmet or waiting one. Each test reads only what it
+	 * needs, the categories after the dates and the customer.
+	 *
+	 * @param \Closure():bool $targeted whether the rule covers the product or the cart
+	 * @return array{0:string,1:?array<string,mixed>}|null
+	 */
+	private function why_not( PriceRule $rule, \Closure $targeted, int $user_id, string $now, ConditionFacts $facts ): ?array {
+		if ( ! $rule->is_live( $now ) ) {
+			return [ ! $rule->enabled ? self::OFF : ( $rule->starts_at !== null && $rule->starts_at > $now ? self::SCHEDULED : self::ENDED ), null ];
+		}
+		if ( ! $this->for_customer( $rule, $user_id ) ) {
+			return [ self::CUSTOMER, null ];
+		}
+		if ( ! $targeted() ) {
+			return [ self::NOT_TARGETED, null ];
+		}
+		if ( Conditions::is_empty( $rule->conditions ) ) {
+			return null;
+		}
+		$outcome = Conditions::outcome( $rule->conditions, $facts );
+		if ( $outcome['pass'] === true ) {
+			return null;
+		}
+		return [ $outcome['pass'] === null ? self::WAITING : self::UNMET, $outcome['item'] ];
+	}
+
+	/**
+	 * The unit price, the exact line total or null, and the line total a
+	 * rule gives, or null when a bulk rule has no tier that low.
+	 *
+	 * @return array{0:int,1:?int,2:int}|null
+	 */
+	private static function line( PriceRule $rule, int $active, int $quantity, int $product_quantity, int $before ): ?array {
+		if ( $rule->type === PriceRule::GRADUATED ) {
+			$first = $rule->count === PriceRule::COUNT_VARIANT ? 1 : $before + 1;
+			$total = self::graduated( $rule->tiers, $active, $first, $quantity );
+			return [ IntMath::mul_div_half_up( $total, 1, $quantity ), $total % $quantity === 0 ? null : $total, $total ];
+		}
+		$change = $rule->change_for( $rule->count === PriceRule::COUNT_VARIANT ? $quantity : $product_quantity );
+		if ( $change === null ) {
+			return null;
+		}
+		$unit = self::changed( $active, $change['mode'], $change['amount'] );
+		return [ $unit, null, $unit * $quantity ];
 	}
 
 	private function shopper( int $user_id ): ConditionFacts {
