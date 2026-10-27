@@ -12,9 +12,12 @@
 .fxc-option { display: grid; gap: .25rem; margin: 0; padding: 0; border: 0; min-width: 0; }
 .fxc-option[hidden] { display: none; }
 .fxc-option legend { padding: 0; margin-bottom: .25rem; }
-.fxc-option input[type="text"], .fxc-option input[type="number"], .fxc-option input[type="date"], .fxc-option select, .fxc-option textarea { width: 100%; max-width: 28rem; padding: .5rem; box-sizing: border-box; font: inherit; }
+.fxc-option input[type="text"], .fxc-option input[type="number"], .fxc-option input[type="date"], .fxc-option input[type="time"], .fxc-option input[type="datetime-local"], .fxc-option select, .fxc-option textarea { width: 100%; max-width: 28rem; padding: .5rem; box-sizing: border-box; font: inherit; }
 .fxc-option__choice { display: flex; align-items: center; gap: .5rem; }
 .fxc-option input[type="color"] { width: 3rem; height: 2.25rem; padding: 2px; }
+.fxc-option__range { display: flex; align-items: center; gap: .75rem; max-width: 28rem; }
+.fxc-option__range input { flex: 1; min-width: 0; }
+.fxc-option__range output { min-width: 3ch; font-variant-numeric: tabular-nums; text-align: end; }
 .fxc-option--swatch, .fxc-option--button { --fxc-swatch-size: 32px; }
 .fxc-option__heading { margin: .5rem 0 0; font-weight: 600; }
 .fxc-option__help { margin: 0; font-size: .875em; opacity: .75; }

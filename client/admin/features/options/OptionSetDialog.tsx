@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { AlignLeft, ArrowDown, ArrowUp, Calendar, ChevronsUpDown, CircleDot, Hash, Heading, Palette, Plus, RectangleHorizontal, SquareCheck, SwatchBook, Trash2, Type, X } from "lucide-react";
+import { AlignLeft, ArrowDown, ArrowUp, Calendar, CalendarClock, ChevronsUpDown, CircleDot, Clock, Hash, Heading, Palette, Plus, RectangleHorizontal, SlidersHorizontal, SquareCheck, SwatchBook, Trash2, Type, X } from "lucide-react";
 
 import { showToast } from "@/shared/components/showToast";
 import { Button } from "@/shared/components/ui/button";
@@ -31,7 +31,10 @@ export const FIELD_TYPES: { value: FieldType; label: string; icon: typeof Type }
     { value: "text", label: __("Short text"), icon: Type },
     { value: "textarea", label: __("Long text"), icon: AlignLeft },
     { value: "number", label: __("Number"), icon: Hash },
+    { value: "range", label: __("Slider"), icon: SlidersHorizontal },
     { value: "date", label: __("Date"), icon: Calendar },
+    { value: "time", label: __("Time"), icon: Clock },
+    { value: "datetime", label: __("Date and time"), icon: CalendarClock },
     { value: "color", label: __("Color picker"), icon: Palette },
     { value: "select", label: __("Dropdown"), icon: ChevronsUpDown },
     { value: "radio", label: __("Radio buttons"), icon: CircleDot },
@@ -54,9 +57,10 @@ function blankField(id: number, type: FieldType): OptionField {
         required: false,
         placeholder: "",
         max_length: 0,
-        min: null,
-        max: null,
-        step: null,
+        // A slider needs both ends.
+        min: type === "range" ? 0 : null,
+        max: type === "range" ? 100 : null,
+        step: type === "range" ? 1 : null,
         price_mode: "none",
         price: 0,
         choices: isChoice(type) ? [blankChoice(1, type), blankChoice(2, type)] : [],
@@ -157,6 +161,15 @@ export const SET_PRESETS: SetPreset[] = [
         name: __("Delivery date"),
         description: __("A required date, from tomorrow up to 60 days ahead."),
         fields: () => [{ ...blankField(1, "date"), label: __("Delivery date"), required: true, min: 1, max: 60 }],
+    },
+    {
+        key: "pickup",
+        name: __("Pickup slot"),
+        description: __("A day in the next two weeks and a half-hour slot from 9:00 to 17:00."),
+        fields: () => [
+            { ...blankField(1, "date"), label: __("Pickup day"), required: true, min: 0, max: 14 },
+            { ...blankField(2, "time"), label: __("Pickup time"), required: true, min: 9 * 60, max: 17 * 60, step: 30 },
+        ],
     },
     {
         key: "custom",
@@ -559,6 +572,20 @@ const numberText = (value: number | null) => (value === null ? "" : String(value
 /** Whole days from 0; empty text means no limit. */
 const days = (text: string): number | null => (text.trim() === "" ? null : Math.max(0, Math.floor(Number(text) || 0)));
 
+/** What `min`, `max` and `step` hold for a type: numbers, days from today or minutes from midnight. */
+const limitsOf = (type: FieldType) => (type === "number" || type === "range" ? "number" : type === "date" || type === "datetime" ? "days" : type === "time" ? "time" : "none");
+
+/** Types that keep a starting value in `placeholder`, or none at all. */
+const startsOf = (type: FieldType) => (type === "color" || type === "range" ? type : type === "time" || type === "datetime" ? "none" : "text");
+
+/** Minutes from midnight as the HH:MM of a time input. */
+const clock = (minutes: number | null) => (minutes === null ? "" : `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`);
+
+const minutesOf = (text: string): number | null => {
+    const m = /^(\d{2}):(\d{2})/.exec(text);
+    return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+};
+
 const textNumber = (text: string): number | null => {
     const n = parseDecimal(text);
     return n === null ? null : n;
@@ -582,8 +609,9 @@ interface FieldCardProps {
 function FieldCard({ field, index, count, above, fields, open, error, onToggle, onChange, onMove, onRemove }: FieldCardProps) {
     const { icon: Icon, label: typeLabel } = typeOf(field.type);
     const heading = field.type === "heading";
-    const typed = ["text", "textarea", "number", "date", "color"].includes(field.type);
+    const typed = ["text", "textarea", "number", "range", "date", "time", "datetime", "color"].includes(field.type);
     const color = field.type === "color";
+    const range = field.type === "range";
     const title = field.label.trim() || __("Untitled field");
     return (
         <li className={cn("fxc:rounded-md fxc:border", error && "fxc:border-destructive")}>
@@ -630,14 +658,17 @@ function FieldCard({ field, index, count, above, fields, open, error, onToggle, 
                                     onChange={(e) => {
                                         const type = e.target.value as FieldType;
                                         const choices = isChoice(type) && field.choices.length === 0 ? [blankChoice(1, type), blankChoice(2, type)] : field.choices;
-                                        // Number limits, days and a starting color mean different things per type.
-                                        const limits = type === "date" || field.type === "date";
-                                        const start = type === "color" || field.type === "color";
+                                        // Limits and a starting value mean different things per type.
+                                        const limits = limitsOf(type) !== limitsOf(field.type);
+                                        const start = startsOf(type) !== startsOf(field.type);
+                                        // A slider needs both ends, so it starts with the usual ones.
+                                        const ends = type === "range" ? { min: field.min ?? 0, max: field.max ?? 100, step: field.step ?? 1 } : {};
                                         onChange({
                                             type,
                                             choices: type === "swatch" ? choices.map((c) => ({ ...c, color: c.color || START })) : choices,
-                                            required: type === "heading" || type === "color" ? false : field.required,
+                                            required: type === "heading" || type === "color" || type === "range" ? false : field.required,
                                             ...(limits ? { min: null, max: null, step: null } : {}),
+                                            ...ends,
                                             ...(start ? { placeholder: "" } : {}),
                                         });
                                     }}
@@ -652,7 +683,7 @@ function FieldCard({ field, index, count, above, fields, open, error, onToggle, 
                     <Field label={__("Help text")} help={__("Optional, shown under the field.")}>
                         {(id) => <Input id={id} maxLength={200} value={field.help} onChange={(e) => onChange({ help: e.target.value })} />}
                     </Field>
-                    {!heading && !color && (
+                    {!heading && !color && !range && (
                         <label className="fxc:flex fxc:items-center fxc:gap-2 fxc:text-sm">
                             <input type="checkbox" className="flexacommerce-check" checked={field.required} onChange={(e) => onChange({ required: e.target.checked })} />
                             {__("Required: the product cannot go into the cart without it")}
@@ -693,7 +724,39 @@ function FieldCard({ field, index, count, above, fields, open, error, onToggle, 
                         </div>
                     )}
 
-                    {field.type === "date" && (
+                    {range && (
+                        <div className="fxc:grid fxc:gap-4 fxc:sm:grid-cols-4">
+                            <Field label={__("Smallest")}>
+                                {(id) => <Input id={id} inputMode="decimal" value={numberText(field.min)} onChange={(e) => onChange({ min: textNumber(e.target.value) })} />}
+                            </Field>
+                            <Field label={__("Largest")}>
+                                {(id) => <Input id={id} inputMode="decimal" value={numberText(field.max)} onChange={(e) => onChange({ max: textNumber(e.target.value) })} />}
+                            </Field>
+                            <Field label={__("Step")}>
+                                {(id) => <Input id={id} inputMode="decimal" value={numberText(field.step)} onChange={(e) => onChange({ step: textNumber(e.target.value) })} />}
+                            </Field>
+                            <Field label={__("Starts at")} help={__("Empty: the smallest.")}>
+                                {(id) => <Input id={id} inputMode="decimal" value={field.placeholder} onChange={(e) => onChange({ placeholder: e.target.value.trim() })} />}
+                            </Field>
+                            <p className="fxc:text-muted-foreground fxc:text-xs fxc:sm:col-span-4">{__("A slider always sends a number, so it cannot be required and its charge always applies.")}</p>
+                        </div>
+                    )}
+
+                    {field.type === "time" && (
+                        <div className="fxc:grid fxc:gap-4 fxc:sm:grid-cols-3">
+                            <Field label={__("Earliest")} help={__("Empty: any time.")}>
+                                {(id) => <Input id={id} type="time" value={clock(field.min)} onChange={(e) => onChange({ min: minutesOf(e.target.value) })} />}
+                            </Field>
+                            <Field label={__("Latest")} help={__("Empty: no limit.")}>
+                                {(id) => <Input id={id} type="time" value={clock(field.max)} onChange={(e) => onChange({ max: minutesOf(e.target.value) })} />}
+                            </Field>
+                            <Field label={__("Step, in minutes")} help={__("15 offers :00, :15, :30 and :45.")}>
+                                {(id) => <Input id={id} type="number" min={1} max={720} value={numberText(field.step)} onChange={(e) => onChange({ step: days(e.target.value) || null })} />}
+                            </Field>
+                        </div>
+                    )}
+
+                    {(field.type === "date" || field.type === "datetime") && (
                         <div className="fxc:grid fxc:gap-4 fxc:sm:grid-cols-2">
                             <Field label={__("Earliest, in days from today")} help={__("0 is today. Empty: any date.")}>
                                 {(id) => <Input id={id} type="number" min={0} max={3650} value={numberText(field.min)} onChange={(e) => onChange({ min: days(e.target.value) })} />}
@@ -720,7 +783,7 @@ function FieldCard({ field, index, count, above, fields, open, error, onToggle, 
 
                     {typed && (
                         <div>
-                            <p className="fxc:mb-2 fxc:text-sm fxc:font-medium">{color ? __("Extra charge") : __("Extra charge when filled in")}</p>
+                            <p className="fxc:mb-2 fxc:text-sm fxc:font-medium">{color || range ? __("Extra charge") : __("Extra charge when filled in")}</p>
                             <PriceInputs label={title} mode={field.price_mode} price={field.price} onChange={(price_mode, price) => onChange({ price_mode, price })} />
                             {field.price_mode === "formula" && (
                                 <div className="fxc:mt-3">

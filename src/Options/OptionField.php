@@ -20,6 +20,12 @@ defined( 'ABSPATH' ) || exit;
  * is the color picked at the start. Swatches and buttons pick one choice
  * like radio buttons; a swatch choice has a `color`.
  *
+ * ADR-044: a range field is a slider with `min`, `max` and `step` always
+ * set; it always posts a number, and its `placeholder` is the number it
+ * starts at. A time field posts H:i and keeps `min`, `max` and `step` in
+ * minutes from midnight. A date and time field posts Y-m-d\TH:i and keeps
+ * `min` and `max` as days from today, like a date field.
+ *
  * A formula price (ADR-039) keeps its `formula`, in the currency's main
  * unit per item; see Formula and inputs().
  *
@@ -40,7 +46,10 @@ final class OptionField {
 	public const COLOR      = 'color';
 	public const SWATCH     = 'swatch';
 	public const BUTTON     = 'button';
-	public const TYPES      = [ self::TEXT, self::TEXTAREA, self::NUMBER, self::DATE, self::COLOR, self::SELECT, self::RADIO, self::CHECKBOXES, self::SWATCH, self::BUTTON, self::HEADING ];
+	public const RANGE      = 'range';
+	public const TIME       = 'time';
+	public const DATETIME   = 'datetime';
+	public const TYPES      = [ self::TEXT, self::TEXTAREA, self::NUMBER, self::RANGE, self::DATE, self::TIME, self::DATETIME, self::COLOR, self::SELECT, self::RADIO, self::CHECKBOXES, self::SWATCH, self::BUTTON, self::HEADING ];
 	public const CHOICES    = [ self::SELECT, self::RADIO, self::CHECKBOXES, self::SWATCH, self::BUTTON ];
 	public const START      = '#000000';
 
@@ -212,9 +221,9 @@ final class OptionField {
 	}
 
 	/**
-	 * A value as a formula reads it: a number field its number, a text field
-	 * its characters without spaces, a choice field how many are picked.
-	 * Dates and colors read 0.
+	 * A value as a formula reads it: a number or range field its number, a
+	 * text field its characters without spaces, a choice field how many are
+	 * picked. Dates, times and colors read 0.
 	 *
 	 * @param string|list<string> $value
 	 */
@@ -226,7 +235,7 @@ final class OptionField {
 			return 0.0;
 		}
 		return match ( true ) {
-			$this->type === self::NUMBER                                  => is_numeric( $value ) ? (float) $value : 0.0,
+			$this->type === self::NUMBER || $this->type === self::RANGE   => is_numeric( $value ) ? (float) $value : 0.0,
 			$this->type === self::TEXT || $this->type === self::TEXTAREA => (float) mb_strlen( (string) preg_replace( '/\s+/u', '', $value ) ),
 			$this->has_choices()                                         => 1.0,
 			default                                                      => 0.0,
@@ -302,6 +311,13 @@ final class OptionField {
 				$date = \DateTimeImmutable::createFromFormat( '!Y-m-d', $value, wp_timezone() );
 				return $date !== false ? wp_date( (string) get_option( 'date_format', 'F j, Y' ), $date->getTimestamp() ) ?: $value : $value;
 			}
+			if ( ( $this->type === self::TIME || $this->type === self::DATETIME ) && $value !== '' ) {
+				$time   = $this->type === self::TIME;
+				$moment = \DateTimeImmutable::createFromFormat( $time ? '!H:i' : '!Y-m-d\TH:i', $value, wp_timezone() );
+				$format = (string) get_option( 'time_format', 'g:i a' );
+				$format = $time ? $format : (string) get_option( 'date_format', 'F j, Y' ) . ' ' . $format;
+				return $moment !== false ? wp_date( $format, $moment->getTimestamp(), wp_timezone() ) ?: $value : $value;
+			}
 			return $this->type === self::COLOR ? strtoupper( $value ) : $value;
 		}
 		$names = [];
@@ -349,7 +365,29 @@ final class OptionField {
 	}
 
 	/**
-	 * The earliest and latest dates a date field takes, Y-m-d in the site's
+	 * The value a field posts before the customer touches it: the starting
+	 * color or number; '' for the fields that start empty.
+	 */
+	public function start(): string {
+		return match ( $this->type ) {
+			self::COLOR => $this->placeholder !== '' ? $this->placeholder : self::START,
+			self::RANGE => $this->placeholder !== '' ? $this->placeholder : self::number( $this->min ?? 0.0 ),
+			default     => '',
+		};
+	}
+
+	/** A number as a field posts it: no trailing zeros. */
+	public static function number( float $value ): string {
+		return rtrim( rtrim( sprintf( '%.6F', $value ), '0' ), '.' );
+	}
+
+	/** Minutes from midnight as H:i. */
+	public static function clock( float $minutes ): string {
+		return sprintf( '%02d:%02d', intdiv( (int) $minutes, 60 ), (int) $minutes % 60 );
+	}
+
+	/**
+	 * The earliest and latest dates a date or date and time field takes, Y-m-d in the site's
 	 * time zone; null for no limit.
 	 *
 	 * @return array{0:?string,1:?string}

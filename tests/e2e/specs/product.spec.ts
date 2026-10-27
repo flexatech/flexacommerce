@@ -63,6 +63,11 @@ test( 'option formula: the price follows what the customer types', async ( { pag
 	await expect( total ).toHaveText( 'Options: +' + money( 1500 ) );
 	await form.getByLabel( 'Lettering' ).fill( 'OPEN LATE' );
 	await expect( total ).toHaveText( 'Options: +' + money( 1900 ) );
+	const depth = form.locator( '.fxc-option__range' );
+	await expect( depth.locator( 'output' ) ).toHaveText( '2' );
+	await form.getByLabel( 'Frame depth (cm)' ).fill( '4' );
+	await expect( depth.locator( 'output' ) ).toHaveText( '4' );
+	await expect( total ).toHaveText( 'Options: +' + money( 1900 ) );
 	await expectAccessible( page, info, 'option formula' );
 
 	await form.getByRole( 'button', { name: 'Add to cart' } ).click();

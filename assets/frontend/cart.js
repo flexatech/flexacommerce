@@ -293,7 +293,7 @@ function measure( field, value ) {
 	if ( Array.isArray( value ) ) {
 		return value.length;
 	}
-	if ( field.type === 'number' ) {
+	if ( field.type === 'number' || field.type === 'range' ) {
 		return parseFloat( value ) || 0;
 	}
 	if ( field.type === 'text' || field.type === 'textarea' ) {
@@ -327,6 +327,12 @@ function readOptions( form, context ) {
 			input.disabled = ! visible || input.hasAttribute( 'data-out' );
 		}
 		const value = visible && field.type !== 'heading' ? optionValue( element, field.type ) : '';
+		if ( field.type === 'range' ) {
+			const output = element.querySelector( 'output' );
+			if ( output && value !== '' ) {
+				output.textContent = value;
+			}
+		}
 		if ( value.length === 0 ) {
 			continue;
 		}

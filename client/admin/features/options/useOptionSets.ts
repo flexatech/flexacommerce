@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/shared/lib/api";
 
-export type FieldType = "text" | "textarea" | "number" | "date" | "color" | "select" | "radio" | "checkboxes" | "swatch" | "button" | "heading";
+export type FieldType = "text" | "textarea" | "number" | "range" | "date" | "time" | "datetime" | "color" | "select" | "radio" | "checkboxes" | "swatch" | "button" | "heading";
 /** An amount in minor units, a percent of the unit price in hundredths, or a formula (ADR-039). */
 export type PriceMode = "none" | "fixed" | "percent" | "once" | "formula";
 export type SetScope = "all" | "products" | "categories";

@@ -197,6 +197,15 @@ Plugin::instance()->option_sets()->save(
 				'price_mode' => 'formula',
 				'formula'    => '{3} * 0.5',
 			],
+			// A free slider (ADR-044): its number shows beside it.
+			[
+				'id'          => 4,
+				'type'        => 'range',
+				'label'       => 'Frame depth (cm)',
+				'min'         => 1,
+				'max'         => 5,
+				'placeholder' => '2',
+			],
 		],
 	]
 );

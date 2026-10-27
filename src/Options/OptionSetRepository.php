@@ -35,6 +35,8 @@ final class OptionSetRepository {
 	public const TEXT_LENGTH = 200;
 	public const MAX_NUMBER  = 1000000000;
 	public const MAX_DAYS    = 3650;
+	public const DAY_MINUTES = 1440;
+	public const MAX_STEP    = 720;
 
 	/** @var list<OptionSet>|null */
 	private ?array $all = null;
@@ -314,7 +316,33 @@ final class OptionSetRepository {
 			}
 		}
 
-		if ( $type === OptionField::DATE ) {
+		if ( $type === OptionField::RANGE ) {
+			// A slider needs both ends; an empty one takes the usual 0 to 100 by 1.
+			$min  = self::number( $row['min'] ?? null, $index ) ?? 0.0;
+			$max  = self::number( $row['max'] ?? null, $index ) ?? 100.0;
+			$step = self::number( $row['step'] ?? null, $index ) ?? 1.0;
+			if ( $max <= $min ) {
+				throw new InvalidOptionSet( __( 'The largest number must be above the smallest.', 'flexacommerce' ), 'fields', $index );
+			}
+			if ( $step <= 0 ) {
+				throw new InvalidOptionSet( __( 'The step must be above 0.', 'flexacommerce' ), 'fields', $index );
+			}
+		}
+
+		if ( $type === OptionField::TIME ) {
+			$min  = self::minutes( $row['min'] ?? null, $index );
+			$max  = self::minutes( $row['max'] ?? null, $index );
+			$step = self::minutes( $row['step'] ?? null, $index );
+			if ( $min !== null && $max !== null && $max < $min ) {
+				throw new InvalidOptionSet( __( 'The latest time must not be before the earliest.', 'flexacommerce' ), 'fields', $index );
+			}
+			if ( $step !== null && ( $step < 1 || $step > self::MAX_STEP ) ) {
+				/* translators: %d: the longest step in minutes */
+				throw new InvalidOptionSet( sprintf( __( 'Set a step from 1 to %d minutes, or leave it empty.', 'flexacommerce' ), self::MAX_STEP ), 'fields', $index );
+			}
+		}
+
+		if ( $type === OptionField::DATE || $type === OptionField::DATETIME ) {
 			$min = self::days( $row['min'] ?? null, $index );
 			$max = self::days( $row['max'] ?? null, $index );
 			if ( $min !== null && $max !== null && $max < $min ) {
@@ -329,6 +357,16 @@ final class OptionSetRepository {
 			}
 			$placeholder = strtolower( $placeholder );
 		}
+		if ( $type === OptionField::TIME || $type === OptionField::DATETIME ) {
+			$placeholder = '';
+		}
+		if ( $type === OptionField::RANGE && $placeholder !== '' ) {
+			$start = (float) self::number( $placeholder, $index );
+			if ( $start < $min || $start > $max || ! self::on_step( $start, $min, $step ) ) {
+				throw new InvalidOptionSet( __( 'Start the slider at a number it can reach.', 'flexacommerce' ), 'fields', $index );
+			}
+			$placeholder = OptionField::number( $start );
+		}
 
 		[ $mode, $price, $formula ] = $typed
 			? self::price( $row, $index )
@@ -339,8 +377,8 @@ final class OptionSetRepository {
 			type: $type,
 			label: $label,
 			help: $help,
-			// A color input always posts a color, so it cannot be left empty.
-			required: ! $heading && $type !== OptionField::COLOR && filter_var( $row['required'] ?? false, FILTER_VALIDATE_BOOL ),
+			// A color input or a slider always posts a value, so it cannot be left empty.
+			required: ! $heading && $type !== OptionField::COLOR && $type !== OptionField::RANGE && filter_var( $row['required'] ?? false, FILTER_VALIDATE_BOOL ),
 			placeholder: $placeholder,
 			max_length: $max_length,
 			min: $min,
@@ -579,6 +617,37 @@ final class OptionSetRepository {
 			throw new InvalidOptionSet( sprintf( __( 'Enter a number of days from 0 to %d.', 'flexacommerce' ), self::MAX_DAYS ), 'fields', $index );
 		}
 		return (float) $days;
+	}
+
+	/**
+	 * Minutes from midnight, given as a count or as H:i.
+	 *
+	 * @throws InvalidOptionSet
+	 */
+	private static function minutes( mixed $value, int $index ): ?float {
+		if ( $value === null || $value === '' ) {
+			return null;
+		}
+		if ( is_string( $value ) && preg_match( '/^([01]\d|2[0-3]):([0-5]\d)$/', $value, $m ) === 1 ) {
+			return (float) ( (int) $m[1] * 60 + (int) $m[2] );
+		}
+		$minutes = filter_var( $value, FILTER_VALIDATE_INT );
+		if ( $minutes === false ) {
+			$minutes = is_float( $value ) && floor( $value ) === $value ? (int) $value : false;
+		}
+		if ( $minutes === false || $minutes < 0 || $minutes >= self::DAY_MINUTES ) {
+			throw new InvalidOptionSet( __( 'Enter a time as HH:MM.', 'flexacommerce' ), 'fields', $index );
+		}
+		return (float) $minutes;
+	}
+
+	/** Whether a number is a whole number of steps above the start. */
+	public static function on_step( float $number, ?float $from, ?float $step ): bool {
+		if ( $step === null ) {
+			return true;
+		}
+		$steps = ( $number - ( $from ?? 0.0 ) ) / $step;
+		return abs( $steps - round( $steps ) ) <= 1e-6;
 	}
 
 	/** @throws InvalidOptionSet */

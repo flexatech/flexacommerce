@@ -292,6 +292,7 @@ final class ProductOptions {
 				return (string) (int) $raw;
 
 			case OptionField::NUMBER:
+			case OptionField::RANGE:
 				$raw = trim( $raw );
 				if ( $raw === '' ) {
 					return '';
@@ -303,18 +304,44 @@ final class ProductOptions {
 				if ( ( $field->min !== null && $number < $field->min ) || ( $field->max !== null && $number > $field->max ) ) {
 					throw self::invalid( $field );
 				}
-				if ( $field->step !== null ) {
-					$steps = ( $number - ( $field->min ?? 0.0 ) ) / $field->step;
-					if ( abs( $steps - round( $steps ) ) > 1e-6 ) {
-						throw self::invalid( $field );
-					}
+				if ( ! OptionSetRepository::on_step( $number, $field->min, $field->step ) ) {
+					throw self::invalid( $field );
 				}
-				return rtrim( rtrim( sprintf( '%.6F', $number ), '0' ), '.' );
+				return OptionField::number( $number );
 
-			case OptionField::DATE:
+			case OptionField::TIME:
 				$raw = trim( $raw );
 				if ( $raw === '' ) {
 					return '';
+				}
+				// A browser may add seconds; the field keeps minutes.
+				if ( preg_match( '/^([01]\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?$/', $raw, $m ) !== 1 ) {
+					throw self::invalid( $field );
+				}
+				$minutes = (float) ( (int) $m[1] * 60 + (int) $m[2] );
+				if ( ( $field->min !== null && $minutes < $field->min ) || ( $field->max !== null && $minutes > $field->max ) || ! OptionSetRepository::on_step( $minutes, $field->min, $field->step ) ) {
+					throw new InvalidCartRequest(
+						/* translators: %s: the name of a product option */
+						sprintf( __( 'Pick a time for %s within the times offered.', 'flexacommerce' ), $field->label ),
+						'options',
+						'invalid_option'
+					);
+				}
+				return OptionField::clock( $minutes );
+
+			case OptionField::DATE:
+			case OptionField::DATETIME:
+				$raw = trim( $raw );
+				if ( $raw === '' ) {
+					return '';
+				}
+				$time = '';
+				if ( $field->type === OptionField::DATETIME ) {
+					// datetime-local posts Y-m-d\TH:i, with seconds in some browsers.
+					if ( preg_match( '/^(\d{4}-\d{2}-\d{2})[T ]([01]\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?$/', $raw, $m ) !== 1 ) {
+						throw self::invalid( $field );
+					}
+					[ $raw, $time ] = [ $m[1], 'T' . $m[2] . ':' . $m[3] ];
 				}
 				[ $year, $month, $day ] = array_map( 'intval', explode( '-', $raw ) + [ '', '', '' ] );
 				if ( preg_match( '/^\d{4}-\d{2}-\d{2}$/', $raw ) !== 1 || ! checkdate( $month, $day, $year ) ) {
@@ -329,7 +356,7 @@ final class ProductOptions {
 						'invalid_option'
 					);
 				}
-				return $raw;
+				return $raw . $time;
 
 			case OptionField::COLOR:
 				$raw = trim( $raw );

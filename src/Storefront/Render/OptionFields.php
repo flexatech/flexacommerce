@@ -107,7 +107,13 @@ final class OptionFields {
 	private static function defaults( OptionSet $set ): array {
 		$values = [];
 		foreach ( $set->fields as $field ) {
-			if ( ! $field->has_choices() || ! $field->visible( $values ) ) {
+			if ( ! $field->visible( $values ) ) {
+				continue;
+			}
+			if ( ! $field->has_choices() ) {
+				if ( $field->start() !== '' ) {
+					$values[ $field->id ] = $field->start();
+				}
 				continue;
 			}
 			$picked = [];
@@ -236,8 +242,36 @@ final class OptionFields {
 				$earliest !== null ? ' min="' . esc_attr( $earliest ) . '"' : '',
 				$latest !== null ? ' max="' . esc_attr( $latest ) . '"' : ''
 			);
+		} elseif ( $field->type === OptionField::DATETIME ) {
+			[ $earliest, $latest ] = $field->date_range();
+			$control               = sprintf(
+				'<input type="datetime-local" %1$s%2$s%3$s>',
+				$common . $filled,
+				$earliest !== null ? ' min="' . esc_attr( $earliest ) . 'T00:00"' : '',
+				$latest !== null ? ' max="' . esc_attr( $latest ) . 'T23:59"' : ''
+			);
+		} elseif ( $field->type === OptionField::TIME ) {
+			$control = sprintf(
+				'<input type="time" %1$s%2$s%3$s%4$s>',
+				$common . $filled,
+				$field->min !== null ? ' min="' . esc_attr( OptionField::clock( $field->min ) ) . '"' : '',
+				$field->max !== null ? ' max="' . esc_attr( OptionField::clock( $field->max ) ) . '"' : '',
+				$field->step !== null ? ' step="' . esc_attr( (string) ( (int) $field->step * 60 ) ) . '"' : ''
+			);
+		} elseif ( $field->type === OptionField::RANGE ) {
+			// The output shows the number as the slider moves (cart.js); with no JS it shows the start.
+			$start   = $text !== '' ? $text : $field->start();
+			$control = sprintf(
+				'<span class="fxc-option__range"><input type="range" %1$s value="%2$s" min="%3$s" max="%4$s" step="%5$s"><output for="%6$s">%2$s</output></span>',
+				$common,
+				esc_attr( $start ),
+				esc_attr( self::number( $field->min ?? 0.0 ) ),
+				esc_attr( self::number( $field->max ?? 100.0 ) ),
+				esc_attr( self::number( $field->step ?? 1.0 ) ),
+				esc_attr( $id )
+			);
 		} elseif ( $field->type === OptionField::COLOR ) {
-			$control = sprintf( '<input type="color" %1$s value="%2$s">', $common, esc_attr( $text !== '' ? $text : ( $field->placeholder !== '' ? $field->placeholder : OptionField::START ) ) );
+			$control = sprintf( '<input type="color" %1$s value="%2$s">', $common, esc_attr( $text !== '' ? $text : $field->start() ) );
 		} elseif ( $field->type === OptionField::NUMBER ) {
 			$control = sprintf(
 				'<input type="number" %1$s%2$s%3$s step="%4$s"%5$s inputmode="decimal">',
@@ -278,6 +312,6 @@ final class OptionFields {
 	}
 
 	private static function number( float $value ): string {
-		return rtrim( rtrim( sprintf( '%.6F', $value ), '0' ), '.' );
+		return OptionField::number( $value );
 	}
 }

@@ -651,3 +651,20 @@ Status of every ADR: **Accepted** (plan approved 2026-10-24) unless it says othe
 **Consequences.** No `DB_VERSION` and still 61 settings. The cart response gains `fees` and `totals.fees`; the checkout quote gains `fees` and a `fees` total before `tax`. Gateways that decide availability from the total see the total with fees.
 
 **Revisit when.** Merchants ask for taxable fees, a fee per item or per unit, a negative fee (a surcharge discount), or a fee on shipping.
+
+## ADR-044: Slider, time and date and time option fields
+
+**Context.** flexa-extra's option fields include a range slider, a time picker and a date and time picker. ADR-028 brought the date and color fields; shops that take bookings or pickups, or sell by length with a slider, still had to use a number or a text field.
+
+**Decision.**
+1. **Three typed field types.** `range`, `time` and `datetime` join `OptionField::TYPES` after `number` and `date`. They price like the other typed fields (fixed, percent, once or formula) and can show or hide on the fields above.
+2. **Slider.** `min`, `max` and `step` are always stored; an empty one becomes 0, 100 and 1, `max` must be above `min` and `step` above 0. `placeholder` is the number it starts at (empty: `min`), and must be one the slider can reach. A slider always posts a number, so it cannot be required and its charge always applies, like a color. The server checks the bounds and the step, and a formula reads its number. The form shows the number in an `<output>` next to it, which `cart.js` updates as it moves.
+3. **Time.** Posts H:i (seconds dropped). `min`, `max` and `step` are minutes from midnight; the editor shows time inputs and the API also takes H:i. `step` is 1 to 720 minutes, counted from `min`, so 9:00 to 17:00 by 30 offers the half hours. The cart and the order show the site's time format.
+4. **Date and time.** Posts Y-m-d\TH:i. `min` and `max` are days from today, like a date field; the time of day is free. The cart and the order show the site's date and time formats. A field that needs opening hours pairs a date field with a time field (the "Pickup slot" preset).
+5. **Starting values count.** `OptionField::start()` gives the value a color or slider posts before the shopper touches it, and the form uses it to decide which fields show at first, so a field that shows once a slider is set is not hidden until the script runs.
+
+**Alternatives.** Absolute bounds for the date and time field, as flexa-extra kept them: a product sold all year would need its dates edited. A time window on the date and time field: the browser's `datetime-local` cannot limit the hours of each day, so the shopper would learn the rule only from an error.
+
+**Consequences.** No `DB_VERSION` and still 61 settings. A WooCommerce Product Add-ons import is unchanged, since that plugin has none of these types. Logic rules on these fields use `empty` and `not_empty`.
+
+**Revisit when.** Merchants ask for opening hours per weekday, blocked dates, a time zone per product, or a slider that shows a unit or a price next to its number.
