@@ -116,17 +116,25 @@ final class ProductOptions {
 	/**
 	 * What the values add to one unit priced `$base`, with the fields as
 	 * they are now. A field deleted since the item was added adds nothing.
+	 * A formula price (ADR-039) reads the fields of its own set, the line
+	 * quantity and the unit price in the main unit (`$exponent` digits).
 	 *
 	 * @param Values $values
 	 */
-	public function extra( array $values, int $base ): int {
-		$extra = 0;
+	public function extra( array $values, int $base, int $qty = 1, int $exponent = 2 ): int {
+		$found    = [];
+		$measures = [];
 		foreach ( $values as $key => $value ) {
 			[ $set_id, $field_id ] = array_map( 'intval', array_pad( explode( '-', (string) $key, 2 ), 2, '0' ) );
 			$field                 = $this->sets->find( $set_id )?->field( $field_id );
 			if ( $field !== null ) {
-				$extra += $field->charge( $value, $base );
+				$found[]                           = [ $set_id, $field, $value ];
+				$measures[ $set_id ][ $field->id ] = $field->measure( $value );
 			}
+		}
+		$extra = 0;
+		foreach ( $found as [ $set_id, $field, $value ] ) {
+			$extra += $field->charge( $value, $base, OptionField::inputs( $base, $qty, $exponent, $measures[ $set_id ] ), $exponent );
 		}
 		return $extra;
 	}

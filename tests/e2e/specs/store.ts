@@ -14,6 +14,7 @@ type Store = {
 	simple: { id: number; name: string; url: string; sku: string; price: number };
 	variable: { id: number; name: string; url: string; choices: Record< string, string >; price: number };
 	swatches: { name: string; url: string; category: string; price: number };
+	formula: { name: string; url: string; price: number };
 	category: { slug: string; url: string };
 };
 

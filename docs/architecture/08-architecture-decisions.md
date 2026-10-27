@@ -563,3 +563,20 @@ Status of every ADR: **Accepted** (plan approved 2026-10-24) unless it says othe
 **Consequences.** One setting (61 keys). A list with variable products builds `PurchaseOptions` for each of them; the term meta it uses is already primed (ADR-022), and `swatch_list = 0` skips the work. `storefront.css` grows by six rules.
 
 **Revisit when.** Merchants ask to pick the attribute shown per product, to swap the card image, or to add a variation to the cart straight from the list.
+
+## ADR-039: Formula prices for options
+
+**Context.** A fixed amount or a percent cannot price a sign by its area, an engraving by its letters, or a setup fee shared by the line. flexa-extra let a field carry a formula over the other fields of its set; merchants selling made-to-measure goods rely on it.
+
+**Decision.**
+1. **A fourth price mode.** A field or a choice can use `formula` and keep a `formula` string (price 0). The result is the extra charge per item in the currency's main unit (dollars, not cents), rounded to minor units. A result at or below 0, or one that cannot be worked out, charges nothing.
+2. **A small grammar, read by a parser of our own.** Numbers, `+ - * /`, brackets, `base` (unit price after pricing rules), `qty` (line quantity), `{n}` (field n of the same set) and round(x, digits), ceil, floor, min and max. No `eval()`, no other names. Division by zero gives 0. At most 300 characters. `Options\Formula` reads it on the server; `cart.js` has the same parser for the price shown while the shopper types, and the two are kept in step by the same test cases.
+3. **Every field reads as a number.** A number field gives its value; text gives its characters without spaces; a picked choice gives 1; checkboxes give how many are ticked; a date, a colour, an empty or a hidden field gives 0. A formula field the shopper left empty is not charged.
+4. **Checked on save.** A formula that cannot be read, or that names a field the set does not have (or a heading), is refused with the formula in the message. The editor offers buttons that insert each field, `base` and `qty` at the cursor, and a "Price by area" preset.
+5. **The server decides.** The cart works the formula out again each time it is priced, from the stored values; the price in the form is a preview.
+
+**Alternatives.** A general expression library: far more than four operators need, and a larger surface to keep safe. Per-unit fields ("price per cm") instead of formulas: covers area only in two steps and not letters or shared fees.
+
+**Consequences.** No new setting (61 keys). `cart.js` grows by the parser. A formula that reads `base` makes the form carry the unit price, as a percent does.
+
+**Revisit when.** Merchants ask for conditions inside a formula (if/else), for formulas over fields of another set, or for a formula on the whole line instead of each item.

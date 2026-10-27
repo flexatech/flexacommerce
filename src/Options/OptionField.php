@@ -20,7 +20,11 @@ defined( 'ABSPATH' ) || exit;
  * is the color picked at the start. Swatches and buttons pick one choice
  * like radio buttons; a swatch choice has a `color`.
  *
- * @phpstan-type Choice array{id:int,label:string,price_mode:string,price:int,default:bool,color:string}
+ * A formula price (ADR-039) keeps its `formula`, in the currency's main
+ * unit per item; see Formula and inputs().
+ *
+ * @phpstan-type Choice array{id:int,label:string,price_mode:string,price:int,default:bool,color:string,formula:string}
+ * @phpstan-import-type Inputs from Formula
  * @phpstan-type Rule array{field:int,op:string,value:string}
  * @phpstan-type Logic array{action:string,match:string,rules:list<Rule>}
  */
@@ -44,7 +48,8 @@ final class OptionField {
 	public const FIXED        = 'fixed';
 	public const PERCENT      = 'percent';
 	public const ONCE         = 'once';
-	public const PRICE_MODES  = [ self::NONE, self::FIXED, self::PERCENT, self::ONCE ];
+	public const FORMULA      = 'formula';
+	public const PRICE_MODES  = [ self::NONE, self::FIXED, self::PERCENT, self::ONCE, self::FORMULA ];
 	public const FULL_PERCENT = 10000;
 
 	public const SHOW    = 'show';
@@ -79,6 +84,7 @@ final class OptionField {
 		public readonly int $price = 0,
 		public readonly array $choices = [],
 		public readonly ?array $logic = null,
+		public readonly string $formula = '',
 	) {}
 
 	/** @param array<string,mixed> $row a stored row, already checked */
@@ -95,6 +101,7 @@ final class OptionField {
 					'price'      => max( 0, (int) ( $choice['price'] ?? 0 ) ),
 					'default'    => (bool) ( $choice['default'] ?? false ),
 					'color'      => (string) ( $choice['color'] ?? '' ),
+					'formula'    => (string) ( $choice['formula'] ?? '' ),
 				];
 			}
 		}
@@ -131,6 +138,7 @@ final class OptionField {
 			price: max( 0, (int) ( $row['price'] ?? 0 ) ),
 			choices: $choices,
 			logic: $logic,
+			formula: (string) ( $row['formula'] ?? '' ),
 		);
 	}
 
@@ -151,6 +159,7 @@ final class OptionField {
 			'price'       => $this->price,
 			'choices'     => $this->choices,
 			'logic'       => $this->logic,
+			'formula'     => $this->formula,
 		];
 	}
 
@@ -169,13 +178,85 @@ final class OptionField {
 	}
 
 	/**
-	 * What a value adds to one unit, given the unit price `$base`. A price
-	 * charged once per line adds nothing here; see fee().
+	 * What a value adds to one unit, given the unit price `$base` in minor
+	 * units. A price charged once per line adds nothing here; see fee().
+	 * A formula reads `$inputs`, whose base is in the main unit, and its
+	 * result turns into minor units by `$exponent`.
+	 *
+	 * @param string|list<string> $value
+	 * @param Inputs|null         $inputs
+	 */
+	public function charge( string|array $value, int $base, ?array $inputs = null, int $exponent = 2 ): int {
+		return $this->priced(
+			$value,
+			fn ( string $mode, int $price, string $formula ): int => $mode === self::FORMULA
+				? self::formula_price( $formula, $inputs ?? self::inputs( $base, 1, $exponent, [] ), $exponent )
+				: self::price_of( $mode, $price, $base )
+		);
+	}
+
+	/**
+	 * What a formula sees: the unit price in the main unit, the quantity, and
+	 * each field of the set as a number (see measure()).
+	 *
+	 * @param array<int,float> $fields
+	 * @return Inputs
+	 */
+	public static function inputs( int $base, int $qty, int $exponent, array $fields ): array {
+		return [
+			'base'   => max( 0, $base ) / 10 ** $exponent,
+			'qty'    => (float) max( 1, $qty ),
+			'fields' => $fields,
+		];
+	}
+
+	/**
+	 * A value as a formula reads it: a number field its number, a text field
+	 * its characters without spaces, a choice field how many are picked.
+	 * Dates and colors read 0.
 	 *
 	 * @param string|list<string> $value
 	 */
-	public function charge( string|array $value, int $base ): int {
-		return $this->priced( $value, static fn ( string $mode, int $price ): int => self::price_of( $mode, $price, $base ) );
+	public function measure( string|array $value ): float {
+		if ( is_array( $value ) ) {
+			return (float) count( $value );
+		}
+		if ( $value === '' ) {
+			return 0.0;
+		}
+		return match ( true ) {
+			$this->type === self::NUMBER                                  => is_numeric( $value ) ? (float) $value : 0.0,
+			$this->type === self::TEXT || $this->type === self::TEXTAREA => (float) mb_strlen( (string) preg_replace( '/\s+/u', '', $value ) ),
+			$this->has_choices()                                         => 1.0,
+			default                                                      => 0.0,
+		};
+	}
+
+	/** Whether a formula price of the field reads the unit price. */
+	public function formula_uses_base(): bool {
+		if ( $this->price_mode === self::FORMULA && Formula::uses_base( $this->formula ) ) {
+			return true;
+		}
+		foreach ( $this->choices as $choice ) {
+			if ( $choice['price_mode'] === self::FORMULA && Formula::uses_base( $choice['formula'] ) ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * A formula's result per unit in minor units, 0 for a formula that
+	 * cannot be read or comes out below 0.
+	 *
+	 * @param Inputs $inputs
+	 */
+	public static function formula_price( string $formula, array $inputs, int $exponent ): int {
+		$result = Formula::evaluate( $formula, $inputs );
+		if ( $result === null || $result <= 0 ) {
+			return 0;
+		}
+		return (int) min( OptionSetRepository::MAX_NUMBER, round( $result * 10 ** $exponent ) );
 	}
 
 	/**
@@ -189,17 +270,17 @@ final class OptionField {
 
 	/**
 	 * @param string|list<string>          $value
-	 * @param callable(string,int):int $price_of
+	 * @param callable(string,int,string):int $price_of
 	 */
 	private function priced( string|array $value, callable $price_of ): int {
 		if ( ! $this->has_choices() ) {
-			return $value === '' || $value === [] ? 0 : $price_of( $this->price_mode, $this->price );
+			return $value === '' || $value === [] ? 0 : $price_of( $this->price_mode, $this->price, $this->formula );
 		}
 		$total = 0;
 		foreach ( (array) $value as $id ) {
 			$choice = $this->choice( (int) $id );
 			if ( $choice !== null ) {
-				$total += $price_of( $choice['price_mode'], $choice['price'] );
+				$total += $price_of( $choice['price_mode'], $choice['price'], $choice['formula'] );
 			}
 		}
 		return $total;

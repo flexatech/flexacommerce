@@ -88,7 +88,7 @@ final class AddToCartForm {
 		$inline   = count( $options['variants'] ) <= PurchaseOptions::INLINE_LIMIT;
 		$variable = $product->is_variable();
 		$simple   = $variable ? null : $options['variants'][0];
-		$percent  = $sets !== [] && $this->pricing !== null && OptionFields::has_percent( $sets );
+		$percent  = $sets !== [] && $this->pricing !== null && OptionFields::uses_base( $sets );
 		if ( $variable && $inline ) {
 			$variants = $options['variants'];
 			if ( $percent ) {

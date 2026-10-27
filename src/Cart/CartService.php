@@ -26,6 +26,7 @@ use Flexa\Commerce\Inventory\StockService;
 use Flexa\Commerce\Options\ProductOptions;
 use Flexa\Commerce\Pricing\PricingService;
 use Flexa\Commerce\Support\Clock;
+use Flexa\Commerce\Support\Currency;
 use Flexa\Commerce\Support\Settings;
 
 defined( 'ABSPATH' ) || exit;
@@ -462,7 +463,7 @@ final class CartService {
 			if ( $unit !== null && $line->options !== [] && $this->options !== null ) {
 				$options = ( $this->options )();
 				$fee     = $options->fee( $line->options );
-				$unit    = self::with_extra( $unit, $options->extra( $line->options, $unit->active->amount ) );
+				$unit    = self::with_extra( $unit, $options->extra( $line->options, $unit->active->amount, $line->quantity, Currency::exponent( $unit->active->currency ) ) );
 			}
 			$total = $unit !== null ? $this->pricing->line_total( $unit, $line->quantity ) : null;
 			if ( $total !== null && $fee > 0 ) {

@@ -184,12 +184,122 @@ function optionVisible( logic, seen ) {
 	return logic.action === 'show' ? met : ! met;
 }
 
-/** What a price adds to one unit (a once-per-line price as is); NaN for a percent before the unit price is known. */
-function charge( [ mode, amount ], base ) {
+/**
+ * A formula price (ADR-039), as Options\Formula reads it: the result, or
+ * null when the formula cannot be read. `inputs` has base, qty and fields.
+ */
+function evaluate( formula, inputs ) {
+	const tokens = [];
+	const pattern = /\s*(?:(\d+(?:\.\d+)?|\.\d+)|\{\s*(\d{1,5})\s*\}|([a-z_]\w*)|([-+*/(),]))/iy;
+	let found;
+	let end = 0;
+	while ( ( found = pattern.exec( formula ) ) ) {
+		end = pattern.lastIndex;
+		tokens.push( found[ 4 ] ? [ 'op', found[ 4 ] ] : found[ 1 ] ? [ 'number', found[ 1 ] ] : found[ 2 ] ? [ 'ref', found[ 2 ] ] : [ 'name', found[ 3 ].toLowerCase() ] );
+	}
+	if ( ! formula.trim() || formula.length > 300 || formula.slice( end ).trim() ) {
+		return null;
+	}
+	let at = 0;
+	const fail = () => {
+		throw new Error();
+	};
+	const is = ( op ) => tokens[ at ]?.[ 0 ] === 'op' && tokens[ at ][ 1 ] === op;
+	const next = () => tokens[ at++ ] ?? fail();
+	const expect = ( op ) => ( is( op ) ? at++ : fail() );
+	const sum = () => {
+		let value = product();
+		while ( is( '+' ) || is( '-' ) ) {
+			value = next()[ 1 ] === '+' ? value + product() : value - product();
+		}
+		return value;
+	};
+	const product = () => {
+		let value = unary();
+		while ( is( '*' ) || is( '/' ) ) {
+			const times = next()[ 1 ] === '*';
+			const right = unary();
+			value = times ? value * right : right === 0 ? 0 : value / right;
+		}
+		return value;
+	};
+	const unary = () => {
+		if ( is( '-' ) || is( '+' ) ) {
+			return next()[ 1 ] === '-' ? -unary() : unary();
+		}
+		const [ kind, text ] = next();
+		if ( kind === 'number' ) {
+			return parseFloat( text );
+		}
+		if ( kind === 'ref' ) {
+			return inputs.fields[ parseInt( text, 10 ) ] ?? 0;
+		}
+		if ( kind === 'op' && text === '(' ) {
+			const value = sum();
+			expect( ')' );
+			return value;
+		}
+		if ( kind === 'name' && ( text === 'base' || text === 'qty' ) ) {
+			return inputs[ text ];
+		}
+		if ( kind !== 'name' || ! is( '(' ) || ! [ 'round', 'ceil', 'floor', 'min', 'max' ].includes( text ) ) {
+			fail();
+		}
+		expect( '(' );
+		const args = [ sum() ];
+		while ( is( ',' ) ) {
+			at++;
+			args.push( sum() );
+		}
+		expect( ')' );
+		if ( ( text === 'round' && args.length > 2 ) || ( ( text === 'ceil' || text === 'floor' ) && args.length > 1 ) ) {
+			fail();
+		}
+		if ( text === 'round' ) {
+			// Half away from zero, as PHP rounds.
+			const digits = Math.max( -6, Math.min( 6, Math.trunc( args[ 1 ] ?? 0 ) ) );
+			// Shifting by text keeps 1.005 from rounding down.
+			const shifted = Number( Math.abs( args[ 0 ] ) + 'e' + digits );
+			const whole = Math.round( Number.isFinite( shifted ) ? shifted : Math.abs( args[ 0 ] ) * 10 ** digits );
+			return Math.sign( args[ 0 ] ) * Number( whole + 'e' + -digits );
+		}
+		return Math[ text ]( ...args );
+	};
+	try {
+		const value = sum();
+		return at === tokens.length && Number.isFinite( value ) ? value : null;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * What a price adds to one unit (a once-per-line price as is); NaN for a
+ * percent before the unit price is known. A formula reads `inputs`.
+ */
+function charge( [ mode, amount, formula ], base, inputs ) {
 	if ( mode === 'fixed' || mode === 'once' ) {
 		return amount;
 	}
+	if ( mode === 'formula' ) {
+		const result = evaluate( formula, inputs );
+		return result === null || result <= 0 ? 0 : Math.round( result * 10 ** ( config.money?.decimals ?? 2 ) );
+	}
 	return base === null || base === undefined ? NaN : Math.round( ( base * Math.min( amount, 10000 ) ) / 10000 );
+}
+
+/** A value as a formula reads it (OptionField::measure()). */
+function measure( field, value ) {
+	if ( Array.isArray( value ) ) {
+		return value.length;
+	}
+	if ( field.type === 'number' ) {
+		return parseFloat( value ) || 0;
+	}
+	if ( field.type === 'text' || field.type === 'textarea' ) {
+		return [ ...value.replace( /\s+/g, '' ) ].length;
+	}
+	return Number( [ 'select', 'radio', 'swatch', 'button' ].includes( field.type ) );
 }
 
 /**
@@ -201,6 +311,8 @@ function readOptions( form, context ) {
 	const values = {};
 	const seen = {};
 	const base = context.base ?? state.chosen[ context.productId ]?.amount;
+	const measures = {};
+	const priced = [];
 	let extra = 0;
 	for ( const field of context.fields ) {
 		const element = form.querySelector( `[data-option="${ field.key }"]` );
@@ -219,12 +331,22 @@ function readOptions( form, context ) {
 		}
 		seen[ field.set ][ field.id ] = value;
 		values[ field.key ] = value;
+		( measures[ field.set ] ??= {} )[ field.id ] = measure( field, value );
+		priced.push( [ field, value ] );
+	}
+	// After the loop: a formula may read a field below it.
+	for ( const [ field, value ] of priced ) {
+		const inputs = {
+			base: ( base ?? 0 ) / 10 ** ( config.money?.decimals ?? 2 ),
+			qty: Math.max( 1, context.quantity || 1 ),
+			fields: measures[ field.set ],
+		};
 		if ( field.prices ) {
 			for ( const id of [].concat( value ) ) {
-				extra += field.prices[ id ] ? charge( field.prices[ id ], base ) : 0;
+				extra += field.prices[ id ] ? charge( field.prices[ id ], base, inputs ) : 0;
 			}
 		} else if ( field.price ) {
-			extra += charge( field.price, base );
+			extra += charge( field.price, base, inputs );
 		}
 	}
 	return { values, extra };
@@ -546,6 +668,10 @@ const { state, actions } = store( 'flexacommerce/cart', {
 			const value = parseInt( event.target.value, 10 );
 			context.quantity = Number.isFinite( value ) && value > 0 ? value : 1;
 			markTier( event.target.form, context.quantity );
+			if ( context.fields ) {
+				// A formula price may read the quantity.
+				actions.options();
+			}
 		},
 		*setLineQuantity( event ) {
 			const { key } = getContext();

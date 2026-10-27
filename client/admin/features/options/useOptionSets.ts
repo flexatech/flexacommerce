@@ -3,8 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/shared/lib/api";
 
 export type FieldType = "text" | "textarea" | "number" | "date" | "color" | "select" | "radio" | "checkboxes" | "swatch" | "button" | "heading";
-/** An amount in minor units, or a percent of the unit price in hundredths. */
-export type PriceMode = "none" | "fixed" | "percent" | "once";
+/** An amount in minor units, a percent of the unit price in hundredths, or a formula (ADR-039). */
+export type PriceMode = "none" | "fixed" | "percent" | "once" | "formula";
 export type SetScope = "all" | "products" | "categories";
 export type LogicOp = "is" | "is_not" | "empty" | "not_empty";
 
@@ -16,6 +16,8 @@ export interface Choice {
     default: boolean;
     /** `#rrggbb` for a swatch, empty for the other types. */
     color: string;
+    /** With the formula price mode, in the main currency unit per item. */
+    formula: string;
 }
 
 export interface LogicRule {
@@ -47,6 +49,8 @@ export interface OptionField {
     price: number;
     choices: Choice[];
     logic: Logic | null;
+    /** With the formula price mode, in the main currency unit per item. */
+    formula: string;
 }
 
 export interface OptionSet {

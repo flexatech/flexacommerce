@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { AlignLeft, ArrowDown, ArrowUp, Calendar, ChevronsUpDown, CircleDot, Hash, Heading, Palette, Plus, RectangleHorizontal, SquareCheck, SwatchBook, Trash2, Type, X } from "lucide-react";
 
 import { showToast } from "@/shared/components/showToast";
@@ -61,6 +61,7 @@ function blankField(id: number, type: FieldType): OptionField {
         price: 0,
         choices: isChoice(type) ? [blankChoice(1, type), blankChoice(2, type)] : [],
         logic: null,
+        formula: "",
     };
 }
 
@@ -68,7 +69,7 @@ function blankField(id: number, type: FieldType): OptionField {
 const START = "#000000";
 
 function blankChoice(id: number, type: FieldType): Choice {
-    return { id, label: "", price_mode: "none", price: 0, default: false, color: type === "swatch" ? START : "" };
+    return { id, label: "", price_mode: "none", price: 0, default: false, color: type === "swatch" ? START : "", formula: "" };
 }
 
 const nextId = (list: { id: number }[]) => list.reduce((max, item) => Math.max(max, item.id), 0) + 1;
@@ -114,6 +115,24 @@ export const SET_PRESETS: SetPreset[] = [
         fields: () => [
             { ...blankField(1, "number"), label: __("Width (cm)"), required: true, min: 10, max: 300, step: 1 },
             { ...blankField(2, "number"), label: __("Height (cm)"), required: true, min: 10, max: 300, step: 1 },
+        ],
+    },
+    {
+        key: "area",
+        name: __("Price by area"),
+        description: __("Width and height in cm, charged per square metre with a formula."),
+        fields: () => [
+            { ...blankField(1, "number"), label: __("Width (cm)"), required: true, min: 10, max: 300, step: 1 },
+            {
+                ...blankField(2, "number"),
+                label: __("Height (cm)"),
+                required: true,
+                min: 10,
+                max: 300,
+                step: 1,
+                price_mode: "formula",
+                formula: "round({1} * {2} / 10000 * 25, 2)",
+            },
         ],
     },
     {
@@ -237,7 +256,7 @@ function PercentInput({ value, onChange, label }: { value: number; onChange: (v:
     );
 }
 
-/** No charge, a fixed amount per item or once per cart line, or a percent of the unit price. */
+/** No charge, a fixed amount per item or once per cart line, a percent of the unit price, or a formula (see FormulaInput). */
 function PriceInputs({ mode, price, onChange, label }: { mode: PriceMode; price: number; onChange: (mode: PriceMode, price: number) => void; label: string }) {
     const { currency } = getPluginGlobal();
     return (
@@ -252,6 +271,7 @@ function PriceInputs({ mode, price, onChange, label }: { mode: PriceMode; price:
                     { value: "fixed", label: __("Fixed amount") },
                     { value: "once", label: __("Once per order line") },
                     { value: "percent", label: __("Percent of price") },
+                    { value: "formula", label: __("Formula") },
                 ]}
             />
             {(mode === "fixed" || mode === "once") && (
@@ -272,7 +292,64 @@ function PriceInputs({ mode, price, onChange, label }: { mode: PriceMode; price:
     );
 }
 
-function ChoicesEditor({ field, onChange }: { field: OptionField; onChange: (choices: Choice[]) => void }) {
+/**
+ * A formula price (ADR-039): what one item costs extra, worked out from the
+ * fields of the set. The buttons put a field, base or qty at the cursor.
+ */
+function FormulaInput({ value, fields, label, onChange }: { value: string; fields: OptionField[]; label: string; onChange: (formula: string) => void }) {
+    const { currency } = getPluginGlobal();
+    const input = useRef<HTMLInputElement>(null);
+    const hintId = useId();
+    const insert = (text: string) => {
+        const el = input.current;
+        const start = el?.selectionStart ?? value.length;
+        const end = el?.selectionEnd ?? value.length;
+        onChange(value.slice(0, start) + text + value.slice(end));
+        requestAnimationFrame(() => {
+            el?.focus();
+            el?.setSelectionRange(start + text.length, start + text.length);
+        });
+    };
+    const refs = fields.filter((f) => f.type !== "heading");
+    return (
+        <div className="fxc:space-y-2">
+            <div className="fxc:flex fxc:items-center fxc:gap-2">
+                <span className="fxc:text-muted-foreground fxc:text-sm">{currency.symbol}</span>
+                <Input
+                    ref={input}
+                    aria-label={sprintf(__("%s: formula"), label)}
+                    aria-describedby={hintId}
+                    className="fxc:font-mono"
+                    maxLength={300}
+                    placeholder="{1} * {2} * 0.05"
+                    spellCheck={false}
+                    value={value}
+                    onChange={(e) => onChange(e.target.value)}
+                />
+            </div>
+            <div className="fxc:flex fxc:flex-wrap fxc:items-center fxc:gap-1" role="group" aria-label={__("Insert into the formula")}>
+                {refs.map((f) => (
+                    <Button key={f.id} variant="outline" size="sm" className="fxc:h-7 fxc:px-2 fxc:text-xs" onClick={() => insert(`{${f.id}}`)}>
+                        {f.label.trim() || __("Untitled field")} <code className="fxc:text-muted-foreground fxc:font-mono">{`{${f.id}}`}</code>
+                    </Button>
+                ))}
+                <Button variant="outline" size="sm" className="fxc:h-7 fxc:px-2 fxc:text-xs" onClick={() => insert("base")}>
+                    {__("Unit price")} <code className="fxc:text-muted-foreground fxc:font-mono">base</code>
+                </Button>
+                <Button variant="outline" size="sm" className="fxc:h-7 fxc:px-2 fxc:text-xs" onClick={() => insert("qty")}>
+                    {__("Quantity")} <code className="fxc:text-muted-foreground fxc:font-mono">qty</code>
+                </Button>
+            </div>
+            <p id={hintId} className="fxc:text-muted-foreground fxc:text-xs">
+                {__(
+                    "The extra charge for one item, in the store currency. A number field gives its number, a text field its characters without spaces, a choice field how many choices are picked; an empty or hidden field gives 0. Use + - * / and brackets, and round(x, 2), ceil(x), floor(x), min(a, b) or max(a, b). A result below 0 charges nothing.",
+                )}
+            </p>
+        </div>
+    );
+}
+
+function ChoicesEditor({ field, fields, onChange }: { field: OptionField; fields: OptionField[]; onChange: (choices: Choice[]) => void }) {
     const many = field.type === "checkboxes";
     const swatch = field.type === "swatch";
     const grid = swatch ? "fxc:grid-cols-[2.5rem_minmax(0,1fr)_auto_4.5rem_2.25rem]" : "fxc:grid-cols-[minmax(0,1fr)_auto_4.5rem_2.25rem]";
@@ -328,6 +405,16 @@ function ChoicesEditor({ field, onChange }: { field: OptionField; onChange: (cho
                     >
                         <X aria-hidden className="fxc:size-4" />
                     </Button>
+                    {choice.price_mode === "formula" && (
+                        <div className="fxc:col-span-full fxc:mb-2">
+                            <FormulaInput
+                                label={sprintf(__("Choice %d"), index + 1)}
+                                value={choice.formula}
+                                fields={fields}
+                                onChange={(formula) => set(choice.id, { formula })}
+                            />
+                        </div>
+                    )}
                 </div>
             ))}
             <Button variant="outline" size="sm" disabled={field.choices.length >= 30} onClick={() => onChange([...field.choices, blankChoice(nextId(field.choices), field.type)])}>
@@ -469,6 +556,8 @@ interface FieldCardProps {
     index: number;
     count: number;
     above: OptionField[];
+    /** Every field of the set, for formula prices. */
+    fields: OptionField[];
     open: boolean;
     error?: string;
     onToggle: () => void;
@@ -477,7 +566,7 @@ interface FieldCardProps {
     onRemove: () => void;
 }
 
-function FieldCard({ field, index, count, above, open, error, onToggle, onChange, onMove, onRemove }: FieldCardProps) {
+function FieldCard({ field, index, count, above, fields, open, error, onToggle, onChange, onMove, onRemove }: FieldCardProps) {
     const { icon: Icon, label: typeLabel } = typeOf(field.type);
     const heading = field.type === "heading";
     const typed = ["text", "textarea", "number", "date", "color"].includes(field.type);
@@ -620,10 +709,15 @@ function FieldCard({ field, index, count, above, open, error, onToggle, onChange
                         <div>
                             <p className="fxc:mb-2 fxc:text-sm fxc:font-medium">{color ? __("Extra charge") : __("Extra charge when filled in")}</p>
                             <PriceInputs label={title} mode={field.price_mode} price={field.price} onChange={(price_mode, price) => onChange({ price_mode, price })} />
+                            {field.price_mode === "formula" && (
+                                <div className="fxc:mt-3">
+                                    <FormulaInput label={title} value={field.formula} fields={fields} onChange={(formula) => onChange({ formula })} />
+                                </div>
+                            )}
                         </div>
                     )}
 
-                    {isChoice(field.type) && <ChoicesEditor field={field} onChange={(choices) => onChange({ choices })} />}
+                    {isChoice(field.type) && <ChoicesEditor field={field} fields={fields} onChange={(choices) => onChange({ choices })} />}
 
                     <div className="fxc:border-t fxc:pt-4">
                         <p className="fxc:mb-2 fxc:text-sm fxc:font-medium">{__("Conditions")}</p>
@@ -795,6 +889,7 @@ export function OptionSetDialog({ open, set: stored, preset, onOpenChange }: Pro
                                     index={index}
                                     count={draft.fields.length}
                                     above={draft.fields.slice(0, index)}
+                                    fields={draft.fields}
                                     open={expanded === field.id}
                                     error={fieldError?.index === index ? fieldError.message : undefined}
                                     onToggle={() => setExpanded(expanded === field.id ? null : field.id)}

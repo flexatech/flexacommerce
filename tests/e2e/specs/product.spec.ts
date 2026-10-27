@@ -50,3 +50,23 @@ test( 'variable product: adding without a choice asks for the option', async ( {
 	await expect( page.locator( '.fxc-mini-cart__count' ).first() ).not.toHaveText( /[1-9]/ );
 	expect( ( await page.context().cookies() ).find( ( c ) => c.name === 'fxc_cart_count' )?.value ?? '0' ).toBe( '0' );
 } );
+
+test( 'option formula: the price follows what the customer types', async ( { page }, info ) => {
+	await page.goto( store.formula.url );
+	const form = page.locator( 'form.fxc-add-to-cart--single' );
+	const total = form.locator( '.fxc-options__total' );
+	await expect( total ).toBeHidden();
+
+	// 120 x 50 cm at 25.00 a square metre, then 0.50 a letter (spaces are free).
+	await form.getByLabel( 'Width (cm)' ).fill( '120' );
+	await form.getByLabel( 'Height (cm)' ).fill( '50' );
+	await expect( total ).toHaveText( 'Options: +' + money( 1500 ) );
+	await form.getByLabel( 'Lettering' ).fill( 'OPEN LATE' );
+	await expect( total ).toHaveText( 'Options: +' + money( 1900 ) );
+	await expectAccessible( page, info, 'option formula' );
+
+	await form.getByRole( 'button', { name: 'Add to cart' } ).click();
+	await expect( form.locator( '.fxc-add-to-cart__message' ) ).not.toBeEmpty();
+	await page.goto( store.cart );
+	await expect( page.locator( '.fxc-cart' ).getByText( money( store.formula.price + 1900 ) ).first() ).toBeVisible();
+} );

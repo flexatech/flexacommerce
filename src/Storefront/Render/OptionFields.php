@@ -64,14 +64,14 @@ final class OptionFields {
 					$prices = [];
 					foreach ( $field->choices as $choice ) {
 						if ( $choice['price_mode'] !== OptionField::NONE ) {
-							$prices[ (string) $choice['id'] ] = [ $choice['price_mode'], $choice['price'] ];
+							$prices[ (string) $choice['id'] ] = self::price_spec( $choice['price_mode'], $choice['price'], $choice['formula'] );
 						}
 					}
 					if ( $prices !== [] ) {
 						$row['prices'] = $prices;
 					}
 				} elseif ( $field->price_mode !== OptionField::NONE ) {
-					$row['price'] = [ $field->price_mode, $field->price ];
+					$row['price'] = self::price_spec( $field->price_mode, $field->price, $field->formula );
 				}
 				$spec[] = $row;
 			}
@@ -79,11 +79,16 @@ final class OptionFields {
 		return $spec;
 	}
 
-	/** @param list<OptionSet> $sets */
-	public static function has_percent( array $sets ): bool {
+	/**
+	 * Whether a price of the sets is worked out from the unit price: a
+	 * percent, or a formula that reads `base`.
+	 *
+	 * @param list<OptionSet> $sets
+	 */
+	public static function uses_base( array $sets ): bool {
 		foreach ( $sets as $set ) {
 			foreach ( $set->fields as $field ) {
-				if ( $field->price_mode === OptionField::PERCENT ) {
+				if ( $field->price_mode === OptionField::PERCENT || $field->formula_uses_base() ) {
 					return true;
 				}
 				foreach ( $field->choices as $choice ) {
@@ -256,6 +261,11 @@ final class OptionFields {
 			$text = sprintf( __( '%s once', 'flexacommerce' ), $text );
 		}
 		return ' <span class="fxc-option__price">(+' . esc_html( $text ) . ')</span>';
+	}
+
+	/** @return array{0:string,1:int}|array{0:string,1:int,2:string} mode, amount and, for a formula, the formula */
+	private static function price_spec( string $mode, int $price, string $formula ): array {
+		return $mode === OptionField::FORMULA ? [ $mode, 0, $formula ] : [ $mode, $price ];
 	}
 
 	private static function number( float $value ): string {

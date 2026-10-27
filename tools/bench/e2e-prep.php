@@ -7,7 +7,8 @@
  *
  * Cash on delivery on, one US zone with a flat rate of 5.00, a terms page,
  * a page with the filter block, a customer account, a product with colour
- * swatches in a category of its own, and the pages and products the journeys open.
+ * swatches in a category of its own, a sign priced by formula, and the
+ * pages and products the journeys open.
  */
 
 // No strict_types: wp eval-file runs this through eval(), where a declare is not allowed.
@@ -159,6 +160,47 @@ $products->save( $tee_id, ProductInput::from_array( [ 'variations' => $rows ] ) 
 $tees = wp_insert_term( 'Swatch tees', PostTypes::CATEGORY, [ 'slug' => 'swatch-tees' ] );
 wp_set_object_terms( $tee_id, [ (int) $tees['term_id'] ], PostTypes::CATEGORY );
 
+// A sign priced by its area and its letters (ADR-039), its option set on it alone.
+$sign_id = (int) wp_insert_post(
+	[
+		'post_type'   => PostTypes::PRODUCT,
+		'post_status' => 'publish',
+		'post_title'  => 'Custom sign',
+		'post_name'   => 'custom-sign',
+	]
+);
+$products->save( $sign_id, ProductInput::from_array( [ 'base' => [ 'regular_price' => 1000 ] ] ) );
+Plugin::instance()->option_sets()->save(
+	[
+		'name'        => 'Sign size',
+		'applies_to'  => 'products',
+		'product_ids' => [ $sign_id ],
+		'fields'      => [
+			[
+				'id'       => 1,
+				'type'     => 'number',
+				'label'    => 'Width (cm)',
+				'required' => true,
+			],
+			[
+				'id'         => 2,
+				'type'       => 'number',
+				'label'      => 'Height (cm)',
+				'required'   => true,
+				'price_mode' => 'formula',
+				'formula'    => 'round({1} * {2} / 10000 * 25, 2)',
+			],
+			[
+				'id'         => 3,
+				'type'       => 'text',
+				'label'      => 'Lettering',
+				'price_mode' => 'formula',
+				'formula'    => '{3} * 0.5',
+			],
+		],
+	]
+);
+
 $category = get_term_by( 'slug', (string) $simple['categories'][0], PostTypes::CATEGORY );
 
 $out = [
@@ -190,6 +232,11 @@ $out = [
 		'url'      => (string) get_permalink( $tee_id ),
 		'category' => (string) get_term_link( (int) $tees['term_id'], PostTypes::CATEGORY ),
 		'price'    => 2500,
+	],
+	'formula'  => [
+		'name'  => 'Custom sign',
+		'url'   => (string) get_permalink( $sign_id ),
+		'price' => 1000,
 	],
 	'category' => [
 		'slug' => $category instanceof WP_Term ? $category->slug : '',

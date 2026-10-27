@@ -216,6 +216,7 @@ final class OptionSetRepository {
 		if ( $inputs === 0 ) {
 			throw new InvalidOptionSet( __( 'Add at least one field a customer can fill in.', 'flexacommerce' ), 'fields' );
 		}
+		self::check_refs( $done );
 		return array_values( $done );
 	}
 
@@ -276,9 +277,9 @@ final class OptionSetRepository {
 			$placeholder = strtolower( $placeholder );
 		}
 
-		[ $mode, $price ] = $typed
-			? self::price( $row['price_mode'] ?? OptionField::NONE, $row['price'] ?? 0, $index )
-			: [ OptionField::NONE, 0 ];
+		[ $mode, $price, $formula ] = $typed
+			? self::price( $row, $index )
+			: [ OptionField::NONE, 0, '' ];
 
 		return new OptionField(
 			id: $id,
@@ -296,11 +297,12 @@ final class OptionSetRepository {
 			price: $price,
 			choices: $choices ? self::choices( $row['choices'] ?? null, $type, $index ) : [],
 			logic: self::logic( $row['logic'] ?? null, $before, $index ),
+			formula: $formula,
 		);
 	}
 
 	/**
-	 * @return list<array{id:int,label:string,price_mode:string,price:int,default:bool,color:string}>
+	 * @return list<array{id:int,label:string,price_mode:string,price:int,default:bool,color:string,formula:string}>
 	 * @throws InvalidOptionSet
 	 */
 	private static function choices( mixed $value, string $type, int $index ): array {
@@ -339,16 +341,17 @@ final class OptionSetRepository {
 					throw new InvalidOptionSet( __( 'Pick a color for each swatch.', 'flexacommerce' ), 'fields', $index );
 				}
 			}
-			[ $mode, $price ] = self::price( $row['price_mode'] ?? OptionField::NONE, $row['price'] ?? 0, $index );
-			$default          = filter_var( $row['default'] ?? false, FILTER_VALIDATE_BOOL );
-			$defaults        += $default ? 1 : 0;
-			$choices[ $id ]   = [
+			[ $mode, $price, $formula ] = self::price( $row, $index );
+			$default                    = filter_var( $row['default'] ?? false, FILTER_VALIDATE_BOOL );
+			$defaults                  += $default ? 1 : 0;
+			$choices[ $id ]             = [
 				'id'         => $id,
 				'label'      => $label,
 				'price_mode' => $mode,
 				'price'      => $price,
 				'default'    => $default,
 				'color'      => $color,
+				'formula'    => $formula,
 			];
 		}
 		if ( $defaults > 1 && $type !== OptionField::CHECKBOXES ) {
@@ -411,15 +414,31 @@ final class OptionSetRepository {
 	}
 
 	/**
-	 * @return array{0:string,1:int}
+	 * The price of a field or a choice: mode, amount, formula.
+	 *
+	 * @param array<array-key,mixed> $row
+	 * @return array{0:string,1:int,2:string}
 	 * @throws InvalidOptionSet
 	 */
-	private static function price( mixed $mode, mixed $value, int $index ): array {
+	private static function price( array $row, int $index ): array {
+		$mode  = $row['price_mode'] ?? OptionField::NONE;
+		$value = $row['price'] ?? 0;
 		if ( ! in_array( $mode, OptionField::PRICE_MODES, true ) ) {
 			throw new InvalidOptionSet( __( 'Choose one of the listed options.', 'flexacommerce' ), 'fields', $index );
 		}
 		if ( $mode === OptionField::NONE ) {
-			return [ OptionField::NONE, 0 ];
+			return [ OptionField::NONE, 0, '' ];
+		}
+		if ( $mode === OptionField::FORMULA ) {
+			$formula = is_string( $row['formula'] ?? null ) ? trim( sanitize_text_field( $row['formula'] ) ) : '';
+			if ( $formula === '' ) {
+				throw new InvalidOptionSet( __( 'Enter a formula for the price.', 'flexacommerce' ), 'fields', $index );
+			}
+			if ( strlen( $formula ) > Formula::MAX_LENGTH || Formula::refs( $formula ) === null ) {
+				/* translators: %s: the formula as entered */
+				throw new InvalidOptionSet( sprintf( __( 'The formula %s cannot be worked out. Check its brackets, signs and names.', 'flexacommerce' ), $formula ), 'fields', $index );
+			}
+			return [ OptionField::FORMULA, 0, $formula ];
 		}
 		$amount = filter_var( $value, FILTER_VALIDATE_INT );
 		if ( $mode === OptionField::PERCENT && ( $amount === false || $amount < 1 || $amount > OptionField::FULL_PERCENT ) ) {
@@ -428,7 +447,37 @@ final class OptionSetRepository {
 		if ( $amount === false || $amount < 1 ) {
 			throw new InvalidOptionSet( __( 'Enter an amount above 0.', 'flexacommerce' ), 'fields', $index );
 		}
-		return [ $mode, $amount ];
+		return [ $mode, $amount, '' ];
+	}
+
+	/**
+	 * A formula reads fields of its own set only, above or below it, and no
+	 * heading.
+	 *
+	 * @param array<int,OptionField> $fields by id
+	 * @throws InvalidOptionSet
+	 */
+	private static function check_refs( array $fields ): void {
+		$index = 0;
+		foreach ( $fields as $field ) {
+			$formulas = [ $field->formula ];
+			foreach ( $field->choices as $choice ) {
+				$formulas[] = $choice['formula'];
+			}
+			foreach ( array_filter( $formulas ) as $formula ) {
+				foreach ( (array) Formula::refs( $formula ) as $ref ) {
+					if ( ! isset( $fields[ $ref ] ) || $fields[ $ref ]->type === OptionField::HEADING ) {
+						throw new InvalidOptionSet(
+							/* translators: 1: a field reference such as {4}, 2: the formula */
+							sprintf( __( 'The formula %2$s uses %1$s, which is not a field of this set.', 'flexacommerce' ), '{' . $ref . '}', $formula ),
+							'fields',
+							$index
+						);
+					}
+				}
+			}
+			++$index;
+		}
 	}
 
 	/** @throws InvalidOptionSet */
