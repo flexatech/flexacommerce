@@ -18,6 +18,10 @@ export interface Choice {
     color: string;
     /** With the formula price mode, in the main currency unit per item. */
     formula: string;
+    /** What is left (ADR-040); null when the choice does not track stock. */
+    stock: number | null;
+    /** The count loaded, so a save does not undo what orders took since. */
+    stock_was?: number | null;
 }
 
 export interface LogicRule {

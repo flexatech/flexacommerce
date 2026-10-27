@@ -21,6 +21,7 @@ final class CartItem {
 	public const UNAVAILABLE        = 'unavailable';
 	public const INSUFFICIENT_STOCK = 'insufficient_stock';
 
+	/** @param array<string,string> $option_stock the option choices that track stock, key => name (ADR-040) */
 	public function __construct(
 		public readonly CartLine $line,
 		public readonly ?Product $product,
@@ -30,6 +31,7 @@ final class CartItem {
 		public readonly ?Availability $availability,
 		public readonly string $status,
 		public readonly int $fee = 0,
+		public readonly array $option_stock = [],
 	) {}
 
 	public function is_ok(): bool {

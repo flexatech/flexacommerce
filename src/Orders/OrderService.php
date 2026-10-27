@@ -13,6 +13,7 @@ use Flexa\Commerce\Contracts\Orders\OrderView;
 use Flexa\Commerce\Contracts\Payments\TransactionView;
 use Flexa\Commerce\Database\AfterCommit;
 use Flexa\Commerce\Database\Transaction;
+use Flexa\Commerce\Inventory\OptionStockRepository;
 use Flexa\Commerce\Inventory\StockService;
 use Flexa\Commerce\Inventory\StockUnit;
 use Flexa\Commerce\Orders\OrderStatus as S;
@@ -41,6 +42,7 @@ final class OrderService {
 		private readonly Clock $clock,
 		private readonly OrderNumber $numbers,
 		private readonly ?\Closure $release_coupons = null,
+		private readonly ?OptionStockRepository $option_stock = null,
 	) {}
 
 	public function find( int $order_id ): ?Order {
@@ -348,6 +350,12 @@ final class OrderService {
 						}
 						$data['meta'] = [ 'refunded_taxes' => $done ] + $item->meta;
 					}
+					$held = $item->option_held();
+					$put  = $line->restock ? min( $line->qty, $held ) : 0;
+					if ( $put > 0 && $this->option_stock !== null ) {
+						$this->option_stock->put_back( array_fill_keys( array_keys( $item->option_stock() ), $put ) );
+						$data['meta'] = [ 'option_held' => $held - $put ] + ( $data['meta'] ?? $item->meta );
+					}
 					$back = $line->restock ? min( $line->qty, $item->stock_reduced_qty ) : 0;
 					if ( $back > 0 && $item->stock_id() > 0 ) {
 						$restock[]                 = new StockUnit( $item->stock_id(), (int) $item->product_id, (int) $item->variant_id, $back );
@@ -593,8 +601,63 @@ final class OrderService {
 		);
 	}
 
-	/** Take stock for every product line that does not hold it yet. */
+	/**
+	 * Take stock for every product line that does not hold it yet. The
+	 * option choices go first: if the variants are short, they go back.
+	 */
 	private function deduct( Order $order, TransitionContext $ctx ): void {
+		$taken = $this->deduct_options( $order );
+		try {
+			$this->deduct_variants( $order, $ctx );
+		} catch ( InsufficientStock $e ) {
+			$this->option_stock?->put_back( $taken );
+			foreach ( $order->items_of_type( OrderItem::PRODUCT ) as $item ) {
+				if ( $item->option_stock() !== [] ) {
+					$this->orders->update_item( $item->id, [ 'meta' => $item->meta ] );
+				}
+			}
+			throw $e;
+		}
+	}
+
+	/**
+	 * Take the option choices of every product line that does not hold them
+	 * yet (ADR-040); each line keeps how many it holds in `option_held`.
+	 *
+	 * @return array<string,int> what was taken, key => quantity
+	 * @throws InsufficientStock
+	 */
+	private function deduct_options( Order $order ): array {
+		if ( $this->option_stock === null ) {
+			return [];
+		}
+		$wanted = [];
+		$held   = [];
+		foreach ( $order->items_of_type( OrderItem::PRODUCT ) as $item ) {
+			$qty = $item->quantity - $item->refunded_qty - $item->option_held();
+			if ( $item->option_stock() === [] || $qty <= 0 ) {
+				continue;
+			}
+			foreach ( $item->option_stock() as $key => $label ) {
+				$wanted[ $key ] = [
+					'quantity'   => ( $wanted[ $key ]['quantity'] ?? 0 ) + $qty,
+					'label'      => $label,
+					'variant_id' => (int) $item->variant_id,
+				];
+			}
+			$held[] = [ $item, $item->option_held() + $qty ];
+		}
+		if ( $wanted === [] ) {
+			return [];
+		}
+		$this->option_stock->take( $wanted );
+		foreach ( $held as [ $item, $count ] ) {
+			$this->orders->update_item( $item->id, [ 'meta' => [ 'option_held' => $count ] + $item->meta ] );
+		}
+		return array_map( static fn ( array $want ): int => $want['quantity'], $wanted );
+	}
+
+	private function deduct_variants( Order $order, TransitionContext $ctx ): void {
 		$units = [];
 		$items = [];
 		foreach ( $order->items_of_type( OrderItem::PRODUCT ) as $item ) {
@@ -631,6 +694,20 @@ final class OrderService {
 
 	/** Put back exactly what each line holds and zero it, so a replay restores nothing. */
 	private function release( Order $order, TransitionContext $ctx ): void {
+		if ( $this->option_stock !== null ) {
+			$back = [];
+			foreach ( $order->items_of_type( OrderItem::PRODUCT ) as $item ) {
+				$held = $item->option_held();
+				if ( $held <= 0 ) {
+					continue;
+				}
+				foreach ( array_keys( $item->option_stock() ) as $key ) {
+					$back[ $key ] = ( $back[ $key ] ?? 0 ) + $held;
+				}
+				$this->orders->update_item( $item->id, [ 'meta' => [ 'option_held' => 0 ] + $item->meta ] );
+			}
+			$this->option_stock->put_back( $back );
+		}
 		$units = [];
 		$lines = [];
 		foreach ( $order->items_of_type( OrderItem::PRODUCT ) as $item ) {

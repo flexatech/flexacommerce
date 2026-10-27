@@ -23,7 +23,7 @@ defined( 'ABSPATH' ) || exit;
  * A formula price (ADR-039) keeps its `formula`, in the currency's main
  * unit per item; see Formula and inputs().
  *
- * @phpstan-type Choice array{id:int,label:string,price_mode:string,price:int,default:bool,color:string,formula:string}
+ * @phpstan-type Choice array{id:int,label:string,price_mode:string,price:int,default:bool,color:string,formula:string,track_stock:bool}
  * @phpstan-import-type Inputs from Formula
  * @phpstan-type Rule array{field:int,op:string,value:string}
  * @phpstan-type Logic array{action:string,match:string,rules:list<Rule>}
@@ -95,13 +95,14 @@ final class OptionField {
 		foreach ( is_array( $row['choices'] ?? null ) ? $row['choices'] : [] as $choice ) {
 			if ( is_array( $choice ) ) {
 				$choices[] = [
-					'id'         => (int) ( $choice['id'] ?? 0 ),
-					'label'      => (string) ( $choice['label'] ?? '' ),
-					'price_mode' => $one( $choice['price_mode'] ?? null, self::PRICE_MODES ),
-					'price'      => max( 0, (int) ( $choice['price'] ?? 0 ) ),
-					'default'    => (bool) ( $choice['default'] ?? false ),
-					'color'      => (string) ( $choice['color'] ?? '' ),
-					'formula'    => (string) ( $choice['formula'] ?? '' ),
+					'id'          => (int) ( $choice['id'] ?? 0 ),
+					'label'       => (string) ( $choice['label'] ?? '' ),
+					'price_mode'  => $one( $choice['price_mode'] ?? null, self::PRICE_MODES ),
+					'price'       => max( 0, (int) ( $choice['price'] ?? 0 ) ),
+					'default'     => (bool) ( $choice['default'] ?? false ),
+					'color'       => (string) ( $choice['color'] ?? '' ),
+					'formula'     => (string) ( $choice['formula'] ?? '' ),
+					'track_stock' => (bool) ( $choice['track_stock'] ?? false ),
 				];
 			}
 		}

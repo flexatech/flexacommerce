@@ -6,6 +6,7 @@ namespace Flexa\Commerce\Api\Admin;
 
 use Flexa\Commerce\Api\Endpoint;
 use Flexa\Commerce\Contracts\CommerceException;
+use Flexa\Commerce\Inventory\OptionStockRepository;
 use Flexa\Commerce\Plugin;
 use Flexa\Commerce\Options\OptionSet;
 use WP_Error;
@@ -141,9 +142,43 @@ final class OptionSetsEndpoint extends Endpoint {
 	private static function listing( int $status ): WP_REST_Response {
 		return new WP_REST_Response(
 			[
-				'items' => array_map( static fn ( OptionSet $set ): array => $set->to_array(), Plugin::instance()->option_sets()->all() ),
+				'items' => self::with_stock( Plugin::instance()->option_sets()->all() ),
 			],
 			$status
 		);
+	}
+
+	/**
+	 * The sets with each choice's `stock`: what is left, or null when the
+	 * choice does not track stock (ADR-040).
+	 *
+	 * @param list<OptionSet> $sets
+	 * @return list<array<string,mixed>>
+	 */
+	private static function with_stock( array $sets ): array {
+		$keys = [];
+		foreach ( $sets as $set ) {
+			foreach ( $set->fields as $field ) {
+				foreach ( $field->choices as $choice ) {
+					if ( $choice['track_stock'] ) {
+						$keys[] = OptionStockRepository::key( $set->id, $field->id, $choice['id'] );
+					}
+				}
+			}
+		}
+		$levels = $keys === [] ? [] : Plugin::instance()->option_stock()->levels( $keys );
+		$items  = [];
+		foreach ( $sets as $set ) {
+			$row = $set->to_array();
+			foreach ( $set->fields as $i => $field ) {
+				foreach ( $field->choices as $j => $choice ) {
+					$row['fields'][ $i ]['choices'][ $j ]['stock'] = $choice['track_stock']
+						? ( $levels[ OptionStockRepository::key( $set->id, $field->id, $choice['id'] ) ] ?? 0 )
+						: null;
+				}
+			}
+			$items[] = $row;
+		}
+		return $items;
 	}
 }

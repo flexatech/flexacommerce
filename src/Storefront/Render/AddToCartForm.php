@@ -198,7 +198,7 @@ final class AddToCartForm {
 		}
 
 		if ( $sets !== [] && $this->pricing !== null ) {
-			$html .= OptionFields::html( $sets, $this->pricing, $editing?->options );
+			$html .= OptionFields::html( $sets, $this->pricing, $editing?->options, $this->product_options !== null ? ( $this->product_options )()->sold_out( $sets ) : [] );
 		}
 
 		if ( $mode === self::SINGLE ) {

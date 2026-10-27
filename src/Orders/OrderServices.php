@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Flexa\Commerce\Orders;
 
+use Flexa\Commerce\Inventory\OptionStockRepository;
 use Flexa\Commerce\Inventory\StockService;
 use Flexa\Commerce\Support\Services;
 
@@ -21,6 +22,7 @@ final class OrderServices {
 		private readonly Services $services,
 		private readonly StockService $stock,
 		private readonly ?\Closure $release_coupons = null,
+		private readonly ?OptionStockRepository $option_stock = null,
 	) {}
 
 	public function orders(): OrderRepository {
@@ -41,6 +43,7 @@ final class OrderServices {
 			$this->services->clock(),
 			new OrderNumber( $this->services->sequence() ),
 			$this->release_coupons,
+			$this->option_stock,
 		);
 	}
 

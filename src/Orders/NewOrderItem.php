@@ -46,11 +46,12 @@ final class NewOrderItem {
 	 * of unit price x quantity (ADR-029); it is kept in the meta.
 	 *
 	 * @param list<array{label:string,value:string}> $attributes
-	 * @param array<string,int>                      $taxes rate key => tax on the line
+	 * @param array<string,int>                      $taxes        rate key => tax on the line
+	 * @param array<string,string>                   $option_stock option choices that track stock, key => name (ADR-040)
 	 */
-	public static function product( int $product_id, int $variant_id, int $stock_id, string $name, ?string $sku, array $attributes, int $quantity, int $unit_price, ?int $net = null, array $taxes = [], int $discount = 0, int $fee = 0 ): self {
+	public static function product( int $product_id, int $variant_id, int $stock_id, string $name, ?string $sku, array $attributes, int $quantity, int $unit_price, ?int $net = null, array $taxes = [], int $discount = 0, int $fee = 0, array $option_stock = [] ): self {
 		$subtotal = $net ?? $unit_price * $quantity + $fee;
-		$meta     = self::taxes_meta( $taxes ) + ( $fee > 0 ? [ 'fee' => $fee ] : [] );
+		$meta     = self::taxes_meta( $taxes ) + ( $fee > 0 ? [ 'fee' => $fee ] : [] ) + ( $option_stock !== [] ? [ 'option_stock' => $option_stock ] : [] );
 		return new self( OrderItem::PRODUCT, $name, $quantity, $unit_price, $subtotal, $subtotal - $discount, $product_id, $variant_id, $stock_id, '', $sku, $attributes, $discount, array_sum( $taxes ), $meta );
 	}
 

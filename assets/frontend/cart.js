@@ -323,7 +323,8 @@ function readOptions( form, context ) {
 		const visible = optionVisible( field.logic, seen[ field.set ] );
 		element.hidden = ! visible;
 		for ( const input of element.querySelectorAll( 'input, select, textarea' ) ) {
-			input.disabled = ! visible;
+			// A sold-out choice (ADR-040) stays off.
+			input.disabled = ! visible || input.hasAttribute( 'data-out' );
 		}
 		const value = visible && field.type !== 'heading' ? optionValue( element, field.type ) : '';
 		if ( value.length === 0 ) {

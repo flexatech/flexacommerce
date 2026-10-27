@@ -93,6 +93,7 @@ final class CartService {
 					);
 				}
 				$this->assert_stock( $cart, $product, $variant, $line->quantity );
+				$this->assert_option_stock( $cart, $line->options, ( $existing->quantity ?? 0 ) + $line->quantity, $line->quantity, $line->key, $variant->id );
 				$this->validate_add( $cart, $product, $variant, $line->quantity, $user_id );
 				return $cart->with_added( $line );
 			}
@@ -128,6 +129,7 @@ final class CartService {
 					);
 				}
 				$this->assert_stock( $rest, $product, $variant, $line->quantity );
+				$this->assert_option_stock( $rest, $line->options, ( $other->quantity ?? 0 ) + $line->quantity, $line->quantity, $line->key, $variant->id );
 				$this->validate_add( $rest, $product, $variant, $line->quantity, $user_id );
 				// The line was added then; changing it does not make it new.
 				$kept = new CartLine( $line->key, $line->product_id, $line->variant_id, $line->quantity, $line->attributes, $line->labels, $old->added_at, $line->options );
@@ -206,6 +208,7 @@ final class CartService {
 				}
 				if ( $quantity > $line->quantity ) {
 					$this->assert_stock( $cart->without( $key ), $product, $variant, $quantity );
+					$this->assert_option_stock( $cart, $line->options, $quantity, $quantity, $key, $variant->id );
 				}
 				return $cart->with_quantity( $key, $quantity );
 			}
@@ -460,9 +463,11 @@ final class CartService {
 			$status       = $availability->allows( $owner_total ) ? CartItem::OK : CartItem::INSUFFICIENT_STOCK;
 			$unit         = $this->pricing->unit_price( $product, $variant, $line->quantity, $user_id, product_quantity: $units[ $line->product_id ] );
 			$fee          = 0;
+			$tracked      = [];
 			if ( $unit !== null && $line->options !== [] && $this->options !== null ) {
 				$options = ( $this->options )();
 				$fee     = $options->fee( $line->options );
+				$tracked = $options->tracked( $line->options );
 				$unit    = self::with_extra( $unit, $options->extra( $line->options, $unit->active->amount, $line->quantity, Currency::exponent( $unit->active->currency ) ) );
 			}
 			$total = $unit !== null ? $this->pricing->line_total( $unit, $line->quantity ) : null;
@@ -491,7 +496,7 @@ final class CartService {
 						),
 				];
 			}
-			$items[] = new CartItem( $line, $product, $variant, $unit, $total, $availability, $status, $fee );
+			$items[] = new CartItem( $line, $product, $variant, $unit, $total, $availability, $status, $fee, $tracked );
 		}
 
 		$subtotal  = $this->pricing->sum( $totals );
@@ -613,6 +618,27 @@ final class CartService {
 			$left = $fresh->max_quantity();
 			throw new InsufficientStock( $variant->id, $left === null ? null : max( 0, $left - ( $wanted - $adding ) ) );
 		}
+	}
+
+	/**
+	 * Checks the option choices of the line `$key` for `$quantity`, `$adding`
+	 * of them new, with the other lines of `$cart` that use the same choices
+	 * (ADR-040).
+	 *
+	 * @param array<string,string|list<string>> $values
+	 * @throws InsufficientStock
+	 */
+	private function assert_option_stock( Cart $cart, array $values, int $quantity, int $adding, string $key, int $variant_id ): void {
+		if ( $values === [] || $this->options === null ) {
+			return;
+		}
+		$others = [];
+		foreach ( $cart->lines as $line ) {
+			if ( $line->key !== $key && $line->options !== [] ) {
+				$others[] = [ $line->options, $line->quantity ];
+			}
+		}
+		( $this->options )()->assert_stock( $values, $quantity, $adding, $others, $variant_id );
 	}
 
 	/** Units in the cart that draw on the same stock row as `$variant`. */

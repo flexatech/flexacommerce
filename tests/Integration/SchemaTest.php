@@ -10,7 +10,7 @@ final class SchemaTest extends \WP_UnitTestCase {
 	public function test_every_table_exists_and_uses_innodb(): void {
 		self::assertSame( [], Schema::missing_tables() );
 		self::assertSame( [], Schema::non_innodb_tables() );
-		self::assertCount( 18, Schema::tables() );
+		self::assertCount( 19, Schema::tables() );
 		self::assertSame( (int) Schema::DB_VERSION, Schema::installed_version() );
 	}
 

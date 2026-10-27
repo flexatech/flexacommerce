@@ -69,7 +69,7 @@ function blankField(id: number, type: FieldType): OptionField {
 const START = "#000000";
 
 function blankChoice(id: number, type: FieldType): Choice {
-    return { id, label: "", price_mode: "none", price: 0, default: false, color: type === "swatch" ? START : "", formula: "" };
+    return { id, label: "", price_mode: "none", price: 0, default: false, color: type === "swatch" ? START : "", formula: "", stock: null };
 }
 
 const nextId = (list: { id: number }[]) => list.reduce((max, item) => Math.max(max, item.id), 0) + 1;
@@ -188,7 +188,9 @@ function draftOf(set: OptionSet | null, preset: SetPreset | undefined): Draft {
         products: picks("product", set?.product_ids ?? []),
         categories: picks("category", set?.category_ids ?? []),
         exclude_products: picks("product", set?.exclude_product_ids ?? []),
-        fields: set?.fields ?? (preset ?? SET_PRESETS[SET_PRESETS.length - 1]).fields(),
+        fields:
+            set?.fields.map((f) => ({ ...f, choices: f.choices.map((c) => ({ ...c, stock: c.stock ?? null, stock_was: c.stock ?? null })) })) ??
+            (preset ?? SET_PRESETS[SET_PRESETS.length - 1]).fields(),
     };
 }
 
@@ -352,7 +354,7 @@ function FormulaInput({ value, fields, label, onChange }: { value: string; field
 function ChoicesEditor({ field, fields, onChange }: { field: OptionField; fields: OptionField[]; onChange: (choices: Choice[]) => void }) {
     const many = field.type === "checkboxes";
     const swatch = field.type === "swatch";
-    const grid = swatch ? "fxc:grid-cols-[2.5rem_minmax(0,1fr)_auto_4.5rem_2.25rem]" : "fxc:grid-cols-[minmax(0,1fr)_auto_4.5rem_2.25rem]";
+    const grid = swatch ? "fxc:grid-cols-[2.5rem_minmax(0,1fr)_auto_5rem_4.5rem_2.25rem]" : "fxc:grid-cols-[minmax(0,1fr)_auto_5rem_4.5rem_2.25rem]";
     const set = (id: number, patch: Partial<Choice>) =>
         onChange(field.choices.map((c) => (c.id === id ? { ...c, ...patch } : patch.default && !many ? { ...c, default: false } : c)));
     return (
@@ -361,6 +363,7 @@ function ChoicesEditor({ field, fields, onChange }: { field: OptionField; fields
                 {swatch && <span>{__("Color")}</span>}
                 <span>{__("Choice")}</span>
                 <span>{__("Extra charge")}</span>
+                <span title={__("Leave empty for no limit. Orders take from it and cancellations put it back.")}>{__("Stock")}</span>
                 <span>{many ? __("Ticked") : __("Default")}</span>
             </div>
             {field.choices.map((choice, index) => (
@@ -385,6 +388,16 @@ function ChoicesEditor({ field, fields, onChange }: { field: OptionField; fields
                         mode={choice.price_mode}
                         price={choice.price}
                         onChange={(price_mode, price) => set(choice.id, { price_mode, price })}
+                    />
+                    <Input
+                        type="number"
+                        min={0}
+                        step={1}
+                        inputMode="numeric"
+                        placeholder="∞"
+                        aria-label={sprintf(__("Choice %d: stock, empty for no limit"), index + 1)}
+                        value={choice.stock ?? ""}
+                        onChange={(e) => set(choice.id, { stock: e.target.value === "" ? null : Math.max(0, Math.trunc(Number(e.target.value))) })}
                     />
                     <label className="fxc:flex fxc:justify-center">
                         <input

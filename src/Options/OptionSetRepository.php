@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Flexa\Commerce\Options;
 
 use Flexa\Commerce\Contracts\Exceptions\InvalidOptionSet;
+use Flexa\Commerce\Inventory\OptionStockRepository;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -13,6 +14,10 @@ defined( 'ABSPATH' ) || exit;
  * pricing rules: a store has a few, and every product page reads them. A
  * save takes the fields it is sent over the stored set and checks the
  * result.
+ *
+ * A choice sent with a `stock` count tracks stock (ADR-040); the count
+ * itself lives in OptionStockRepository, which orders change. So a save writes it only
+ * when the editor changed it from `stock_was`, the count it loaded.
  */
 final class OptionSetRepository {
 	public const OPTION = ProductOptions::OPTION;
@@ -36,6 +41,12 @@ final class OptionSetRepository {
 
 	/** The option value `$all` was read from; another site or a rollback gives a different one. */
 	private mixed $read = null;
+
+	public function __construct( private readonly ?OptionStockRepository $stock = null ) {}
+
+	public function stock(): ?OptionStockRepository {
+		return $this->stock;
+	}
 
 	/** @return list<OptionSet> */
 	public function all(): array {
@@ -95,7 +106,48 @@ final class OptionSetRepository {
 			$list[] = $set;
 		}
 		$this->store( $list );
+		if ( isset( $input['fields'] ) ) {
+			$this->keep_stock( $set, $input['fields'] );
+		}
 		return $set;
+	}
+
+	/**
+	 * Writes the counts of a saved set. Fields and choices keep the order
+	 * they were sent in, so the input lines up with the set by position.
+	 */
+	private function keep_stock( OptionSet $set, mixed $sent ): void {
+		if ( $this->stock === null || ! is_array( $sent ) ) {
+			return;
+		}
+		$sent        = array_values( $sent );
+		$tracked     = [];
+		$sent_counts = [];
+		$counts      = [];
+		foreach ( $set->fields as $i => $field ) {
+			$rows = is_array( $sent[ $i ]['choices'] ?? null ) ? array_values( $sent[ $i ]['choices'] ) : [];
+			foreach ( $field->choices as $j => $choice ) {
+				if ( ! $choice['track_stock'] ) {
+					continue;
+				}
+				$key       = OptionStockRepository::key( $set->id, $field->id, $choice['id'] );
+				$tracked[] = $key;
+				$row       = is_array( $rows[ $j ] ?? null ) ? $rows[ $j ] : [];
+				if ( array_key_exists( 'stock', $row ) ) {
+					$sent_counts[ $key ] = [ (int) self::count_of( $row['stock'], $i ), $row['stock_was'] ?? null ];
+				}
+			}
+		}
+		$have = $this->stock->levels( $tracked );
+		foreach ( $tracked as $key ) {
+			// A choice sent without a count keeps the one it has.
+			[ $count, $was ] = $sent_counts[ $key ] ?? [ $have[ $key ] ?? 0, $have[ $key ] ?? null ];
+			if ( ! isset( $have[ $key ] ) || ! is_numeric( $was ) || (int) $was !== $count ) {
+				$counts[ $key ] = $count;
+			}
+		}
+		$this->stock->forget( $set->id, $tracked );
+		$this->stock->set( $counts );
 	}
 
 	/** @throws InvalidOptionSet */
@@ -104,6 +156,7 @@ final class OptionSetRepository {
 			throw new InvalidOptionSet( __( 'Option set not found.', 'flexacommerce' ), 'id' );
 		}
 		$this->store( array_values( array_filter( $this->all(), static fn ( OptionSet $s ): bool => $s->id !== $id ) ) );
+		$this->stock?->forget( $id );
 	}
 
 	/**
@@ -302,7 +355,7 @@ final class OptionSetRepository {
 	}
 
 	/**
-	 * @return list<array{id:int,label:string,price_mode:string,price:int,default:bool,color:string,formula:string}>
+	 * @return list<array{id:int,label:string,price_mode:string,price:int,default:bool,color:string,formula:string,track_stock:bool}>
 	 * @throws InvalidOptionSet
 	 */
 	private static function choices( mixed $value, string $type, int $index ): array {
@@ -345,13 +398,14 @@ final class OptionSetRepository {
 			$default                    = filter_var( $row['default'] ?? false, FILTER_VALIDATE_BOOL );
 			$defaults                  += $default ? 1 : 0;
 			$choices[ $id ]             = [
-				'id'         => $id,
-				'label'      => $label,
-				'price_mode' => $mode,
-				'price'      => $price,
-				'default'    => $default,
-				'color'      => $color,
-				'formula'    => $formula,
+				'id'          => $id,
+				'label'       => $label,
+				'price_mode'  => $mode,
+				'price'       => $price,
+				'default'     => $default,
+				'color'       => $color,
+				'formula'     => $formula,
+				'track_stock' => array_key_exists( 'stock', $row ) ? self::count_of( $row['stock'], $index ) !== null : filter_var( $row['track_stock'] ?? false, FILTER_VALIDATE_BOOL ),
 			];
 		}
 		if ( $defaults > 1 && $type !== OptionField::CHECKBOXES ) {
@@ -489,6 +543,22 @@ final class OptionSetRepository {
 			throw new InvalidOptionSet( __( 'Enter a number.', 'flexacommerce' ), 'fields', $index );
 		}
 		return (float) $value;
+	}
+
+	/**
+	 * A choice's stock count; null (empty) means it does not track stock.
+	 *
+	 * @throws InvalidOptionSet
+	 */
+	private static function count_of( mixed $value, int $index ): ?int {
+		if ( $value === null || $value === '' ) {
+			return null;
+		}
+		$count = filter_var( $value, FILTER_VALIDATE_INT );
+		if ( $count === false || $count < 0 || $count > self::MAX_NUMBER ) {
+			throw new InvalidOptionSet( __( 'Enter the stock as a whole number of 0 or more, or leave it empty.', 'flexacommerce' ), 'fields', $index );
+		}
+		return $count;
 	}
 
 	/**

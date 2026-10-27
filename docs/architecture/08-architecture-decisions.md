@@ -580,3 +580,20 @@ Status of every ADR: **Accepted** (plan approved 2026-10-24) unless it says othe
 **Consequences.** No new setting (61 keys). `cart.js` grows by the parser. A formula that reads `base` makes the form carry the unit price, as a percent does.
 
 **Revisit when.** Merchants ask for conditions inside a formula (if/else), for formulas over fields of another set, or for a formula on the whole line instead of each item.
+
+## ADR-040: Stock for option choices
+
+**Context.** A shop that sells a ring in gold or silver, or a print on three papers, often runs out of one choice while the product itself is still in stock. flexa-extra kept a count per choice and took from it at checkout. Without it, merchants mark the choice by hand or oversell.
+
+**Decision.**
+1. **A table, not the option.** `fxc_option_stock (set_id, field_id, choice_id, quantity)` holds one row per choice that tracks stock (doc 03 §4.15). The choice itself only says `track_stock`. The option sets stay one autoloaded option that changes when the merchant edits; the counts change on every order, so they live where a conditional `UPDATE` can take them. `DB_VERSION` 9.
+2. **Empty means unlimited.** The choice row of the editor gets a Stock box. A number turns tracking on; clearing it turns tracking off and drops the row. The listing sends each choice's count, and the save sends it back with `stock_was`, the count loaded. The server writes a count only when it differs from `stock_was` (or the row is new), so a save does not undo what orders took while the editor was open.
+3. **The cart checks, the order takes.** Adding to the cart, changing a line or raising its quantity checks every tracked choice of the line against what the other lines of the cart already use, and says so: "Only 2 of Finish: Gold are left." The order item keeps the tracked choices in `meta.option_stock` and how many units it holds in `meta.option_held`. `OrderService` takes them with the variant stock, all or nothing: the choices go first and are put back if the variants are short. Cancelling puts back what a line holds; a refund with restock puts back the refunded units.
+4. **The form shows it.** A sold-out choice is shown disabled with "(out of stock)", is never picked at the start, and stays disabled when logic shows its field. The swatch style already strikes out a disabled swatch.
+
+**Alternatives.** Counts inside the option set: every order would rewrite an autoloaded option read on every product page, and two orders at once would overwrite each other. Stock reserved while in the cart: the store does not reserve variant stock either (ADR-008), and a cart left open would hide stock from paying customers.
+
+**Consequences.** No new setting (61 keys). A product page whose sets track stock runs one indexed query for the sold-out choices; pages without tracked choices run none. The order screen does not list option stock yet; the history line for stock covers the variants only.
+
+**Revisit when.** Merchants ask for low-stock emails per choice, for stock shared by a choice across sets, or to see option stock on the order screen.
+

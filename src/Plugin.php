@@ -48,6 +48,7 @@ final class Plugin {
 	private ?Pricing\Rules\PriceRules $price_rules                    = null;
 	private ?Options\OptionSetRepository $option_sets                 = null;
 	private ?Options\ProductOptions $product_options                  = null;
+	private ?Inventory\OptionStockRepository $option_stock            = null;
 
 	private ?Migration\MigrationServices $migration = null;
 
@@ -178,7 +179,12 @@ final class Plugin {
 
 	/** The stored option sets (ADR-025). */
 	public function option_sets(): Options\OptionSetRepository {
-		return $this->option_sets ??= new Options\OptionSetRepository();
+		return $this->option_sets ??= new Options\OptionSetRepository( $this->option_stock() );
+	}
+
+	/** What is left of the option choices that track stock (ADR-040). */
+	public function option_stock(): Inventory\OptionStockRepository {
+		return $this->option_stock ??= new Inventory\OptionStockRepository( $this->services()->wpdb(), $this->services()->transaction() );
 	}
 
 	/** Checks and prices the product options of cart items (ADR-025). */
@@ -214,7 +220,8 @@ final class Plugin {
 				$this->cart()->stock(),
 				function ( int $order_id ): void {
 					$this->coupons()->service()->release( $order_id );
-				}
+				},
+				$this->option_stock()
 			);
 			$this->notifications()->notifier()->bind();
 		}

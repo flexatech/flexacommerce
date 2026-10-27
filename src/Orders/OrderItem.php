@@ -81,6 +81,20 @@ final class OrderItem {
 		return (int) ( $this->meta['stock_id'] ?? 0 );
 	}
 
+	/** @return array<string,string> the option choices that track stock (ADR-040), OptionStockRepository key => name */
+	public function option_stock(): array {
+		$keys = [];
+		foreach ( is_array( $this->meta['option_stock'] ?? null ) ? $this->meta['option_stock'] : [] as $key => $label ) {
+			$keys[ (string) $key ] = (string) $label;
+		}
+		return $keys;
+	}
+
+	/** How many units of the line's option choices are taken from stock. */
+	public function option_held(): int {
+		return (int) ( $this->meta['option_held'] ?? 0 );
+	}
+
 	public function refundable_qty(): int {
 		return max( 0, $this->quantity - $this->refunded_qty );
 	}

@@ -692,7 +692,8 @@ final class CheckoutService {
 				$before?->net->amount,
 				$taxed?->by_rate() ?? [],
 				$off,
-				$item->fee
+				$item->fee,
+				$item->option_stock
 			);
 		}
 		$discount = 0;

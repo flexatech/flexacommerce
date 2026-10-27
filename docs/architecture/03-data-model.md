@@ -16,6 +16,7 @@ Status: **Approved 2026-10-24**. All table names below are shown without `{$wpdb
 | Webhook dedupe | `fxc_webhook_events` | DB-level replay protection. |
 | Cart sessions | `fxc_sessions` | Server-side, lazily created (ADR-008). |
 | Order number allocation | `fxc_sequences` | Atomic counter. |
+| Option choice stock | `fxc_option_stock` | Counts change on every order, so they need atomic updates outside the autoloaded option sets (§4.15, ADR-040). |
 | Tax rates | `fxc_tax_rates`, `fxc_tax_rate_locations` | Indexed matching by country, state, ZIP and city; the same shape as WooCommerce's tables (§4.13). |
 | Plugin log | `fxc_logs` | Filterable by channel and level, pruned by cron (§4.12). |
 | Migration | `fxc_id_map`, `fxc_migration_jobs`, `fxc_migration_log` | Idempotency and resumability (doc 05). |
@@ -353,6 +354,7 @@ CREATE TABLE fxc_order_items (
 
 - `type`: `product`, `shipping`, `fee`, `discount`, `tax`. Only `product` lines touch stock. `tax` lines are summary lines, one per rate (rate label in `name`, rate code in `code`, items tax + shipping tax in `total`, `meta` = `{rate_id, rate, compound, items_tax, shipping_tax}`), written by the tax engine (doc 02 §7.12.10) and by migration.
 - Product, shipping and fee lines keep the per-rate split of their `tax_total` in `meta.taxes` (`{"<rate_id>": amount}`). Invariant: `orders.tax_total = Σ tax lines.total = Σ other lines.tax_total`.
+- Product lines with product options that track stock keep them in `meta.option_stock` (`{"<set>-<field>-<choice>": "Finish: Gold"}`) and the units taken from `fxc_option_stock` in `meta.option_held` (ADR-040).
 - `code`: shipping rate id (`flat_rate:3`), fee code, coupon code, tax rate code.
 - `discount` lines (doc 02 §7.13.5): one per applied coupon, `name` and `code` = the code as saved, `quantity` 1, `total` = the coupon's net share of the order discount, `meta` = `{coupon_id, type, amount, discount_tax}`. They are a record: the amount is already in the product lines' `discount_total`. Invariant: `orders.discount_total = Σ product lines.discount_total = Σ discount lines.total`.
 - Amounts are **exclusive of tax**; `tax_total` holds the line's tax. `total = subtotal − discount_total` (ex-tax).
@@ -734,6 +736,24 @@ CREATE TABLE fxc_coupon_uses (
 
 - **Queries.** Pricing reads the cart's codes in one `WHERE code IN (…)` and caches the rows per request; when the autoloaded `flexacommerce_automatic_coupons` flag is on, it also reads the active automatic coupons through `automatic_status`, once per request; coupon rows change at checkout, so they are not in the object cache. The admin list filters by `status` and searches `code` and `description` with `LIKE`, paged; a store has hundreds of codes, not millions. The per-customer count uses `coupon_user` or `coupon_email`.
 - **Lifecycle.** Written by the Coupons screen and by migration (doc 05 §5.8), both through `CouponEditor`; migration also sets `usage_count`. `coupon_uses` is written by checkout and by order cancellation, and rebuilt by migration from imported orders (`INSERT IGNORE`, so existing rows stay). Deleting a coupon deletes its `coupon_uses` rows and keeps the orders' `discount` lines, which hold the `coupon_id` as a plain number. Uninstall drops both tables.
+
+### 4.15 `fxc_option_stock`
+
+Added with option stock (ADR-040), `DB_VERSION` 9.
+
+```sql
+CREATE TABLE fxc_option_stock (
+  set_id bigint(20) unsigned NOT NULL,
+  field_id int(10) unsigned NOT NULL,
+  choice_id int(10) unsigned NOT NULL,
+  quantity int(11) NOT NULL DEFAULT 0,
+  PRIMARY KEY  (set_id,field_id,choice_id)
+) {charset_collate};
+```
+
+- One row per option choice with `track_stock` (the ids are those of `flexacommerce_product_options`); a choice without a row does not track stock. Code names a row `<set>-<field>-<choice>`.
+- **Writes.** The Product options screen sets `quantity` (only when the merchant changed it, see ADR-040) and deletes the rows of a choice that stops tracking stock or of a deleted set. Orders take with `UPDATE … SET quantity = quantity - n WHERE … AND quantity >= n` after a locking read, in the order's transaction, and put back on cancel and on refund with restock. The order item records what it holds in `meta.option_stock` (key => name) and `meta.option_held`.
+- **Reads.** The cart and the product form read the rows of the choices they need in one query by primary key. Rows change at checkout, so they are not in the object cache. Uninstall drops the table.
 
 ## 5. Query patterns and indexes
 

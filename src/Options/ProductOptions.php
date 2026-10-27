@@ -6,7 +6,9 @@ namespace Flexa\Commerce\Options;
 
 use Flexa\Commerce\Catalog\PostTypes;
 use Flexa\Commerce\Catalog\Product;
+use Flexa\Commerce\Contracts\Exceptions\InsufficientStock;
 use Flexa\Commerce\Contracts\Exceptions\InvalidCartRequest;
+use Flexa\Commerce\Inventory\OptionStockRepository;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -151,6 +153,99 @@ final class ProductOptions {
 			$fee                  += (int) $this->sets->find( $set_id )?->field( $field_id )?->fee( $value );
 		}
 		return $fee;
+	}
+
+	/**
+	 * The picked choices that track stock (ADR-040), as OptionStockRepository keys
+	 * with the name a shopper reads, such as "Finish: Gold".
+	 *
+	 * @param Values $values
+	 * @return array<string,string>
+	 */
+	public function tracked( array $values ): array {
+		$tracked = [];
+		foreach ( $values as $key => $value ) {
+			[ $set_id, $field_id ] = array_map( 'intval', array_pad( explode( '-', (string) $key, 2 ), 2, '0' ) );
+			$field                 = $this->sets->find( $set_id )?->field( $field_id );
+			if ( $field === null || ! $field->has_choices() ) {
+				continue;
+			}
+			foreach ( (array) $value as $id ) {
+				$choice = $field->choice( (int) $id );
+				if ( $choice !== null && $choice['track_stock'] ) {
+					$tracked[ OptionStockRepository::key( $set_id, $field_id, $choice['id'] ) ] = $field->label . ': ' . $choice['label'];
+				}
+			}
+		}
+		return $tracked;
+	}
+
+	/**
+	 * Checks that the choices of a line are in stock for `$quantity`, on top
+	 * of the other lines of the cart that use them. The message says how
+	 * many more can be added, the line holding `$quantity - $adding`.
+	 *
+	 * @param Values                      $values
+	 * @param list<array{0:Values,1:int}> $others values and quantity of the other lines
+	 * @throws InsufficientStock
+	 */
+	public function assert_stock( array $values, int $quantity, int $adding, array $others, int $variant_id ): void {
+		$tracked = $this->tracked( $values );
+		$stock   = $this->sets->stock();
+		if ( $tracked === [] || $stock === null ) {
+			return;
+		}
+		$used = [];
+		foreach ( $others as [ $other, $qty ] ) {
+			foreach ( array_keys( array_intersect_key( $this->tracked( $other ), $tracked ) ) as $key ) {
+				$used[ $key ] = ( $used[ $key ] ?? 0 ) + $qty;
+			}
+		}
+		$levels = $stock->levels( array_keys( $tracked ) );
+		foreach ( $tracked as $key => $label ) {
+			if ( isset( $levels[ $key ] ) && $levels[ $key ] < ( $used[ $key ] ?? 0 ) + $quantity ) {
+				throw OptionStockRepository::short(
+					[
+						'quantity'   => $adding,
+						'label'      => $label,
+						'variant_id' => $variant_id,
+					],
+					$levels[ $key ] - ( $used[ $key ] ?? 0 ) - ( $quantity - $adding )
+				);
+			}
+		}
+	}
+
+	/**
+	 * The choices of the product's sets that are sold out, in one query and
+	 * only when a set tracks stock.
+	 *
+	 * @param list<OptionSet> $sets
+	 * @return array<string,true> OptionStockRepository keys
+	 */
+	public function sold_out( array $sets ): array {
+		$keys = [];
+		foreach ( $sets as $set ) {
+			foreach ( $set->fields as $field ) {
+				foreach ( $field->choices as $choice ) {
+					if ( $choice['track_stock'] ) {
+						$keys[] = OptionStockRepository::key( $set->id, $field->id, $choice['id'] );
+					}
+				}
+			}
+		}
+		$stock = $this->sets->stock();
+		if ( $keys === [] || $stock === null ) {
+			return [];
+		}
+		$levels = $stock->levels( $keys );
+		$out    = [];
+		foreach ( $keys as $key ) {
+			if ( ( $levels[ $key ] ?? 0 ) <= 0 ) {
+				$out[ $key ] = true;
+			}
+		}
+		return $out;
 	}
 
 	/**

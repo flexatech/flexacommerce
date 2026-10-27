@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Flexa\Commerce\Storefront\Render;
 
+use Flexa\Commerce\Inventory\OptionStockRepository;
 use Flexa\Commerce\Options\OptionField;
 use Flexa\Commerce\Options\OptionSet;
 use Flexa\Commerce\Options\ProductOptions;
@@ -23,14 +24,15 @@ final class OptionFields {
 	/**
 	 * @param list<OptionSet>                         $sets
 	 * @param array<string,string|list<string>>|null $chosen the values of a cart line being changed (ADR-037), else the defaults
+	 * @param array<string,true>                     $out    sold-out choices, OptionStockRepository keys (ADR-040)
 	 */
-	public static function html( array $sets, PricingService $money, ?array $chosen = null ): string {
+	public static function html( array $sets, PricingService $money, ?array $chosen = null, array $out = [] ): string {
 		$html = '';
 		foreach ( $sets as $set ) {
 			$values = $chosen !== null ? self::chosen( $set, $chosen ) : self::defaults( $set );
 			$html  .= '<div class="fxc-options__set">';
 			foreach ( $set->fields as $field ) {
-				$html .= self::field( $set, $field, $field->visible( $values ), $money, $chosen !== null ? ( $values[ $field->id ] ?? '' ) : null );
+				$html .= self::field( $set, $field, $field->visible( $values ), $money, $chosen !== null ? ( $values[ $field->id ] ?? '' ) : null, $out );
 			}
 			$html .= '</div>';
 		}
@@ -136,17 +138,24 @@ final class OptionFields {
 		return $values;
 	}
 
-	/** @param string|list<string>|null $value the value to show; null for the defaults */
-	private static function field( OptionSet $set, OptionField $field, bool $visible, PricingService $money, string|array|null $value = null ): string {
-		$picked = static fn ( array $choice ): bool => $value === null ? (bool) $choice['default'] : in_array( (string) $choice['id'], (array) $value, true );
+	/**
+	 * @param string|list<string>|null $value the value to show; null for the defaults
+	 * @param array<string,true>       $out   sold-out choices; shown, never picked
+	 */
+	private static function field( OptionSet $set, OptionField $field, bool $visible, PricingService $money, string|array|null $value = null, array $out = [] ): string {
+		$gone   = static fn ( array $choice ): bool => isset( $out[ OptionStockRepository::key( $set->id, $field->id, $choice['id'] ) ] );
+		$picked = static fn ( array $choice ): bool => ! $gone( $choice ) && ( $value === null ? (bool) $choice['default'] : in_array( (string) $choice['id'], (array) $value, true ) );
+		$sold   = ' ' . esc_html__( '(out of stock)', 'flexacommerce' );
 		$text   = is_string( $value ) ? $value : '';
 		$key    = ProductOptions::key( $set->id, $field->id );
 		$id     = wp_unique_id( 'fxc-option-' );
 		$hidden = $visible ? '' : ' hidden';
 		$off    = $visible ? '' : ' disabled';
-		$help   = $field->help !== '' ? sprintf( '<p class="fxc-option__help" id="%1$s-help">%2$s</p>', esc_attr( $id ), esc_html( $field->help ) ) : '';
-		$about  = $field->help !== '' ? sprintf( ' aria-describedby="%s-help"', esc_attr( $id ) ) : '';
-		$attrs  = sprintf( 'class="fxc-option fxc-option--%1$s" data-option="%2$s"%3$s', esc_attr( $field->type ), esc_attr( $key ), $hidden );
+		// A sold-out choice stays disabled when logic shows its field (cart.js).
+		$shut  = static fn ( array $choice ): string => $gone( $choice ) ? ' disabled data-out' : $off;
+		$help  = $field->help !== '' ? sprintf( '<p class="fxc-option__help" id="%1$s-help">%2$s</p>', esc_attr( $id ), esc_html( $field->help ) ) : '';
+		$about = $field->help !== '' ? sprintf( ' aria-describedby="%s-help"', esc_attr( $id ) ) : '';
+		$attrs = sprintf( 'class="fxc-option fxc-option--%1$s" data-option="%2$s"%3$s', esc_attr( $field->type ), esc_attr( $key ), $hidden );
 
 		if ( $field->type === OptionField::HEADING ) {
 			return sprintf( '<div %1$s><p class="fxc-option__heading">%2$s</p>%3$s</div>', $attrs, esc_html( $field->label ), $help );
@@ -160,7 +169,7 @@ final class OptionFields {
 			$html   = sprintf( '<fieldset %1$s%2$s><legend>%3$s%4$s</legend><div class="fxc-swatches__list">', $attrs, $about, esc_html( $field->label ), $required );
 			foreach ( $field->choices as $choice ) {
 				$price = self::price_tag( $choice['price_mode'], $choice['price'], $money );
-				$text  = esc_html( $choice['label'] ) . $price;
+				$text  = esc_html( $choice['label'] ) . $price . ( $gone( $choice ) ? $sold : '' );
 				$html .= sprintf(
 					'<label class="fxc-swatch fxc-swatch--%1$s"%2$s><input class="fxc-swatch__input" type="radio" name="%3$s" value="%4$d"%5$s%6$s%7$s><span class="fxc-swatch__face"%8$s>%9$s</span>%10$s</label>',
 					$swatch ? 'color' : 'button',
@@ -169,7 +178,7 @@ final class OptionFields {
 					$choice['id'],
 					$picked( $choice ) ? ' checked' : '',
 					$field->required ? ' required' : '',
-					$off,
+					$shut( $choice ),
 					$swatch ? ' style="--fxc-swatch-color:' . esc_attr( $choice['color'] ) . '"' : '',
 					$swatch ? '' : $text,
 					$swatch ? '<span class="screen-reader-text">' . $text . '</span>' : ''
@@ -189,9 +198,9 @@ final class OptionFields {
 					$choice['id'],
 					$picked( $choice ) ? ' checked' : '',
 					$radio && $field->required ? ' required' : '',
-					$off,
+					$shut( $choice ),
 					esc_html( $choice['label'] ),
-					self::price_tag( $choice['price_mode'], $choice['price'], $money )
+					self::price_tag( $choice['price_mode'], $choice['price'], $money ) . ( $gone( $choice ) ? $sold : '' )
 				);
 			}
 			return $html . $help . '</fieldset>';
@@ -213,9 +222,9 @@ final class OptionFields {
 				$control .= sprintf(
 					'<option value="%1$d"%2$s>%3$s%4$s</option>',
 					$choice['id'],
-					$picked( $choice ) ? ' selected' : '',
+					$picked( $choice ) ? ' selected' : ( $gone( $choice ) ? ' disabled' : '' ),
 					esc_html( $choice['label'] ),
-					wp_strip_all_tags( self::price_tag( $choice['price_mode'], $choice['price'], $money ) )
+					wp_strip_all_tags( self::price_tag( $choice['price_mode'], $choice['price'], $money ) ) . ( $gone( $choice ) ? $sold : '' )
 				);
 			}
 			$control .= '</select>';
