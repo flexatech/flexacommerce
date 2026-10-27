@@ -47,7 +47,7 @@ final class CouponService {
 	 * individual-use code keeps them out, and an individual-use automatic
 	 * coupon only applies alone. `next` is the automatic coupon closest to
 	 * applying when only its minimum spend is missing, else the buy X get Y
-	 * one that needs the fewest more units (ADR-027). A code whose conditions
+	 * or bundle one that needs the fewest more units (ADR-027, ADR-045). A code whose conditions
 	 * wait on a checkout choice is kept in `waiting`; an automatic coupon
 	 * applies only once its conditions are met (ADR-041).
 	 *
@@ -113,7 +113,7 @@ final class CouponService {
 				];
 				continue;
 			}
-			if ( $coupon->type === Coupon::BUY_X_GET_Y && $this->check( $coupon, $items, $subtotal, $user_id, false ) === null ) {
+			if ( $coupon->set_size() > 0 && $this->check( $coupon, $items, $subtotal, $user_id, false ) === null ) {
 				$units = $this->short( $coupon, $items );
 				if ( $units > 0 && ( $short === null || $units < $short['items'] ) ) {
 					$short = [
@@ -238,7 +238,9 @@ final class CouponService {
 	 * item limit counts units from the dearest line down, as WooCommerce
 	 * does; a line only partly counted is discounted on its share of what
 	 * is left. Buy X get Y takes its percentage off the units sets() picks,
-	 * on their share of what is left.
+	 * on their share of what is left. A bundle prices each set bundles()
+	 * forms on what is left of its units, and splits the discount over the
+	 * lines by their share of the sets.
 	 *
 	 * @param list<Coupon>   $coupons
 	 * @param list<CartItem> $items
@@ -263,6 +265,8 @@ final class CouponService {
 					$base          = $units === $quantity ? $left[ $key ] : IntMath::mul_div_half_up( $left[ $key ], $units, $quantity );
 					$lines[ $key ] = IntMath::mul_div_half_up( $base, min( $coupon->amount, Coupon::FULL_PERCENT ), Coupon::FULL_PERCENT );
 				}
+			} elseif ( $coupon->type === Coupon::BUNDLE ) {
+				$lines = $this->bundle_discount( $coupon, $items, $left, $subtotal_currency );
 			} elseif ( $coupon->type === Coupon::FIXED_CART ) {
 				$base = 0;
 				foreach ( $eligible as $item ) {
@@ -354,6 +358,10 @@ final class CouponService {
 				$coupon->buy_qty,
 				$coupon->get_qty
 			);
+		}
+		if ( $sets && $coupon->type === Coupon::BUNDLE && $this->bundles( $coupon, $items ) === [] ) {
+			/* translators: %s: coupon code. */
+			return sprintf( __( 'Coupon "%s" is a bundle offer. Add every product in the bundle to your cart to use it.', 'flexacommerce' ), $coupon->code );
 		}
 		return null;
 	}
@@ -547,14 +555,111 @@ final class CouponService {
 	}
 
 	/**
+	 * The discount of a bundle coupon by line key. Each set is priced on
+	 * what is left of its units: a percentage of it, an amount capped at
+	 * it, or what it costs above the set price. The total is split over
+	 * the lines by what is left of the units the sets took.
+	 *
+	 * @param list<CartItem>    $items
+	 * @param array<string,int> $left
+	 * @return array<string,int>
+	 */
+	private function bundle_discount( Coupon $coupon, array $items, array $left, string $currency ): array {
+		$taken    = [];
+		$discount = 0;
+		foreach ( $this->bundles( $coupon, $items ) as $set ) {
+			$value = 0;
+			foreach ( $set as $key => $units ) {
+				$value        += IntMath::mul_div_half_up( $left[ $key ], $units, $this->quantity( $items, $key ) );
+				$taken[ $key ] = ( $taken[ $key ] ?? 0 ) + $units;
+			}
+			$discount += match ( $coupon->bundle_mode ) {
+				Coupon::BUNDLE_AMOUNT => min( $coupon->amount, $value ),
+				Coupon::BUNDLE_PRICE  => max( 0, $value - $coupon->amount ),
+				default               => IntMath::mul_div_half_up( $value, min( $coupon->amount, Coupon::FULL_PERCENT ), Coupon::FULL_PERCENT ),
+			};
+		}
+		$bases = [];
+		foreach ( $taken as $key => $units ) {
+			$quantity      = $this->quantity( $items, $key );
+			$bases[ $key ] = $units === $quantity ? $left[ $key ] : IntMath::mul_div_half_up( $left[ $key ], $units, $quantity );
+		}
+		$discount = min( $discount, array_sum( $bases ) );
+		if ( $discount <= 0 ) {
+			return [];
+		}
+		$parts = ( new Money( $discount, $currency ) )->allocate( array_values( $bases ) );
+		$lines = [];
+		foreach ( array_keys( $bases ) as $index => $key ) {
+			$lines[ $key ] = $parts[ $index ]->amount;
+		}
+		return $lines;
+	}
+
+	/**
+	 * The complete sets of a bundle coupon, each the units it takes by line
+	 * key: one unit for every product or variation of the bundle, from the
+	 * dearest line that has it, variations before whole products so a
+	 * named variation is not used up by a product that covers it. Sets are
+	 * formed until one cannot be, or the repeat limit is reached.
+	 * `$missing` gets the products the first set that could not be formed
+	 * lacked.
+	 *
+	 * @param list<CartItem> $items
+	 * @return list<array<string,int>>
+	 */
+	private function bundles( Coupon $coupon, array $items, int &$missing = 0 ): array {
+		$members = [
+			...array_map( static fn ( int $id ): array => [ false, $id ], $coupon->variant_ids ),
+			...array_map( static fn ( int $id ): array => [ true, $id ], $coupon->product_ids ),
+		];
+		$lines   = self::by_unit_price( $this->eligible( $coupon, $items ) );
+		$open    = [];
+		foreach ( $lines as $item ) {
+			$open[ $item->line->key ] = $item->line->quantity;
+		}
+		$sets    = [];
+		$missing = 0;
+		$limit   = $coupon->repeat_limit > 0 ? $coupon->repeat_limit : PHP_INT_MAX;
+		while ( $members !== [] && $limit > 0 ) {
+			$taken = $open;
+			$set   = [];
+			foreach ( $members as [ $product, $id ] ) {
+				foreach ( $lines as $item ) {
+					$key = $item->line->key;
+					if ( $taken[ $key ] > 0 && ( $product ? $item->line->product_id : $item->line->variant_id ) === $id ) {
+						--$taken[ $key ];
+						$set[ $key ] = ( $set[ $key ] ?? 0 ) + 1;
+						continue 2;
+					}
+				}
+				++$missing;
+			}
+			if ( $missing > 0 ) {
+				break;
+			}
+			$sets[] = $set;
+			$open   = $taken;
+			--$limit;
+		}
+		return $sets;
+	}
+
+	/**
 	 * How many more units the cart needs for the first set of a buy X get Y
-	 * coupon. Units on lines that only count as bought or only may be
-	 * discounted fill their side; units on lines that count for both fill
-	 * the discounted side first, then the bought one.
+	 * or bundle coupon. A bundle lacks the products of the set not in the
+	 * cart. For buy X get Y, units on lines that only count as bought or
+	 * only may be discounted fill their side; units on lines that count for
+	 * both fill the discounted side first, then the bought one.
 	 *
 	 * @param list<CartItem> $items
 	 */
 	private function short( Coupon $coupon, array $items ): int {
+		if ( $coupon->type === Coupon::BUNDLE ) {
+			$missing = 0;
+			$this->bundles( $coupon, $items, $missing );
+			return $missing;
+		}
 		$get  = [];
 		$both = 0;
 		$only = 0;

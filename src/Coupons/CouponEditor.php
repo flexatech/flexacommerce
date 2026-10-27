@@ -104,14 +104,21 @@ final class CouponEditor {
 		if ( ! in_array( $type, Coupon::TYPES, true ) ) {
 			throw new InvalidCoupon( __( 'Choose a discount type.', 'flexacommerce' ), 'type' );
 		}
-		// A free-shipping coupon may give no discount besides the shipping.
+		$bundle = $type === Coupon::BUNDLE;
+		$mode   = $bundle ? self::text( $in['bundle_mode'] ?? '' ) : '';
+		$mode   = $bundle && $mode === '' ? Coupon::BUNDLE_PERCENT : $mode;
+		if ( $bundle && ! in_array( $mode, Coupon::BUNDLE_MODES, true ) ) {
+			throw new InvalidCoupon( __( 'Choose how the bundle is priced.', 'flexacommerce' ), 'bundle_mode' );
+		}
+		// A free-shipping coupon may give no discount besides the shipping; a bundle may cost nothing.
 		$free_shipping = ! empty( $in['free_shipping'] );
-		$amount        = self::integer( $in['amount'] ?? null, 'amount' ) ?? ( $free_shipping ? 0 : null );
-		if ( $amount === null || $amount < 0 || ( $amount === 0 && ! $free_shipping ) ) {
+		$may_be_zero   = $free_shipping || $mode === Coupon::BUNDLE_PRICE;
+		$amount        = self::integer( $in['amount'] ?? null, 'amount' ) ?? ( $may_be_zero ? 0 : null );
+		if ( $amount === null || $amount < 0 || ( $amount === 0 && ! $may_be_zero ) ) {
 			throw new InvalidCoupon( __( 'The amount must be more than zero.', 'flexacommerce' ), 'amount' );
 		}
 		$bogo = $type === Coupon::BUY_X_GET_Y;
-		if ( ( $type === Coupon::PERCENT || $bogo ) && $amount > Coupon::FULL_PERCENT ) {
+		if ( Coupon::percent_type( $type, $mode ) && $amount > Coupon::FULL_PERCENT ) {
 			throw new InvalidCoupon( __( 'A percentage cannot be more than 100.', 'flexacommerce' ), 'amount' );
 		}
 		if ( $bogo && $amount === 0 ) {
@@ -156,16 +163,26 @@ final class CouponEditor {
 		foreach ( self::ID_LISTS as $field ) {
 			$rules[ $field ] = self::ids( $in[ $field ] ?? [], $field );
 		}
+		if ( $bundle ) {
+			$size = count( $rules['product_ids'] ) + count( $rules['variant_ids'] );
+			if ( $size < 2 || $size > Coupon::MAX_BUNDLE ) {
+				/* translators: %d: the most products a bundle can hold */
+				throw new InvalidCoupon( sprintf( __( 'A bundle holds from 2 to %d products.', 'flexacommerce' ), Coupon::MAX_BUNDLE ), 'product_ids' );
+			}
+			// The set names its products; a category rule would only hide some of them.
+			$rules['category_ids'] = [];
+		}
 		// An automatic coupon applies before the shopper gives an email, so it has no email rules.
-		$rules['emails'] = $automatic ? [] : self::emails( $in['emails'] ?? [] );
-		$rules          += $bogo ? self::set( $in ) : [
+		$rules['emails']      = $automatic ? [] : self::emails( $in['emails'] ?? [] );
+		$rules               += $bogo ? self::set( $in ) : [
 			'buy_qty'          => 0,
 			'get_qty'          => 0,
-			'repeat_limit'     => 0,
+			'repeat_limit'     => $bundle ? self::repeat( $in ) : 0,
 			'get_product_ids'  => [],
 			'get_variant_ids'  => [],
 			'get_category_ids' => [],
 		];
+		$rules['bundle_mode'] = $mode;
 		try {
 			$rules['conditions'] = Conditions::clean( $in['conditions'] ?? null );
 		} catch ( \InvalidArgumentException $e ) {
@@ -185,7 +202,7 @@ final class CouponEditor {
 			'usage_limit'        => $limits['usage_limit'],
 			'per_customer_limit' => $automatic ? 0 : $limits['per_customer_limit'],
 			// A cart discount is split over the lines; an item limit has nothing to count there.
-			'item_limit'         => $type === Coupon::FIXED_CART || $bogo ? 0 : $limits['item_limit'],
+			'item_limit'         => $type === Coupon::FIXED_CART || $bogo || $bundle ? 0 : $limits['item_limit'],
 			'individual_use'     => ! empty( $in['individual_use'] ),
 			'exclude_sale_items' => ! empty( $in['exclude_sale_items'] ),
 			'free_shipping'      => $free_shipping,
@@ -212,15 +229,25 @@ final class CouponEditor {
 			}
 			$out[ $field ] = $value;
 		}
-		$repeat = self::integer( $in['repeat_limit'] ?? 0, 'repeat_limit' ) ?? 0;
-		if ( $repeat < 0 || $repeat > 4294967295 ) {
-			throw new InvalidCoupon( __( 'Usage limits must be zero (no limit) or more.', 'flexacommerce' ), 'repeat_limit' );
-		}
-		$out['repeat_limit'] = $repeat;
+		$out['repeat_limit'] = self::repeat( $in );
 		foreach ( self::GET_LISTS as $field ) {
 			$out[ $field ] = self::ids( $in[ $field ] ?? [], $field );
 		}
 		return $out;
+	}
+
+	/**
+	 * Sets one order gets at most; 0 is no limit.
+	 *
+	 * @param array<string,mixed> $in
+	 * @throws InvalidCoupon
+	 */
+	private static function repeat( array $in ): int {
+		$repeat = self::integer( $in['repeat_limit'] ?? 0, 'repeat_limit' ) ?? 0;
+		if ( $repeat < 0 || $repeat > 4294967295 ) {
+			throw new InvalidCoupon( __( 'Usage limits must be zero (no limit) or more.', 'flexacommerce' ), 'repeat_limit' );
+		}
+		return $repeat;
 	}
 
 	private static function text( mixed $value ): string {

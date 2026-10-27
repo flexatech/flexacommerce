@@ -668,3 +668,21 @@ Status of every ADR: **Accepted** (plan approved 2026-10-24) unless it says othe
 **Consequences.** No `DB_VERSION` and still 61 settings. A WooCommerce Product Add-ons import is unchanged, since that plugin has none of these types. Logic rules on these fields use `empty` and `not_empty`.
 
 **Revisit when.** Merchants ask for opening hours per weekday, blocked dates, a time zone per product, or a slider that shows a unit or a price next to its number.
+
+## ADR-045: Bundle coupons
+
+**Context.** flexa-extra has a "Product bundle" pricing rule: a set of products sold together for a percentage off, an amount off or a flat price, applied as a negative cart fee. FlexaCommerce price rules (ADR-024) change one line's unit price and do not combine lines, so a set of different products has no place there.
+
+**Decision.**
+1. **A coupon type.** `bundle` joins `Coupon::TYPES`. As a coupon it gets codes, automatic discounts (ADR-026), conditions (ADR-041), dates, usage limits, the cart's discount rows, the tax handling of coupon discounts and the order's DISCOUNT lines with no new code paths.
+2. **The set.** `product_ids` and `variant_ids` name the set, one unit of each, 2 to 20 entries. A product covers any of its variations; a variation only itself. `repeat_limit` caps the sets per order, as for buy X get Y.
+3. **Pricing.** `bundle_mode` (in `rules`) says what `amount` is: `percent` (hundredths of a percent off the set), `amount` (off each set, at most the set's value) or `price` (what a set costs; a set already cheaper gets nothing). The default is `percent`.
+4. **Forming sets.** Greedy: variations are filled before whole products so a product that covers a named variation does not use up its only unit, and each takes the dearest unit left, which gives the shopper the larger discount. The discount of all sets is split over the lines by what is left of the units in the sets, so a line's later coupons and refunds see their share.
+5. **Nudge.** An automatic bundle without a set counts the products it lacks for the next-discount line (ADR-027), its bar measured against the size of the set.
+
+**Alternatives.** A price rule type: price rules are per line and do not stack, so the bundle would need its own cart pass. A cart fee as in flexa-extra: the discount would then sit outside the coupon totals, taxes and order lines. An optimal matching of units to the set: greedy with variations first covers the carts merchants build, and is easy to explain.
+
+**Consequences.** No `DB_VERSION` and still 61 settings. The FlexaCommerce file export and import carry `bundle_mode`; WooCommerce has no bundle coupon, so a copy to WooCommerce rejects it like a buy X get Y one. A bundle has no category rules and no item limit.
+
+**Revisit when.** Merchants ask for more than one unit of a product per set, a choice between products in one slot ("any 3 from this category"), or a bundle shown on the product page with a single add-to-cart button.
+

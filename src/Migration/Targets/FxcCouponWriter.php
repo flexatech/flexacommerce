@@ -49,12 +49,13 @@ final class FxcCouponWriter {
 		$currency = Settings::string( 'currency' );
 		$exponent = Currency::exponent( $currency );
 		$source   = strtoupper( (string) ( $data['currency'] ?? '' ) );
-		if ( $source !== '' && $source !== $currency && $type !== Coupon::PERCENT && $type !== Coupon::BUY_X_GET_Y ) {
+		$mode     = (string) ( $data['bundle_mode'] ?? '' );
+		if ( $source !== '' && $source !== $currency && ! Coupon::percent_type( $type, $mode ) ) {
 			$this->problems[] = Problem::warning( 'coupon_currency', sprintf( 'The coupon "%1$s" is in %2$s and the store uses %3$s. The amounts are copied as they are.', $code, $source, $currency ) );
 		}
-		$amount        = $this->amount( (string) ( $data['amount'] ?? '0' ), $type, $currency, $exponent, $code );
+		$amount        = $this->amount( (string) ( $data['amount'] ?? '0' ), Coupon::percent_type( $type, $mode ), $currency, $exponent, $code );
 		$free_shipping = ! empty( $data['free_shipping'] );
-		if ( $amount <= 0 && ! $free_shipping ) {
+		if ( $amount <= 0 && ! $free_shipping && ! ( $amount === 0 && $mode === Coupon::BUNDLE_PRICE ) ) {
 			throw new Rejected( 'unsupported_coupon', sprintf( 'The coupon "%s" was not imported. The coupon has no amount.', $code ) );
 		}
 
@@ -112,6 +113,7 @@ final class FxcCouponWriter {
 			'get_product_ids'      => $gets[0],
 			'get_variant_ids'      => $gets[1],
 			'get_category_ids'     => $get_cats,
+			'bundle_mode'          => $mode,
 		];
 		try {
 			$coupon = $this->editor->save( $input, $target );
@@ -142,11 +144,11 @@ final class FxcCouponWriter {
 		$this->coupons->backfill_uses( OrderItem::DISCOUNT, OrderStatus::CANCELLED );
 	}
 
-	private function amount( string $value, string $type, string $currency, int $exponent, string $code ): int {
+	private function amount( string $value, bool $percent, string $currency, int $exponent, string $code ): int {
 		if ( ! Decimal::is_decimal( $value ) ) {
 			return 0;
 		}
-		if ( $type !== Coupon::PERCENT && $type !== Coupon::BUY_X_GET_Y ) {
+		if ( ! $percent ) {
 			[ $minor, $exact ] = Decimal::to_minor( $value, $currency, $exponent );
 			if ( ! $exact ) {
 				$this->problems[] = Problem::warning( 'coupon_rounded', sprintf( 'The amount of the coupon "%1$s" was rounded to %2$s.', $code, Decimal::from_minor( $minor, $currency, $exponent ) ) );

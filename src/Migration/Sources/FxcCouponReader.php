@@ -73,6 +73,7 @@ final class FxcCouponReader {
 				'repeat_limit'       => $coupon->repeat_limit,
 				'get_products'       => $gets,
 				'get_categories'     => $get_cats,
+				'bundle_mode'        => $coupon->bundle_mode,
 				'used_by'            => $this->coupons->used_by( $id ),
 				'modified_at'        => Dates::from_db( $coupon->updated_at !== '' ? $coupon->updated_at : null ),
 			],

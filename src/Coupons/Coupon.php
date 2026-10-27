@@ -20,15 +20,29 @@ defined( 'ABSPATH' ) || exit;
  * An automatic coupon (ADR-026) has no code to type: it applies to every
  * cart it fits, and its code is the name the shopper sees.
  * `conditions` (ADR-041, in `rules` too) add cart, checkout and customer
- * conditions.
+ * conditions. A bundle coupon (ADR-045) discounts each complete set of its
+ * products: one unit of every product or variation it names. Its
+ * `bundle_mode` says what the amount is: a percentage off the set, an
+ * amount off each set, or the price a set costs.
  */
 final class Coupon {
 	public const PERCENT       = 'percent';
 	public const FIXED_CART    = 'fixed_cart';
 	public const FIXED_PRODUCT = 'fixed_product';
 	public const BUY_X_GET_Y   = 'buy_x_get_y';
+	public const BUNDLE        = 'bundle';
 
-	public const TYPES = [ self::PERCENT, self::FIXED_CART, self::FIXED_PRODUCT, self::BUY_X_GET_Y ];
+	public const TYPES = [ self::PERCENT, self::FIXED_CART, self::FIXED_PRODUCT, self::BUY_X_GET_Y, self::BUNDLE ];
+
+	/** What the amount of a bundle coupon is. */
+	public const BUNDLE_PERCENT = 'percent';
+	public const BUNDLE_AMOUNT  = 'amount';
+	public const BUNDLE_PRICE   = 'price';
+
+	public const BUNDLE_MODES = [ self::BUNDLE_PERCENT, self::BUNDLE_AMOUNT, self::BUNDLE_PRICE ];
+
+	/** Products and variations a bundle can hold. */
+	public const MAX_BUNDLE = 20;
 
 	public const ACTIVE   = 'active';
 	public const DISABLED = 'disabled';
@@ -49,11 +63,12 @@ final class Coupon {
 	 * @param int          $item_limit           units a percent or per-product coupon discounts at most, the dearest first; 0 is every unit
 	 * @param int          $buy_qty              buy X get Y: units bought per set (X)
 	 * @param int          $get_qty              buy X get Y: units discounted per set (Y)
-	 * @param int          $repeat_limit         buy X get Y: sets one cart gets at most; 0 is as many as it holds
+	 * @param int          $repeat_limit         buy X get Y and bundle: sets one cart gets at most; 0 is as many as it holds
 	 * @param list<int>    $get_product_ids      buy X get Y: products that can be the discounted units; with no get rules, the bought ones
 	 * @param list<int>    $get_variant_ids
 	 * @param list<int>    $get_category_ids
 	 * @param array<mixed> $conditions           a block from Conditions::clean()
+	 * @param string       $bundle_mode          bundle: one of BUNDLE_MODES; empty for other types
 	 */
 	public function __construct(
 		public readonly int $id,
@@ -93,6 +108,7 @@ final class Coupon {
 			'match' => Conditions::ALL,
 			'items' => [],
 		],
+		public readonly string $bundle_mode = '',
 	) {}
 
 	/** The form a shopper's code is compared in: trimmed, lower case. */
@@ -139,10 +155,11 @@ final class Coupon {
 			get_category_ids: self::ids( $rules['get_category_ids'] ?? [] ),
 			automatic: (bool) ( $row['automatic'] ?? false ),
 			conditions: is_array( $rules['conditions'] ?? null ) ? $rules['conditions'] : Conditions::none(),
+			bundle_mode: (string) $row['type'] !== self::BUNDLE ? '' : ( in_array( $rules['bundle_mode'] ?? null, self::BUNDLE_MODES, true ) ? (string) $rules['bundle_mode'] : self::BUNDLE_PERCENT ),
 		);
 	}
 
-	/** @return array{product_ids:list<int>,exclude_product_ids:list<int>,variant_ids:list<int>,exclude_variant_ids:list<int>,category_ids:list<int>,exclude_category_ids:list<int>,emails:list<string>,buy_qty:int,get_qty:int,repeat_limit:int,get_product_ids:list<int>,get_variant_ids:list<int>,get_category_ids:list<int>,conditions:array<mixed>} */
+	/** @return array{product_ids:list<int>,exclude_product_ids:list<int>,variant_ids:list<int>,exclude_variant_ids:list<int>,category_ids:list<int>,exclude_category_ids:list<int>,emails:list<string>,buy_qty:int,get_qty:int,repeat_limit:int,get_product_ids:list<int>,get_variant_ids:list<int>,get_category_ids:list<int>,conditions:array<mixed>,bundle_mode:string} */
 	public function rules(): array {
 		return [
 			'product_ids'          => $this->product_ids,
@@ -159,6 +176,7 @@ final class Coupon {
 			'get_variant_ids'      => $this->get_variant_ids,
 			'get_category_ids'     => $this->get_category_ids,
 			'conditions'           => $this->conditions,
+			'bundle_mode'          => $this->bundle_mode,
 		];
 	}
 
@@ -178,7 +196,21 @@ final class Coupon {
 
 	/** Whether the amount is hundredths of a percent rather than money. */
 	public function is_percentage(): bool {
-		return $this->type === self::PERCENT || $this->type === self::BUY_X_GET_Y;
+		return self::percent_type( $this->type, $this->bundle_mode );
+	}
+
+	/** Whether a coupon of this type (and bundle mode) has its amount in hundredths of a percent. */
+	public static function percent_type( string $type, string $bundle_mode = '' ): bool {
+		return $type === self::PERCENT || $type === self::BUY_X_GET_Y || ( $type === self::BUNDLE && $bundle_mode !== self::BUNDLE_AMOUNT && $bundle_mode !== self::BUNDLE_PRICE );
+	}
+
+	/** Units in one set: X + Y for buy X get Y, the products for a bundle; 0 for other types. */
+	public function set_size(): int {
+		return match ( $this->type ) {
+			self::BUY_X_GET_Y => $this->buy_qty + $this->get_qty,
+			self::BUNDLE      => count( $this->product_ids ) + count( $this->variant_ids ),
+			default           => 0,
+		};
 	}
 
 	public function has_category_rules(): bool {

@@ -117,7 +117,7 @@ final class CartPresenter {
 		}
 		$coupon = $next['coupon'];
 		if ( $next['items'] > 0 ) {
-			$goal = max( 1, $coupon->buy_qty + $coupon->get_qty );
+			$goal = max( 1, $coupon->set_size() );
 			return [
 				'label'     => $coupon->code,
 				'message'   => sprintf(

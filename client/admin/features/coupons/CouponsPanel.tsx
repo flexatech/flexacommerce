@@ -26,6 +26,15 @@ function amountText(coupon: Coupon): string {
             ? sprintf(__("Buy %1$d, get %2$d free"), coupon.buy_qty, coupon.get_qty)
             : sprintf(__("Buy %1$d, get %2$d at %3$s %% off"), coupon.buy_qty, coupon.get_qty, String(coupon.amount / 100));
     }
+    if (coupon.type === "bundle") {
+        const size = coupon.product_ids.length + coupon.variant_ids.length;
+        if (coupon.bundle_mode === "price") {
+            return sprintf(__("%1$d products for %2$s"), size, orderMoney(coupon.amount, coupon.currency));
+        }
+        return coupon.bundle_mode === "amount"
+            ? sprintf(__("%1$s off a set of %2$d"), orderMoney(coupon.amount, coupon.currency), size)
+            : sprintf(__("%1$s %% off a set of %2$d"), String(coupon.amount / 100), size);
+    }
     const money = orderMoney(coupon.amount, coupon.currency);
     return coupon.type === "fixed_product" ? sprintf(__("%s per item"), money) : money;
 }

@@ -3,17 +3,21 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { api } from "@/shared/lib/api";
 import type { ConditionBlock } from "../conditions/useConditions";
 
-export type CouponType = "percent" | "fixed_cart" | "fixed_product" | "buy_x_get_y";
+export type CouponType = "percent" | "fixed_cart" | "fixed_product" | "buy_x_get_y" | "bundle";
+
+/** What the amount of a bundle is: a percentage off the set, an amount off each set, or the set price. */
+export type BundleMode = "percent" | "amount" | "price";
 
 /** Types whose amount is in hundredths of a percent. */
-export const isPercentType = (type: CouponType): boolean => type === "percent" || type === "buy_x_get_y";
+export const isPercentType = (type: CouponType, mode: BundleMode | "" = ""): boolean =>
+    type === "percent" || type === "buy_x_get_y" || (type === "bundle" && mode !== "amount" && mode !== "price");
 export type CouponStatus = "active" | "disabled";
 
 export interface Coupon {
     id: number;
     code: string;
     type: CouponType;
-    /** Minor units, or hundredths of a percent for `percent` and `buy_x_get_y` (1000 = 10 %). */
+    /** Minor units, or hundredths of a percent for `percent`, `buy_x_get_y` and a percent bundle (1000 = 10 %). */
     amount: number;
     status: CouponStatus;
     description: string;
@@ -46,7 +50,7 @@ export interface Coupon {
     /** Buy X get Y: units bought and units discounted per set; 0 for other types. */
     buy_qty: number;
     get_qty: number;
-    /** Sets one order gets at most. 0 is no limit. */
+    /** Buy X get Y and bundle: sets one order gets at most. 0 is no limit. */
     repeat_limit: number;
     /** What a set discounts. Empty: the same items that count as bought. */
     get_product_ids: number[];
@@ -54,6 +58,8 @@ export interface Coupon {
     get_category_ids: number[];
     /** Extra conditions (ADR-041); none means only the rules above. */
     conditions: ConditionBlock;
+    /** Bundle (ADR-045): what the amount is; empty for other types. Its products are product_ids and variant_ids. */
+    bundle_mode: BundleMode | "";
     created_at: string | null;
     updated_at: string | null;
     currency: string;

@@ -15,7 +15,7 @@ import { MoneyInput } from "../../components/MoneyInput";
 import { ConditionsEditor } from "../conditions/ConditionsEditor";
 import { NO_CONDITIONS, type ConditionBlock } from "../conditions/useConditions";
 import { TargetPicker, type Pick } from "./TargetPicker";
-import { isPercentType, useSaveCoupon, type Coupon, type CouponInput, type CouponType } from "./useCoupons";
+import { isPercentType, useSaveCoupon, type BundleMode, type Coupon, type CouponInput, type CouponType } from "./useCoupons";
 
 /** What the form edits; dates are `datetime-local` text in the browser's time zone. */
 interface Draft {
@@ -47,6 +47,7 @@ interface Draft {
     get_products: Pick[];
     get_categories: Pick[];
     conditions: ConditionBlock;
+    bundle_mode: BundleMode;
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -73,12 +74,14 @@ const idsOf = (list: Pick[], type: Pick["type"]): number[] => list.filter((p) =>
 
 function draftOf(coupon: Coupon | null): Draft {
     const bogo = coupon?.type === "buy_x_get_y";
+    const sets = bogo || coupon?.type === "bundle";
+    const mode = coupon?.bundle_mode || "percent";
     return {
         automatic: coupon?.automatic ?? false,
         code: coupon?.code ?? "",
         type: coupon?.type ?? "percent",
-        percent: coupon !== null && isPercentType(coupon.type) ? String(coupon.amount / 100) : "",
-        amount: coupon !== null && !isPercentType(coupon.type) ? coupon.amount : 0,
+        percent: coupon !== null && isPercentType(coupon.type, mode) ? String(coupon.amount / 100) : "",
+        amount: coupon !== null && !isPercentType(coupon.type, mode) ? coupon.amount : 0,
         status: coupon?.status ?? "active",
         description: coupon?.description ?? "",
         starts_at: toLocalInput(coupon?.starts_at ?? null),
@@ -98,21 +101,23 @@ function draftOf(coupon: Coupon | null): Draft {
         emails: (coupon?.emails ?? []).join(", "),
         buy_qty: bogo ? String(coupon.buy_qty) : "1",
         get_qty: bogo ? String(coupon.get_qty) : "1",
-        repeat_limit: bogo && coupon.repeat_limit > 0 ? String(coupon.repeat_limit) : "",
+        repeat_limit: sets && coupon.repeat_limit > 0 ? String(coupon.repeat_limit) : "",
         get_products: [...picks("product", coupon?.get_product_ids), ...picks("variant", coupon?.get_variant_ids)],
         get_categories: picks("category", coupon?.get_category_ids),
         conditions: coupon?.conditions ?? NO_CONDITIONS,
+        bundle_mode: mode,
     };
 }
 
 function inputOf(draft: Draft): CouponInput {
     const percent = parseDecimal(draft.percent);
     const bogo = draft.type === "buy_x_get_y";
+    const bundle = draft.type === "bundle";
     return {
         automatic: draft.automatic,
         code: draft.code.trim(),
         type: draft.type,
-        amount: isPercentType(draft.type) ? (percent === null || Number.isNaN(percent) ? 0 : Math.round(percent * 100)) : draft.amount,
+        amount: isPercentType(draft.type, draft.bundle_mode) ? (percent === null || Number.isNaN(percent) ? 0 : Math.round(percent * 100)) : draft.amount,
         status: draft.status,
         description: draft.description,
         starts_at: toUtc(draft.starts_at),
@@ -121,16 +126,17 @@ function inputOf(draft: Draft): CouponInput {
         max_subtotal: draft.max_subtotal,
         usage_limit: Number(draft.usage_limit) || 0,
         per_customer_limit: draft.automatic ? 0 : Number(draft.per_customer_limit) || 0,
-        item_limit: draft.type === "fixed_cart" || bogo ? 0 : Number(draft.item_limit) || 0,
+        item_limit: draft.type === "fixed_cart" || bogo || bundle ? 0 : Number(draft.item_limit) || 0,
         individual_use: draft.individual_use,
         exclude_sale_items: draft.exclude_sale_items,
         free_shipping: draft.free_shipping,
         product_ids: idsOf(draft.products, "product"),
-        exclude_product_ids: idsOf(draft.exclude_products, "product"),
+        // A bundle names its products, so the other product and category rules do not apply to it.
+        exclude_product_ids: bundle ? [] : idsOf(draft.exclude_products, "product"),
         variant_ids: idsOf(draft.products, "variant"),
-        exclude_variant_ids: idsOf(draft.exclude_products, "variant"),
-        category_ids: idsOf(draft.categories, "category"),
-        exclude_category_ids: idsOf(draft.exclude_categories, "category"),
+        exclude_variant_ids: bundle ? [] : idsOf(draft.exclude_products, "variant"),
+        category_ids: bundle ? [] : idsOf(draft.categories, "category"),
+        exclude_category_ids: bundle ? [] : idsOf(draft.exclude_categories, "category"),
         emails: draft.automatic
             ? []
             : draft.emails
@@ -139,11 +145,12 @@ function inputOf(draft: Draft): CouponInput {
                   .filter(Boolean),
         buy_qty: bogo ? Number(draft.buy_qty) || 0 : 0,
         get_qty: bogo ? Number(draft.get_qty) || 0 : 0,
-        repeat_limit: bogo ? Number(draft.repeat_limit) || 0 : 0,
+        repeat_limit: bogo || bundle ? Number(draft.repeat_limit) || 0 : 0,
         get_product_ids: bogo ? idsOf(draft.get_products, "product") : [],
         get_variant_ids: bogo ? idsOf(draft.get_products, "variant") : [],
         get_category_ids: bogo ? idsOf(draft.get_categories, "category") : [],
         conditions: draft.conditions,
+        bundle_mode: bundle ? draft.bundle_mode : "",
     };
 }
 
@@ -228,6 +235,13 @@ function Method({ automatic, onChange }: { automatic: boolean; onChange: (automa
     );
 }
 
+/** How a bundle can be priced, with the label of its amount field. */
+const bundleModes = (currency: string): { value: BundleMode; label: string; amount: string }[] => [
+    { value: "percent", label: __("Percentage off the set"), amount: __("Percentage off the set") },
+    { value: "amount", label: __("Amount off each set"), amount: sprintf(__("Amount off each set (%s)"), currency) },
+    { value: "price", label: __("Fixed price for the set"), amount: sprintf(__("Set price (%s)"), currency) },
+];
+
 /** Common buy X get Y offers; the percentage is in the form's units (100 = free). */
 const offers = () => [
     { label: __("Buy 1, get 1 free"), buy: "1", get: "1", percent: "100" },
@@ -307,7 +321,7 @@ export function CouponDialog({ open, coupon, automatic = false, onOpenChange }: 
                     </DialogTitle>
                     <DialogDescription>
                         {draft.automatic
-                            ? __("Applies to every cart that meets the rules, after any codes the shopper entered. With a minimum spend, or as buy X get Y, the cart tells shoppers what they still need. Dates use your browser's time zone.")
+                            ? __("Applies to every cart that meets the rules, after any codes the shopper entered. With a minimum spend, as buy X get Y or as a bundle, the cart tells shoppers what they still need. Dates use your browser's time zone.")
                             : __("Shoppers enter the code in the cart. Codes are not case sensitive. Dates use your browser's time zone.")}
                     </DialogDescription>
                 </DialogHeader>
@@ -356,6 +370,7 @@ export function CouponDialog({ open, coupon, automatic = false, onOpenChange }: 
                                         { value: "fixed_cart", label: __("Fixed amount off the cart") },
                                         { value: "fixed_product", label: __("Fixed amount off each item") },
                                         { value: "buy_x_get_y", label: __("Buy X, get Y") },
+                                        { value: "bundle", label: __("Bundle of products") },
                                     ]}
                                 />
                             )}
@@ -364,7 +379,9 @@ export function CouponDialog({ open, coupon, automatic = false, onOpenChange }: 
                             label={
                                 draft.type === "buy_x_get_y"
                                     ? __("Percentage off the Y items")
-                                    : isPercentType(draft.type)
+                                    : draft.type === "bundle"
+                                      ? (bundleModes(currency.code).find((m) => m.value === draft.bundle_mode)?.amount ?? "")
+                                      : isPercentType(draft.type)
                                       ? __("Percentage")
                                       : sprintf(__("Amount (%s)"), currency.code)
                             }
@@ -375,12 +392,14 @@ export function CouponDialog({ open, coupon, automatic = false, onOpenChange }: 
                                       ? __("Taken off every unit of the items it applies to.")
                                       : draft.type === "buy_x_get_y"
                                         ? __("100 makes them free.")
-                                        : undefined
+                                        : draft.type === "bundle" && draft.bundle_mode === "price"
+                                          ? __("What one set of the bundle costs. Sets already cheaper keep their price.")
+                                          : undefined
                             }
                             error={errors.amount}
                         >
                             {(id) =>
-                                isPercentType(draft.type) ? (
+                                isPercentType(draft.type, draft.bundle_mode) ? (
                                     <Input id={id} inputMode="decimal" value={draft.percent} onChange={(e) => set("percent", e.target.value)} />
                                 ) : (
                                     <MoneyInput id={id} value={draft.amount} exponent={currency.exponent} onChange={(minor) => set("amount", minor)} />
@@ -426,7 +445,7 @@ export function CouponDialog({ open, coupon, automatic = false, onOpenChange }: 
                                 )}
                             </Field>
                         )}
-                        {draft.type !== "fixed_cart" && draft.type !== "buy_x_get_y" && (
+                        {draft.type !== "fixed_cart" && draft.type !== "buy_x_get_y" && draft.type !== "bundle" && (
                             <Field
                                 label={__("Limit to items")}
                                 help={__("Units in the cart it discounts at most, the most expensive first. Empty: every unit.")}
@@ -543,6 +562,57 @@ export function CouponDialog({ open, coupon, automatic = false, onOpenChange }: 
                         </fieldset>
                     )}
 
+                    {draft.type === "bundle" && (
+                        <fieldset className="fxc:space-y-4">
+                            <legend className="fxc:mb-2 fxc:text-sm fxc:font-medium">{__("Bundle")}</legend>
+                            <p className="fxc:text-muted-foreground fxc:text-xs">
+                                {__(
+                                    "A set is one of each product below. Every complete set in the cart gets the discount; a product picked as a whole covers all its variations.",
+                                )}
+                            </p>
+                            <Field
+                                label={__("Products in the bundle")}
+                                help={__("From 2 to 20 products or variations. Search by name or SKU.")}
+                                error={errors.product_ids ?? errors.variant_ids}
+                            >
+                                {(id) => (
+                                    <TargetPicker
+                                        id={id}
+                                        kind="product"
+                                        value={draft.products}
+                                        onChange={(v) => set("products", v)}
+                                        placeholder={__("Search products")}
+                                    />
+                                )}
+                            </Field>
+                            <div className="fxc:grid fxc:gap-4 fxc:sm:grid-cols-2">
+                                <Field label={__("Pricing")} error={errors.bundle_mode}>
+                                    {(id) => (
+                                        <Select
+                                            id={id}
+                                            className="fxc:w-full"
+                                            value={draft.bundle_mode}
+                                            onChange={(e) => set("bundle_mode", e.target.value as BundleMode)}
+                                            options={bundleModes(currency.code).map(({ value, label }) => ({ value, label }))}
+                                        />
+                                    )}
+                                </Field>
+                                <Field label={__("Sets per order")} help={__("Empty: no limit.")} error={errors.repeat_limit}>
+                                    {(id) => (
+                                        <Input
+                                            id={id}
+                                            type="number"
+                                            min={0}
+                                            step={1}
+                                            value={draft.repeat_limit}
+                                            onChange={(e) => set("repeat_limit", e.target.value)}
+                                        />
+                                    )}
+                                </Field>
+                            </div>
+                        </fieldset>
+                    )}
+
                     <div className="fxc:space-y-3">
                         <Check
                             checked={draft.individual_use}
@@ -568,58 +638,60 @@ export function CouponDialog({ open, coupon, automatic = false, onOpenChange }: 
                         />
                     </div>
 
-                    <fieldset className="fxc:space-y-4">
+                    <fieldset className="fxc:space-y-4" hidden={draft.type === "bundle" && draft.automatic}>
                         <legend className="fxc:mb-2 fxc:text-sm fxc:font-medium">{__("Restrictions")}</legend>
-                        <div className="fxc:grid fxc:gap-4 fxc:sm:grid-cols-2">
-                            <Field
-                                label={__("Products")}
-                                help={__("Search by name or SKU. A product covers all its variations. Empty: all.")}
-                                error={errors.product_ids ?? errors.variant_ids}
-                            >
-                                {(id) => (
-                                    <TargetPicker
-                                        id={id}
-                                        kind="product"
-                                        value={draft.products}
-                                        onChange={(v) => set("products", v)}
-                                        placeholder={__("Search products")}
-                                    />
-                                )}
-                            </Field>
-                            <Field label={__("Excluded products")} error={errors.exclude_product_ids ?? errors.exclude_variant_ids}>
-                                {(id) => (
-                                    <TargetPicker
-                                        id={id}
-                                        kind="product"
-                                        value={draft.exclude_products}
-                                        onChange={(v) => set("exclude_products", v)}
-                                        placeholder={__("Search products")}
-                                    />
-                                )}
-                            </Field>
-                            <Field label={__("Categories")} help={__("Subcategories are included. Empty: all.")} error={errors.category_ids}>
-                                {(id) => (
-                                    <TargetPicker
-                                        id={id}
-                                        kind="category"
-                                        value={draft.categories}
-                                        onChange={(v) => set("categories", v)}
-                                        placeholder={__("Search categories")}
-                                    />
-                                )}
-                            </Field>
-                            <Field label={__("Excluded categories")} error={errors.exclude_category_ids}>
-                                {(id) => (
-                                    <TargetPicker
-                                        id={id}
-                                        kind="category"
-                                        value={draft.exclude_categories}
-                                        onChange={(v) => set("exclude_categories", v)}
-                                        placeholder={__("Search categories")}
-                                    />
-                                )}
-                            </Field>
-                        </div>
+                        {draft.type !== "bundle" && (
+                            <div className="fxc:grid fxc:gap-4 fxc:sm:grid-cols-2">
+                                <Field
+                                    label={__("Products")}
+                                    help={__("Search by name or SKU. A product covers all its variations. Empty: all.")}
+                                    error={errors.product_ids ?? errors.variant_ids}
+                                >
+                                    {(id) => (
+                                        <TargetPicker
+                                            id={id}
+                                            kind="product"
+                                            value={draft.products}
+                                            onChange={(v) => set("products", v)}
+                                            placeholder={__("Search products")}
+                                        />
+                                    )}
+                                </Field>
+                                <Field label={__("Excluded products")} error={errors.exclude_product_ids ?? errors.exclude_variant_ids}>
+                                    {(id) => (
+                                        <TargetPicker
+                                            id={id}
+                                            kind="product"
+                                            value={draft.exclude_products}
+                                            onChange={(v) => set("exclude_products", v)}
+                                            placeholder={__("Search products")}
+                                        />
+                                    )}
+                                </Field>
+                                <Field label={__("Categories")} help={__("Subcategories are included. Empty: all.")} error={errors.category_ids}>
+                                    {(id) => (
+                                        <TargetPicker
+                                            id={id}
+                                            kind="category"
+                                            value={draft.categories}
+                                            onChange={(v) => set("categories", v)}
+                                            placeholder={__("Search categories")}
+                                        />
+                                    )}
+                                </Field>
+                                <Field label={__("Excluded categories")} error={errors.exclude_category_ids}>
+                                    {(id) => (
+                                        <TargetPicker
+                                            id={id}
+                                            kind="category"
+                                            value={draft.exclude_categories}
+                                            onChange={(v) => set("exclude_categories", v)}
+                                            placeholder={__("Search categories")}
+                                        />
+                                    )}
+                                </Field>
+                            </div>
+                        )}
                         {!draft.automatic && (
                             <Field
                                 label={__("Allowed emails")}
