@@ -3,8 +3,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/shared/lib/api";
 import type { ConditionBlock } from "../conditions/useConditions";
 
-/** `bulk` prices every unit by the tier reached; `graduated` prices each unit by the tier its position reaches (ADR-042). */
-export type RuleType = "adjust" | "bulk" | "graduated";
+/**
+ * `bulk` prices every unit by the tier reached; `graduated` prices each unit by the tier its position reaches (ADR-042).
+ * `fee` adds a charge to the cart total instead of changing a price (ADR-043).
+ */
+export type RuleType = "adjust" | "bulk" | "graduated" | "fee";
 /** Percent off (hundredths), an amount off each unit, or a set unit price (minor units). */
 export type RuleMode = "percent" | "fixed" | "price";
 export type RuleCount = "product" | "variant";
@@ -25,6 +28,8 @@ export interface PriceRule {
     type: RuleType;
     mode: RuleMode;
     amount: number;
+    /** A percent fee's largest amount, in minor units; 0 for no limit. */
+    cap: number;
     /** With `bulk` and `graduated`, sorted by `min`. */
     tiers: Tier[];
     count: RuleCount;

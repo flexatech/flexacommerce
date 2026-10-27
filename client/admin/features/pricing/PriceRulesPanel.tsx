@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Layers, Pencil, Percent, Plus, Trash2, Users } from "lucide-react";
+import { Layers, Pencil, Percent, Plus, Receipt, Trash2, Users } from "lucide-react";
 
 import { showToast } from "@/shared/components/showToast";
 import { Badge } from "@/shared/components/ui/badge";
@@ -28,7 +28,7 @@ function stateOf(rule: PriceRule): { label: string; tone: "muted" | "destructive
 }
 
 function RuleIcon({ rule }: { rule: Pick<PriceRule, "type" | "customers"> }) {
-    const Icon = rule.type !== "adjust" ? Layers : rule.customers === "roles" ? Users : Percent;
+    const Icon = rule.type === "fee" ? Receipt : rule.type !== "adjust" ? Layers : rule.customers === "roles" ? Users : Percent;
     return (
         <span className="fxc:bg-muted fxc:text-muted-foreground fxc:flex fxc:size-9 fxc:shrink-0 fxc:items-center fxc:justify-center fxc:rounded-md">
             <Icon aria-hidden className="fxc:size-4" />
@@ -60,7 +60,7 @@ export function PriceRulesPanel() {
         <div className="fxc:space-y-4">
             <div className="fxc:flex fxc:flex-wrap fxc:items-center fxc:gap-3">
                 <p className="fxc:text-muted-foreground fxc:max-w-2xl fxc:text-sm">
-                    {__("Prices that change on their own, with no code to type: a sale on a category, a lower price from a quantity up, or a price for a customer role. When several rules fit, the customer gets the lowest price; rules do not add up.")}
+                    {__("Prices that change on their own, with no code to type: a sale on a category, a lower price from a quantity up, or a price for a customer role. When several rules fit, the customer gets the lowest price; rules do not add up. A checkout fee adds its own line to the total instead.")}
                 </p>
                 <Button className="fxc:ms-auto" onClick={() => setEditing({ rule: null })}>
                     <Plus aria-hidden className="fxc:size-4" />

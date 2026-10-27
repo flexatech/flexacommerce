@@ -71,6 +71,15 @@ final class NewOrderItem {
 	}
 
 	/**
+	 * A charge from a fee rule (ADR-043), without tax.
+	 *
+	 * @param array<string,mixed> $meta {rule_id}
+	 */
+	public static function fee( string $name, int $total, array $meta = [] ): self {
+		return new self( OrderItem::FEE, $name, 1, $total, $total, $total, meta: $meta );
+	}
+
+	/**
 	 * One line per tax rate, a snapshot of the rate (doc 02 §7.12.10).
 	 *
 	 * @param array<string,mixed> $meta {rate_id, rate, compound, items_tax, shipping_tax}

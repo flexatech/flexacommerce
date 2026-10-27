@@ -43,6 +43,12 @@ final class CartPresenter {
 			$data['totals']['discount'] = $this->money( $state->discount() );
 			$data['totals']['total']    = $this->money( $state->discounted_subtotal() );
 		}
+		// The fee rules' charges (ADR-043), in the total; the cart shows the total row when there are any.
+		$data['fees'] = $this->fees( $state );
+		if ( $state->fees !== [] ) {
+			$data['totals']['fees']  = $this->money( $state->fee_total() );
+			$data['totals']['total'] = $this->money( $state->discounted_subtotal()->add( $state->fee_total() ) );
+		}
 		if ( $this->totals !== null ) {
 			$data = ( $this->totals )( $data, $state );
 		}
@@ -54,6 +60,19 @@ final class CartPresenter {
 		 * @param CartState           $state
 		 */
 		return (array) apply_filters( 'flexacommerce.rest.cart.response', $data, $state );
+	}
+
+	/** @return list<array{id:int,name:string,amount:array{amount:int,formatted:string}}> */
+	public function fees( CartState $state ): array {
+		$rows = [];
+		foreach ( $state->fees as $fee ) {
+			$rows[] = [
+				'id'     => $fee->rule_id,
+				'name'   => $fee->name,
+				'amount' => $this->money( $fee->amount ),
+			];
+		}
+		return $rows;
 	}
 
 	/**

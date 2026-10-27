@@ -8,18 +8,20 @@ use Flexa\Commerce\Catalog\PostTypes;
 use Flexa\Commerce\Contracts\Cart\CartView;
 use Flexa\Commerce\Contracts\Money;
 use Flexa\Commerce\Coupons\Discounts;
+use Flexa\Commerce\Pricing\Rules\Fee;
 
 defined( 'ABSPATH' ) || exit;
 
 /**
  * The resolved cart returned by CartService: items, subtotal, notices.
  * `discounts` is null while the cart holds no coupon code; the subtotal is
- * before discounts.
+ * before discounts. `fees` are the charges of the fee rules (ADR-043).
  */
 final class CartState {
 	/**
 	 * @param list<CartItem>                           $items
 	 * @param list<array{code:string,message:string}>  $notices
+	 * @param list<Fee>                                $fees
 	 */
 	public function __construct(
 		public readonly Cart $cart,
@@ -28,7 +30,17 @@ final class CartState {
 		public readonly array $notices,
 		public readonly bool $has_session,
 		public readonly ?Discounts $discounts = null,
+		public readonly array $fees = [],
 	) {}
+
+	/** All fees together; they carry no tax. */
+	public function fee_total(): Money {
+		$sum = $this->subtotal->multiply( 0 );
+		foreach ( $this->fees as $fee ) {
+			$sum = $sum->add( $fee->amount );
+		}
+		return $sum;
+	}
 
 	/** All coupons together, in prices as entered. */
 	public function discount(): Money {

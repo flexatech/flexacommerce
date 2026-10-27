@@ -435,6 +435,9 @@ final class CheckoutForm {
 		}
 		$rows['total'] = __( 'Total', 'flexacommerce' );
 		foreach ( $rows as $key => $label ) {
+			if ( $key === 'total' ) {
+				$html .= self::fee_rows( (array) ( $state['fees'] ?? [] ) );
+			}
 			if ( $key === 'total' && empty( $tax['included'] ) ) {
 				$html .= self::tax_rows( $tax );
 			}
@@ -508,6 +511,27 @@ final class CheckoutForm {
 				$remove,
 				esc_html( self::coupon_amount( $coupon ) )
 			);
+		}
+		return $html;
+	}
+
+	/**
+	 * One row per fee (ADR-043), before the tax rows and the total.
+	 * checkout.js rebuilds them after a requote: a fee may follow the
+	 * payment or shipping method.
+	 *
+	 * @param array<int,mixed> $fees the `fees` entry of the checkout state
+	 */
+	public static function fee_rows( array $fees ): string {
+		$html = '';
+		foreach ( $fees as $fee ) {
+			if ( is_array( $fee ) ) {
+				$html .= sprintf(
+					'<tr class="fxc-checkout__fee" data-fxc-fee-row><th scope="row">%1$s</th><td>%2$s</td></tr>',
+					esc_html( (string) ( $fee['name'] ?? '' ) ),
+					esc_html( (string) ( $fee['amount']['formatted'] ?? '' ) )
+				);
+			}
 		}
 		return $html;
 	}

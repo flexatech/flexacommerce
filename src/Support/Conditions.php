@@ -10,7 +10,7 @@ defined( 'ABSPATH' ) || exit;
  * Conditions a pricing rule or a coupon may add (ADR-041), stored as
  * `{match: all|any, items: [{type, op, value}]}`. Numbers are whole: a
  * count, grams for the weight, minor units of the store currency for the
- * spend. Lists hold country codes, gateway ids, shipping methods (a type
+ * spend and the subtotal. Lists hold country codes, gateway ids, shipping methods (a type
  * such as `flat_rate` or one method such as `flat_rate:3`), coupon codes
  * or product ids. No items means no conditions.
  *
@@ -31,8 +31,10 @@ final class Conditions {
 	public const LIFETIME_SPEND  = 'lifetime_spend';
 	public const ORDER_COUNT     = 'order_count';
 	public const PURCHASED       = 'purchased';
+	/** Only for fees (ADR-043): a price rule or a coupon changes the subtotal it would read. */
+	public const CART_SUBTOTAL = 'cart_subtotal';
 
-	public const NUMBERS = [ self::CART_QUANTITY, self::CART_WEIGHT, self::LIFETIME_SPEND, self::ORDER_COUNT ];
+	public const NUMBERS = [ self::CART_QUANTITY, self::CART_WEIGHT, self::LIFETIME_SPEND, self::ORDER_COUNT, self::CART_SUBTOTAL ];
 	public const LISTS   = [ self::COUNTRY, self::PAYMENT_METHOD, self::SHIPPING_METHOD, self::COUPON, self::PURCHASED ];
 	public const TYPES   = [ ...self::NUMBERS, ...self::LISTS ];
 
@@ -64,12 +66,13 @@ final class Conditions {
 	}
 
 	/**
-	 * A block from an admin form or a stored row, checked.
+	 * A block from an admin form or a stored row, checked. `$fee` allows
+	 * the cart subtotal, which only a fee can read (ADR-043).
 	 *
 	 * @return Block
 	 * @throws \InvalidArgumentException the message says what is wrong
 	 */
-	public static function clean( mixed $value ): array {
+	public static function clean( mixed $value, bool $fee = false ): array {
 		if ( $value === null || $value === '' || $value === [] ) {
 			return self::none();
 		}
@@ -90,7 +93,7 @@ final class Conditions {
 		}
 		$out = [];
 		foreach ( $items as $item ) {
-			$out[] = self::item( $item );
+			$out[] = self::item( $item, $fee );
 		}
 		return [
 			'match' => (string) $match,
@@ -169,9 +172,13 @@ final class Conditions {
 			$have = match ( $type ) {
 				self::CART_QUANTITY  => $facts->quantity,
 				self::CART_WEIGHT    => $facts->weight_g,
+				self::CART_SUBTOTAL  => $facts->subtotal,
 				self::LIFETIME_SPEND => $facts->spent(),
 				default              => $facts->order_count(),
 			};
+			if ( $have === null ) {
+				return $facts->final ? false : null;
+			}
 			$want = is_int( $value ) ? $value : 0;
 			return ( $item['op'] ?? '' ) === self::AT_MOST ? $have <= $want : $have >= $want;
 		}
@@ -210,10 +217,13 @@ final class Conditions {
 	 * @return Item
 	 * @throws \InvalidArgumentException
 	 */
-	private static function item( mixed $item ): array {
+	private static function item( mixed $item, bool $fee ): array {
 		$type = is_array( $item ) ? ( $item['type'] ?? '' ) : '';
 		if ( ! is_array( $item ) || ! in_array( $type, self::TYPES, true ) ) {
 			throw new \InvalidArgumentException( __( 'Choose what each condition checks.', 'flexacommerce' ) );
+		}
+		if ( $type === self::CART_SUBTOTAL && ! $fee ) {
+			throw new \InvalidArgumentException( __( 'Only a fee can depend on the cart subtotal.', 'flexacommerce' ) );
 		}
 		$op = $item['op'] ?? '';
 		if ( in_array( $type, self::NUMBERS, true ) ) {

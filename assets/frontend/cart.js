@@ -398,6 +398,9 @@ const { state, actions } = store( 'flexacommerce/cart', {
 		get hasDiscount() {
 			return ( state.cart?.totals?.discount?.amount ?? 0 ) > 0;
 		},
+		get showTotal() {
+			return state.hasDiscount || ( state.cart?.fees?.length ?? 0 ) > 0;
+		},
 		get couponLabel() {
 			const { coupon } = getContext();
 			return ( ( coupon.automatic ? i18n.discount : i18n.coupon ) || '%s' ).replace( '%s', () => coupon.label );

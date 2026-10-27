@@ -64,6 +64,7 @@ final class CartTable {
 				'cart'        => $data,
 				'hasItems'    => static fn (): bool => $shown !== [],
 				'hasDiscount' => static fn (): bool => (int) ( $data['totals']['discount']['amount'] ?? 0 ) > 0,
+				'showTotal'   => static fn (): bool => (int) ( $data['totals']['discount']['amount'] ?? 0 ) > 0 || ( $data['fees'] ?? [] ) !== [],
 				'nextLabel'   => static fn (): string => self::next_label( $data['next_discount'] ?? null ),
 				'nextWidth'   => static fn (): string => (int) ( $data['next_discount']['percent'] ?? 0 ) . '%',
 				'lineRemoved' => static fn (): bool => $line() === [],
@@ -195,12 +196,17 @@ final class CartTable {
 		foreach ( (array) ( $data['coupons'] ?? [] ) as $coupon ) {
 			$html .= self::coupon_row( (array) $coupon, true );
 		}
+		// The fees of the fee rules (ADR-043); they carry no tax.
+		$html .= '<template data-wp-each--fee="state.cart.fees" data-wp-each-key="context.fee.id"><tr class="fxc-cart__fee"><th scope="row" data-wp-text="context.fee.name"></th><td data-wp-text="context.fee.amount.formatted"></td></tr></template>';
+		foreach ( (array) ( $data['fees'] ?? [] ) as $fee ) {
+			$html .= '<tr class="fxc-cart__fee" data-wp-each-child><th scope="row" data-wp-text="context.fee.name">' . esc_html( (string) $fee['name'] ) . '</th><td data-wp-text="context.fee.amount.formatted">' . esc_html( (string) $fee['amount']['formatted'] ) . '</td></tr>';
+		}
 		$tax = is_array( $data['tax'] ?? null ) ? $data['tax'] : null;
 		if ( $tax === null ) {
-			// Without taxes the total row only shows once a coupon takes something off.
+			// Without taxes the total row only shows once a coupon takes something off or a fee adds to it.
 			$html .= sprintf(
-				'<tr class="fxc-cart__total-row" data-wp-bind--hidden="!state.hasDiscount"%1$s><th scope="row">%2$s</th><td><strong data-wp-text="state.cart.totals.total.formatted">%3$s</strong></td></tr>',
-				(int) ( $totals['discount']['amount'] ?? 0 ) > 0 ? '' : ' hidden',
+				'<tr class="fxc-cart__total-row" data-wp-bind--hidden="!state.showTotal"%1$s><th scope="row">%2$s</th><td><strong data-wp-text="state.cart.totals.total.formatted">%3$s</strong></td></tr>',
+				(int) ( $totals['discount']['amount'] ?? 0 ) > 0 || ( $data['fees'] ?? [] ) !== [] ? '' : ' hidden',
 				esc_html__( 'Total', 'flexacommerce' ),
 				esc_html( (string) ( $totals['total']['formatted'] ?? '' ) )
 			);

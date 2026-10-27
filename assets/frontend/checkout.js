@@ -310,6 +310,7 @@ function setup( root ) {
 			}
 		}
 		renderCoupons( data.coupons );
+		renderFees( data.fees );
 		renderTaxes( data.tax );
 		const foldTotal = form.querySelector( '[data-fxc-fold-total]' );
 		if ( foldTotal && data.totals?.total ) {
@@ -358,6 +359,21 @@ function setup( root ) {
 			);
 			subtotalRow.parentNode.insertBefore( row, anchor );
 			anchor = row.nextSibling;
+		}
+	}
+
+	// Mirrors CheckoutForm::fee_rows(): before the tax rows and the total.
+	function renderFees( fees ) {
+		const totalRow = form.querySelector( '[data-fxc-total="total"]' )?.closest( 'tr' );
+		if ( ! totalRow || ! fees ) {
+			return;
+		}
+		form.querySelectorAll( '[data-fxc-fee-row]' ).forEach( ( row ) => row.remove() );
+		// renderTaxes() then puts the tax rows back between these and the total.
+		for ( const fee of fees ) {
+			const row = el( 'tr', { class: 'fxc-checkout__fee', 'data-fxc-fee-row': true } );
+			row.append( el( 'th', { scope: 'row' }, fee.name ), el( 'td', {}, fee.amount.formatted ) );
+			totalRow.parentNode.insertBefore( row, totalRow );
 		}
 	}
 

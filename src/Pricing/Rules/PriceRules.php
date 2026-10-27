@@ -7,6 +7,7 @@ namespace Flexa\Commerce\Pricing\Rules;
 use Flexa\Commerce\Catalog\PostTypes;
 use Flexa\Commerce\Catalog\Product;
 use Flexa\Commerce\Catalog\Variant;
+use Flexa\Commerce\Contracts\Money;
 use Flexa\Commerce\Support\ConditionFacts;
 use Flexa\Commerce\Support\Conditions;
 use Flexa\Commerce\Support\IntMath;
@@ -20,7 +21,8 @@ defined( 'ABSPATH' ) || exit;
  * A rule with conditions (ADR-041) applies only when they are met; one
  * that waits on a checkout choice does not apply until it is made. A
  * graduated rule (ADR-042) prices each unit by its position, so it gives
- * a line total.
+ * a line total. A fee rule (ADR-043) never changes a price: fees() gives
+ * the charges it adds to the cart.
  */
 final class PriceRules {
 	/** @var array<int,list<string>> */
@@ -54,7 +56,7 @@ final class PriceRules {
 		$best     = [ $active, null ];
 		$lowest   = $active * $quantity;
 		foreach ( $this->rules->all() as $rule ) {
-			if ( $rule->sale_items === PriceRule::SALE_SKIP && $variant->is_on_sale( $now ) ) {
+			if ( $rule->is_fee() || ( $rule->sale_items === PriceRule::SALE_SKIP && $variant->is_on_sale( $now ) ) ) {
 				continue;
 			}
 			if ( ! $this->matches( $rule, $product, $user_id, $now, $facts ) ) {
@@ -79,6 +81,51 @@ final class PriceRules {
 			}
 		}
 		return $best;
+	}
+
+	/**
+	 * The charges of the live fee rules for this cart (ADR-043), in list
+	 * order; they add up. A fee applies when the cart holds a product it
+	 * targets and its conditions are met; a choice still unknown means no
+	 * fee yet, so a fee for cash on delivery shows once that method is picked. A
+	 * percent is of the targeted lines after coupons, as prices are
+	 * entered, rounded half up and held to the cap.
+	 *
+	 * @param list<array{int,int}> $lines each product post id and its line total after coupons, minor units
+	 * @param string               $now   UTC `Y-m-d H:i:s`
+	 * @return list<Fee>
+	 */
+	public function fees( array $lines, string $currency, int $user_id, string $now, ConditionFacts $facts ): array {
+		if ( $lines === [] ) {
+			return [];
+		}
+		$all   = array_sum( array_column( $lines, 1 ) );
+		$facts = $facts->with_subtotal( $all );
+		$fees  = [];
+		foreach ( $this->rules->all() as $rule ) {
+			if ( ! $rule->is_fee() || ! $rule->is_live( $now ) || ! $this->for_customer( $rule, $user_id ) ) {
+				continue;
+			}
+			$base    = 0;
+			$matched = false;
+			foreach ( $lines as [ $product_id, $amount ] ) {
+				if ( self::targets( $rule, $product_id ) ) {
+					$matched = true;
+					$base   += $amount;
+				}
+			}
+			if ( ! $matched || ( ! Conditions::is_empty( $rule->conditions ) && Conditions::passes( $rule->conditions, $facts ) !== true ) ) {
+				continue;
+			}
+			$fee = $rule->mode === PriceRule::PERCENT ? IntMath::mul_div_half_up( $base, min( $rule->amount, PriceRule::FULL_PERCENT ), PriceRule::FULL_PERCENT ) : $rule->amount;
+			if ( $rule->mode === PriceRule::PERCENT && $rule->cap > 0 ) {
+				$fee = min( $fee, $rule->cap );
+			}
+			if ( $fee > 0 ) {
+				$fees[] = new Fee( $rule->id, $rule->name, new Money( $fee, $currency ) );
+			}
+		}
+		return $fees;
 	}
 
 	/**
@@ -131,7 +178,7 @@ final class PriceRules {
 	public function ends_for( Product $product, int $user_id, string $now ): array {
 		$ends = [];
 		foreach ( $this->rules->all() as $rule ) {
-			if ( $rule->ends_at !== null && $this->matches( $rule, $product, $user_id, $now ) ) {
+			if ( ! $rule->is_fee() && $rule->ends_at !== null && $this->matches( $rule, $product, $user_id, $now ) ) {
 				$ends[] = $rule->ends_at;
 			}
 		}

@@ -53,4 +53,12 @@ final class NewOrderTest extends TestCase {
 		$this->expectException( OrderTotalsMismatch::class );
 		self::order( self::taxed_items(), 1000, 500, 109, 1500 )->assert_totals();
 	}
+
+	public function test_fee_lines_must_match_the_fee_total(): void {
+		$items = [ ...self::taxed_items(), NewOrderItem::fee( 'Small order fee', 300, [ 'rule_id' => 1 ] ) ];
+		$order = static fn ( int $fee_total ): NewOrder => new NewOrder( 'pending', 'USD', 2, $items, 1000, 500, 1609 + $fee_total, 'a@example.com', fee_total: $fee_total, tax_total: 109 );
+		$order( 300 )->assert_totals();
+		$this->expectException( OrderTotalsMismatch::class );
+		$order( 200 )->assert_totals();
+	}
 }

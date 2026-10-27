@@ -24,6 +24,7 @@ import {
 const TYPE_OPTIONS: { value: ConditionType; label: string }[] = [
     { value: "cart_quantity", label: __("Items in the cart") },
     { value: "cart_weight", label: __("Cart weight") },
+    { value: "cart_subtotal", label: __("Cart subtotal") },
     { value: "country", label: __("Country") },
     { value: "shipping_method", label: __("Shipping method") },
     { value: "payment_method", label: __("Payment method") },
@@ -34,12 +35,15 @@ const TYPE_OPTIONS: { value: ConditionType; label: string }[] = [
 ];
 
 const HELP: Partial<Record<ConditionType, string>> = {
+    cart_subtotal: __("The items after coupons and pricing rules, before shipping and tax."),
     lifetime_spend: __("Paid orders, less refunds. Guests have spent 0."),
     order_count: __("Paid orders. At most 0 means a first order."),
     purchased: __("Any of these products in a paid order. Guests have bought nothing."),
     shipping_method: __("A method in one zone, or a kind of method in any zone."),
     coupon: __("Codes separated by commas."),
 };
+
+const isMoney = (type: ConditionType) => type === "lifetime_spend" || type === "cart_subtotal";
 
 function fresh(type: ConditionType): Condition {
     if ((NUMBER_TYPES as string[]).includes(type)) {
@@ -52,13 +56,13 @@ function fresh(type: ConditionType): Condition {
 function NumberValue({ item, label, onChange }: { item: NumberCondition; label: string; onChange: (value: number) => void }) {
     const { currency, units } = getPluginGlobal();
     const format = (v: number) =>
-        item.type === "cart_weight" ? gramsToInput(String(v), units.weight) : item.type === "lifetime_spend" ? minorToInput(v, currency.exponent) : String(v);
+        item.type === "cart_weight" ? gramsToInput(String(v), units.weight) : isMoney(item.type) ? minorToInput(v, currency.exponent) : String(v);
     const parse = (text: string): number => {
         if (item.type === "cart_weight") {
             const grams = inputToGrams(text, units.weight);
             return grams === false ? NaN : Math.round(Number(grams ?? 0));
         }
-        if (item.type === "lifetime_spend") {
+        if (isMoney(item.type)) {
             return inputToMinor(text, currency.exponent) ?? 0;
         }
         return text.trim() === "" ? 0 : /^\d+$/.test(text.trim()) ? Number(text.trim()) : NaN;
@@ -67,13 +71,13 @@ function NumberValue({ item, label, onChange }: { item: NumberCondition; label: 
     useEffect(() => {
         setText((current) => (parse(current) === item.value ? current : format(item.value)));
     }, [item.value, item.type]);
-    const suffix = item.type === "cart_weight" ? units.weight : item.type === "lifetime_spend" ? currency.symbol : "";
+    const suffix = item.type === "cart_weight" ? units.weight : isMoney(item.type) ? currency.symbol : "";
 
     return (
         <div className="fxc:flex fxc:items-center fxc:gap-1">
             <Input
                 aria-label={label}
-                inputMode={item.type === "cart_weight" || item.type === "lifetime_spend" ? "decimal" : "numeric"}
+                inputMode={item.type === "cart_weight" || isMoney(item.type) ? "decimal" : "numeric"}
                 className="fxc:w-28"
                 value={text}
                 onChange={(e) => {
@@ -152,6 +156,8 @@ interface Props {
     error?: string;
     /** What the conditions decide, for the empty state: "the rule applies" or "the coupon works". */
     emptyText: string;
+    /** A checkout fee may also check the cart subtotal (ADR-043). */
+    fee?: boolean;
 }
 
 /**
@@ -159,7 +165,7 @@ interface Props {
  * country, the shipping and payment methods, other coupons, and what the
  * customer bought before.
  */
-export function ConditionsEditor({ value, onChange, error, emptyText }: Props) {
+export function ConditionsEditor({ value, onChange, error, emptyText, fee = false }: Props) {
     const id = useId();
     const choices = useConditionChoices();
     const lists: Record<string, Choice[]> = {
@@ -176,6 +182,7 @@ export function ConditionsEditor({ value, onChange, error, emptyText }: Props) {
     keys.current.length = value.items.length;
     const setItem = (index: number, item: Condition) => onChange({ ...value, items: value.items.map((c, i) => (i === index ? item : c)) });
     const typeLabel = (type: ConditionType) => TYPE_OPTIONS.find((o) => o.value === type)?.label ?? type;
+    const options = fee ? TYPE_OPTIONS : TYPE_OPTIONS.filter((o) => o.value !== "cart_subtotal");
 
     return (
         <div className="fxc:space-y-3">
@@ -208,7 +215,7 @@ export function ConditionsEditor({ value, onChange, error, emptyText }: Props) {
                                 className="fxc:w-48"
                                 value={item.type}
                                 onChange={(e) => setItem(index, fresh(e.target.value as ConditionType))}
-                                options={TYPE_OPTIONS}
+                                options={options}
                             />
                             {isNumber(item) ? (
                                 <>

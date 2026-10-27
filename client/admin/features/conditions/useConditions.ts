@@ -3,7 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/shared/lib/api";
 
 /** Conditions a pricing rule or a coupon may add (ADR-041). */
-export type NumberType = "cart_quantity" | "cart_weight" | "lifetime_spend" | "order_count";
+/** `cart_subtotal` is for a checkout fee only (ADR-043). */
+export type NumberType = "cart_quantity" | "cart_weight" | "cart_subtotal" | "lifetime_spend" | "order_count";
 export type ListType = "country" | "payment_method" | "shipping_method" | "coupon" | "purchased";
 export type ConditionType = NumberType | ListType;
 
@@ -32,7 +33,7 @@ export const NO_CONDITIONS: ConditionBlock = { match: "all", items: [] };
 
 export const MAX_CONDITIONS = 10;
 
-export const NUMBER_TYPES: NumberType[] = ["cart_quantity", "cart_weight", "lifetime_spend", "order_count"];
+export const NUMBER_TYPES: NumberType[] = ["cart_quantity", "cart_weight", "cart_subtotal", "lifetime_spend", "order_count"];
 
 export const isNumber = (c: Condition): c is NumberCondition => (NUMBER_TYPES as string[]).includes(c.type);
 

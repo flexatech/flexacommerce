@@ -116,7 +116,7 @@ final class CheckoutService {
 				}
 			}
 			$discount = $state->discount();
-			return new Quote( $state, $package, $needs, $rates, $rate, $shipping, $zero, $net->subtract( $discount )->add( $shipping ), null, $net, discount: $discount );
+			return new Quote( $state, $package, $needs, $rates, $rate, $shipping, $zero, $net->subtract( $discount )->add( $shipping )->add( $state->fee_total() ), null, $net, discount: $discount );
 		}
 		$to       = new TaxLocation( $destination->country, $destination->state, $destination->postcode, $destination->city );
 		$from     = $billing !== null ? new TaxLocation( (string) $billing->country, (string) $billing->state, (string) $billing->postcode, (string) $billing->city ) : $to;
@@ -135,7 +135,8 @@ final class CheckoutService {
 		}
 		$tax = $taxes->total();
 
-		return new Quote( $state, $package, $needs, $rates, $rate, $shipping, $tax, $net->add( $shipping )->add( $tax ), $taxes, $before, $request->prices_include_tax, $outcome->failure, $before->subtract( $net ), $base );
+		// Fees carry no tax (ADR-043).
+		return new Quote( $state, $package, $needs, $rates, $rate, $shipping, $tax, $net->add( $shipping )->add( $tax )->add( $state->fee_total() ), $taxes, $before, $request->prices_include_tax, $outcome->failure, $before->subtract( $net ), $base );
 	}
 
 	/**
@@ -636,6 +637,9 @@ final class CheckoutService {
 			'tax'      => $this->presenter->money( $quote->tax ),
 			'total'    => $this->presenter->money( $quote->total ),
 		];
+		if ( $quote->state->fees !== [] ) {
+			$totals = array_slice( $totals, 0, -2, true ) + [ 'fees' => $this->presenter->money( $quote->state->fee_total() ) ] + array_slice( $totals, -2, null, true );
+		}
 		$coupons = [];
 		if ( $quote->state->discounts !== null ) {
 			$discount = $this->display_discount( $quote );
@@ -645,6 +649,7 @@ final class CheckoutService {
 
 		return [
 			'coupons'         => $coupons,
+			'fees'            => $this->presenter->fees( $quote->state ),
 			'needs_shipping'  => $quote->needs_shipping,
 			'needs_address'   => $quote->needs_address(),
 			'shipping_rates'  => $rates,
@@ -744,6 +749,11 @@ final class CheckoutService {
 			$items[]   = $line;
 			$discount += $line->total;
 		}
+		$fees = 0;
+		foreach ( $quote->state->fees as $fee ) {
+			$items[] = NewOrderItem::fee( $fee->name, $fee->amount->amount, [ 'rule_id' => $fee->rule_id ] );
+			$fees   += $fee->amount->amount;
+		}
 		if ( $quote->rate !== null ) {
 			$items[] = NewOrderItem::shipping( $quote->rate->id, $quote->rate->label, $quote->rate->cost->amount, $quote->taxes?->line( TaxService::SHIPPING_KEY )?->by_rate() ?? [] );
 		}
@@ -782,6 +792,7 @@ final class CheckoutService {
 			checkout_token: $request->checkout_token,
 			locale: determine_locale(),
 			discount_total: $discount,
+			fee_total: $fees,
 			tax_total: $quote->tax->amount,
 			meta: $quote->taxes?->exempt === true ? $meta + [ '_fxc_tax_exempt' => '1' ] : $meta,
 			prices_include_tax: $quote->prices_include_tax,

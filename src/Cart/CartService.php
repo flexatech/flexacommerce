@@ -553,7 +553,18 @@ final class CartService {
 			}
 		}
 
-		return new CartState( $cart, $items, $subtotal, $notices, $has_session, $discounts );
+		$fees = [];
+		if ( $items !== [] && $this->pricing->rules() !== null ) {
+			$lines = [];
+			foreach ( $items as $item ) {
+				if ( $item->total !== null && $item->product !== null ) {
+					$lines[] = [ $item->product->id, max( 0, $item->total->amount - ( $discounts?->line( $item->line->key ) ?? 0 ) ) ];
+				}
+			}
+			$fees = $this->pricing->fees( $lines, $subtotal->currency, $user_id, $facts );
+		}
+
+		return new CartState( $cart, $items, $subtotal, $notices, $has_session, $discounts, $fees );
 	}
 
 	/**

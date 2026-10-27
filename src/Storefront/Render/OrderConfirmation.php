@@ -75,6 +75,7 @@ final class OrderConfirmation {
 		$shipping = [];
 		$taxes    = [];
 		$coupons  = [];
+		$fees     = [];
 		foreach ( $order->items as $item ) {
 			if ( $item->type === OrderItem::DISCOUNT ) {
 				$label = ! empty( $item->meta['automatic'] )
@@ -87,6 +88,10 @@ final class OrderConfirmation {
 			}
 			if ( $item->type === OrderItem::SHIPPING ) {
 				$shipping[] = $item->name;
+				continue;
+			}
+			if ( $item->type === OrderItem::FEE ) {
+				$fees[] = [ $item->name !== '' ? $item->name : __( 'Fee', 'flexacommerce' ), $item->total ];
 				continue;
 			}
 			if ( $item->type === OrderItem::TAX ) {
@@ -113,6 +118,7 @@ final class OrderConfirmation {
 		if ( $shipping !== [] ) {
 			$rows[] = [ __( 'Shipping', 'flexacommerce' ) . ' (' . implode( ', ', $shipping ) . ')', $order->shipping_total ];
 		}
+		array_push( $rows, ...$fees );
 		if ( $taxes !== [] ) {
 			array_push( $rows, ...$taxes );
 		} elseif ( $order->tax_total > 0 ) {

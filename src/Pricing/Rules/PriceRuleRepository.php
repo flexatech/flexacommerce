@@ -163,8 +163,19 @@ final class PriceRuleRepository {
 			$mode  = PriceRule::PERCENT;
 			$value = 0;
 		} else {
-			$mode  = $in['mode'];
+			$mode = $in['mode'];
+			if ( $in['type'] === PriceRule::FEE && $mode === PriceRule::PRICE ) {
+				throw new InvalidPriceRule( __( 'A fee is a fixed amount or a percent.', 'flexacommerce' ), 'mode' );
+			}
 			$value = self::amount( $mode, $in['amount'], 'amount' );
+		}
+		$fee = $in['type'] === PriceRule::FEE;
+		$cap = 0;
+		if ( $fee && $mode === PriceRule::PERCENT ) {
+			$cap = filter_var( $in['cap'] ?? 0, FILTER_VALIDATE_INT );
+			if ( $cap === false || $cap < 0 ) {
+				throw new InvalidPriceRule( __( 'Enter a largest fee of 0 or more (0 for no limit).', 'flexacommerce' ), 'cap' );
+			}
 		}
 
 		foreach ( [ 'product_ids', 'category_ids', 'exclude_product_ids' ] as $field ) {
@@ -200,7 +211,7 @@ final class PriceRuleRepository {
 		}
 
 		try {
-			$conditions = Conditions::clean( $in['conditions'] );
+			$conditions = Conditions::clean( $in['conditions'], $fee );
 		} catch ( \InvalidArgumentException $e ) {
 			throw new InvalidPriceRule( $e->getMessage(), 'conditions' );
 		}
@@ -221,10 +232,11 @@ final class PriceRuleRepository {
 			exclude_product_ids: $in['exclude_product_ids'],
 			customers: $in['customers'],
 			roles: array_values( $roles ),
-			sale_items: $in['sale_items'],
+			sale_items: $fee ? PriceRule::SALE_APPLY : $in['sale_items'],
 			starts_at: $in['starts_at'],
 			ends_at: $in['ends_at'],
 			conditions: $conditions,
+			cap: $cap,
 		);
 	}
 

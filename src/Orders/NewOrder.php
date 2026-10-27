@@ -55,6 +55,7 @@ final class NewOrder {
 		}
 		$lines     = 0;
 		$shipping  = 0;
+		$fees      = 0;
 		$taxed     = 0;
 		$tax       = 0;
 		$taken     = 0;
@@ -77,6 +78,8 @@ final class NewOrder {
 				}
 			} elseif ( $item->type === OrderItem::SHIPPING ) {
 				$shipping += $item->total;
+			} elseif ( $item->type === OrderItem::FEE ) {
+				$fees += $item->total;
 			} elseif ( $item->type === OrderItem::TAX ) {
 				$tax += $item->total;
 				continue;
@@ -86,8 +89,8 @@ final class NewOrder {
 				throw new OrderTotalsMismatch( sprintf( 'The tax split of item "%s" does not add up.', $item->name ) );
 			}
 		}
-		if ( $lines !== $this->subtotal || $shipping !== $this->shipping_total ) {
-			throw new OrderTotalsMismatch( 'Order items do not add up to the subtotal or shipping total.' );
+		if ( $lines !== $this->subtotal || $shipping !== $this->shipping_total || $fees !== $this->fee_total ) {
+			throw new OrderTotalsMismatch( 'Order items do not add up to the subtotal, shipping or fee total.' );
 		}
 		if ( $taken !== $this->discount_total || ( $has_lines && $coupons !== $this->discount_total ) ) {
 			throw new OrderTotalsMismatch( sprintf( 'Order discount %d does not equal the item discounts (%d) or the coupon lines (%d).', $this->discount_total, $taken, $coupons ) );

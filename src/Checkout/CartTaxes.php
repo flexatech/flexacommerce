@@ -171,7 +171,7 @@ final class CartTaxes {
 	/**
 	 * Adds the tax of the items to the public cart shape: line totals and
 	 * the subtotal as `tax_display_cart` says, `totals.tax`, `totals.total`
-	 * (items with tax, no shipping) and the `tax` rows. Without a location
+	 * (items with tax and the fees, no shipping) and the `tax` rows. Without a location
 	 * (`tax_default_location` = none and no address yet) or when a tax
 	 * add-on is down, `tax.pending` says tax is calculated at checkout.
 	 *
@@ -250,7 +250,7 @@ final class CartTaxes {
 			$data['coupons']            = $this->coupon_rows( (array) ( $data['coupons'] ?? [] ), $state, $discount );
 		}
 		$data['totals']['tax']   = $this->presenter->money( $tax );
-		$data['totals']['total'] = $this->presenter->money( $net->add( $tax ) );
+		$data['totals']['total'] = $this->presenter->money( $net->add( $tax )->add( $state->fee_total() ) );
 		$data['tax']             = $view;
 		return $data;
 	}

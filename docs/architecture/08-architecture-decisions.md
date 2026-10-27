@@ -633,3 +633,21 @@ Status of every ADR: **Accepted** (plan approved 2026-10-24) unless it says othe
 **Consequences.** No new setting (61 keys) and no `DB_VERSION`. Coupons that limit or give away units by price (`item_limit`, BOGO) see the average unit price of a graduated line. The order screen shows the average unit price times the quantity next to the exact subtotal.
 
 **Revisit when.** Merchants ask for the bands on the cart line, for graduated tiers that count the whole cart across products, or for a band price shown per unit on the order screen.
+
+## ADR-043: Checkout fees
+
+**Context.** flexa-extra had a `checkout_fee` rule: a charge added to the cart for small orders, a payment method such as cash on delivery, or products that need extra handling. FlexaCommerce had the `fee` order item type and `fee_total` on the order, and the order screen, the emails and the totals check already read them, but nothing in the cart could add one.
+
+**Decision.**
+1. **A fourth pricing rule type, `fee`.** It lives in `flexacommerce_price_rules` with the other rules, so it keeps their scope (all products, chosen products or categories, less excluded products), customers, dates, order and conditions. No new option and no new setting. The rule's name is the label shoppers see.
+2. **Amount.** `mode` is `fixed` (minor units) or `percent` (hundredths); `price` is refused. A percent fee takes its percent of the targeted lines after coupons, as prices are entered, rounded half up, and `cap` (minor units, 0 for no limit) is its largest amount. A fixed fee has no cap. `sale_items` is always `apply`.
+3. **When it applies.** The cart needs at least one targeted product, and the conditions must pass. An unknown fact (no payment method chosen yet) means no fee until the shopper chooses; placing the order counts unknowns as false, as for other rules. Fees add up in list order, and price rules (`PriceRules::apply()`, the countdown) skip them.
+4. **The cart subtotal as a condition.** ADR-041 gains `cart_subtotal`: the items after pricing rules and coupons, before shipping and tax, in minor units. Only a fee may use it (`Conditions::clean( $value, true )`); a price rule or a coupon would change the subtotal it reads. Before the cart is priced the fact is unknown.
+5. **Totals.** `CartService::resolve()` asks `PricingService::fees()` for the fees after the discounts, and `CartState` keeps them as `Pricing\Rules\Fee` (`rule_id`, `name`, `amount`). Fees carry no tax and are added to the total in both tax branches. The cart, the checkout summary and the confirmation show one row per fee above the tax.
+6. **Orders.** Each fee becomes a `fee` order item with meta `rule_id`, and the items add up to `fee_total`; `NewOrder::assert_totals()` now checks that too.
+
+**Alternatives.** A separate list of fees under its own tab: a second editor for the same scope, customers, dates and conditions. Taxable fees: the tax engine would need a fee line with a tax class, and the common cases (payment and small order fees) are usually untaxed in the US, where the tax engine starts.
+
+**Consequences.** No `DB_VERSION` and still 61 settings. The cart response gains `fees` and `totals.fees`; the checkout quote gains `fees` and a `fees` total before `tax`. Gateways that decide availability from the total see the total with fees.
+
+**Revisit when.** Merchants ask for taxable fees, a fee per item or per unit, a negative fee (a surcharge discount), or a fee on shipping.

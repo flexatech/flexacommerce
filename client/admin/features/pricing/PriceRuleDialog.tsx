@@ -15,7 +15,7 @@ import { MoneyInput } from "../../components/MoneyInput";
 import { ConditionsEditor } from "../conditions/ConditionsEditor";
 import { NO_CONDITIONS, type ConditionBlock } from "../conditions/useConditions";
 import { TargetPicker, type Pick as Choice } from "../coupons/TargetPicker";
-import { changed, changeText } from "./ruleText";
+import { changed, changeText, feeOn, feeText } from "./ruleText";
 import {
     useSavePriceRule,
     type PriceRule,
@@ -34,7 +34,8 @@ export interface RulePreset {
     key: string;
     name: string;
     description: string;
-    values: Pick<PriceRuleInput, "type" | "mode" | "amount" | "tiers" | "applies_to" | "customers">;
+    /** Money (a fixed amount, a cart subtotal) is written for a currency with 2 decimals and scaled to the store's. */
+    values: Pick<PriceRuleInput, "type" | "mode" | "amount" | "tiers" | "applies_to" | "customers"> & Partial<Pick<PriceRuleInput, "conditions">>;
 }
 
 export const RULE_PRESETS: RulePreset[] = [
@@ -83,6 +84,34 @@ export const RULE_PRESETS: RulePreset[] = [
         values: { type: "adjust", mode: "percent", amount: 1500, tiers: [], applies_to: "all", customers: "roles" },
     },
     {
+        key: "small_order",
+        name: __("Small order fee"),
+        description: __("A fixed fee when the cart subtotal is below an amount you pick."),
+        values: {
+            type: "fee",
+            mode: "fixed",
+            amount: 300,
+            tiers: [],
+            applies_to: "all",
+            customers: "all",
+            conditions: { match: "all", items: [{ type: "cart_subtotal", op: "lte", value: 2000 }] },
+        },
+    },
+    {
+        key: "payment_fee",
+        name: __("Payment fee"),
+        description: __("A percent of the products when the shopper pays with a method you pick."),
+        values: {
+            type: "fee",
+            mode: "percent",
+            amount: 200,
+            tiers: [],
+            applies_to: "all",
+            customers: "all",
+            conditions: { match: "all", items: [{ type: "payment_method", op: "in", value: [] }] },
+        },
+    },
+    {
         key: "custom",
         name: __("Custom"),
         description: "",
@@ -104,6 +133,8 @@ interface TierDraft extends ChangeDraft {
 
 interface Draft extends ChangeDraft {
     name: string;
+    /** A percent fee's largest amount, in minor units; 0 for no limit. */
+    cap: number;
     enabled: boolean;
     type: RuleType;
     tiers: TierDraft[];
@@ -160,13 +191,30 @@ function tierDraft(tier: Tier): TierDraft {
     return { key: nextKey++, min: String(tier.min), ...changeDraft(tier.mode, tier.amount) };
 }
 
+const isTiered = (type: RuleType) => type === "bulk" || type === "graduated";
+
+/** A preset's money, written for 2 decimals, in the store currency's minor units. */
+function scaled(values: RulePreset["values"]): RulePreset["values"] {
+    const { currency } = getPluginGlobal();
+    const money = (minor: number) => Math.round((minor * 10 ** currency.exponent) / 100);
+    return {
+        ...values,
+        amount: values.mode === "percent" ? values.amount : money(values.amount),
+        conditions: values.conditions && {
+            ...values.conditions,
+            items: values.conditions.items.map((c) => (c.type === "cart_subtotal" ? { ...c, value: money(c.value) } : c)),
+        },
+    };
+}
+
 function draftOf(rule: PriceRule | null, preset: RulePreset | undefined): Draft {
-    const start = rule ?? { ...RULE_PRESETS[RULE_PRESETS.length - 1].values, ...preset?.values };
+    const start = rule ?? scaled({ ...RULE_PRESETS[RULE_PRESETS.length - 1].values, ...preset?.values });
     return {
         name: rule?.name ?? (preset !== undefined && preset.key !== "custom" ? preset.name : ""),
         enabled: rule?.enabled ?? true,
         type: start.type,
-        ...changeDraft(start.mode, start.type !== "adjust" ? 1000 : start.amount),
+        ...changeDraft(start.mode, isTiered(start.type) ? 1000 : start.amount),
+        cap: rule?.cap ?? 0,
         tiers: start.tiers.map(tierDraft),
         count: rule?.count ?? "product",
         applies_to: start.applies_to,
@@ -178,18 +226,20 @@ function draftOf(rule: PriceRule | null, preset: RulePreset | undefined): Draft 
         sale_items: rule?.sale_items ?? "apply",
         starts_at: toLocalInput(rule?.starts_at ?? null),
         ends_at: toLocalInput(rule?.ends_at ?? null),
-        conditions: rule?.conditions ?? NO_CONDITIONS,
+        conditions: rule?.conditions ?? start.conditions ?? NO_CONDITIONS,
     };
 }
 
 function inputOf(draft: Draft): PriceRuleInput {
-    const bulk = draft.type !== "adjust";
+    const bulk = isTiered(draft.type);
+    const fee = draft.type === "fee";
     return {
         name: draft.name.trim(),
         enabled: draft.enabled,
         type: draft.type,
         mode: bulk ? "percent" : draft.mode,
         amount: bulk ? 0 : amountOf(draft),
+        cap: fee && draft.mode === "percent" ? draft.cap : 0,
         tiers: bulk ? draft.tiers.map((t) => ({ min: Number(t.min) || 0, mode: t.mode, amount: amountOf(t) })).sort((a, b) => a.min - b.min) : [],
         count: bulk ? draft.count : "product",
         applies_to: draft.applies_to,
@@ -198,7 +248,7 @@ function inputOf(draft: Draft): PriceRuleInput {
         exclude_product_ids: ids(draft.exclude_products),
         customers: draft.customers,
         roles: draft.customers === "roles" ? draft.roles : [],
-        sale_items: draft.sale_items,
+        sale_items: fee ? "apply" : draft.sale_items,
         starts_at: toUtc(draft.starts_at),
         ends_at: toUtc(draft.ends_at),
         conditions: draft.conditions,
@@ -242,8 +292,23 @@ const MODE_OPTIONS: { value: RuleMode; label: string }[] = [
     { value: "price", label: __("Set the unit price") },
 ];
 
+const FEE_MODE_OPTIONS: { value: RuleMode; label: string }[] = [
+    { value: "fixed", label: __("A fixed amount") },
+    { value: "percent", label: __("A percent of the products") },
+];
+
 /** The mode and its value side by side: a percent field or a money field. */
-function ChangeInputs({ value, onChange, label }: { value: ChangeDraft; onChange: (v: ChangeDraft) => void; label: string }) {
+function ChangeInputs({
+    value,
+    onChange,
+    label,
+    options = MODE_OPTIONS,
+}: {
+    value: ChangeDraft;
+    onChange: (v: ChangeDraft) => void;
+    label: string;
+    options?: { value: RuleMode; label: string }[];
+}) {
     const { currency } = getPluginGlobal();
     return (
         <div className="fxc:flex fxc:items-center fxc:gap-2">
@@ -252,7 +317,7 @@ function ChangeInputs({ value, onChange, label }: { value: ChangeDraft; onChange
                 className="fxc:w-44"
                 value={value.mode}
                 onChange={(e) => onChange({ ...value, mode: e.target.value as RuleMode })}
-                options={MODE_OPTIONS}
+                options={options}
             />
             {value.mode === "percent" ? (
                 <div className="fxc:flex fxc:items-center fxc:gap-1">
@@ -295,18 +360,49 @@ function graduatedTotal(price: number, tiers: Tier[], quantity: number): number 
     return total;
 }
 
+/** What a fee adds to carts of 50 and 200, so the percent and the cap are easy to check. */
+function FeePreview({ draft }: { draft: Draft }) {
+    const { currency } = getPluginGlobal();
+    const money = (minor: number) => formatMoney(minor, currency);
+    const amount = amountOf(draft);
+    const cap = draft.mode === "percent" ? draft.cap : 0;
+    return (
+        <div aria-hidden className="fxc:space-y-3">
+            <p className="fxc:text-muted-foreground fxc:text-xs fxc:font-medium fxc:uppercase">{__("Example")}</p>
+            <table className="fxc:w-full fxc:text-sm">
+                <tbody>
+                    {[50, 200].map((whole) => {
+                        const base = whole * 10 ** currency.exponent;
+                        return (
+                            <tr key={whole} className="fxc:border-b fxc:last:border-b-0">
+                                <td className="fxc:py-1">{sprintf(__("Products %s"), money(base))}</td>
+                                <td className="fxc:py-1 fxc:text-end fxc:font-medium">+{money(feeOn(base, draft.mode, amount, cap))}</td>
+                            </tr>
+                        );
+                    })}
+                </tbody>
+            </table>
+            <p className="fxc:text-muted-foreground fxc:text-xs">
+                {__("Shoppers see the fee as its own line in the cart and at checkout. Fees add up, and they carry no tax.")}
+            </p>
+        </div>
+    );
+}
+
 /** What a product at 100 would cost, so the numbers are easy to check. */
 function Preview({ draft }: { draft: Draft }) {
     const { currency } = getPluginGlobal();
     const price = 100 * 10 ** currency.exponent;
     const money = (minor: number) => formatMoney(minor, currency);
-    const rows =
-        draft.type !== "adjust"
-            ? [...draft.tiers]
-                  .map((t) => ({ min: Number(t.min) || 0, mode: t.mode, amount: amountOf(t) }))
-                  .filter((t) => t.min > 0)
-                  .sort((a, b) => a.min - b.min)
-            : [];
+    if (draft.type === "fee") {
+        return <FeePreview draft={draft} />;
+    }
+    const rows = isTiered(draft.type)
+        ? [...draft.tiers]
+              .map((t) => ({ min: Number(t.min) || 0, mode: t.mode, amount: amountOf(t) }))
+              .filter((t) => t.min > 0)
+              .sort((a, b) => a.min - b.min)
+        : [];
     const graduated = draft.type === "graduated";
     const sample = rows.length > 0 ? rows[rows.length - 1].min + 2 : 0;
     return (
@@ -345,7 +441,7 @@ function Preview({ draft }: { draft: Draft }) {
                     {sprintf(__("%1$d units cost %2$s in all."), sample, money(graduatedTotal(price, rows, sample)))}
                 </p>
             )}
-            {draft.type !== "adjust" && rows.length > 0 && (
+            {isTiered(draft.type) && rows.length > 0 && (
                 <p className="fxc:text-muted-foreground fxc:text-xs">
                     {graduated
                         ? __("Each price applies only to the units in its range. The product page lists the ranges under the Add to cart button.")
@@ -424,13 +520,18 @@ export function PriceRuleDialog({ open, rule, preset, roles, onOpenChange }: Pro
     };
 
     const busy = save.isPending;
+    const fee = draft.type === "fee";
 
     return (
         <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
             <DialogContent className="fxc:max-h-[90vh] fxc:max-w-3xl fxc:overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>{rule !== null ? __("Edit pricing rule") : __("New pricing rule")}</DialogTitle>
-                    <DialogDescription>{__("Set the new price, which products and customers get it, and when. Dates use your browser's time zone.")}</DialogDescription>
+                    <DialogDescription>
+                        {fee
+                            ? __("Set the fee, which carts and customers pay it, and when. Dates use your browser's time zone.")
+                            : __("Set the new price, which products and customers get it, and when. Dates use your browser's time zone.")}
+                    </DialogDescription>
                 </DialogHeader>
 
                 <form
@@ -465,11 +566,15 @@ export function PriceRuleDialog({ open, rule, preset, roles, onOpenChange }: Pro
                         )}
 
                         <section className="fxc:space-y-4">
-                            <h3 className="fxc:text-sm fxc:font-semibold">{__("Price")}</h3>
-                            <Field label={__("Name")} help={__("Only you see it, in this list.")} error={errors.name}>
+                            <h3 className="fxc:text-sm fxc:font-semibold">{fee ? __("Fee") : __("Price")}</h3>
+                            <Field
+                                label={__("Name")}
+                                help={fee ? __("Shoppers see it next to the fee, in the cart, at checkout and on the order.") : __("Only you see it, in this list.")}
+                                error={errors.name}
+                            >
                                 {(id) => <Input id={id} maxLength={60} value={draft.name} onChange={(e) => set("name", e.target.value)} />}
                             </Field>
-                            <Field label={__("Price change")}>
+                            <Field label={__("Kind of rule")}>
                                 {(id) => (
                                     <Select
                                         id={id}
@@ -480,19 +585,50 @@ export function PriceRuleDialog({ open, rule, preset, roles, onOpenChange }: Pro
                                             setDraft((d) => ({
                                                 ...d,
                                                 type,
-                                                tiers: type !== "adjust" && d.tiers.length === 0 ? RULE_PRESETS[1].values.tiers.map(tierDraft) : d.tiers,
+                                                // A fee is a fixed amount or a percent; it never sets a price.
+                                                mode: type === "fee" && d.mode === "price" ? "fixed" : d.mode,
+                                                tiers: isTiered(type) && d.tiers.length === 0 ? RULE_PRESETS[1].values.tiers.map(tierDraft) : d.tiers,
                                             }));
                                         }}
                                         options={[
                                             { value: "adjust", label: __("The same for any quantity") },
                                             { value: "bulk", label: __("By quantity bought (bulk)") },
                                             { value: "graduated", label: __("Each unit at its tier (graduated)") },
+                                            { value: "fee", label: __("A fee added at checkout") },
                                         ]}
                                     />
                                 )}
                             </Field>
 
-                            {draft.type === "adjust" ? (
+                            {fee ? (
+                                <div className="fxc:space-y-4">
+                                    <div>
+                                        <ChangeInputs
+                                            label={__("Fee")}
+                                            value={draft}
+                                            options={FEE_MODE_OPTIONS}
+                                            onChange={(v) => setDraft((d) => ({ ...d, ...v }))}
+                                        />
+                                        {(errors.amount || errors.mode) && <p className="fxc:text-destructive fxc:mt-1 fxc:text-xs">{errors.amount || errors.mode}</p>}
+                                    </div>
+                                    {draft.mode === "percent" && (
+                                        <Field label={__("Largest fee")} help={__("0 for no limit.")} error={errors.cap}>
+                                            {(id) => (
+                                                <div className="fxc:flex fxc:items-center fxc:gap-1">
+                                                    <span className="fxc:text-muted-foreground fxc:text-sm">{getPluginGlobal().currency.symbol}</span>
+                                                    <MoneyInput
+                                                        id={id}
+                                                        className="fxc:w-28"
+                                                        value={draft.cap}
+                                                        exponent={getPluginGlobal().currency.exponent}
+                                                        onChange={(minor) => set("cap", minor)}
+                                                    />
+                                                </div>
+                                            )}
+                                        </Field>
+                                    )}
+                                </div>
+                            ) : draft.type === "adjust" ? (
                                 <div>
                                     <ChangeInputs label={__("Price change")} value={draft} onChange={(v) => setDraft((d) => ({ ...d, ...v }))} />
                                     {errors.amount && <p className="fxc:text-destructive fxc:mt-1 fxc:text-xs">{errors.amount}</p>}
@@ -553,7 +689,10 @@ export function PriceRuleDialog({ open, rule, preset, roles, onOpenChange }: Pro
 
                         <section className="fxc:space-y-4 fxc:border-t fxc:pt-5">
                             <h3 className="fxc:text-sm fxc:font-semibold">{__("Products")}</h3>
-                            <Field label={__("Applies to")}>
+                            <Field
+                                label={__("Applies to")}
+                                help={fee ? __("The fee needs one of these products in the cart. A percent is taken from these products only.") : undefined}
+                            >
                                 {(id) => (
                                     <Select
                                         id={id}
@@ -607,27 +746,35 @@ export function PriceRuleDialog({ open, rule, preset, roles, onOpenChange }: Pro
                                     />
                                 )}
                             </Field>
-                            <Field label={__("Products on sale")}>
-                                {(id) => (
-                                    <Select
-                                        id={id}
-                                        className="fxc:sm:w-72"
-                                        value={draft.sale_items}
-                                        onChange={(e) => set("sale_items", e.target.value as RuleSaleItems)}
-                                        options={[
-                                            { value: "apply", label: __("Apply the rule to the sale price") },
-                                            { value: "skip", label: __("Leave them at their sale price") },
-                                        ]}
-                                    />
-                                )}
-                            </Field>
+                            {!fee && (
+                                <Field label={__("Products on sale")}>
+                                    {(id) => (
+                                        <Select
+                                            id={id}
+                                            className="fxc:sm:w-72"
+                                            value={draft.sale_items}
+                                            onChange={(e) => set("sale_items", e.target.value as RuleSaleItems)}
+                                            options={[
+                                                { value: "apply", label: __("Apply the rule to the sale price") },
+                                                { value: "skip", label: __("Leave them at their sale price") },
+                                            ]}
+                                        />
+                                    )}
+                                </Field>
+                            )}
                         </section>
 
                         <section className="fxc:space-y-4 fxc:border-t fxc:pt-5">
                             <h3 className="fxc:text-sm fxc:font-semibold">{__("Customers and dates")}</h3>
                             <Field
                                 label={__("Customers")}
-                                help={draft.customers !== "all" ? __("Guests and other customers see the normal price.") : undefined}
+                                help={
+                                    draft.customers === "all"
+                                        ? undefined
+                                        : fee
+                                          ? __("Guests and other customers pay no fee.")
+                                          : __("Guests and other customers see the normal price.")
+                                }
                             >
                                 {(id) => (
                                     <Select
@@ -671,7 +818,7 @@ export function PriceRuleDialog({ open, rule, preset, roles, onOpenChange }: Pro
                                 <Field
                                     label={__("Ends")}
                                     help={
-                                        draft.ends_at
+                                        draft.ends_at && !fee
                                             ? __("Shoppers see a countdown on the product page in the last days (Settings > Storefront).")
                                             : __("Empty: never.")
                                     }
@@ -688,7 +835,12 @@ export function PriceRuleDialog({ open, rule, preset, roles, onOpenChange }: Pro
                                 value={draft.conditions}
                                 onChange={(v) => set("conditions", v)}
                                 error={errors.conditions}
-                                emptyText={__("No conditions: the rule applies whenever the products, customers and dates match. Cart conditions are checked in the cart, so the product page shows the normal price.")}
+                                fee={fee}
+                                emptyText={
+                                    fee
+                                        ? __("No conditions: the fee applies whenever the products, customers and dates match. A fee that checks the payment or shipping method waits until the shopper picks one.")
+                                        : __("No conditions: the rule applies whenever the products, customers and dates match. Cart conditions are checked in the cart, so the product page shows the normal price.")
+                                }
                             />
                         </section>
                     </div>
@@ -697,6 +849,11 @@ export function PriceRuleDialog({ open, rule, preset, roles, onOpenChange }: Pro
                         <Preview draft={draft} />
                         {draft.type === "adjust" && (
                             <p className="fxc:text-muted-foreground fxc:mt-3 fxc:text-xs">{changeText(draft.mode, amountOf(draft))}</p>
+                        )}
+                        {fee && (
+                            <p className="fxc:text-muted-foreground fxc:mt-3 fxc:text-xs">
+                                {feeText(draft.mode, amountOf(draft), draft.mode === "percent" ? draft.cap : 0)}
+                            </p>
                         )}
                     </div>
                 </form>

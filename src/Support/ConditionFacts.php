@@ -12,7 +12,8 @@ defined( 'ABSPATH' ) || exit;
  * What the conditions of a rule or a coupon are checked against
  * (ADR-041). A null country, payment method or shipping rate is not known
  * yet: the cart has no address, or checkout has not chosen it. On a
- * product page there is no cart, so the quantity and weight are 0.
+ * product page there is no cart, so the quantity and weight are 0. The
+ * subtotal is known only once the cart is priced, for the fees (ADR-043).
  */
 final class ConditionFacts {
 	/** @var array<string,int|bool> */
@@ -24,6 +25,7 @@ final class ConditionFacts {
 	 * @param list<string>                   $coupons normalized codes in the cart
 	 * @param ?\Closure():CustomerHistory    $history resolved only when a condition reads past orders
 	 * @param bool                           $final   checkout is placing the order: what is still unknown counts as not met
+	 * @param ?int                           $subtotal the items after coupons, in minor units, as prices are entered
 	 */
 	public function __construct(
 		public readonly int $quantity = 0,
@@ -35,7 +37,16 @@ final class ConditionFacts {
 		public readonly int $user_id = 0,
 		private readonly ?\Closure $history = null,
 		public readonly bool $final = false,
+		public readonly ?int $subtotal = null,
 	) {}
+
+	/** The same facts with the priced cart's subtotal; past orders read already are kept. */
+	public function with_subtotal( int $subtotal ): self {
+		$copy         = new self( $this->quantity, $this->weight_g, $this->country, $this->payment_method, $this->shipping_rate, $this->coupons, $this->user_id, $this->history, $this->final, $subtotal );
+		$copy->memo   = $this->memo;
+		$copy->orders = $this->orders;
+		return $copy;
+	}
 
 	/**
 	 * A shopper on a product page, with no cart.
@@ -69,6 +80,6 @@ final class ConditionFacts {
 
 	/** A key for memoising prices: the facts that change what a rule gives. */
 	public function key(): string {
-		return implode( '|', [ $this->quantity, $this->weight_g, (string) $this->country, (string) $this->payment_method, (string) $this->shipping_rate, implode( ',', $this->coupons ), $this->final ? 1 : 0 ] );
+		return implode( '|', [ $this->quantity, $this->weight_g, (string) $this->country, (string) $this->payment_method, (string) $this->shipping_rate, implode( ',', $this->coupons ), $this->final ? 1 : 0, (string) $this->subtotal ] );
 	}
 }

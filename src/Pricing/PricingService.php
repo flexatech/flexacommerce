@@ -184,6 +184,17 @@ final class PricingService {
 		return ( $this->rules )();
 	}
 
+	/**
+	 * The fees of the fee rules for a priced cart (ADR-043).
+	 *
+	 * @param list<array{int,int}> $lines product post id and the line total after coupons
+	 * @return list<\Flexa\Commerce\Pricing\Rules\Fee>
+	 */
+	public function fees( array $lines, string $currency, int $user_id, ConditionFacts $facts ): array {
+		$now = $this->clock->now()->setTimezone( new \DateTimeZone( 'UTC' ) )->format( Clock::DB_FORMAT );
+		return $this->rules()?->fees( $lines, $currency, $user_id, $now, $facts ) ?? [];
+	}
+
 	/** The bulk or graduated rule whose tiers the product page lists for this customer. */
 	public function tier_rule( Product $product, int $user_id ): ?PriceRule {
 		$now = $this->clock->now()->setTimezone( new \DateTimeZone( 'UTC' ) )->format( Clock::DB_FORMAT );

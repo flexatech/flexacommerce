@@ -13,7 +13,9 @@ defined( 'ABSPATH' ) || exit;
  * products, some customers, and for a bulk rule from a quantity up. A
  * percent amount is in hundredths (2500 is 25%); a fixed amount or price
  * is in minor units. Dates are UTC `Y-m-d H:i:s`. `conditions` are the
- * cart, checkout and customer conditions of ADR-041.
+ * cart, checkout and customer conditions of ADR-041. A fee rule (ADR-043)
+ * adds a charge to the cart instead: fixed, or a percent of the matching
+ * items with `cap` as its most, 0 for none.
  *
  * @phpstan-type Tier array{min:int,mode:string,amount:int}
  */
@@ -24,7 +26,9 @@ final class PriceRule {
 	public const BULK = 'bulk';
 	/** Each unit at the tier its position falls in: the first 9 at full price, the 10th on at the next (ADR-042). */
 	public const GRADUATED = 'graduated';
-	public const TYPES     = [ self::ADJUST, self::BULK, self::GRADUATED ];
+	/** A charge on the cart, shown on its own line at checkout (ADR-043). */
+	public const FEE   = 'fee';
+	public const TYPES = [ self::ADJUST, self::BULK, self::GRADUATED, self::FEE ];
 
 	public const PERCENT = 'percent';
 	public const FIXED   = 'fixed';
@@ -83,6 +87,7 @@ final class PriceRule {
 			'match' => Conditions::ALL,
 			'items' => [],
 		],
+		public readonly int $cap = 0,
 	) {}
 
 	/** @param array<string,mixed> $row a stored row, already checked */
@@ -119,6 +124,7 @@ final class PriceRule {
 			starts_at: $opt( 'starts_at' ),
 			ends_at: $opt( 'ends_at' ),
 			conditions: is_array( $row['conditions'] ?? null ) ? $row['conditions'] : Conditions::none(),
+			cap: max( 0, (int) ( $row['cap'] ?? 0 ) ),
 		);
 	}
 
@@ -143,6 +149,7 @@ final class PriceRule {
 			'starts_at'           => $this->starts_at,
 			'ends_at'             => $this->ends_at,
 			'conditions'          => $this->conditions,
+			'cap'                 => $this->cap,
 		];
 	}
 
@@ -176,6 +183,10 @@ final class PriceRule {
 			}
 		}
 		return $found;
+	}
+
+	public function is_fee(): bool {
+		return $this->type === self::FEE;
 	}
 
 	/** Whether the rule has quantity tiers. */

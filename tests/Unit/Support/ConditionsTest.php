@@ -309,4 +309,35 @@ final class ConditionsTest extends TestCase {
 		self::assertFalse( Conditions::passes( $block, ConditionFacts::shopper( 7, self::history( 2, 0 ) ) ) );
 		self::assertTrue( Conditions::passes( $block, ConditionFacts::shopper( 0, null ) ) );
 	}
+
+	public function test_cart_subtotal_is_for_fees_only(): void {
+		$item  = [
+			'type'  => 'cart_subtotal',
+			'op'    => 'lte',
+			'value' => '5000',
+		];
+		$block = Conditions::clean( [ 'items' => [ $item ] ], true );
+		self::assertSame( 5000, $block['items'][0]['value'] );
+		$this->expectException( \InvalidArgumentException::class );
+		Conditions::clean( [ 'items' => [ $item ] ] );
+	}
+
+	public function test_cart_subtotal_unknown_until_the_cart_is_priced(): void {
+		$block = Conditions::clean(
+			[
+				'items' => [
+					[
+						'type'  => 'cart_subtotal',
+						'op'    => 'lte',
+						'value' => 5000,
+					],
+				],
+			],
+			true
+		);
+		self::assertNull( Conditions::passes( $block, new ConditionFacts() ) );
+		self::assertFalse( Conditions::passes( $block, new ConditionFacts( final: true ) ) );
+		self::assertTrue( Conditions::passes( $block, ( new ConditionFacts() )->with_subtotal( 5000 ) ) );
+		self::assertFalse( Conditions::passes( $block, ( new ConditionFacts() )->with_subtotal( 5001 ) ) );
+	}
 }
