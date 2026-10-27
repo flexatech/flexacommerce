@@ -7,12 +7,13 @@ namespace Flexa\Commerce\Tests\Integration\Coupons;
 use Flexa\Commerce\Cart\CartServices;
 use Flexa\Commerce\Cart\MemoryTokenStore;
 use Flexa\Commerce\Cart\SessionNonce;
+use Flexa\Commerce\Checkout\CheckoutLayout;
 use Flexa\Commerce\Coupons\Coupon;
 use Flexa\Commerce\Plugin;
 use Flexa\Commerce\Storefront\FormHandler;
 use Flexa\Commerce\Storefront\Render\CartTable;
 
-/** The store and admin coupon routes, the no-JS form and the cart markup. */
+/** The store and admin coupon routes, the no-JS forms and the cart and checkout markup. */
 final class CouponRoutesTest extends CouponTestCase {
 	private \WP_REST_Server $server;
 
@@ -91,6 +92,38 @@ final class CouponRoutesTest extends CouponTestCase {
 		$_GET[ FormHandler::RESULT ] = 'coupon_applied';
 		self::assertStringContainsString( 'Coupon applied', FormHandler::notice_for( 0 ) );
 		$_GET = [];
+	}
+
+	public function test_the_checkout_coupon_box_works_without_scripts(): void {
+		$this->coupon( 'TEN', Coupon::PERCENT, 1000 );
+		$this->coupon( 'Welcome', Coupon::PERCENT, 500, [ 'automatic' => true ] );
+		add_filter(
+			'wp_redirect',
+			static function ( string $location ): never {
+				throw new \RuntimeException( $location );
+			}
+		);
+		$_SERVER['HTTP_REFERER'] = home_url( '/checkout/' );
+		Plugin::instance()->cart()->cart()->add( 0, $id = $this->simple( 1000 ), $this->service()->get( $id )->base->id, 1 );
+		self::assertSame( 'coupon_applied', $this->form( [ 'coupon_code' => 'ten' ] ) );
+
+		$_GET[ FormHandler::RESULT ] = 'coupon_applied';
+		$html                        = do_shortcode( '[flexacommerce_checkout]' );
+		$_GET                        = [];
+		self::assertStringContainsString( '<details class="fxc-checkout__coupons" data-fxc-coupons open><summary>Have a coupon code?</summary>', $html, 'open with the result after a post' );
+		self::assertStringContainsString( '<p class="fxc-notice" role="status">Coupon applied.</p>', $html );
+		self::assertStringContainsString( '<input id="fxc-checkout-coupon-code" type="text" name="coupon_code" form="fxc-checkout-coupon"', $html, 'the code joins the coupon form, not the order' );
+		self::assertStringContainsString( 'Coupon: TEN <button type="submit" class="fxc-checkout__remove-coupon" form="fxc-checkout-coupon" name="remove_coupon" value="ten" aria-label="Remove coupon ten">&times;</button>', $html );
+		self::assertStringContainsString( 'Discount: Welcome</th>', $html, 'an automatic discount cannot be removed' );
+		self::assertMatchesRegularExpression( '#</form><form id="fxc-checkout-coupon" method="post" action="[^"]+admin-post\.php" hidden data-fxc-coupon-form><input type="hidden" name="action" value="flexacommerce_cart"><input type="hidden" name="fxc_op" value="coupon">#', $html, 'after the order form, since forms do not nest' );
+
+		self::assertSame( 'coupon_removed', $this->form( [ 'remove_coupon' => 'ten' ] ) );
+		self::assertStringNotContainsString( 'open><summary>Have a coupon code?', do_shortcode( '[flexacommerce_checkout]' ), 'closed on a plain visit' );
+
+		CheckoutLayout::save( [ 'page' => [ 'coupons' => 'hide' ] + CheckoutLayout::default()->to_array()['page'] ] );
+		$html = do_shortcode( '[flexacommerce_checkout]' );
+		self::assertStringNotContainsString( 'fxc-checkout-coupon', $html );
+		self::assertStringContainsString( 'Discount: Welcome', $html );
 	}
 
 	public function test_the_server_render_matches_the_cart_without_scripts(): void {

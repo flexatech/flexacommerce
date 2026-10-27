@@ -100,7 +100,7 @@ flexacommerce/
 | Checkout | Cart, Coupons, Pricing, Inventory, Shipping, Tax, Orders, Payments, Customers | Storefront, Api |
 | Notifications | Orders (read), Support. Triggered by hooks only | any service write method |
 | Storefront, Api, Admin, Cli | any L1 to L4 service and read repositories | each other |
-| Migration | Catalog, Orders, Payments repositories (import mode), Contracts, Support | Checkout, Cart, Notifications |
+| Migration | Catalog, Orders, Payments repositories (import mode), Contracts, Support, `Checkout\CheckoutLayout` (the checkout fields stage, ADR-036) | the rest of Checkout, Cart, Notifications |
 
 ### 3.3 How cycles are prevented
 

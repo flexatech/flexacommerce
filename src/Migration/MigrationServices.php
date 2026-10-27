@@ -18,6 +18,7 @@ use Flexa\Commerce\Migration\Sources\FxcSource;
 use Flexa\Commerce\Migration\Sources\FxcStoreReader;
 use Flexa\Commerce\Migration\Sources\SourceAdapter;
 use Flexa\Commerce\Migration\Sources\WooCatalogReader;
+use Flexa\Commerce\Migration\Sources\WooCheckoutReader;
 use Flexa\Commerce\Migration\Sources\WooCouponReader;
 use Flexa\Commerce\Migration\Sources\WooEnumerationRepository;
 use Flexa\Commerce\Migration\Sources\WooOptionReader;
@@ -26,6 +27,7 @@ use Flexa\Commerce\Migration\Sources\WooShippingReader;
 use Flexa\Commerce\Migration\Sources\WooSource;
 use Flexa\Commerce\Migration\Sources\WooStoreReader;
 use Flexa\Commerce\Migration\Targets\FxcCatalogWriter;
+use Flexa\Commerce\Migration\Targets\FxcCheckoutWriter;
 use Flexa\Commerce\Migration\Targets\FxcCouponWriter;
 use Flexa\Commerce\Migration\Targets\FxcOptionWriter;
 use Flexa\Commerce\Migration\Targets\FxcOrderWriter;
@@ -173,7 +175,7 @@ final class MigrationServices {
 	public function woo_source(): WooSource {
 		if ( $this->woo_source === null ) {
 			$enumeration      = new WooEnumerationRepository( $this->services->wpdb() );
-			$this->woo_source = new WooSource( $enumeration, new WooStoreReader( $enumeration ), new WooCatalogReader(), new WooOrderReader(), new WooShippingReader(), new WooCouponReader(), new WooOptionReader( $enumeration ) );
+			$this->woo_source = new WooSource( $enumeration, new WooStoreReader( $enumeration ), new WooCatalogReader(), new WooOrderReader(), new WooShippingReader(), new WooCouponReader(), new WooOptionReader( $enumeration ), new WooCheckoutReader() );
 		}
 		return $this->woo_source;
 	}
@@ -207,6 +209,7 @@ final class MigrationServices {
 			new FxcShippingWriter( $this->shipping->service() ),
 			new FxcCouponWriter( $this->coupons(), new CouponEditor( $this->coupons(), $this->services->clock() ) ),
 			new FxcOptionWriter( new OptionSetRepository() ),
+			new FxcCheckoutWriter(),
 		);
 	}
 }

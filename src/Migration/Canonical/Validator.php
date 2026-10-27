@@ -26,6 +26,7 @@ final class Validator {
 			Record::SHIPPING => $this->shipping( $record->data ),
 			Record::COUPON   => $this->coupon( $record->data ),
 			Record::OPTION_SET => $this->option_set( $record->data ),
+			Record::CHECKOUT_FIELDS => $this->checkout_fields( $record->data ),
 			Record::SETTINGS, Record::CUSTOMER => [],
 			default          => [ Problem::error( 'unknown_type', sprintf( 'Unknown record type "%s".', $record->type ) ) ],
 		};
@@ -83,6 +84,23 @@ final class Validator {
 			$problems[] = Problem::error( 'invalid_date', 'modified_at is not an ISO date.' );
 		}
 		return $problems;
+	}
+
+	/**
+	 * @param array<string,mixed> $data
+	 * @return list<Problem>
+	 */
+	private function checkout_fields( array $data ): array {
+		$sections = $data['sections'] ?? null;
+		if ( ! is_array( $sections ) ) {
+			return [ Problem::error( 'invalid_checkout_fields', 'The checkout fields record has no sections.' ) ];
+		}
+		foreach ( $sections as $fields ) {
+			if ( $fields !== null && ( ! is_array( $fields ) || ! array_is_list( $fields ) ) ) {
+				return [ Problem::error( 'invalid_checkout_fields', 'A section of the checkout fields record is not a list of fields.' ) ];
+			}
+		}
+		return [];
 	}
 
 	/**

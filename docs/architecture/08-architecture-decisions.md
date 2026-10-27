@@ -480,3 +480,53 @@ Status of every ADR: **Accepted** (plan approved 2026-10-24) unless it says othe
 
 **Revisit when.** Merchants ask for conditions on the answer of another field, on the cart total, or on the customer's role.
 
+## ADR-034: A steps layout for the checkout
+
+**Context.** Part 3 of doc 11 asks for a checkout in steps (Information, Shipping, Payment), as flexa-extra and hosted checkouts offer. Long forms on phones read better one part at a time, and a recap of what was entered helps the shopper check it before paying.
+
+**Decision.**
+1. **One switch, `page.flow`, with fixed steps.** Each section has its step; the merchant does not assign steps by hand. Headings and paragraphs follow the section below them, the summary shows in every step.
+2. **The server renders one page; the script makes it steps.** The nav ships hidden and no block is hidden, so without JavaScript the form posts as one page and the server checks it as before. Nothing in the order flow changes.
+3. **Checking a step uses the browser's validation** (`checkValidity`, `reportValidity`) on the step's enabled controls. The server stays the judge at Place order; its errors open the step of the first field.
+4. **Each step is a history entry,** so the browser's Back button moves between steps instead of leaving the checkout.
+5. **The steps run down the main column.** Blocks of the side column that belong to a step move to the end of the main column; the side keeps the summary.
+
+**Alternatives.** One server request per step: slower, more state to keep, and a step could go stale against the cart. Steps the merchant builds freely: more to explain and to check, for little gain over the three steps shoppers know. Hiding the steps with CSS before the script loads: a shopper without JavaScript would see only the first step.
+
+**Consequences.** `checkout.js` grows to about 7.4 KB gzip and `storefront.css` to about 4.9 KB, both under budget. The layout option gains one key. Themes that style `[hidden]` away still see the one-page form until the script runs.
+
+**Revisit when.** Merchants ask for their own steps, for an express payment button above the first step, or for saving the steps the shopper finished across visits.
+
+## ADR-035: A coupon box on the checkout
+
+**Context.** Part 3 of doc 11 asks for a coupon field on the checkout. Until now codes were added on the cart page only, so a shopper who went straight to the checkout had to go back to use a code, and could not remove one without leaving.
+
+**Decision.**
+1. **The box belongs to the order summary,** under its table, and is on by default (`page.coupons`). It moves, folds and shows in every step with the summary, so it needs no place of its own on the page.
+2. **The checkout uses the cart's coupon paths.** The REST routes and the no-JS form handler are the cart's; the checkout adds no new endpoint and no second way to apply a code. The cart keeps the rules (limits, individual use, the reasons a code is refused).
+3. **A separate form after the order form,** joined by the `form` attribute, since forms cannot nest. The code stays out of the order post, and Enter in the code field applies the code instead of placing the order.
+4. **A requote after each change.** The checkout totals depend on the address (shipping, tax display), so the script asks the checkout for them again instead of reading the cart's totals. The expected total follows, so the order goes through at the new price.
+
+**Alternatives.** Applying the code with the order post: the shopper would see the discount only after placing the order, and a refused code would block it. A coupon section the merchant places freely: one more block to explain, and a box far from the totals it changes. A field inside the order form named so the server skips it: Enter would place the order, and a second submit path through the order form is easier to get wrong.
+
+**Consequences.** `checkout.js` grows to about 8.0 KB gzip and `storefront.css` to about 5.0 KB (budget 10 KB). The layout option gains one key. Stores that never open the builder get the box; a merchant who does not want it turns it off on the summary.
+
+**Revisit when.** Merchants ask for the box above the summary or open by default, for gift cards in the same field, or for a list of codes the shopper can pick from.
+
+## ADR-036: Importing the Checkout Field Editor into the checkout layout
+
+**Context.** The last item of part 3 in doc 11. Many WooCommerce stores set up their checkout with the Checkout Field Editor by ThemeHigh. A merchant who moves to FlexaCommerce should not have to rebuild those fields by hand.
+
+**Decision.**
+1. **A Migration stage, `checkout`, WC→FXC only,** with one record that holds the extension's three options. It runs last, refers to nothing and is skipped when the source has not changed. The options are read even when the extension is off.
+2. **A saved section replaces that section; everything else stays.** The page settings, unsaved sections and fields made in the builder are kept. Core fields the extension removed come back hidden, so the layout stays complete.
+3. **WooCommerce's own wording is not imported.** A label or placeholder equal to it (in English or translated) is cleared, so it keeps following the site language.
+4. **What has no match is left out with a log line,** never forced into something close: multiselect and checkbox groups, hidden fields, headings and paragraphs, default values and the Pro conditions. A field that showed on conditions becomes optional, so it never blocks an order.
+5. **The writer saves through `CheckoutLayout`.** Migration may use that one class of Checkout (doc 02 §3.2, enforced by `DependencyRulesTest`), so the import passes the same checks and limits as the builder.
+
+**Alternatives.** Reading the fields through the extension's PHP classes: they exist only while it is active, and the stored options are simpler to read. A separate import button in the builder: a second import path without dry run, preflight or job log. Converting checkbox groups to several checkboxes: one question would become several, each with its own answer on the order.
+
+**Consequences.** One new stage and one record type; no table or option is added. The dependency rule gains one named exception. A second run after the merchant edited the builder replaces the imported sections again.
+
+**Revisit when.** Merchants ask for other checkout field plugins (Flexible Checkout Fields, Checkout Field Manager), for multi choice fields, or for the import to keep builder changes made after the first run.
+

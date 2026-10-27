@@ -2,7 +2,8 @@
  * FlexaCommerce checkout (doc 02 §7.5). The form works without this file:
  * it posts to the checkout page. When it loads, address and rate changes
  * requote over `store/checkout/shipping`, and the submit goes to
- * `store/checkout` with errors shown next to their fields. Hand-written,
+ * `store/checkout` with errors shown next to their fields. A coupon code
+ * is applied over `store/cart/coupons`. Hand-written,
  * no build step.
  */
 const source = document.getElementById(
@@ -26,16 +27,16 @@ class StoreError extends Error {
 	}
 }
 
-async function request( path, body, retried = false ) {
+async function request( path, body, method = 'POST', retried = false ) {
 	const response = await fetch( config.api + path, {
-		method: 'POST',
+		method,
 		credentials: 'same-origin',
 		headers: {
 			Accept: 'application/json',
 			'Content-Type': 'application/json',
 			'X-FXC-Nonce': nonce,
 		},
-		body: JSON.stringify( body ),
+		body: body === null ? undefined : JSON.stringify( body ),
 	} );
 	const fresh = response.headers.get( 'X-FXC-Nonce' );
 	if ( fresh ) {
@@ -58,7 +59,7 @@ async function request( path, body, retried = false ) {
 		response.status === 403 &&
 		data?.code === 'flexacommerce_invalid_nonce'
 	) {
-		return request( path, body, true );
+		return request( path, body, method, true );
 	}
 	throw new StoreError(
 		data?.message || i18n.failed,
@@ -119,6 +120,7 @@ function setup( root ) {
 	const message = form.querySelector( '[data-fxc-message]' );
 	const summary = root.querySelector( '[data-fxc-errors]' );
 	const place = form.querySelector( '[data-fxc-place]' );
+	const couponForm = root.querySelector( '[data-fxc-coupon-form]' );
 	let busy = false;
 
 	const elsewhere = () => !! toggle && toggle.checked;
@@ -332,8 +334,26 @@ function setup( root ) {
 				continue;
 			}
 			const row = el( 'tr', { class: 'fxc-checkout__coupon', 'data-fxc-coupon-row': true } );
+			const label = el( 'th', { scope: 'row' }, ( ( coupon.automatic ? i18n.discount : i18n.coupon ) || '%s' ).replace( '%s', coupon.label ) );
+			if ( couponForm && ! coupon.automatic && coupon.code ) {
+				label.append(
+					' ',
+					el(
+						'button',
+						{
+							type: 'submit',
+							class: 'fxc-checkout__remove-coupon',
+							form: couponForm.id,
+							name: 'remove_coupon',
+							value: coupon.code,
+							'aria-label': ( i18n.removeCoupon || '%s' ).replace( '%s', coupon.code ),
+						},
+						'\u00d7'
+					)
+				);
+			}
 			row.append(
-				el( 'th', { scope: 'row' }, ( ( coupon.automatic ? i18n.discount : i18n.coupon ) || '%s' ).replace( '%s', coupon.label ) ),
+				label,
 				el( 'td', {}, coupon.free_shipping && coupon.discount.amount === 0 ? i18n.freeShip || '' : '-' + coupon.discount.formatted )
 			);
 			subtotalRow.parentNode.insertBefore( row, anchor );
@@ -476,6 +496,11 @@ function setup( root ) {
 			summary.hidden = false;
 			summary.focus();
 		}
+		reveal(
+			Object.keys( errors )
+				.map( ( path ) => document.getElementById( fieldId( path ) ) )
+				.find( Boolean )
+		);
 	}
 
 	function payload() {
@@ -544,6 +569,206 @@ function setup( root ) {
 		form.classList.remove( 'is-busy' );
 	}
 
+	/*
+	 * The coupon box (doc 11 §13): the code goes to the cart, then a
+	 * requote brings the totals, the coupon rows and the expected total.
+	 * Without an address to quote, the cart's own totals are shown.
+	 */
+	const couponCode = form.querySelector( '[data-fxc-coupon-code]' );
+	const couponMessage = form.querySelector( '[data-fxc-coupon-message]' );
+	let couponBusy = false;
+	function couponSays( text, error ) {
+		couponMessage.replaceChildren(
+			el(
+				'p',
+				{
+					class: error ? 'fxc-notice fxc-notice--error' : 'fxc-notice',
+					role: error ? 'alert' : 'status',
+				},
+				text
+			)
+		);
+	}
+	async function changeCoupon( remove ) {
+		const code = remove || couponCode.value.trim();
+		if ( ! code ) {
+			couponSays( i18n.couponEmpty || '', true );
+			couponCode.focus();
+			return;
+		}
+		if ( couponBusy ) {
+			return;
+		}
+		couponBusy = true;
+		form.classList.add( 'is-busy' );
+		try {
+			const cart = remove
+				? await request( 'cart/coupons/' + encodeURIComponent( code ), null, 'DELETE' )
+				: await request( 'cart/coupons', { code } );
+			if ( ! ( await requote() ) ) {
+				renderTotals( cart );
+			}
+			if ( remove ) {
+				couponSays( i18n.couponRemoved || '', false );
+				couponCode.closest( 'details' ).open = true;
+				couponCode.focus();
+			} else {
+				couponCode.value = '';
+				couponSays( i18n.couponApplied || '', false );
+			}
+		} catch ( error ) {
+			couponSays( error.message, true );
+			couponCode.focus();
+		}
+		couponBusy = false;
+		form.classList.remove( 'is-busy' );
+	}
+	couponForm?.addEventListener( 'submit', ( event ) => {
+		event.preventDefault();
+		const remove =
+			event.submitter?.name === 'remove_coupon' ? event.submitter.value : '';
+		changeCoupon( remove );
+	} );
+
+	/*
+	 * A steps checkout (doc 11 §12): one step at a time, a recap of what
+	 * the shopper gave, the browser's Back button between steps. Without
+	 * this file the form is one page and the browser checks it all.
+	 */
+	const nav =
+		form.dataset.fxcFlow === 'steps'
+			? form.querySelector( '[data-fxc-steps]' )
+			: null;
+	const parts = ( step ) => [
+		...form.querySelectorAll( `.fxc-checkout__step[data-fxc-step="${ step }"]` ),
+	];
+	const steps = [];
+	let current = '';
+	let recap = null;
+	for ( const button of nav?.querySelectorAll( '[data-fxc-goto]' ) || [] ) {
+		if ( parts( button.dataset.fxcGoto ).length ) {
+			steps.push( button.dataset.fxcGoto );
+		} else {
+			button.closest( 'li' ).remove();
+		}
+	}
+	const stepName = ( step ) =>
+		nav.querySelector( `[data-fxc-goto="${ step }"]` ).textContent;
+	const shown = ( node ) =>
+		! node?.value
+			? ''
+			: node.tagName === 'SELECT'
+			? node.selectedOptions[ 0 ]?.text || ''
+			: node.value;
+
+	/** The first control of a step the browser would refuse, shown and reported. */
+	function refused( from, to ) {
+		for ( let i = Math.max( from, 0 ); i < to; i++ ) {
+			const bad = parts( steps[ i ] )
+				.flatMap( ( part ) => [
+					...part.querySelectorAll( 'input, select, textarea' ),
+				] )
+				.find( ( input ) => ! input.disabled && ! input.checkValidity() );
+			if ( bad ) {
+				if ( steps[ i ] !== current ) {
+					show( steps[ i ], true, false );
+				}
+				bad.reportValidity();
+				return true;
+			}
+		}
+		return false;
+	}
+
+	function go( step ) {
+		const at = steps.indexOf( current );
+		if ( ! refused( at, steps.indexOf( step ) ) ) {
+			show( step, true, true );
+		}
+	}
+
+	function renderRecap( at ) {
+		const rows = [];
+		const type = activeType();
+		if ( at > 0 ) {
+			const email = control( 'billing', 'email' );
+			rows.push( [ i18n.contact, shown( email ), steps[ 0 ], email ] );
+			if ( shippingBox ) {
+				const where = [ 'address_1', 'city', 'state', 'postcode', 'country' ]
+					.map( ( key ) => shown( control( type, key ) ) )
+					.filter( Boolean )
+					.join( ', ' );
+				rows.push( [ i18n.shipTo, where, steps[ 0 ], control( type, 'address_1' ) ] );
+			}
+		}
+		const rate = form.querySelector( 'input[name="shipping_rate"]:checked' );
+		if ( steps.includes( 'shipping' ) && at > steps.indexOf( 'shipping' ) && rate ) {
+			rows.push( [ i18n.method, rate.closest( 'label' ).textContent.trim(), 'shipping', rate ] );
+		}
+		recap.replaceChildren();
+		for ( const [ label, text, step, field ] of rows ) {
+			if ( ! text ) {
+				continue;
+			}
+			const change = el(
+				'button',
+				{
+					type: 'button',
+					class: 'fxc-checkout__change',
+					'aria-label': ( i18n.changeIt || '%s' ).replace( '%s', label ),
+				},
+				i18n.change
+			);
+			change.addEventListener( 'click', () => {
+				show( step, true, false );
+				field?.focus();
+			} );
+			const row = el( 'li' );
+			row.append(
+				el( 'span', { class: 'fxc-checkout__recap-label' }, label ),
+				el( 'span', { class: 'fxc-checkout__recap-value' }, text ),
+				change
+			);
+			recap.append( row );
+		}
+		recap.hidden = ! recap.children.length;
+	}
+
+	function show( step, push, focus ) {
+		current = step;
+		const at = steps.indexOf( step );
+		for ( const part of form.querySelectorAll( '[data-fxc-step]' ) ) {
+			part.hidden = part.dataset.fxcStep !== step;
+		}
+		for ( const button of nav.querySelectorAll( '[data-fxc-goto]' ) ) {
+			const i = steps.indexOf( button.dataset.fxcGoto );
+			if ( i === at ) {
+				button.setAttribute( 'aria-current', 'step' );
+			} else {
+				button.removeAttribute( 'aria-current' );
+			}
+			button.closest( 'li' ).classList.toggle( 'is-done', i < at );
+		}
+		renderRecap( at );
+		parts( step )[ 0 ].before( recap );
+		if ( push ) {
+			window.history.pushState( { ...window.history.state, fxcStep: step }, '' );
+		}
+		if ( focus ) {
+			const first = recap.hidden ? parts( step )[ 0 ] : recap;
+			first.focus( { preventScroll: true } );
+			nav.scrollIntoView( { block: 'nearest' } );
+		}
+	}
+
+	/** Shows the step a control is in, for an error that points at it. */
+	function reveal( node ) {
+		const step = node?.closest( '.fxc-checkout__step' )?.dataset.fxcStep;
+		if ( steps.includes( step ) && step !== current ) {
+			show( step, true, false );
+		}
+	}
+
 	// A summary link moves focus to its control; for a fieldset, the
 	// chosen radio or the first control in it.
 	summary?.addEventListener( 'click', ( event ) => {
@@ -561,6 +786,7 @@ function setup( root ) {
 				: target;
 		if ( focusable ) {
 			event.preventDefault();
+			reveal( focusable );
 			focusable.focus();
 			focusable.scrollIntoView( { block: 'center' } );
 		}
@@ -568,8 +794,17 @@ function setup( root ) {
 
 	form.addEventListener( 'submit', ( event ) => {
 		event.preventDefault();
+		const at = steps.indexOf( current );
+		// Enter before the last step goes on to the next one.
+		if ( at >= 0 && at < steps.length - 1 ) {
+			go( steps[ at + 1 ] );
+			return;
+		}
 		if ( event.submitter?.hasAttribute( 'data-fxc-refresh' ) ) {
 			requote();
+			return;
+		}
+		if ( refused( 0, steps.length ) ) {
 			return;
 		}
 		submit();
@@ -623,6 +858,62 @@ function setup( root ) {
 	}
 	syncShipping();
 	syncCountries();
+	if ( steps.length ) {
+		form.noValidate = true;
+		nav.hidden = false;
+		recap = el( 'ul', { class: 'fxc-checkout__recap', tabindex: -1 } );
+		// The steps go down the main column; the side keeps what shows in every step.
+		const details = form.querySelector( '.fxc-checkout__details' );
+		for ( const part of form.querySelectorAll(
+			'.fxc-checkout__review > .fxc-checkout__step'
+		) ) {
+			details?.append( part );
+		}
+		steps.forEach( ( step, i ) => {
+			const list = parts( step );
+			list[ 0 ].tabIndex = -1;
+			const row = el( 'p', { class: 'fxc-checkout__next', 'data-fxc-step': step } );
+			if ( i > 0 ) {
+				const back = el(
+					'button',
+					{ type: 'button', class: 'fxc-checkout__back' },
+					( i18n.back || '%s' ).replace( '%s', stepName( steps[ i - 1 ] ) )
+				);
+				back.addEventListener( 'click', () => show( steps[ i - 1 ], true, true ) );
+				row.append( back );
+			}
+			if ( i < steps.length - 1 ) {
+				const next = el(
+					'button',
+					{ type: 'button', class: 'wp-element-button fxc-checkout__continue' },
+					( i18n.next || '%s' ).replace( '%s', stepName( steps[ i + 1 ] ) )
+				);
+				next.addEventListener( 'click', () => go( steps[ i + 1 ] ) );
+				row.append( next );
+			}
+			list[ list.length - 1 ].after( row );
+		} );
+		nav.addEventListener( 'click', ( event ) => {
+			const button = event.target.closest( '[data-fxc-goto]' );
+			if ( button ) {
+				go( button.dataset.fxcGoto );
+			}
+		} );
+		window.addEventListener( 'popstate', ( event ) => {
+			if ( steps.includes( event.state?.fxcStep ) ) {
+				show( event.state.fxcStep, false, true );
+			}
+		} );
+		// A post that failed without scripts opens on the step of its first error.
+		const invalid =
+			summary && ! summary.hidden
+				? form.querySelector( '[aria-invalid="true"], .fxc-field__error' )
+				: null;
+		const first =
+			invalid?.closest( '.fxc-checkout__step' )?.dataset.fxcStep;
+		show( steps.includes( first ) ? first : steps[ 0 ], false, false );
+		window.history.replaceState( { ...window.history.state, fxcStep: current }, '' );
+	}
 	// After a failed post without scripts the summary is already there.
 	if ( summary && ! summary.hidden ) {
 		summary.focus();

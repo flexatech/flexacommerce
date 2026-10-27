@@ -1,6 +1,6 @@
 # 11. Checkout builder (design)
 
-Status: part 1 (fields) and part 2 (sections and layout) built, 2026-10-27; decision records ADR-031 and ADR-032 in doc 08. Of part 3, the field conditions are built (§11, ADR-033); the steps layout, the coupon box and the Checkout Field Editor import are still proposals. Where the parts differ from the first draft of this page, §9 to §11 say so.
+Status: part 1 (fields) and part 2 (sections and layout) built, 2026-10-27; decision records ADR-031 and ADR-032 in doc 08. Part 3 is built too: the field conditions (§11, ADR-033), the steps layout (§12, ADR-034), the coupon box (§13, ADR-035) and the Checkout Field Editor import (§14, ADR-036). Where the parts differ from the first draft of this page, §9 to §14 say so.
 
 ## 1. Goal
 
@@ -171,3 +171,37 @@ The first item of part 3: a field of the merchant's can show only for some count
 - **Preview on site** treats the sample cart as one that ships and holds no product, so a field limited to products or categories does not show there.
 - **Tests.** Unit: cleaning and refusing `when`, `CartFacts::allows`, the schema leaving out a field, the validator skipping fields for other countries. Integration: the rendered attributes, a subcategory match, an order placed without a field for another country. E2E: a field for Germany shows and hides as the shopper changes country, and the order goes through from the US.
 
+## 12. What part 3 built: steps layout
+
+The second item of part 3: the merchant can split the checkout into Information, Shipping and Payment, shown one at a time. Without JavaScript the same page is one form, as before.
+
+- **Stored shape.** `page.flow` is `page` (the default) or `steps`. A layout saved before part 3 reads as `page`. A PUT with another value is refused at `page.flow`; on read it falls back to `page`.
+- **Which step a block is in.** Each section has a fixed step: Billing details, Shipping address and Additional information go in Information, Shipping (the rates) in Shipping, Payment in Payment. The order summary shows in every step. A heading or paragraph goes with the first section under it in its column, or with the nearest one above it when none follows; next to the summary it shows in every step. `CheckoutLayout::step()` holds the rule and `stepOf()` in `pageModel.ts` mirrors it for the builder.
+- **No shipping step for a cart that does not ship.** The server leaves the step out of the list and the rates section renders nothing.
+- **Markup.** The form gets `data-fxc-flow="steps"`. Before the columns comes `<nav class="fxc-checkout__steps" aria-label="Checkout steps" hidden>` with one button per step, and each block with a step is wrapped in `<div class="fxc-checkout__step" data-fxc-step="…">`. Nothing is hidden in the markup apart from the nav, so the page posts as one form without the script.
+- **What `checkout.js` does.** It shows the nav and one step at a time, moves the blocks of the side column that belong to a step to the end of the main column (the side keeps the summary), and adds Back and "Continue to …" buttons after each step. Continue checks the step's enabled controls with the browser's own validation and reports the first problem; going forward from the nav checks each step on the way. Enter in a field before the last step continues. From the second step a recap lists the email, the address the order ships to and, on Payment, the shipping method, each with a Change button that goes back to its field. Each step is a history entry, so the browser's Back button goes back a step. The form is `novalidate` in this mode and Place order checks every step first; a server error opens the step of its first field, as does a failed post without the script.
+- **Builder.** A "Checkout" control next to Layout switches between One page and Steps. In steps mode each block on the canvas shows its step ("Step 1 · Information", "Every step").
+- **Tests.** Unit: the flow default, fallback and refusal, and the step of each block. Integration: the steps markup with nothing hidden, an order posted as one page, no shipping step for a cart without shipping, and no step markup in the default layout. E2E: Continue holds back an empty address, the recap, the browser's Back button, Enter, Change, the nav, and an order placed, with an accessibility check.
+
+## 13. What part 3 built: coupon box
+
+The third item of part 3: the shopper can add or remove a coupon code on the checkout, without going back to the cart.
+
+- **Stored shape.** `page.coupons` is `show` (the default) or `hide`. A layout saved before this reads as `show`, so the box appears on stores that never open the builder. A PUT with another value is refused at `page.coupons`; on read it falls back to `show`.
+- **Where it is.** Under the order summary, inside the summary block: it moves with the summary, shows in every step of a steps checkout and folds with the summary at the top on phones. It is a `<details>` closed behind "Have a coupon code?", so it takes one line until the shopper asks for it.
+- **Markup.** Forms do not nest, so the coupon form (`form#fxc-checkout-coupon`, posting to `admin-post.php` with the cart form handler's `coupon` operation) comes after the order form, empty and `hidden`. The code field, the Apply button and the remove buttons join it through the `form` attribute. The code never goes into the order post. Each coupon row the shopper added has a remove button (`name="remove_coupon"`, labelled "Remove coupon CODE"); an automatic discount has none.
+- **Without JavaScript.** The post goes through `FormHandler` as on the cart page and redirects back to the checkout with `?fxc-cart=…`. The box then renders open with the result message, and the page renders the new totals and a fresh expected total.
+- **What `checkout.js` does.** It takes over the coupon form's submit: Apply posts `store/cart/coupons`, a remove button sends `DELETE store/cart/coupons/{code}`. A requote then brings the totals, the coupon rows and the expected total; with no country to quote, the cart's own totals are shown. The result goes in a message under the field (`role="status"`, or `role="alert"` for a refused code). After a refused code or a remove the focus goes to the code field. An empty field says "Enter a coupon code." without a request.
+- **Builder.** The order summary's settings have a "Coupon code box" switch, and the summary sketch on the canvas shows the "Have a coupon code?" line while it is on.
+- **Tests.** Unit: the default, the fallback and the refusal. Integration: the no-JS apply and remove from the checkout, the box open with the result after a post and closed on a plain visit, the code field outside the order form, remove buttons for codes only, and no box or coupon form with `hide`; the existing checkout markup tests now expect the box. E2E: a refused code, apply, remove with the focus back in the field, the totals after each, an order placed with the discount, and an accessibility check.
+
+## 14. What part 3 built: Checkout Field Editor import
+
+The fourth item of part 3: a store moving from WooCommerce keeps the checkout fields it set up in the Checkout Field Editor (ThemeHigh, free and Pro).
+
+- **Where.** A Migration stage, `checkout`, after `options`, shown as "Checkout fields" in the wizard and in `wp flexacommerce migrate --stages=checkout`. It goes through the file transport like the other stages. The mapping and its warnings are in doc 05 §5.10.
+- **What the merchant gets.** Each section saved in the extension becomes that section of the builder: the order, the labels the merchant changed, the widths, required, optional or hidden, and the merchant's own fields with their choices. Sections never saved in the extension, the page settings (columns, steps, coupon box, content blocks) and fields added in the builder stay.
+- **Translations.** A label or placeholder that kept WooCommerce's text is cleared, so the field shows FlexaCommerce's own text in the site language. Only text the merchant wrote is stored.
+- **What it leaves to the merchant.** Headings and paragraphs between fields, multiselect and checkbox group fields, hidden fields, default values and the Pro conditions. Each is a line in the job log that names the field, so the merchant can rebuild it in the builder (a heading between sections, conditions from §11).
+- **Saving.** The writer builds the new layout and saves it through `CheckoutLayout::save()`, so it passes the builder's own checks. Migration reaches no other class of Checkout (doc 02 §3.2).
+- **Tests.** WooCommerce suite, in the three order storage modes: core order, labels, widths and answers; WooCommerce text cleared; a locked email; custom field ids, types and choices; the warnings in the log; an unsaved section, the page and a builder field kept; a second run skipped when unchanged and updated when changed; a store without the extension imports nothing.

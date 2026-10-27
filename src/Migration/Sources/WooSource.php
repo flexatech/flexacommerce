@@ -31,6 +31,7 @@ final class WooSource implements SourceAdapter {
 		private readonly WooShippingReader $shipping,
 		private readonly WooCouponReader $coupons,
 		private readonly WooOptionReader $options,
+		private readonly WooCheckoutReader $checkout,
 	) {}
 
 	public static function available(): bool {
@@ -61,6 +62,7 @@ final class WooSource implements SourceAdapter {
 			'orders'     => $this->orders->order( $id ),
 			'coupons'    => $this->coupons->coupon( $id ),
 			'options'    => $this->options->option_set( $id ),
+			'checkout'   => $this->checkout->checkout_fields(),
 			default      => null,
 		};
 	}
@@ -158,6 +160,15 @@ final class WooSource implements SourceAdapter {
 					break;
 				}
 			}
+		}
+
+		if ( in_array( 'checkout', $stages, true ) && WooCheckoutReader::exists() ) {
+			$summary    = WooCheckoutReader::summary();
+			$problems[] = Problem::info(
+				'checkout_field_editor',
+				sprintf( 'The Checkout Field Editor has %1$d saved sections with %2$d fields of your own. They replace the fields of those sections in the checkout builder.', $summary['sections'], $summary['custom'] ),
+				$summary
+			);
 		}
 
 		$zones = $this->enumeration->shipping_zones();

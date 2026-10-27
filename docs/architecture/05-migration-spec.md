@@ -45,7 +45,7 @@ The canonical format is the contract between adapters. Same-site jobs keep it in
 
 ### 3.2 Record types
 
-`attribute`, `term` (category, tag, attribute value), `product` (with embedded `variants`), `customer`, `order` (with embedded `items`, `addresses`, `transactions`, `history`), `coupon`, `option_set` (WC→FXC only, §5.9). Terms come first, then products, then option sets, then customers, then orders, then coupons, so references always resolve to already imported records.
+`attribute`, `term` (category, tag, attribute value), `product` (with embedded `variants`), `customer`, `order` (with embedded `items`, `addresses`, `transactions`, `history`), `coupon`, `option_set` (WC→FXC only, §5.9), `checkout_fields` (WC→FXC only, §5.10). Terms come first, then products, then option sets, then customers, then orders, then coupons, so references always resolve to already imported records. The checkout fields refer to nothing and come last.
 
 ### 3.3 Example: simple product
 
@@ -430,6 +430,18 @@ The `options` stage runs after products and only from WooCommerce (ADR-029). It 
 - Left out, each with a warning that names the set and the field: file uploads (`option_file_upload`), customer defined prices (`option_custom_price`) and unknown types (`option_unknown_type`). Conditional logic is dropped and the field is no longer required (`option_logic_dropped`). Character rules other than a length (letters only, email) and a lower length are info lines. More than 20 fields or 30 choices are cut with a warning. A record with no field FlexaCommerce has is rejected (`no_option_fields`).
 
 A second run updates the set it created, in place. FXC→WC does not write add-ons; the FlexaCommerce option sets stay where they are.
+
+### 5.10 Checkout fields
+
+The `checkout` stage runs after `options` and only from WooCommerce (ADR-036). It reads the three options of the Checkout Field Editor for WooCommerce by ThemeHigh (`wc_fields_billing`, `wc_fields_shipping`, `wc_fields_additional`), which stay in the database when the extension is turned off. The Pro version saves the same options with more keys; its extra keys are read where FlexaCommerce has a match. Other checkout field plugins are not read.
+
+- Record: one `checkout_fields` record (id 1) holding each section as the extension saved it, sorted by priority, or null for a section the merchant never saved. With no saved section the stage has nothing to import and the job counts 0. Preflight names the saved sections and the merchant's own fields in them (`checkout_field_editor`).
+- Target: the checkout layout (doc 11). A saved section replaces the fields of that section; an unsaved one, the page settings and the layout's other keys stay as they are. Within a section the extension's fields come first in its order, then the core fields it removed (hidden), then the fields made in FlexaCommerce that the extension does not have.
+- Core fields: `billing_*` and `shipping_*` map to the core field of the same name, `order_comments` to the order note. A label or placeholder equal to WooCommerce's own text (English or translated) is cleared, so the field keeps the FlexaCommerce text and its translations. A field turned off becomes hidden. Country and email cannot be hidden or optional: they stay required, with a warning (`checkout_field_locked`). State and postcode follow the country, so an optional one becomes required. `form-row-first` and `form-row-last` make a half width field, `form-row-wide` a full one.
+- The merchant's fields: the id is the field name without its section prefix (`billing_vat` becomes `vat`), or the whole name when that is taken, or a numbered one. text, textarea, number, email, tel, select, radio, checkbox and date map directly; password, url, date and time, time, month and week become text (info `checkout_field_as_text`). Choices keep their order and text; their keys become slugs, and the empty "choose" line of a select is left out. "Show in email" carries over.
+- Left out, each with a warning that names the section and the field: hidden fields (`checkout_field_hidden`), multiselect and checkbox group (`checkout_field_multiple`), a choice field with no choices (`checkout_field_no_choices`) and unknown types (`checkout_field_unknown_type`). Headings, paragraphs and labels are info lines (`checkout_field_text`): the builder adds them between sections. Conditional rules of the Pro version are dropped and the field is no longer required (`checkout_field_logic_dropped`); a default value is an info line. More than 30 fields or 30 choices are cut with a warning; labels over 80 and help over 200 characters are cut. A layout the builder would refuse rejects the record (`invalid_checkout_layout`).
+
+A second run replaces the sections again from the extension, so changes made in the builder to those sections since the first run are lost; an unchanged source is skipped. FXC→WC does not write the extension's options.
 
 ## 6. Conflict and validation policies
 

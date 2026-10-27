@@ -28,6 +28,36 @@ export const COLUMN_NAMES: Record<Column, string> = {
     side: __("Side column"),
 };
 
+export type Step = "information" | "shipping" | "payment";
+
+export const STEPS: Step[] = ["information", "shipping", "payment"];
+
+export const STEP_NAMES: Record<Step, string> = {
+    information: __("Information"),
+    shipping: __("Shipping"),
+    payment: __("Payment"),
+};
+
+const STEP_OF: Partial<Record<BlockId, Step>> = {
+    billing: "information",
+    shipping: "information",
+    additional: "information",
+    shipping_method: "shipping",
+    payment: "payment",
+};
+
+/**
+ * The step a block shows in, as CheckoutLayout::step(): a section's own, a
+ * heading or paragraph that of the section below it (else above it). Null
+ * means every step, as for the order summary.
+ */
+export function stepOf(page: LayoutPage, column: Column, index: number): Step | null {
+    const blocks = page[column];
+    const order = [...blocks.slice(index), ...blocks.slice(0, index).reverse()];
+    const section = order.find((b) => !isContent(b));
+    return section ? (STEP_OF[section.id as BlockId] ?? null) : null;
+}
+
 export const isSection = (id: string): id is Section => SECTIONS.includes(id as Section);
 export const isContent = (block: LayoutBlock) => !(block.id in BLOCK_NAMES);
 

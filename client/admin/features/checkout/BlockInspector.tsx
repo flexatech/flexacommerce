@@ -4,6 +4,7 @@ import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Select } from "@/shared/components/ui/select";
+import { Switch } from "@/shared/components/ui/switch";
 import { Textarea } from "@/shared/components/ui/textarea";
 import { __, sprintf } from "@/shared/lib/i18n";
 import { Row } from "./FieldInspector";
@@ -30,13 +31,16 @@ interface Props {
     canUp: boolean;
     canDown: boolean;
     onChange: (patch: Partial<LayoutBlock>) => void;
+    /** The order summary's coupon code box. */
+    coupons: boolean;
+    onCoupons: (show: boolean) => void;
     onMove: (delta: -1 | 1) => void;
     onColumn: (column: Column) => void;
     onDelete: () => void;
 }
 
 /** The settings of a section of the page, or of a heading or paragraph (ADR-032). */
-export function BlockInspector({ block, column, twoColumns, problem, fresh, canUp, canDown, onChange, onMove, onColumn, onDelete }: Props) {
+export function BlockInspector({ block, column, twoColumns, problem, fresh, canUp, canDown, onChange, coupons, onCoupons, onMove, onColumn, onDelete }: Props) {
     const id = useId();
     const content = isContent(block);
     const payment = block.id === "payment";
@@ -103,6 +107,15 @@ export function BlockInspector({ block, column, twoColumns, problem, fresh, canU
                             onChange={(e) => onChange({ title: e.target.value })}
                         />
                     </Row>
+                    {block.id === "summary" && (
+                        <label className="fxc:flex fxc:items-start fxc:justify-between fxc:gap-3 fxc:text-sm">
+                            <span>
+                                <span className="fxc:block fxc:font-medium">{__("Coupon code box")}</span>
+                                <span className="fxc:text-muted-foreground fxc:block fxc:text-xs">{__("Customers can add or remove a coupon code without going back to the cart.")}</span>
+                            </span>
+                            <Switch checked={coupons} onCheckedChange={onCoupons} />
+                        </label>
+                    )}
                     {block.id === "additional" && <p className="fxc:text-muted-foreground fxc:text-xs">{__("The title shows when the section holds more than the order notes.")}</p>}
                 </>
             )}

@@ -38,6 +38,8 @@ import {
     COLUMN,
     COLUMN_NAMES,
     CONTENT_NAMES,
+    STEPS,
+    STEP_NAMES,
     blockKey,
     blockName,
     contentCount,
@@ -50,8 +52,10 @@ import {
     moveBlock,
     pageProblem,
     pageProblemAt,
+    stepOf,
     toOneColumn,
     toTwoColumns,
+    type Step,
 } from "./pageModel";
 import {
     LOCKED,
@@ -224,6 +228,7 @@ function BlockCard({
     selected,
     blocked,
     hint,
+    step,
     onSelect,
     children,
 }: {
@@ -231,6 +236,8 @@ function BlockCard({
     selected: boolean;
     blocked: boolean;
     hint?: string;
+    /** In a steps checkout: the step it shows in, null for every step. */
+    step?: Step | null;
     onSelect: () => void;
     children?: ReactNode;
 }) {
@@ -263,6 +270,11 @@ function BlockCard({
                         </>
                     )}
                 </button>
+                {step !== undefined && (
+                    <span className="fxc:bg-muted fxc:text-muted-foreground fxc:mt-1 fxc:shrink-0 fxc:rounded-full fxc:px-2 fxc:py-0.5 fxc:text-[11px] fxc:font-medium fxc:whitespace-nowrap">
+                        {step === null ? __("Every step") : sprintf(__("Step %1$d · %2$s"), STEPS.indexOf(step) + 1, STEP_NAMES[step])}
+                    </span>
+                )}
                 {block.id === "payment" && <Lock aria-label={__("Stays at the end of its column")} className="fxc:text-muted-foreground fxc:mt-1.5 fxc:size-3.5 fxc:shrink-0" />}
             </div>
             {children}
@@ -273,7 +285,7 @@ function BlockCard({
 const Bar = ({ className }: { className?: string }) => <span className={cn("fxc:bg-muted fxc:block fxc:h-2 fxc:rounded-full", className)} />;
 
 /** A rough drawing of the parts the checkout fills in itself. */
-function BlockSketch({ id }: { id: BlockId }) {
+function BlockSketch({ id, coupons }: { id: BlockId; coupons: boolean }) {
     const radio = <span className="fxc:border-input fxc:size-3 fxc:shrink-0 fxc:rounded-full fxc:border" />;
     if (id === "shipping_method") {
         return (
@@ -302,6 +314,7 @@ function BlockSketch({ id }: { id: BlockId }) {
                     <Bar className="fxc:bg-muted-foreground/40 fxc:w-10" />
                     <Bar className="fxc:bg-muted-foreground/40 fxc:ms-auto fxc:w-12" />
                 </span>
+                {coupons && <span className="fxc:text-muted-foreground fxc:block fxc:text-xs fxc:underline">{__("Have a coupon code?")}</span>}
             </span>
         );
     }
@@ -756,9 +769,15 @@ export function CheckoutBuilderPage() {
     const atDefault = same(server.fields, server.default.fields) && same(server.page, server.default.page);
     const busy = save.isPending || preview.isPending;
 
-    const renderBlock = (block: LayoutBlock) => {
+    const renderBlock = (block: LayoutBlock, column: Column, index: number) => {
         const key = blockKey(block.id);
-        const props = { block, selected: selected === key, blocked: fieldDrag, onSelect: () => choose(selected === key ? null : key) };
+        const props = {
+            block,
+            selected: selected === key,
+            blocked: fieldDrag,
+            step: page.flow === "steps" ? stepOf(page, column, index) : undefined,
+            onSelect: () => choose(selected === key ? null : key),
+        };
         if (isContent(block)) {
             return <BlockCard key={key} {...props} />;
         }
@@ -766,7 +785,7 @@ export function CheckoutBuilderPage() {
         if (!isSection(id)) {
             return (
                 <BlockCard key={key} {...props} hint={BLOCK_HINTS[id]}>
-                    <BlockSketch id={id} />
+                    <BlockSketch id={id} coupons={page.coupons === "show"} />
                 </BlockCard>
             );
         }
@@ -865,6 +884,15 @@ export function CheckoutBuilderPage() {
                                     { value: "one", label: __("One column") },
                                 ]}
                             />
+                            <Segmented<LayoutPage["flow"]>
+                                legend={__("Checkout")}
+                                value={page.flow}
+                                onChange={(flow) => setPage({ ...page, flow })}
+                                options={[
+                                    { value: "page", label: __("One page") },
+                                    { value: "steps", label: __("Steps") },
+                                ]}
+                            />
                             <Segmented<LayoutPage["summary"]>
                                 legend={__("Order summary on phones")}
                                 value={page.summary}
@@ -884,7 +912,7 @@ export function CheckoutBuilderPage() {
                                     label={twoColumns ? COLUMN_NAMES[column] : undefined}
                                     blocked={fieldDrag}
                                 >
-                                    {page[column].map(renderBlock)}
+                                    {page[column].map((block, index) => renderBlock(block, column, index))}
                                 </ColumnZone>
                             ))}
                         </div>
@@ -918,6 +946,8 @@ export function CheckoutBuilderPage() {
                                 canUp={currentBlock.index > 0}
                                 canDown={currentBlock.index < page[currentBlock.column].length - 1 && page[currentBlock.column][currentBlock.index + 1]?.id !== "payment"}
                                 onChange={(change) => patchBlock(selected, change)}
+                                coupons={page.coupons === "show"}
+                                onCoupons={(show) => setPage({ ...page, coupons: show ? "show" : "hide" })}
                                 onMove={(delta) => setPage(moveBlock(page, currentBlock.block.id, currentBlock.column, currentBlock.index + delta))}
                                 onColumn={(column) => setPage(moveBlock(page, currentBlock.block.id, column, page[column].length))}
                                 onDelete={() => removeBlock(selected)}

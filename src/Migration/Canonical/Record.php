@@ -25,6 +25,8 @@ final class Record {
 	public const COUPON     = 'coupon';
 	public const OPTION_SET = 'option_set';
 
+	public const CHECKOUT_FIELDS = 'checkout_fields';
+
 	public readonly string $checksum;
 
 	/**

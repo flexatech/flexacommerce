@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { addSimple, expectAccessible, fillBilling } from './store';
+import { addSimple, expectAccessible, fillBilling, money, store } from './store';
 
 const BUILDER = '/wp-admin/admin.php?page=flexacommerce-checkout';
 
@@ -157,4 +157,132 @@ test( 'a field shown for one country follows the country the shopper picks', asy
 	await page.getByRole( 'button', { name: 'Reset to default' } ).click();
 	await page.getByRole( 'dialog' ).getByRole( 'button', { name: 'Reset', exact: true } ).click();
 	await expect( page.getByText( 'Checkout reset.' ) ).toBeVisible();
+} );
+
+test( 'a steps checkout asks for one step at a time and the Back button goes back a step', async ( { page, browser }, info ) => {
+	test.skip( info.project.name !== 'tt5', 'admin screen, theme independent' );
+
+	await logInAsAdmin( page );
+	await page.goto( BUILDER );
+	await page.getByText( 'Steps', { exact: true } ).click();
+	await expect( page.getByText( 'Step 1 · Information' ).first() ).toBeVisible();
+	await expect( page.getByText( 'Every step', { exact: true } ) ).toBeVisible();
+	await page.getByRole( 'button', { name: 'Save changes' } ).click();
+	await expect( page.getByText( 'Checkout saved.' ) ).toBeVisible();
+
+	const guest = await browser.newContext( { extraHTTPHeaders: info.project.use.extraHTTPHeaders } );
+	const shopper = await guest.newPage();
+	await addSimple( shopper );
+	await shopper.goto( '/checkout/' );
+	const steps = shopper.getByRole( 'navigation', { name: 'Checkout steps' } );
+	await expect( steps.getByRole( 'button', { name: 'Information' } ) ).toHaveAttribute( 'aria-current', 'step' );
+	await expect( shopper.locator( '#fxc-payment-method' ) ).toBeHidden();
+	await expect( shopper.locator( '.fxc-checkout__summary' ) ).toBeVisible();
+
+	// Continue holds back an empty address.
+	const email = shopper.locator( '#fxc-billing-email' );
+	await shopper.getByRole( 'button', { name: 'Continue to Shipping' } ).click();
+	await expect( email ).toBeFocused();
+	expect( await email.evaluate( ( el: HTMLInputElement ) => el.validity.valueMissing ) ).toBe( true );
+	await expect( shopper.locator( '[data-fxc-rates]' ) ).toBeHidden();
+
+	await fillBilling( shopper );
+	await shopper.getByRole( 'button', { name: 'Continue to Shipping' } ).click();
+	await expect( steps.getByRole( 'button', { name: 'Shipping' } ) ).toHaveAttribute( 'aria-current', 'step' );
+	await expect( shopper.locator( '.fxc-checkout__details [data-fxc-rates]' ) ).toBeVisible();
+	await expect( email ).toBeHidden();
+	const recap = shopper.locator( '.fxc-checkout__recap' );
+	await expect( recap ).toContainText( 'guest@example.test' );
+	await expect( recap ).toContainText( '100 Main Street, Portland' );
+	await expectAccessible( shopper, info, 'checkout steps' );
+
+	// The browser's Back button, then forward again with Enter.
+	await shopper.goBack();
+	await expect( steps.getByRole( 'button', { name: 'Information' } ) ).toHaveAttribute( 'aria-current', 'step' );
+	await expect( email ).toBeVisible();
+	await shopper.locator( '#fxc-billing-city' ).press( 'Enter' );
+	await expect( steps.getByRole( 'button', { name: 'Shipping' } ) ).toHaveAttribute( 'aria-current', 'step' );
+	await shopper.getByRole( 'button', { name: 'Continue to Payment' } ).click();
+	await expect( recap ).toContainText( 'Shipping method' );
+
+	// Change goes back to the field.
+	await recap.getByRole( 'button', { name: 'Change Contact' } ).click();
+	await expect( email ).toBeFocused();
+	await steps.getByRole( 'button', { name: 'Payment' } ).click();
+	await expect( steps.getByRole( 'button', { name: 'Payment' } ) ).toHaveAttribute( 'aria-current', 'step' );
+
+	await shopper.locator( '#fxc-payment-method' ).getByLabel( /cash on delivery/i ).check();
+	await shopper.locator( '#fxc-terms' ).check();
+	await shopper.getByRole( 'button', { name: 'Place order' } ).click();
+	await expect( shopper.locator( '.fxc-order' ) ).toBeVisible( { timeout: 15_000 } );
+	await guest.close();
+
+	await page.goto( BUILDER );
+	await page.getByRole( 'button', { name: 'Reset to default' } ).click();
+	await page.getByRole( 'dialog' ).getByRole( 'button', { name: 'Reset', exact: true } ).click();
+	await expect( page.getByText( 'Checkout reset.' ) ).toBeVisible();
+} );
+
+test( 'the coupon box under the summary applies and removes a code without leaving the checkout', async ( { page, browser }, info ) => {
+	test.skip( info.project.name !== 'tt5', 'one project creates the coupon' );
+
+	await logInAsAdmin( page );
+	await page.goto( BUILDER );
+	await page.getByRole( 'button', { name: /^Your order/ } ).click();
+	await expect( page.getByRole( 'switch', { name: /Coupon code box/ } ) ).toBeChecked();
+	const coupon = await page.evaluate( async () => {
+		const admin = ( window as unknown as { flexaCommerce: { restUrl: string; restNonce: string } } ).flexaCommerce;
+		const response = await fetch( admin.restUrl + 'admin/coupons', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': admin.restNonce },
+			body: JSON.stringify( { code: 'CHECKOUT10', type: 'percent', amount: 1000 } ),
+		} );
+		return { status: response.status, id: ( await response.json() ).id as number };
+	} );
+	expect( coupon.status ).toBe( 201 );
+
+	const guest = await browser.newContext( { extraHTTPHeaders: info.project.use.extraHTTPHeaders } );
+	const shopper = await guest.newPage();
+	await addSimple( shopper );
+	await shopper.goto( '/checkout/' );
+	await fillBilling( shopper );
+	const total = shopper.locator( '[data-fxc-total="total"]' );
+	const discounted = store.simple.price - Math.round( store.simple.price / 10 ) + 500;
+	await expect( total ).toHaveText( money( store.simple.price + 500 ) );
+
+	await shopper.getByText( 'Have a coupon code?' ).click();
+	const code = shopper.getByLabel( 'Coupon code', { exact: true } );
+	const said = shopper.locator( '[data-fxc-coupon-message]' );
+	await code.fill( 'nope' );
+	await code.press( 'Enter' );
+	await expect( said.getByRole( 'alert' ) ).not.toBeEmpty();
+	await expect( code ).toBeFocused();
+
+	await code.fill( 'checkout10' );
+	await shopper.getByRole( 'button', { name: 'Apply', exact: true } ).click();
+	await expect( said ).toHaveText( 'Coupon applied.' );
+	await expect( shopper.locator( '.fxc-checkout__coupon' ) ).toContainText( 'Coupon: CHECKOUT10' );
+	await expect( total ).toHaveText( money( discounted ) );
+	await expectAccessible( shopper, info, 'checkout coupon box' );
+
+	await shopper.getByRole( 'button', { name: 'Remove coupon checkout10' } ).click();
+	await expect( said ).toHaveText( 'Coupon removed.' );
+	await expect( shopper.locator( '.fxc-checkout__coupon' ) ).toHaveCount( 0 );
+	await expect( code ).toBeFocused();
+	await expect( total ).toHaveText( money( store.simple.price + 500 ) );
+
+	// Applied again, the order is placed with the discount: the expected total followed.
+	await code.fill( 'CHECKOUT10' );
+	await code.press( 'Enter' );
+	await expect( total ).toHaveText( money( discounted ) );
+	await shopper.locator( '#fxc-payment-method' ).getByLabel( /cash on delivery/i ).check();
+	await shopper.locator( '#fxc-terms' ).check();
+	await shopper.getByRole( 'button', { name: 'Place order' } ).click();
+	await expect( shopper.locator( '.fxc-order__overview' ) ).toContainText( money( discounted ), { timeout: 15_000 } );
+	await guest.close();
+
+	await page.evaluate( async ( id ) => {
+		const admin = ( window as unknown as { flexaCommerce: { restUrl: string; restNonce: string } } ).flexaCommerce;
+		await fetch( admin.restUrl + 'admin/coupons/' + id, { method: 'DELETE', headers: { 'X-WP-Nonce': admin.restNonce } } );
+	}, coupon.id );
 } );

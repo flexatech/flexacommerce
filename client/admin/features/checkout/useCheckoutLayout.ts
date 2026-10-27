@@ -65,6 +65,10 @@ export interface LayoutPage {
     columns: "two" | "one";
     /** Where phones show the order summary: in its place, or folded at the top. */
     summary: "end" | "top";
+    /** One page, or Information, Shipping and Payment one at a time (doc 11 §12). */
+    flow: "page" | "steps";
+    /** Whether the order summary has a box for a coupon code (doc 11 §13). */
+    coupons: "show" | "hide";
     main: LayoutBlock[];
     /** Empty with one column. */
     side: LayoutBlock[];

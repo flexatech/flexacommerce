@@ -247,9 +247,10 @@ final class CheckoutPageTest extends OrderTestCase {
 		// The page of before: billing, shipping and notes on the left; shipping, summary and payment on the right.
 		self::assertStringContainsString( '<div class="fxc-checkout__columns"><div class="fxc-checkout__details"><fieldset class="fxc-checkout__address" data-fxc-address="billing"><legend>Billing details</legend>', $html );
 		self::assertMatchesRegularExpression( '#</fieldset><p class="fxc-checkout__toggle">.*</fieldset></div><p class="fxc-field fxc-field--note">.*</p></div><div class="fxc-checkout__review"><fieldset class="fxc-checkout__rates" id="fxc-shipping-rate" data-fxc-rates><legend>Shipping</legend>#s', $html );
-		self::assertMatchesRegularExpression( '#</fieldset><table class="fxc-checkout__summary"><caption>Your order</caption>.*</table><div data-fxc-methods><fieldset class="fxc-checkout__methods" id="fxc-payment-method"><legend>Payment</legend>#s', $html );
-		self::assertStringContainsString( '<p class="fxc-checkout__actions"><button type="submit" class="wp-element-button fxc-checkout__place" data-fxc-place>Place order</button></p><p class="fxc-checkout__message" role="status" aria-live="polite" data-fxc-message></p></div></div></form></div>', $html );
+		self::assertMatchesRegularExpression( '#</fieldset><table class="fxc-checkout__summary"><caption>Your order</caption>.*</table><details class="fxc-checkout__coupons" data-fxc-coupons><summary>Have a coupon code\?</summary>.*</details><div data-fxc-methods><fieldset class="fxc-checkout__methods" id="fxc-payment-method"><legend>Payment</legend>#s', $html, 'the coupon box is new, under the summary' );
+		self::assertStringContainsString( '<p class="fxc-checkout__actions"><button type="submit" class="wp-element-button fxc-checkout__place" data-fxc-place>Place order</button></p><p class="fxc-checkout__message" role="status" aria-live="polite" data-fxc-message></p></div></div></form><form id="fxc-checkout-coupon"', $html );
 		self::assertStringNotContainsString( 'data-fxc-fold', $html );
+		self::assertStringNotContainsString( 'data-fxc-step', $html, 'one page by default' );
 	}
 
 	public function test_the_page_puts_sections_in_one_column_with_headings_and_paragraphs(): void {
@@ -295,10 +296,67 @@ final class CheckoutPageTest extends OrderTestCase {
 		self::assertStringContainsString( '<div class="fxc-checkout__text"><p>Questions? <a href="https://example.com/help">Ask us</a>alert(1)</p>', $html );
 		self::assertStringNotContainsString( '<script>alert', $html );
 		self::assertMatchesRegularExpression( '#<details class="fxc-checkout__fold" open data-fxc-fold><summary>Order summary <strong data-fxc-fold-total>[^<]+</strong></summary><table class="fxc-checkout__summary">#', $html );
-		self::assertStringContainsString( 'data-fxc-place>Place order</button></p><p class="fxc-checkout__message" role="status" aria-live="polite" data-fxc-message></p></div></div></form></div>', $html, 'payment ends the page' );
+		self::assertStringContainsString( 'data-fxc-place>Place order</button></p><p class="fxc-checkout__message" role="status" aria-live="polite" data-fxc-message></p></div></div></form><form id="fxc-checkout-coupon"', $html, 'payment ends the page' );
 
 		$token = $this->token( $html );
 		self::assertNotNull( $this->post( $this->form( $token, [ 'expected_total' => '1500' ] ) ), 'the order goes through as before' );
+	}
+
+	public function test_a_steps_checkout_is_one_page_until_the_script_runs(): void {
+		CheckoutLayout::save(
+			[
+				'page' => [
+					'flow' => 'steps',
+					'main' => [
+						[ 'id' => 'billing' ],
+						[ 'id' => 'shipping' ],
+						[ 'id' => 'additional' ],
+						[
+							'id'   => 'text_a1',
+							'type' => 'heading',
+							'text' => 'Delivery',
+						],
+						[ 'id' => 'shipping_method' ],
+					],
+					'side' => [
+						[ 'id' => 'summary' ],
+						[ 'id' => 'payment' ],
+					],
+				],
+			]
+		);
+		$this->add( $this->simple( 1000, 5 ), 1 );
+		$html = do_shortcode( '[flexacommerce_checkout]' );
+
+		self::assertStringContainsString( '<form class="fxc-checkout__form" method="post" action="', $html );
+		self::assertStringContainsString( ' data-fxc-flow="steps">', $html );
+		self::assertStringContainsString(
+			'<nav class="fxc-checkout__steps" aria-label="Checkout steps" hidden data-fxc-steps><ol>'
+			. '<li><button type="button" class="fxc-checkout__goto" data-fxc-goto="information">Information</button></li>'
+			. '<li><button type="button" class="fxc-checkout__goto" data-fxc-goto="shipping">Shipping</button></li>'
+			. '<li><button type="button" class="fxc-checkout__goto" data-fxc-goto="payment">Payment</button></li></ol></nav>',
+			$html
+		);
+		self::assertStringContainsString( '<div class="fxc-checkout__details"><div class="fxc-checkout__step" data-fxc-step="information"><fieldset class="fxc-checkout__address" data-fxc-address="billing">', $html );
+		self::assertStringContainsString( '<div class="fxc-checkout__step" data-fxc-step="shipping"><h2 class="fxc-checkout__heading">Delivery</h2></div><div class="fxc-checkout__step" data-fxc-step="shipping"><fieldset class="fxc-checkout__rates"', $html, 'a heading goes with the section under it' );
+		self::assertStringContainsString( '<div class="fxc-checkout__review"><table class="fxc-checkout__summary">', $html, 'the summary shows in every step' );
+		self::assertStringContainsString( '<div class="fxc-checkout__step" data-fxc-step="payment"><div data-fxc-methods>', $html );
+		self::assertSame( 3, substr_count( $html, '<div class="fxc-checkout__step" data-fxc-step="information">' ), 'billing, shipping and notes' );
+		self::assertDoesNotMatchRegularExpression( '#class="fxc-checkout__step"[^>]*\shidden#', $html, 'no step is hidden without the script' );
+
+		$token = $this->token( $html );
+		self::assertNotNull( $this->post( $this->form( $token, [ 'expected_total' => '1500' ] ) ), 'the form posts as one page' );
+	}
+
+	public function test_a_cart_that_does_not_ship_has_no_shipping_step(): void {
+		CheckoutLayout::save( [ 'page' => [ 'flow' => 'steps' ] + CheckoutLayout::default()->to_array()['page'] ] );
+		delete_option( ZoneRepository::OPTION );
+		$this->add( $this->simple( 1000, 5 ), 1 );
+		$html = do_shortcode( '[flexacommerce_checkout]' );
+		self::assertStringContainsString( 'data-fxc-goto="information"', $html );
+		self::assertStringNotContainsString( 'data-fxc-goto="shipping"', $html );
+		self::assertStringNotContainsString( 'data-fxc-step="shipping"', $html );
+		self::assertStringContainsString( 'data-fxc-goto="payment"', $html );
 	}
 
 	public function test_preview_shows_the_draft_to_its_manager_only(): void {

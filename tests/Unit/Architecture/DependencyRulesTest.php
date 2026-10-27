@@ -62,6 +62,17 @@ final class DependencyRulesTest extends TestCase {
 		'Privacy'     => [ 'Api', 'Admin', 'Cli', 'Storefront', 'Notifications', 'Migration' ],
 	];
 
+	/**
+	 * Single classes a module may use although their module is denied. The
+	 * checkout layout is the builder's stored settings, not the checkout
+	 * flow, and the migration imports fields into it (ADR-036).
+	 *
+	 * @var array<string,list<string>>
+	 */
+	private const EXCEPT = [
+		'Migration' => [ 'Checkout\\CheckoutLayout' ],
+	];
+
 	public function test_modules_respect_the_dependency_table(): void {
 		$violations = [];
 		foreach ( self::files() as $file ) {
@@ -69,7 +80,11 @@ final class DependencyRulesTest extends TestCase {
 			if ( $module === null ) {
 				continue;
 			}
-			foreach ( self::references( (string) file_get_contents( $file ) ) as $target ) {
+			$code = (string) file_get_contents( $file );
+			foreach ( self::EXCEPT[ $module ] ?? [] as $class ) {
+				$code = (string) preg_replace( '/\\\\?' . preg_quote( self::ROOT . $class, '/' ) . '\\b/', '', $code );
+			}
+			foreach ( self::references( $code ) as $target ) {
 				if ( ! self::allowed( $module, $target ) ) {
 					$violations[] = sprintf( '%s (%s) uses %s', self::relative( $file ), $module, $target );
 				}

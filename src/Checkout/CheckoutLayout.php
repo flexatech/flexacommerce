@@ -28,7 +28,7 @@ defined( 'ABSPATH' ) || exit;
  * @phpstan-type When array{countries:list<string>,shipping:string,products:list<int>,categories:list<int>}
  * @phpstan-type Entry array{id:string,label:string,placeholder:string,help:string,width:string,answer:string,custom:bool,type?:string,options?:list<Choice>,email?:bool,when?:When}
  * @phpstan-type Block array{id:string,title?:string,type?:string,text?:string}
- * @phpstan-type Page array{columns:string,summary:string,main:list<Block>,side:list<Block>}
+ * @phpstan-type Page array{columns:string,summary:string,flow:string,coupons:string,main:list<Block>,side:list<Block>}
  * @api
  */
 final class CheckoutLayout {
@@ -70,6 +70,24 @@ final class CheckoutLayout {
 	/** Where phones show the order summary: where it is, or folded at the top. */
 	public const SUMMARY_END = 'end';
 	public const SUMMARY_TOP = 'top';
+
+	/** One page, or steps that checkout.js builds over the same markup (doc 11 §12). */
+	public const FLOW_PAGE  = 'page';
+	public const FLOW_STEPS = 'steps';
+
+	/** Whether the order summary has a box for a coupon code (doc 11 §13). */
+	public const COUPONS_SHOW = 'show';
+	public const COUPONS_HIDE = 'hide';
+
+	/** The steps, in order, and the step of each section; the summary shows in every step. */
+	public const STEPS   = [ 'information', 'shipping', 'payment' ];
+	public const STEP_OF = [
+		'billing'         => 'information',
+		'shipping'        => 'information',
+		'additional'      => 'information',
+		'shipping_method' => 'shipping',
+		'payment'         => 'payment',
+	];
 
 	public const CONTENT_TYPES = [ 'heading', 'paragraph' ];
 	public const MAX_CONTENT   = 20;
@@ -200,7 +218,7 @@ final class CheckoutLayout {
 	 * With `$strict`, a broken entry throws; without, it is dropped, so a
 	 * damaged option never breaks the checkout page.
 	 *
-	 * @param array<mixed> $data `{fields:{billing:[...],shipping:[...],additional:[...]},page:{columns,summary,main:[...],side:[...]}}`
+	 * @param array<mixed> $data `{fields:{billing:[...],shipping:[...],additional:[...]},page:{columns,summary,flow,coupons,main:[...],side:[...]}}`
 	 * @throws InvalidCheckoutLayout In strict mode, when an entry breaks a rule.
 	 */
 	public static function from_array( array $data, bool $strict = false ): self {
@@ -228,6 +246,32 @@ final class CheckoutLayout {
 	/** Where phones show the order summary: `end` or `top`. */
 	public function summary_position(): string {
 		return $this->page['summary'];
+	}
+
+	/** `page` or `steps`. */
+	public function flow(): string {
+		return $this->page['flow'];
+	}
+
+	/** Whether the summary has the coupon code box. */
+	public function takes_coupons(): bool {
+		return self::COUPONS_SHOW === $this->page['coupons'];
+	}
+
+	/**
+	 * The step a block of a column shows in, '' for every step (the
+	 * summary). A heading or paragraph goes with the section under it, or
+	 * with the one above it at the end of the column.
+	 */
+	public function step( string $column, int $index ): string {
+		$blocks = $this->blocks( $column );
+		$order  = array_merge( array_slice( $blocks, $index ), array_reverse( array_slice( $blocks, 0, $index ) ) );
+		foreach ( $order as $block ) {
+			if ( in_array( $block['id'], self::BLOCKS, true ) ) {
+				return self::STEP_OF[ $block['id'] ] ?? '';
+			}
+		}
+		return '';
 	}
 
 	/** @return list<Block> the sections and content of a column, in order */
@@ -294,6 +338,8 @@ final class CheckoutLayout {
 		$page    = [
 			'columns' => self::choice( $raw['columns'] ?? null, [ self::TWO_COLUMNS, self::ONE_COLUMN ], self::TWO_COLUMNS, $strict, 'page.columns' ),
 			'summary' => self::choice( $raw['summary'] ?? null, [ self::SUMMARY_END, self::SUMMARY_TOP ], self::SUMMARY_END, $strict, 'page.summary' ),
+			'flow'    => self::choice( $raw['flow'] ?? null, [ self::FLOW_PAGE, self::FLOW_STEPS ], self::FLOW_PAGE, $strict, 'page.flow' ),
+			'coupons' => self::choice( $raw['coupons'] ?? null, [ self::COUPONS_SHOW, self::COUPONS_HIDE ], self::COUPONS_SHOW, $strict, 'page.coupons' ),
 			'main'    => [],
 			'side'    => [],
 		];

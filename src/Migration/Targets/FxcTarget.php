@@ -29,6 +29,7 @@ final class FxcTarget implements TargetAdapter {
 		private readonly FxcShippingWriter $shipping,
 		private readonly FxcCouponWriter $coupons,
 		private readonly FxcOptionWriter $options,
+		private readonly FxcCheckoutWriter $checkout,
 	) {}
 
 	public function system(): string {
@@ -48,6 +49,7 @@ final class FxcTarget implements TargetAdapter {
 				Record::ORDER     => $this->orders->order( $record, $map, $job ),
 				Record::COUPON    => $this->coupons->coupon( $record, $map ),
 				Record::OPTION_SET => $this->options->option_set( $record, $map, $job->id ),
+				Record::CHECKOUT_FIELDS => $this->checkout->checkout_fields( $record, $map ),
 				default           => throw new Rejected( 'unsupported_entity', sprintf( 'FlexaCommerce cannot import "%s" records.', $record->type ) ),
 			}
 		);

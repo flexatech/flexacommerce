@@ -8,8 +8,10 @@ use Flexa\Commerce\Catalog\PostTypes;
 use Flexa\Commerce\Checkout\CartFacts;
 use Flexa\Commerce\Checkout\CheckoutLayout;
 use Flexa\Commerce\Checkout\FieldSchema;
+use Flexa\Commerce\Coupons\Coupon;
 use Flexa\Commerce\Storefront\Assets;
 use Flexa\Commerce\Storefront\CheckoutPage;
+use Flexa\Commerce\Storefront\FormHandler;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -21,6 +23,8 @@ defined( 'ABSPATH' ) || exit;
  * again with the posted values and the errors next to their fields.
  */
 final class CheckoutForm {
+	private const COUPON_FORM = 'fxc-checkout-coupon';
+
 	/**
 	 * @param array<string,mixed>  $state  CheckoutService::form_state()
 	 * @param array<string,mixed>  $posted the raw submission, empty on a plain visit
@@ -63,8 +67,12 @@ final class CheckoutForm {
 		if ( ! empty( $state['preview'] ) ) {
 			$html .= '<p class="fxc-notice fxc-checkout__preview" role="status">' . esc_html__( 'Preview of your unsaved checkout layout. Orders cannot be placed from this page.', 'flexacommerce' ) . '</p>';
 		}
-		$html .= '<form class="fxc-checkout__form" method="post" action="' . esc_url( CheckoutPage::form_action() ) . '">';
+		$steps = $layout->flow() === CheckoutLayout::FLOW_STEPS;
+		$html .= '<form class="fxc-checkout__form" method="post" action="' . esc_url( CheckoutPage::form_action() ) . '"' . ( $steps ? ' data-fxc-flow="steps"' : '' ) . '>';
 		$html .= CheckoutPage::hidden_fields( (string) $state['checkout_token'], (int) ( $state['totals']['total']['amount'] ?? 0 ) );
+		if ( $steps ) {
+			$html .= $this->steps( ! empty( $state['needs_shipping'] ) );
+		}
 
 		$class = 'fxc-checkout__columns'
 			. ( $layout->columns() === CheckoutLayout::ONE_COLUMN ? ' fxc-checkout__columns--one' : '' )
@@ -79,12 +87,41 @@ final class CheckoutForm {
 				continue;
 			}
 			$html .= '<div class="' . $wrap . '">';
-			foreach ( $blocks as $block ) {
-				$html .= $this->block( $block, $layout, $state, $posted, $errors );
+			foreach ( $blocks as $index => $block ) {
+				$part  = $this->block( $block, $layout, $state, $posted, $errors );
+				$step  = $steps && $part !== '' ? $layout->step( $column, $index ) : '';
+				$html .= $step !== '' ? '<div class="fxc-checkout__step" data-fxc-step="' . esc_attr( $step ) . '">' . $part . '</div>' : $part;
 			}
 			$html .= '</div>';
 		}
-		return $html . '</div></form></div>';
+		$html .= '</div></form>';
+		if ( $layout->takes_coupons() ) {
+			// Its own form, since forms do not nest: the code field and the remove buttons join it through `form`.
+			$html .= '<form id="' . self::COUPON_FORM . '" method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '" hidden data-fxc-coupon-form>'
+				. FormHandler::hidden_fields( 'coupon' ) . '</form>';
+		}
+		return $html . '</div>';
+	}
+
+	/**
+	 * The steps of a steps checkout (doc 11 §12). Without JavaScript the
+	 * list stays hidden and the form is one page; `checkout.js` shows it
+	 * and one step at a time. Shipping is left out when nothing ships.
+	 */
+	private function steps( bool $ships ): string {
+		$names = [
+			'information' => __( 'Information', 'flexacommerce' ),
+			'shipping'    => __( 'Shipping', 'flexacommerce' ),
+			'payment'     => __( 'Payment', 'flexacommerce' ),
+		];
+		$items = '';
+		foreach ( CheckoutLayout::STEPS as $step ) {
+			if ( $step === 'shipping' && ! $ships ) {
+				continue;
+			}
+			$items .= '<li><button type="button" class="fxc-checkout__goto" data-fxc-goto="' . esc_attr( $step ) . '">' . esc_html( $names[ $step ] ) . '</button></li>';
+		}
+		return '<nav class="fxc-checkout__steps" aria-label="' . esc_attr__( 'Checkout steps', 'flexacommerce' ) . '" hidden data-fxc-steps><ol>' . $items . '</ol></nav>';
 	}
 
 	/**
@@ -117,7 +154,7 @@ final class CheckoutForm {
 			case 'shipping_method':
 				return $this->rates( $state, $errors, $title );
 			case 'summary':
-				$table = $this->review( $state, $title );
+				$table = $this->review( $state, $title, $layout->takes_coupons() ) . ( $layout->takes_coupons() ? self::coupon_box() : '' );
 				if ( $layout->summary_position() !== CheckoutLayout::SUMMARY_TOP ) {
 					return $table;
 				}
@@ -371,7 +408,7 @@ final class CheckoutForm {
 	}
 
 	/** @param array<string,mixed> $state */
-	private function review( array $state, string $title = '' ): string {
+	private function review( array $state, string $title = '', bool $removable = false ): string {
 		$html = '<table class="fxc-checkout__summary"><caption>' . esc_html( $title !== '' ? $title : __( 'Your order', 'flexacommerce' ) ) . '</caption><tbody>';
 		foreach ( (array) ( $state['cart']['items'] ?? [] ) as $item ) {
 			$attributes = '';
@@ -408,7 +445,7 @@ final class CheckoutForm {
 				esc_html( (string) ( $totals[ $key ]['formatted'] ?? '' ) )
 			);
 			if ( $key === 'subtotal' ) {
-				$html .= self::coupon_rows( (array) ( $state['coupons'] ?? [] ) );
+				$html .= self::coupon_rows( (array) ( $state['coupons'] ?? [] ), $removable );
 			}
 		}
 		if ( ! empty( $tax['included'] ) ) {
@@ -418,25 +455,57 @@ final class CheckoutForm {
 	}
 
 	/**
-	 * One row per coupon, after the subtotal. Codes are added and removed on
-	 * the cart page; checkout.js rebuilds the rows after a requote, since
-	 * the shown discount follows the tax display of the address.
+	 * The coupon code box under the summary (doc 11 §13), closed until the
+	 * shopper asks for it. Without JavaScript it posts the coupon form and
+	 * the page comes back open with the result; checkout.js applies the
+	 * code over REST and requotes.
+	 */
+	private static function coupon_box(): string {
+		$notice = FormHandler::notice_for( 0 );
+		return '<details class="fxc-checkout__coupons" data-fxc-coupons' . ( $notice !== '' ? ' open' : '' ) . '>'
+			. '<summary>' . esc_html__( 'Have a coupon code?', 'flexacommerce' ) . '</summary>'
+			. '<p class="fxc-checkout__coupon-field">'
+			. '<label for="fxc-checkout-coupon-code">' . esc_html__( 'Coupon code', 'flexacommerce' ) . '</label> '
+			. '<input id="fxc-checkout-coupon-code" type="text" name="coupon_code" form="' . self::COUPON_FORM . '" maxlength="' . Coupon::MAX_CODE_LENGTH . '" autocomplete="off" aria-describedby="fxc-checkout-coupon-message" data-fxc-coupon-code> '
+			. '<button type="submit" class="wp-element-button" form="' . self::COUPON_FORM . '">' . esc_html__( 'Apply', 'flexacommerce' ) . '</button>'
+			. '</p>'
+			. '<div class="fxc-checkout__coupon-message" id="fxc-checkout-coupon-message" data-fxc-coupon-message>' . $notice . '</div>'
+			. '</details>';
+	}
+
+	/**
+	 * One row per coupon, after the subtotal. checkout.js rebuilds the rows
+	 * after a requote, since the shown discount follows the tax display of
+	 * the address. With the coupon box a code the shopper entered has a
+	 * remove button that posts the coupon form; an automatic discount has
+	 * none.
 	 *
 	 * @param array<int,mixed> $coupons the `coupons` entry of the checkout state
 	 */
-	public static function coupon_rows( array $coupons ): string {
+	public static function coupon_rows( array $coupons, bool $removable = false ): string {
 		$html = '';
 		foreach ( $coupons as $coupon ) {
 			if ( ! is_array( $coupon ) || empty( $coupon['valid'] ) ) {
 				continue;
 			}
+			$code   = (string) ( $coupon['code'] ?? '' );
+			$remove = $removable && empty( $coupon['automatic'] ) && $code !== ''
+				? sprintf(
+					' <button type="submit" class="fxc-checkout__remove-coupon" form="%1$s" name="remove_coupon" value="%2$s" aria-label="%3$s">&times;</button>',
+					self::COUPON_FORM,
+					esc_attr( $code ),
+					/* translators: %s: coupon code */
+					esc_attr( sprintf( __( 'Remove coupon %s', 'flexacommerce' ), $code ) )
+				)
+				: '';
 			$html .= sprintf(
-				'<tr class="fxc-checkout__coupon" data-fxc-coupon-row><th scope="row">%1$s</th><td>%2$s</td></tr>',
+				'<tr class="fxc-checkout__coupon" data-fxc-coupon-row><th scope="row">%1$s%2$s</th><td>%3$s</td></tr>',
 				empty( $coupon['automatic'] )
 					/* translators: %s: coupon code */
 					? esc_html( sprintf( __( 'Coupon: %s', 'flexacommerce' ), (string) $coupon['label'] ) )
 					/* translators: %s: the name of an automatic discount */
 					: esc_html( sprintf( __( 'Discount: %s', 'flexacommerce' ), (string) $coupon['label'] ) ),
+				$remove,
 				esc_html( self::coupon_amount( $coupon ) )
 			);
 		}
@@ -642,20 +711,35 @@ final class CheckoutForm {
 			'countries' => $state['countries'] ?? [],
 			'states'    => $state['states'] ?? [],
 			'i18n'      => [
-				'placing'  => __( 'Placing your order…', 'flexacommerce' ),
-				'failed'   => __( 'Could not place the order. Please try again.', 'flexacommerce' ),
-				'changed'  => __( 'Your order total changed. Review the new total and place the order again.', 'flexacommerce' ),
+				'placing'       => __( 'Placing your order…', 'flexacommerce' ),
+				'failed'        => __( 'Could not place the order. Please try again.', 'flexacommerce' ),
+				'changed'       => __( 'Your order total changed. Review the new total and place the order again.', 'flexacommerce' ),
 				/* translators: 1: tax amount, 2: tax label such as "CA State Tax". */
-				'includes' => __( 'Includes %1$s %2$s', 'flexacommerce' ),
+				'includes'      => __( 'Includes %1$s %2$s', 'flexacommerce' ),
 				/* translators: %s: coupon code */
-				'coupon'   => __( 'Coupon: %s', 'flexacommerce' ),
+				'coupon'        => __( 'Coupon: %s', 'flexacommerce' ),
 				/* translators: %s: the name of an automatic discount */
-				'discount' => __( 'Discount: %s', 'flexacommerce' ),
-				'freeShip' => __( 'Free shipping', 'flexacommerce' ),
-				'summary'  => __( 'Please fix the following before placing your order:', 'flexacommerce' ),
-				'noRates'  => __( 'There are no shipping options for this address. Check the address or contact us.', 'flexacommerce' ),
-				'select'   => __( 'Select an option', 'flexacommerce' ),
-				'required' => __( 'required', 'flexacommerce' ),
+				'discount'      => __( 'Discount: %s', 'flexacommerce' ),
+				'freeShip'      => __( 'Free shipping', 'flexacommerce' ),
+				'summary'       => __( 'Please fix the following before placing your order:', 'flexacommerce' ),
+				'noRates'       => __( 'There are no shipping options for this address. Check the address or contact us.', 'flexacommerce' ),
+				'select'        => __( 'Select an option', 'flexacommerce' ),
+				'required'      => __( 'required', 'flexacommerce' ),
+				/* translators: %s: the name of the next step, such as "Shipping" */
+				'next'          => __( 'Continue to %s', 'flexacommerce' ),
+				/* translators: %s: the name of the step before, such as "Information" */
+				'back'          => __( 'Back to %s', 'flexacommerce' ),
+				'contact'       => __( 'Contact', 'flexacommerce' ),
+				'shipTo'        => __( 'Ship to', 'flexacommerce' ),
+				'method'        => __( 'Shipping method', 'flexacommerce' ),
+				'change'        => __( 'Change', 'flexacommerce' ),
+				/* translators: %s: what the button changes, such as "Contact" */
+				'changeIt'      => __( 'Change %s', 'flexacommerce' ),
+				'couponEmpty'   => __( 'Enter a coupon code.', 'flexacommerce' ),
+				'couponApplied' => __( 'Coupon applied.', 'flexacommerce' ),
+				'couponRemoved' => __( 'Coupon removed.', 'flexacommerce' ),
+				/* translators: %s: coupon code */
+				'removeCoupon'  => __( 'Remove coupon %s', 'flexacommerce' ),
 			],
 		];
 	}

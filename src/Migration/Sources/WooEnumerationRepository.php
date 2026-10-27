@@ -45,7 +45,7 @@ final class WooEnumerationRepository {
 		'from' => null,
 		'to'   => null,
 	] ): array {
-		if ( in_array( $stage, self::SINGLE, true ) ) {
+		if ( in_array( $stage, self::SINGLE, true ) || $stage === 'checkout' ) {
 			return $after < 1 && $upper >= 1 ? [ 1 ] : [];
 		}
 		$sql = match ( $stage ) {
@@ -73,6 +73,10 @@ final class WooEnumerationRepository {
 		if ( in_array( $stage, self::SINGLE, true ) ) {
 			return 1;
 		}
+		if ( $stage === 'checkout' ) {
+			// One record, there only when the merchant saved fields in the Checkout Field Editor.
+			return WooCheckoutReader::exists() ? 1 : 0;
+		}
 		$sql = match ( $stage ) {
 			'taxes'      => $this->wpdb->prepare( 'SELECT MAX(tax_rate_id) FROM %i', $this->wpdb->prefix . 'woocommerce_tax_rates' ),
 			'attributes' => $this->wpdb->prepare( 'SELECT MAX(attribute_id) FROM %i', $this->wpdb->prefix . 'woocommerce_attribute_taxonomies' ),
@@ -96,6 +100,9 @@ final class WooEnumerationRepository {
 	] ): int {
 		if ( in_array( $stage, self::SINGLE, true ) ) {
 			return 1;
+		}
+		if ( $stage === 'checkout' ) {
+			return $this->upper_id( $stage );
 		}
 		$upper = $this->upper_id( $stage );
 		$total = 0;
