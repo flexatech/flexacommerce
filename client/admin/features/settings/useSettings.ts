@@ -43,6 +43,10 @@ export interface Settings {
     gallery_arrows: boolean;
     gallery_zoom: boolean;
     gallery_lightbox: boolean;
+    /** 0 shows no countdown. */
+    countdown_days: number;
+    tier_table: boolean;
+    tier_table_title: string;
 }
 
 export interface SettingsPayload {

@@ -12,6 +12,7 @@ use Flexa\Commerce\Plugin;
 use Flexa\Commerce\Pricing\Rules\PriceRule;
 use Flexa\Commerce\Pricing\Rules\PriceRuleRepository;
 use Flexa\Commerce\Pricing\Rules\PriceRules;
+use Flexa\Commerce\Support\Settings;
 
 /** Pricing rules (ADR-024): what the list keeps, the prices they give, and where they show. */
 final class PriceRulesTest extends CartTestCase {
@@ -22,6 +23,12 @@ final class PriceRulesTest extends CartTestCase {
 		parent::tear_down();
 		// After the rollback: a cart write commits, which can keep the rules.
 		update_option( PriceRuleRepository::OPTION, [], true );
+		Settings::update(
+			[
+				'tier_table'       => true,
+				'tier_table_title' => '',
+			]
+		);
 		$wpdb->query( 'COMMIT' ); // phpcs:ignore WordPress.DB
 		Plugin::instance()->cart()->pricing()->reset();
 	}
@@ -258,11 +265,50 @@ final class PriceRulesTest extends CartTestCase {
 			]
 		);
 		$html = $this->form( $id );
-		self::assertStringContainsString( '<table class="fxc-tiers"><caption>Buy more, pay less</caption>', $html );
-		self::assertStringContainsString( '<tr><th scope="row">5 or more</th><td>$8.75 each</td></tr><tr><th scope="row">10 or more</th><td>$7.00 each</td></tr>', $html );
+		self::assertStringContainsString( '<table class="fxc-tiers"><caption>Buy more, pay less</caption><thead><tr><th scope="col">Quantity</th><th scope="col">Price</th><th scope="col">You save</th></tr></thead>', $html );
+		self::assertStringContainsString(
+			'<tr data-min="1" data-max="4" class="is-current"><th scope="row">1 to 4</th><td>$10.00 each</td><td></td></tr>'
+			. '<tr data-min="5" data-max="9"><th scope="row">5 to 9</th><td>$8.75 each</td><td>Save 13%</td></tr>'
+			. '<tr data-min="10" data-max="0"><th scope="row">10 or more</th><td>$7.00 each</td><td>Save 30%</td></tr>',
+			$html
+		);
 
 		[ $shirt ] = $this->sized();
-		self::assertStringContainsString( '<td>12.5% off</td></tr><tr><th scope="row">10 or more</th><td>$3.00 off each</td>', $this->form( $shirt ), 'variations list the change' );
+		self::assertStringContainsString(
+			'<th scope="col">Discount</th></tr></thead><tbody><tr data-min="1" data-max="4" class="is-current"><th scope="row">1 to 4</th><td>Full price</td></tr>'
+			. '<tr data-min="5" data-max="9"><th scope="row">5 to 9</th><td>12.5% off</td></tr><tr data-min="10" data-max="0"><th scope="row">10 or more</th><td>$3.00 off each</td></tr>',
+			$this->form( $shirt ),
+			'variations list the change'
+		);
+
+		Settings::update( [ 'tier_table_title' => 'Bulk savings' ] );
+		self::assertStringContainsString( '<caption>Bulk savings</caption>', $this->form( $id ) );
+		Settings::update( [ 'tier_table' => false ] );
+		self::assertStringNotContainsString( 'fxc-tiers', $this->form( $id ), 'the merchant can hide the table' );
+	}
+
+	public function test_a_tier_from_one_starts_the_table(): void {
+		$id = $this->simple( 1000 );
+		$this->rules()->save(
+			[
+				'name'  => 'Bulk',
+				'type'  => PriceRule::BULK,
+				'tiers' => [
+					[
+						'min'    => 1,
+						'mode'   => PriceRule::PERCENT,
+						'amount' => 500,
+					],
+					[
+						'min'    => 2,
+						'mode'   => PriceRule::PERCENT,
+						'amount' => 1000,
+					],
+				],
+			]
+		);
+		$html = $this->form( $id );
+		self::assertStringContainsString( '<tr data-min="1" data-max="1" class="is-current"><th scope="row">1</th><td>$9.50 each</td><td></td></tr><tr data-min="2" data-max="0"><th scope="row">2 or more</th><td>$9.00 each</td><td>Save 5%</td></tr>', $html, 'no row below the first tier, and the saving is against the price of one' );
 	}
 
 	public function test_the_routes(): void {

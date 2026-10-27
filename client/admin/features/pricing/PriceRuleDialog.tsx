@@ -613,7 +613,15 @@ export function PriceRuleDialog({ open, rule, preset, roles, onOpenChange }: Pro
                                 <Field label={__("Starts")} help={__("Empty: right away.")} error={errors.starts_at}>
                                     {(id) => <Input id={id} type="datetime-local" value={draft.starts_at} onChange={(e) => set("starts_at", e.target.value)} />}
                                 </Field>
-                                <Field label={__("Ends")} help={__("Empty: never.")} error={errors.ends_at}>
+                                <Field
+                                    label={__("Ends")}
+                                    help={
+                                        draft.ends_at
+                                            ? __("Shoppers see a countdown on the product page in the last days (Settings > Storefront).")
+                                            : __("Empty: never.")
+                                    }
+                                    error={errors.ends_at}
+                                >
                                     {(id) => <Input id={id} type="datetime-local" value={draft.ends_at} onChange={(e) => set("ends_at", e.target.value)} />}
                                 </Field>
                             </div>

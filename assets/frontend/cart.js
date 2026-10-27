@@ -238,6 +238,14 @@ function applyCart( data ) {
 	state.count = data.item_count;
 }
 
+/** Marks the quantity tier row that `quantity` falls in. */
+function markTier( form, quantity ) {
+	form?.querySelectorAll( '.fxc-tiers tr[data-min]' ).forEach( ( row ) => {
+		const max = parseInt( row.dataset.max, 10 ) || Infinity;
+		row.classList.toggle( 'is-current', quantity >= parseInt( row.dataset.min, 10 ) && quantity <= max );
+	} );
+}
+
 /** Shows the image `delta` places away in the gallery, wrapping at the ends. */
 function step( delta ) {
 	const context = getContext();
@@ -527,6 +535,7 @@ const { state, actions } = store( 'flexacommerce/cart', {
 			const context = getContext();
 			const value = parseInt( event.target.value, 10 );
 			context.quantity = Number.isFinite( value ) && value > 0 ? value : 1;
+			markTier( event.target.form, context.quantity );
 		},
 		*setLineQuantity( event ) {
 			const { key } = getContext();
@@ -608,6 +617,39 @@ const { state, actions } = store( 'flexacommerce/cart', {
 		} ),
 	},
 	callbacks: {
+		/** Ticks a countdown (ADR-030); at zero it says the offer has ended. */
+		countdown() {
+			const { ref } = getElement();
+			const ends = Date.parse( ref.dataset.ends );
+			const text = ref.querySelector( '.fxc-countdown__text' );
+			const clock = ref.querySelector( '.fxc-countdown__clock' );
+			if ( ! Number.isFinite( ends ) || ! text || ! clock ) {
+				return undefined;
+			}
+			const values = clock.querySelectorAll( '[data-unit]' );
+			let timer = 0;
+			const tick = () => {
+				const left = Math.floor( ( ends - Date.now() ) / 1000 );
+				if ( left <= 0 ) {
+					window.clearInterval( timer );
+					clock.hidden = true;
+					text.classList.remove( 'screen-reader-text' );
+					text.textContent = ref.dataset.ended;
+					ref.classList.add( 'is-ended' );
+					return;
+				}
+				[ Math.floor( left / 86400 ), Math.floor( left / 3600 ) % 24, Math.floor( left / 60 ) % 60, left % 60 ].forEach(
+					( n, i ) => {
+						values[ i ].textContent = i > 0 && n < 10 ? '0' + n : String( n );
+					}
+				);
+			};
+			text.classList.add( 'screen-reader-text' );
+			clock.hidden = false;
+			tick();
+			timer = window.setInterval( tick, 1000 );
+			return () => window.clearInterval( timer );
+		},
 		*initCount() {
 			if ( countRequested ) {
 				return;

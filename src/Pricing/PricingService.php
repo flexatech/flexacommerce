@@ -183,6 +183,49 @@ final class PricingService {
 		return $this->rules()?->bulk_for( $product, $user_id, $now );
 	}
 
+	/**
+	 * The first moment in the next `$days` days when one unit of a row
+	 * that can be bought costs more than now, because a pricing rule or a
+	 * sale ends (ADR-030). Null when nothing ends that soon.
+	 *
+	 * @return ?string UTC `Y-m-d H:i:s`
+	 */
+	public function price_ends( Product $product, int $user_id, int $days ): ?string {
+		$at      = $this->clock->now()->setTimezone( new \DateTimeZone( 'UTC' ) );
+		$now     = $at->format( Clock::DB_FORMAT );
+		$rows    = array_values( array_filter( $product->sellable_rows(), static fn ( Variant $row ): bool => $row->enabled ) );
+		$moments = $this->rules()?->ends_for( $product, $user_id, $now ) ?? [];
+		foreach ( $rows as $row ) {
+			$next = $row->next_price_change( $now );
+			if ( $next !== null ) {
+				$moments[] = $next;
+			}
+		}
+		sort( $moments );
+		foreach ( array_unique( $moments ) as $moment ) {
+			if ( ! $this->ends_within( $moment, $days ) ) {
+				return null;
+			}
+			$then = new \DateTimeImmutable( $moment, new \DateTimeZone( 'UTC' ) );
+			foreach ( $rows as $row ) {
+				$before = $this->unit_price( $product, $row, 1, $user_id, $at );
+				$after  = $this->unit_price( $product, $row, 1, $user_id, $then );
+				if ( $before !== null && $after !== null && $after->active->amount > $before->active->amount ) {
+					return $moment;
+				}
+			}
+		}
+		return null;
+	}
+
+	/** Whether `$moment` (UTC `Y-m-d H:i:s`) is after now and at most `$days` days away. */
+	public function ends_within( ?string $moment, int $days ): bool {
+		$now = $this->clock->now()->setTimezone( new \DateTimeZone( 'UTC' ) );
+		return $moment !== null
+			&& $moment > $now->format( Clock::DB_FORMAT )
+			&& $moment <= $now->modify( '+' . $days . ' days' )->format( Clock::DB_FORMAT );
+	}
+
 	/** An amount in the store currency, for a rule's fixed amount. */
 	public function money( int $minor ): Money {
 		return $this->money->from_minor( $minor );

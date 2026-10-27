@@ -409,3 +409,21 @@ Status of every ADR: **Accepted** (plan approved 2026-10-24) unless it says othe
 **Consequences.** No DB_VERSION. The order of imported sets waits in `flexacommerce_migration_option_order` (not autoloaded) during the stage, keyed by job. A price that charges per entered unit (the quantity add-on) has no FlexaCommerce equivalent and is imported without its charge. The option set list is still one autoloaded option; at 200 large sets it can pass 1 MB, which a store with that many would notice on every page.
 
 **Revisit when.** A store needs file uploads, a charge per entered unit, or more sets than one option can hold.
+
+
+## ADR-030: A countdown when a price is about to go up, and a fuller tier table
+
+**Context.** Item 5 after the flexa-extra port (2026-10-27): flexa-extra shows a countdown for pricing rules with an end date and a quantity discount table with a discount column. FlexaCommerce already listed bulk tiers (ADR-024), but only as "5 or more" rows, with no price for fewer units and no link to the quantity the shopper picked.
+
+**Decision.**
+1. **The countdown follows the price.** `PricingService::price_ends()` collects the end dates of the live rules for the product and shopper and the next sale schedule change of each row, soonest first. The first one at which one unit of some row costs more than now is the end; a rule that ends while a bigger rule stays, or a sale that starts, shows nothing. The price is worked out with `unit_price()` at that moment, so the `flexacommerce.price.unit` filter counts too.
+2. **Only when it is close.** `countdown_days` (1 to 365, default 7; 0 turns it off) is the window. Further away, a countdown would make a long sale look urgent. It is one key rather than a switch and a number: a 65th settings key doubles the hash table of the settings arrays, about 9 KB on every page (P1).
+3. **Readable without JavaScript.** The form starts with "This price ends on {date}." in the site date and time format, inside a `<time>`. `callbacks.countdown` (a `data-wp-init` in the existing `flexacommerce/cart` store) hides the sentence visually, shows four boxes (days, hours, minutes, seconds) marked `aria-hidden`, and at zero says the offer has ended. The boxes carry no live region, so screen readers are not told every second.
+4. **The tier table starts at 1.** Rows are ranges ("1 to 4", "5 to 9", "10 or more"). A product with one price shows the unit price of each range and a "You save" column, the share saved against the price of one, rounded to a whole percent; a variable product shows "Full price" and the change of each tier. The row for the quantity in the form has `is-current`; `actions.setQuantity` moves it. A bulk rule that ends inside the window gets its own countdown under the table, unless the offer countdown already shows that end.
+5. **Two settings on the Storefront screen.** `tier_table` hides the table and `tier_table_title` replaces "Buy more, pay less". The Offers card previews both, and the pricing rule dialog says a countdown will show once an end date is set.
+
+**Alternatives.** flexa-extra's soonest-ending matching rule: simpler, but it counts down to moments when nothing changes for the shopper. A countdown in the price block: it renders in product lists too, where a ticking clock per card is noise. A live region on the clock: screen readers would read it every second.
+
+**Consequences.** No DB_VERSION, no new option. A store without rules or sale dates pays nothing; with them, the product page works out a few more prices, memoised per request. On a variable product the countdown is for the soonest change among its variations, before the shopper picks one. The page is cacheable: the end is a fixed moment and the browser counts. After the end the page still shows the old price until it is reloaded, which the ended message says. Countdowns for coupons and automatic discounts are left out.
+
+**Revisit when.** Shoppers ask for a countdown per variation, or for automatic discounts that end soon.

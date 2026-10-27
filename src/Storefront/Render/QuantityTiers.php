@@ -7,48 +7,106 @@ namespace Flexa\Commerce\Storefront\Render;
 use Flexa\Commerce\Catalog\Product;
 use Flexa\Commerce\Pricing\PricingService;
 use Flexa\Commerce\Pricing\Rules\PriceRule;
+use Flexa\Commerce\Support\Settings;
 
 defined( 'ABSPATH' ) || exit;
 
 /**
  * The quantity tiers of a bulk pricing rule, under the add-to-cart button
- * (ADR-024). A product with one price lists the unit price at each tier,
- * worked out like the cart does; a product with variations lists what each
- * tier takes off, since the price depends on the variation.
+ * (ADR-024, ADR-030). Each row is a range of quantities, starting with
+ * the price below the first tier. A product with one price lists the unit
+ * price and the saving at each range, worked out like the cart does; a
+ * product with variations lists what each range takes off, since the price
+ * depends on the variation. The row for the quantity in the form is marked
+ * `is-current`, and cart.js moves the mark as the quantity changes.
  */
 final class QuantityTiers {
-	public static function html( PricingService $pricing, Product $product, int $user_id ): string {
+	/** @param ?string $shown_end the end the offer countdown already shows, so the table does not repeat it */
+	public static function html( PricingService $pricing, Product $product, int $user_id, ?string $shown_end = null ): string {
+		if ( ! Settings::bool( 'tier_table' ) ) {
+			return '';
+		}
 		$rule = $pricing->bulk_rule( $product, $user_id );
-		if ( $rule === null ) {
+		if ( $rule === null || $rule->tiers === [] ) {
 			return '';
 		}
 		$rows = array_values( array_filter( $product->sellable_rows(), static fn ( $row ): bool => $row->enabled ) );
 		$one  = count( $rows ) === 1 ? $rows[0] : null;
+		$base = $one !== null ? $pricing->unit_price( $product, $one, 1, $user_id ) : null;
+
+		$ranges = [];
+		if ( $rule->tiers[0]['min'] > 1 ) {
+			$ranges[] = [ 1, $rule->tiers[0]['min'] - 1, null ];
+		}
+		foreach ( $rule->tiers as $i => $tier ) {
+			$next     = $rule->tiers[ $i + 1 ]['min'] ?? 0;
+			$ranges[] = [ $tier['min'], $next > 0 ? $next - 1 : 0, $tier ];
+		}
+
+		$cells = [];
+		$saves = false;
+		foreach ( $ranges as [ $min, $max, $tier ] ) {
+			if ( $one === null ) {
+				$cells[] = [ $tier === null ? __( 'Full price', 'flexacommerce' ) : self::change( $pricing, $tier['mode'], $tier['amount'] ), '' ];
+				continue;
+			}
+			$unit = $tier === null ? $base : $pricing->unit_price( $product, $one, $min, $user_id );
+			if ( $unit === null ) {
+				$cells[] = [ $tier === null ? '' : self::change( $pricing, $tier['mode'], $tier['amount'] ), '' ];
+				continue;
+			}
+			$saving = '';
+			if ( $base !== null && $base->active->amount > 0 && $unit->active->amount < $base->active->amount ) {
+				$percent = (int) round( ( $base->active->amount - $unit->active->amount ) * 100 / $base->active->amount );
+				/* translators: %d: percent saved on each unit */
+				$saving = $percent > 0 ? sprintf( __( 'Save %d%%', 'flexacommerce' ), $percent ) : '';
+				$saves  = $saves || $saving !== '';
+			}
+			$cells[] = [
+				/* translators: %s: unit price */
+				sprintf( __( '%s each', 'flexacommerce' ), $pricing->format( $pricing->for_display( $product, $one, $unit )->active ) ),
+				$saving,
+			];
+		}
 
 		$body = '';
-		foreach ( $rule->tiers as $tier ) {
-			$text = null;
-			if ( $one !== null ) {
-				$unit = $pricing->unit_price( $product, $one, $tier['min'], $user_id );
-				$text = $unit !== null
-					/* translators: %s: unit price */
-					? sprintf( __( '%s each', 'flexacommerce' ), $pricing->format( $pricing->for_display( $product, $one, $unit )->active ) )
-					: null;
-			}
+		foreach ( $ranges as $i => [ $min, $max ] ) {
 			$body .= sprintf(
-				'<tr><th scope="row">%1$s</th><td>%2$s</td></tr>',
-				/* translators: %d: smallest quantity of the tier */
-				esc_html( sprintf( __( '%d or more', 'flexacommerce' ), $tier['min'] ) ),
-				esc_html( $text ?? self::change( $pricing, $tier['mode'], $tier['amount'] ) )
+				'<tr data-min="%1$d" data-max="%2$d"%3$s><th scope="row">%4$s</th><td>%5$s</td>%6$s</tr>',
+				$min,
+				$max,
+				$min === 1 ? ' class="is-current"' : '',
+				esc_html( self::range( $min, $max ) ),
+				esc_html( $cells[ $i ][0] ),
+				$saves ? '<td>' . esc_html( $cells[ $i ][1] ) . '</td>' : ''
 			);
 		}
-		return sprintf(
-			'<table class="fxc-tiers"><caption>%1$s</caption><thead><tr><th scope="col">%2$s</th><th scope="col">%3$s</th></tr></thead><tbody>%4$s</tbody></table>',
-			esc_html__( 'Buy more, pay less', 'flexacommerce' ),
+		$title = Settings::string( 'tier_table_title' );
+		$html  = sprintf(
+			'<table class="fxc-tiers"><caption>%1$s</caption><thead><tr><th scope="col">%2$s</th><th scope="col">%3$s</th>%4$s</tr></thead><tbody>%5$s</tbody></table>',
+			esc_html( $title !== '' ? $title : __( 'Buy more, pay less', 'flexacommerce' ) ),
 			esc_html__( 'Quantity', 'flexacommerce' ),
-			esc_html__( 'Price', 'flexacommerce' ),
+			esc_html( $one !== null ? __( 'Price', 'flexacommerce' ) : __( 'Discount', 'flexacommerce' ) ),
+			$saves ? '<th scope="col">' . esc_html__( 'You save', 'flexacommerce' ) . '</th>' : '',
 			$body
 		);
+		if ( Settings::int( 'countdown_days' ) > 0 && $rule->ends_at !== $shown_end && $pricing->ends_within( $rule->ends_at, Settings::int( 'countdown_days' ) ) ) {
+			$html .= Countdown::html( (string) $rule->ends_at, Countdown::TIERS );
+		}
+		return $html;
+	}
+
+	/** A range of quantities as text: "1", "2 to 4", "10 or more". */
+	private static function range( int $min, int $max ): string {
+		if ( $max === 0 ) {
+			/* translators: %d: smallest quantity of the tier */
+			return sprintf( __( '%d or more', 'flexacommerce' ), $min );
+		}
+		if ( $max === $min ) {
+			return (string) $min;
+		}
+		/* translators: 1: smallest quantity, 2: largest quantity */
+		return sprintf( __( '%1$d to %2$d', 'flexacommerce' ), $min, $max );
 	}
 
 	/** What a tier does, as plain text. */

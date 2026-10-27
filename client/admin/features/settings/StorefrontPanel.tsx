@@ -1,5 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeftRight, Ban, Circle, Crop, Expand, LayoutPanelLeft, Maximize2, MousePointerClick, Tag, ZoomIn } from "lucide-react";
+import {
+    ArrowLeftRight,
+    Ban,
+    CalendarClock,
+    Circle,
+    Crop,
+    Expand,
+    Heading,
+    LayoutPanelLeft,
+    Maximize2,
+    MousePointerClick,
+    Table,
+    Tag,
+    Timer,
+    ZoomIn,
+} from "lucide-react";
 
 import { showToast } from "@/shared/components/showToast";
 import { Button } from "@/shared/components/ui/button";
@@ -23,6 +38,9 @@ const KEYS = [
     "gallery_arrows",
     "gallery_zoom",
     "gallery_lightbox",
+    "countdown_days",
+    "tier_table",
+    "tier_table_title",
 ] as const;
 
 type Draft = Pick<Settings, (typeof KEYS)[number]>;
@@ -30,16 +48,21 @@ type Draft = Pick<Settings, (typeof KEYS)[number]>;
 const pick = (settings: Settings): Draft =>
     Object.fromEntries(KEYS.map((key) => [key, settings[key]])) as Draft;
 
-/** Settings > Storefront: how the product page shows swatches and images, each with a preview. */
+/** Settings > Storefront: how the product page shows swatches, images and offers, each with a preview. */
 export function StorefrontPanel() {
     const query = useSettings();
     const save = useSaveSettings();
     const [draft, setDraft] = useState<Draft | null>(null);
+    // The days to go back to when the countdown is turned on again.
+    const [days, setDays] = useState(7);
 
     const saved = query.data?.settings;
     useEffect(() => {
         if (saved) {
             setDraft(pick(saved));
+            if (saved.countdown_days > 0) {
+                setDays(saved.countdown_days);
+            }
         }
     }, [saved]);
 
@@ -254,6 +277,139 @@ export function StorefrontPanel() {
                     <GalleryPreview draft={draft} />
                 </CardContent>
             </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>{__("Offers")}</CardTitle>
+                    <CardDescription>
+                        {__("What the product page says about pricing rules and sale prices. Set the rules under Promotions > Pricing rules.")}
+                    </CardDescription>
+                </CardHeader>
+                <SettingRow
+                    icon={Timer}
+                    label={__("Countdown")}
+                    description={__("Shows the time left when a pricing rule or a scheduled sale is about to end and the price will go up.")}
+                    control={
+                        <Switch
+                            aria-label={__("Countdown")}
+                            checked={draft.countdown_days > 0}
+                            onCheckedChange={(v) => set("countdown_days", v ? days : 0)}
+                        />
+                    }
+                />
+                <SettingRow
+                    icon={CalendarClock}
+                    label={__("Start the countdown (days before the end)")}
+                    htmlFor="fxc-countdown-days"
+                    description={__("Further away, the page shows no countdown, so a long sale does not look urgent.")}
+                    control={
+                        <Input
+                            id="fxc-countdown-days"
+                            type="number"
+                            min={1}
+                            max={365}
+                            className="fxc:w-24"
+                            disabled={draft.countdown_days === 0}
+                            value={draft.countdown_days > 0 ? draft.countdown_days : days}
+                            onChange={(e) => {
+                                const value = Math.min(365, Math.max(1, Number.parseInt(e.target.value, 10) || 1));
+                                setDays(value);
+                                set("countdown_days", value);
+                            }}
+                        />
+                    }
+                />
+                <SettingRow
+                    icon={Table}
+                    label={__("Quantity price table")}
+                    description={__("Lists the prices of a bulk pricing rule under the add-to-cart button, and marks the row for the quantity picked.")}
+                    control={
+                        <Switch
+                            aria-label={__("Quantity price table")}
+                            checked={draft.tier_table}
+                            onCheckedChange={(v) => set("tier_table", v)}
+                        />
+                    }
+                />
+                <SettingRow
+                    icon={Heading}
+                    label={__("Table heading")}
+                    htmlFor="fxc-tier-title"
+                    control={
+                        <Input
+                            id="fxc-tier-title"
+                            className="fxc:w-56"
+                            maxLength={80}
+                            disabled={!draft.tier_table}
+                            placeholder={__("Buy more, pay less")}
+                            value={draft.tier_table_title}
+                            onChange={(e) => set("tier_table_title", e.target.value)}
+                        />
+                    }
+                />
+                <CardContent className="fxc:border-t fxc:pt-4">
+                    <OffersPreview draft={draft} />
+                </CardContent>
+            </Card>
+        </div>
+    );
+}
+
+const TIERS = [
+    { range: __("1 to 4"), price: "$20.00", save: "" },
+    { range: __("5 to 9"), price: "$18.00", save: __("Save 10%") },
+    { range: __("10 or more"), price: "$16.00", save: __("Save 20%") },
+];
+
+/** A rough picture of the countdown and the quantity table with the current draft. */
+function OffersPreview({ draft }: { draft: Draft }) {
+    if (draft.countdown_days === 0 && !draft.tier_table) {
+        return <p className="fxc:text-muted-foreground fxc:text-sm">{__("The product page shows neither.")}</p>;
+    }
+    return (
+        <div aria-hidden className="fxc:space-y-3">
+            <p className="fxc:text-muted-foreground fxc:text-xs fxc:font-medium fxc:uppercase">{__("Preview")}</p>
+            {draft.countdown_days > 0 && (
+                <div className="fxc:flex fxc:flex-wrap fxc:items-center fxc:gap-1.5 fxc:text-sm">
+                    <span className="fxc:mr-1 fxc:font-semibold">{__("Offer ends in")}</span>
+                    {[
+                        ["2", __("Days")],
+                        ["05", __("Hours")],
+                        ["41", __("Minutes")],
+                        ["09", __("Seconds")],
+                    ].map(([value, name]) => (
+                        <span key={name} className="fxc:inline-flex fxc:min-w-12 fxc:flex-col fxc:items-center fxc:rounded fxc:bg-muted fxc:px-1.5 fxc:py-1">
+                            <span className="fxc:font-bold fxc:tabular-nums">{value}</span>
+                            <span className="fxc:text-[10px] fxc:uppercase fxc:opacity-75">{name}</span>
+                        </span>
+                    ))}
+                </div>
+            )}
+            {draft.tier_table && (
+                <table className="fxc:w-full fxc:max-w-sm fxc:border-collapse fxc:text-sm">
+                    <caption className="fxc:pb-1 fxc:text-left fxc:font-semibold">
+                        {draft.tier_table_title.trim() || __("Buy more, pay less")}
+                    </caption>
+                    <thead>
+                        <tr>
+                            {[__("Quantity"), __("Price"), __("You save")].map((head) => (
+                                <th key={head} className="fxc:border fxc:px-2 fxc:py-1 fxc:text-left fxc:font-semibold">
+                                    {head}
+                                </th>
+                            ))}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {TIERS.map((tier, i) => (
+                            <tr key={tier.range} className={cn(i === 1 && "fxc:bg-muted fxc:font-semibold")}>
+                                <td className="fxc:border fxc:px-2 fxc:py-1">{tier.range}</td>
+                                <td className="fxc:border fxc:px-2 fxc:py-1">{tier.price}</td>
+                                <td className="fxc:border fxc:px-2 fxc:py-1">{tier.save}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            )}
         </div>
     );
 }

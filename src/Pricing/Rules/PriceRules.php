@@ -61,6 +61,24 @@ final class PriceRules {
 		return null;
 	}
 
+	/**
+	 * When the live rules for this product and customer end, soonest first:
+	 * the moments its price may go up.
+	 *
+	 * @param string $now UTC `Y-m-d H:i:s`
+	 * @return list<string> UTC `Y-m-d H:i:s`
+	 */
+	public function ends_for( Product $product, int $user_id, string $now ): array {
+		$ends = [];
+		foreach ( $this->rules->all() as $rule ) {
+			if ( $rule->ends_at !== null && $this->matches( $rule, $product, $user_id, $now ) ) {
+				$ends[] = $rule->ends_at;
+			}
+		}
+		sort( $ends );
+		return array_values( array_unique( $ends ) );
+	}
+
 	public static function changed( int $price, string $mode, int $amount ): int {
 		return max(
 			0,

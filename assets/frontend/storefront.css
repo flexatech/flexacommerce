@@ -27,6 +27,19 @@
 .fxc-tiers th, .fxc-tiers td { padding: .375rem .75rem; border: 1px solid currentcolor; border-color: color-mix(in srgb, currentcolor 20%, transparent); text-align: start; }
 .fxc-tiers thead th { font-weight: 600; }
 .fxc-tiers tbody th { font-weight: 400; }
+.fxc-tiers tr.is-current { background: color-mix(in srgb, currentcolor 8%, transparent); }
+.fxc-tiers tr.is-current th { font-weight: 600; }
+
+/* Countdown (ADR-030): a date sentence, ticked as boxes by cart.js. */
+.fxc-countdown { flex-basis: 100%; }
+.fxc-countdown__text { margin: 0; font-size: .875em; }
+.fxc-countdown__clock { display: flex; flex-wrap: wrap; align-items: center; gap: .375rem; margin: 0; }
+.fxc-countdown__clock[hidden] { display: none; }
+.fxc-countdown__title { font-weight: 600; margin-inline-end: .25rem; }
+.fxc-countdown__unit { display: inline-flex; flex-direction: column; align-items: center; min-width: 3rem; padding: .25rem .375rem; border-radius: 4px; background: color-mix(in srgb, currentcolor 8%, transparent); }
+.fxc-countdown__value { font-weight: 700; font-size: 1.125em; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.fxc-countdown__name { font-size: .6875em; text-transform: uppercase; letter-spacing: .04em; opacity: .75; }
+.fxc-countdown.is-ended .fxc-countdown__text { opacity: .75; }
 .fxc-add-to-cart__button[aria-disabled="true"] { opacity: .6; cursor: not-allowed; }
 .fxc-add-to-cart__button.is-busy { cursor: progress; opacity: .75; }
 .fxc-add-to-cart__message { flex-basis: 100%; margin: 0; min-height: 1.5em; }
@@ -51,7 +64,7 @@
 .fxc-swatch__input:disabled { cursor: not-allowed; }
 .fxc-swatch__input:disabled + .fxc-swatch__face { opacity: .4; background-image: linear-gradient(to top right, transparent calc(50% - 1px), currentColor, transparent calc(50% + 1px)); }
 .fxc-swatches--hide-unavailable .fxc-swatch:has(.fxc-swatch__input:disabled) { display: none; }
-.fxc-swatch .screen-reader-text, .fxc-gallery__thumbs .screen-reader-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+.fxc-swatch .screen-reader-text, .fxc-gallery__thumbs .screen-reader-text, .fxc-countdown .screen-reader-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
 .is-error, .fxc-notice--error { color: #b32d2e; }
 
 .fxc-stock--out, .fxc-stock--outofstock { font-weight: 600; }

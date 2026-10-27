@@ -129,6 +129,11 @@ final class AddToCartForm {
 			wp_interactivity_data_wp_context( $context )
 		);
 		$html .= FormHandler::hidden_fields( 'add' );
+		$ends  = null;
+		if ( $mode === self::SINGLE && $this->pricing !== null && Settings::int( 'countdown_days' ) > 0 ) {
+			$ends  = $this->pricing->price_ends( $product, $user_id, Settings::int( 'countdown_days' ) );
+			$html .= $ends !== null ? Countdown::html( $ends ) : '';
+		}
 		$html .= sprintf( '<input type="hidden" name="product_id" value="%d">', $product->id );
 		$html .= sprintf(
 			'<input type="hidden" name="variant_id" value="%d" data-wp-bind--value="context.variantId">',
@@ -165,7 +170,7 @@ final class AddToCartForm {
 			esc_html__( 'Add to cart', 'flexacommerce' )
 		);
 		if ( $mode === self::SINGLE && $this->pricing !== null ) {
-			$html .= QuantityTiers::html( $this->pricing, $product, $user_id );
+			$html .= QuantityTiers::html( $this->pricing, $product, $user_id, $ends );
 		}
 		$html .= '<p class="fxc-add-to-cart__message" role="status" aria-live="polite" data-wp-text="context.message" data-wp-class--is-error="context.failed"></p>';
 		$html .= FormHandler::notice_for( $product->id );
