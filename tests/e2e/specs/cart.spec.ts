@@ -31,3 +31,29 @@ test( 'cart: Enter in the quantity field updates the line', async ( { page } ) =
 	await expect( page.locator( '.fxc-cart__line' ) ).toHaveCount( 1 );
 	await expect( quantity ).toHaveValue( '2' );
 } );
+
+test( 'cart: edit a line on its product page', async ( { page }, info ) => {
+	await page.goto( store.variable.url );
+	const form = page.locator( 'form.fxc-add-to-cart--single' );
+	for ( const [ attribute, value ] of Object.entries( store.variable.choices ) ) {
+		await form.getByLabel( attribute, { exact: false } ).selectOption( { label: value } );
+	}
+	await form.getByRole( 'button', { name: 'Add to cart' } ).click();
+	await expect( form.locator( '.fxc-add-to-cart__message' ) ).not.toBeEmpty();
+
+	await page.goto( store.cart );
+	await page.getByRole( 'link', { name: `Change the options of ${ store.variable.name }` } ).click();
+	const edit = page.locator( 'form.fxc-add-to-cart--edit' );
+	for ( const [ attribute, value ] of Object.entries( store.variable.choices ) ) {
+		await expect( edit.getByLabel( attribute, { exact: false } ).locator( 'option:checked' ) ).toHaveText( value );
+	}
+	await expect( edit.locator( '.fxc-add-to-cart__variant .fxc-price__amount' ) ).toHaveText( money( store.variable.price ) );
+	await expectAccessible( page, info, 'edit a cart line' );
+
+	await edit.locator( '.fxc-add-to-cart__quantity' ).fill( '2' );
+	await edit.getByRole( 'button', { name: 'Update cart' } ).click();
+	await expect( page.getByText( 'Cart updated.' ) ).toBeVisible();
+	const line = page.locator( '.fxc-cart__line' );
+	await expect( line ).toHaveCount( 1 );
+	await expect( line.getByLabel( `Quantity of ${ store.variable.name }` ) ).toHaveValue( '2' );
+} );

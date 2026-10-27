@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { expectAccessible, store } from './store';
+import { expectAccessible, money, store } from './store';
 
 const items = ( page: Page ) => page.locator( '.type-fxc_product' );
 
@@ -48,4 +48,18 @@ test( 'a category page lists only its products', async ( { page }, info ) => {
 	await expect( items( page ).first() ).toBeVisible();
 	await expect( page.locator( '.fxc-breadcrumbs' ) ).toBeVisible();
 	await expectAccessible( page, info, 'category' );
+} );
+
+test( 'a swatch in a list opens the product with that value picked', async ( { page }, info ) => {
+	await page.goto( store.swatches.category );
+	const swatches = page.getByRole( 'group', { name: `Finish of ${ store.swatches.name }` } );
+	await expect( swatches.getByRole( 'link' ) ).toHaveCount( 3 );
+	await expect( swatches.getByRole( 'link', { name: 'Satin (out of stock)' } ) ).toHaveClass( /is-unavailable/ );
+	await expectAccessible( page, info, 'list swatches' );
+
+	await swatches.getByRole( 'link', { name: 'Gloss', exact: true } ).click();
+	const form = page.locator( 'form.fxc-add-to-cart--single' );
+	await expect( form.getByRole( 'radio', { name: 'Gloss' } ) ).toBeChecked();
+	await expect( form.locator( '.fxc-add-to-cart__variant .fxc-price__amount' ) ).toHaveText( money( store.swatches.price ) );
+	await expect( form.getByRole( 'button', { name: 'Add to cart' } ) ).not.toHaveAttribute( 'aria-disabled', 'true' );
 } );

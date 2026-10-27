@@ -380,9 +380,19 @@ const { state, actions } = store( 'flexacommerce/cart', {
 			if ( context.fields ) {
 				body.options = readOptions( getElement().ref, context ).values;
 			}
+			if ( context.replace ) {
+				body.replace = context.replace;
+			}
 			try {
 				const data = yield request( 'cart/items', 'POST', body );
 				applyCart( data );
+				if ( context.replace ) {
+					// Back to the cart the line was changed from (ADR-037).
+					const url = new URL( config.cartUrl, window.location.href );
+					url.searchParams.set( 'fxc-cart', 'updated' );
+					window.location.assign( url.href );
+					return;
+				}
 				context.message = i18n.added;
 				context.failed = false;
 			} catch ( error ) {

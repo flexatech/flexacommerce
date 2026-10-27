@@ -38,6 +38,7 @@ export interface Settings {
     swatch_show_choice: boolean;
     swatch_unavailable: "dim" | "hide";
     swatch_custom: "dropdown" | "button";
+    swatch_list: number;
     gallery_thumbs: "bottom" | "left" | "dots";
     gallery_aspect: "original" | "square" | "portrait" | "landscape";
     gallery_arrows: boolean;

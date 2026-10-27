@@ -13,6 +13,7 @@ type Store = {
 	customer: { login: string; password: string };
 	simple: { id: number; name: string; url: string; sku: string; price: number };
 	variable: { id: number; name: string; url: string; choices: Record< string, string >; price: number };
+	swatches: { name: string; url: string; category: string; price: number };
 	category: { slug: string; url: string };
 };
 

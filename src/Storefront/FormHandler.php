@@ -63,15 +63,15 @@ final class FormHandler {
 						$attributes[ sanitize_text_field( (string) $key ) ] = sanitize_text_field( (string) $value );
 					}
 				}
-				$options = isset( $_POST['options'] ) && is_array( $_POST['options'] ) ? ProductOptions::posted( wp_unslash( $_POST['options'] ) ) : []; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- ProductOptions::accept() cleans each value for its field type.
-				$service->add(
-					$user,
-					$product,
-					isset( $_POST['variant_id'] ) ? absint( $_POST['variant_id'] ) : 0,
-					isset( $_POST['quantity'] ) ? max( 1, absint( $_POST['quantity'] ) ) : 1,
-					$attributes,
-					$options
-				);
+				$options  = isset( $_POST['options'] ) && is_array( $_POST['options'] ) ? ProductOptions::posted( wp_unslash( $_POST['options'] ) ) : []; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- ProductOptions::accept() cleans each value for its field type.
+				$variant  = isset( $_POST['variant_id'] ) ? absint( $_POST['variant_id'] ) : 0;
+				$quantity = isset( $_POST['quantity'] ) ? max( 1, absint( $_POST['quantity'] ) ) : 1;
+				$replace  = isset( $_POST['replace'] ) ? sanitize_key( wp_unslash( $_POST['replace'] ) ) : '';
+				if ( $replace !== '' ) {
+					$service->replace( $user, $replace, $product, $variant, $quantity, $attributes, $options );
+					self::redirect( Assets::cart_url(), 'updated' );
+				}
+				$service->add( $user, $product, $variant, $quantity, $attributes, $options );
 				self::redirect( $back, 'added', $product );
 			}
 			if ( $operation === 'update' ) {

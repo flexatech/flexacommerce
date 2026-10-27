@@ -530,3 +530,36 @@ Status of every ADR: **Accepted** (plan approved 2026-10-24) unless it says othe
 
 **Revisit when.** Merchants ask for other checkout field plugins (Flexible Checkout Fields, Checkout Field Manager), for multi choice fields, or for the import to keep builder changes made after the first run.
 
+## ADR-037: Changing a cart line from the product page
+
+**Context.** A shopper who picked the wrong size or misspelled an engraving had to remove the line and add the product again, filling in every option a second time. flexa-extra let them edit a line; the port needs the same.
+
+**Decision.**
+1. **The product page is the editor.** An "Edit" link on each cart line of a variable product, or of a product with option fields, opens the product page with `?fxc_edit=<line key>`. The add-to-cart form starts from the line: variation picked, option fields filled, quantity set, the button reads "Update cart" and a Cancel link goes back to the cart. The key is looked up in the shopper's own cart, so showing the page needs no nonce; a key from another cart or another product leaves the form as it is.
+2. **One write replaces the line.** The form posts what it always posts plus `replace=<key>`, on the same REST route and no-JS form. `CartService::replace()` checks the choices, quantity, stock and `validate_add` as `add()` does, counting stock without the old line. The new line takes the old one's place and its `added_at`; when another line already has the same choices, the two are merged.
+3. **Back to the cart afterwards,** with "Cart updated.", in both paths.
+4. **A variation no longer sold can still be changed.** The form opens in edit mode with nothing picked, so the shopper chooses another one instead of removing the line.
+
+**Alternatives.** Editing in the cart table: every option field type and the variation matrix would need a second renderer in the cart, and the cart script would grow. A drawer with the form on the cart page: the same form loaded twice, and one more script path. A remove plus add from the browser: two writes, so a failure between them loses the line.
+
+**Consequences.** No storage change: lines keep their key scheme. `store/cart/items` takes one more optional field and answers 200 for a replace. `cart.js` grows by a few lines.
+
+**Revisit when.** Shoppers ask to change options without leaving the cart, or a product type needs a form the product page does not have.
+
+## ADR-038: Swatches in product lists
+
+**Context.** On the shop and category pages a variable product only had a "Choose options" button, so a shopper could not see which colours exist without opening each product. flexa-extra printed the swatches of the first attribute under each card, as links to the product.
+
+**Decision.**
+1. **Links, not a form.** Each value is an `<a>` to the product page with `?fxc_pick[{key}]={value}`. The list needs no JavaScript, no matrix in the page state and no form fields, and every link works with the keyboard. `rel="nofollow"` keeps crawlers on the product URL.
+2. **The product page reads the pick.** `AddToCartForm` checks each value against the product's own and marks it picked. When every attribute is named, the matching variation shows its price at once, as when a cart line is edited (ADR-037).
+3. **Stock per value.** A value that no variation in stock carries is crossed out and its name says "(out of stock)", or it is left out, following `swatch_unavailable`, so the list and the product page agree.
+4. **One attribute, a limit.** Only the first attribute drawn as swatches is shown, at three quarters of `swatch_size`. `swatch_list` (default 5, 0 for off) caps the values; a "+N" link opens the product for the rest.
+
+**Alternatives.** Adding to the cart from the list: one value rarely names a variation, so the shopper would still pick the rest somewhere. Swapping the card image on hover: needs the cart script in every list and an image per value, for little gain over the product page, which already shows the variation image.
+
+5. **A block knows it is in a list from its product.** The Post Template passes its inner blocks only `postId` and `postType`, so the add-to-cart block never saw `queryId` and drew the full product form in block theme lists. It is now in list mode when it takes its product from the context and that product is not the page being viewed; a block with its own `productId` stays a full form.
+
+**Consequences.** One setting (61 keys). A list with variable products builds `PurchaseOptions` for each of them; the term meta it uses is already primed (ADR-022), and `swatch_list = 0` skips the work. `storefront.css` grows by six rules.
+
+**Revisit when.** Merchants ask to pick the attribute shown per product, to swap the card image, or to add a variation to the cart straight from the list.

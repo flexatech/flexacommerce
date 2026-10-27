@@ -64,6 +64,7 @@ final class Settings {
 		'swatch_show_choice'       => [ 'bool', true ],
 		'swatch_unavailable'       => [ 'enum:dim|hide', 'dim' ],
 		'swatch_custom'            => [ 'enum:dropdown|button', 'dropdown' ],
+		'swatch_list'              => [ 'int:0:20', 5 ],
 		'gallery_thumbs'           => [ 'enum:bottom|left|dots', 'bottom' ],
 		'gallery_aspect'           => [ 'enum:original|square|portrait|landscape', 'original' ],
 		'gallery_arrows'           => [ 'bool', true ],

@@ -75,6 +75,75 @@ final class CartService {
 	 * @throws InvalidCartRequest|NotPurchasable|InsufficientStock|RateLimited
 	 */
 	public function add( int $user_id, int $product_id, int $variant_id, int $quantity, array $attributes = [], array $options = [] ): CartState {
+		[ $product, $variant, $line, $max ] = $this->prepare( $product_id, $variant_id, $quantity, $attributes, $options );
+
+		return $this->mutate(
+			$user_id,
+			function ( Cart $cart ) use ( $product, $variant, $line, $max, $user_id ): Cart {
+				$existing = $cart->line( $line->key );
+				if ( $existing === null && count( $cart->lines ) >= Cart::MAX_LINES ) {
+					throw new InvalidCartRequest( __( 'Your cart is full.', 'flexacommerce' ), 'product_id' );
+				}
+				if ( $existing !== null && $existing->quantity + $line->quantity > $max ) {
+					throw new InvalidCartRequest(
+						/* translators: %d: maximum quantity. */
+						sprintf( __( 'You can add at most %d of this item.', 'flexacommerce' ), $max ),
+						'quantity'
+					);
+				}
+				$this->assert_stock( $cart, $product, $variant, $line->quantity );
+				$this->validate_add( $cart, $product, $variant, $line->quantity, $user_id );
+				return $cart->with_added( $line );
+			}
+		);
+	}
+
+	/**
+	 * Changes the variation, options and quantity of the line `$key` (ADR-037).
+	 * The line keeps its place; when the new choices match another line, the
+	 * two are merged.
+	 *
+	 * @param array<string,string>   $attributes
+	 * @param array<array-key,mixed> $options
+	 * @throws InvalidCartRequest|NotPurchasable|InsufficientStock|RateLimited
+	 */
+	public function replace( int $user_id, string $key, int $product_id, int $variant_id, int $quantity, array $attributes = [], array $options = [] ): CartState {
+		[ $product, $variant, $line, $max ] = $this->prepare( $product_id, $variant_id, $quantity, $attributes, $options );
+
+		return $this->mutate(
+			$user_id,
+			function ( Cart $cart ) use ( $key, $product, $variant, $line, $max, $user_id ): Cart {
+				$old = $cart->line( $key );
+				if ( $old === null || $old->product_id !== $product->id ) {
+					throw new InvalidCartRequest( __( 'This item is no longer in your cart.', 'flexacommerce' ), 'key', 'unknown_line' );
+				}
+				$rest  = $cart->without( $key );
+				$other = $line->key !== $key ? $rest->line( $line->key ) : null;
+				if ( $other !== null && $other->quantity + $line->quantity > $max ) {
+					throw new InvalidCartRequest(
+						/* translators: %d: maximum quantity. */
+						sprintf( __( 'You can add at most %d of this item.', 'flexacommerce' ), $max ),
+						'quantity'
+					);
+				}
+				$this->assert_stock( $rest, $product, $variant, $line->quantity );
+				$this->validate_add( $rest, $product, $variant, $line->quantity, $user_id );
+				// The line was added then; changing it does not make it new.
+				$kept = new CartLine( $line->key, $line->product_id, $line->variant_id, $line->quantity, $line->attributes, $line->labels, $old->added_at, $line->options );
+				return $cart->with_replaced( $key, $kept );
+			}
+		);
+	}
+
+	/**
+	 * Checks a product choice and builds its line.
+	 *
+	 * @param array<string,string>   $attributes
+	 * @param array<array-key,mixed> $options
+	 * @return array{0:Product,1:Variant,2:CartLine,3:int}
+	 * @throws InvalidCartRequest|NotPurchasable
+	 */
+	private function prepare( int $product_id, int $variant_id, int $quantity, array $attributes, array $options ): array {
 		$product = $this->products->find( $product_id );
 		if ( $product === null ) {
 			throw new NotPurchasable( $variant_id, __( 'This product does not exist.', 'flexacommerce' ) );
@@ -96,38 +165,17 @@ final class CartService {
 		if ( $this->options !== null && ProductOptions::in_use() ) {
 			$chosen = ( $this->options )()->accept( $product, $options );
 		}
-		$labels = [ ...$this->labels( $product, $selection ), ...$chosen['labels'] ];
-		$values = $chosen['values'];
-
-		return $this->mutate(
-			$user_id,
-			function ( Cart $cart ) use ( $product, $variant, $selection, $values, $quantity, $labels, $max, $user_id ): Cart {
-				$line     = new CartLine(
-					key: CartLine::key_for( $variant->id, $selection, $values ),
-					product_id: $product->id,
-					variant_id: $variant->id,
-					quantity: $quantity,
-					attributes: $selection,
-					labels: $labels,
-					added_at: $this->clock->db_now(),
-					options: $values,
-				);
-				$existing = $cart->line( $line->key );
-				if ( $existing === null && count( $cart->lines ) >= Cart::MAX_LINES ) {
-					throw new InvalidCartRequest( __( 'Your cart is full.', 'flexacommerce' ), 'product_id' );
-				}
-				if ( $existing !== null && $existing->quantity + $quantity > $max ) {
-					throw new InvalidCartRequest(
-						/* translators: %d: maximum quantity. */
-						sprintf( __( 'You can add at most %d of this item.', 'flexacommerce' ), $max ),
-						'quantity'
-					);
-				}
-				$this->assert_stock( $cart, $product, $variant, $quantity );
-				$this->validate_add( $cart, $product, $variant, $quantity, $user_id );
-				return $cart->with_added( $line );
-			}
+		$line = new CartLine(
+			key: CartLine::key_for( $variant->id, $selection, $chosen['values'] ),
+			product_id: $product->id,
+			variant_id: $variant->id,
+			quantity: $quantity,
+			attributes: $selection,
+			labels: [ ...$this->labels( $product, $selection ), ...$chosen['labels'] ],
+			added_at: $this->clock->db_now(),
+			options: $chosen['values'],
 		);
+		return [ $product, $variant, $line, $max ];
 	}
 
 	/** @throws InvalidCartRequest|InsufficientStock|RateLimited */

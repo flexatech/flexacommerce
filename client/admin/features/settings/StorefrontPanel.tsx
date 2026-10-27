@@ -7,6 +7,7 @@ import {
     Crop,
     Expand,
     Heading,
+    LayoutGrid,
     LayoutPanelLeft,
     Maximize2,
     MousePointerClick,
@@ -23,9 +24,12 @@ import { Input } from "@/shared/components/ui/input";
 import { Select } from "@/shared/components/ui/select";
 import { Switch } from "@/shared/components/ui/switch";
 import { cn } from "@/shared/lib/cn";
-import { __ } from "@/shared/lib/i18n";
+import { __, sprintf } from "@/shared/lib/i18n";
 import { SettingRow } from "../../components/SettingRow";
 import { useSaveSettings, useSettings, type Settings } from "./useSettings";
+
+/** Values shown per product in a list; any other saved number is kept as an extra choice. */
+const LIST_LIMITS = [3, 5, 8, 12, 20];
 
 const KEYS = [
     "swatch_size",
@@ -33,6 +37,7 @@ const KEYS = [
     "swatch_show_choice",
     "swatch_unavailable",
     "swatch_custom",
+    "swatch_list",
     "gallery_thumbs",
     "gallery_aspect",
     "gallery_arrows",
@@ -107,7 +112,7 @@ export function StorefrontPanel() {
                 <CardHeader>
                     <CardTitle>{__("Swatches")}</CardTitle>
                     <CardDescription>
-                        {__("Choose which attributes use colours, images or buttons under Attributes. These options set how they look on the product page.")}
+                        {__("Choose which attributes use colours, images or buttons under Attributes. These options set how they look on the product page and in product lists.")}
                     </CardDescription>
                 </CardHeader>
                 <SettingRow
@@ -184,6 +189,29 @@ export function StorefrontPanel() {
                             options={[
                                 { value: "dropdown", label: __("Dropdown") },
                                 { value: "button", label: __("Buttons") },
+                            ]}
+                        />
+                    }
+                />
+                <SettingRow
+                    icon={LayoutGrid}
+                    label={__("Swatches in product lists")}
+                    htmlFor="fxc-swatch-list"
+                    description={__("Shows the first swatch attribute of a variable product on the shop and category pages. Each value opens the product with it picked; the rest sit behind a +N link.")}
+                    control={
+                        <Select
+                            id="fxc-swatch-list"
+                            value={String(draft.swatch_list)}
+                            onChange={(e) => set("swatch_list", Number.parseInt(e.target.value, 10))}
+                            options={[
+                                { value: "0", label: __("Off") },
+                                ...LIST_LIMITS.map((n) => ({
+                                    value: String(n),
+                                    label: sprintf(__("Up to %d values"), n),
+                                })),
+                                ...(draft.swatch_list > 0 && !LIST_LIMITS.includes(draft.swatch_list)
+                                    ? [{ value: String(draft.swatch_list), label: sprintf(__("Up to %d values"), draft.swatch_list) }]
+                                    : []),
                             ]}
                         />
                     }

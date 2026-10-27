@@ -73,6 +73,11 @@ final class CartEndpoint extends StoreEndpoint {
 							'type'    => 'object',
 							'default' => [],
 						],
+						// The line these choices replace (ADR-037).
+						'replace'    => [
+							'type'    => 'string',
+							'pattern' => '^[a-f0-9]{16}$',
+						],
 					],
 				],
 			]
@@ -150,6 +155,21 @@ final class CartEndpoint extends StoreEndpoint {
 			}
 		}
 		$options = $request->get_param( 'options' );
+		$options = is_array( $options ) && $options !== [] ? ProductOptions::posted( $options ) : [];
+		$replace = (string) $request->get_param( 'replace' );
+		if ( $replace !== '' ) {
+			return $this->run(
+				static fn (): CartState => Plugin::instance()->cart()->cart()->replace(
+					get_current_user_id(),
+					$replace,
+					(int) $request->get_param( 'product_id' ),
+					(int) $request->get_param( 'variant_id' ),
+					(int) $request->get_param( 'quantity' ),
+					$attributes,
+					$options
+				)
+			);
+		}
 		return $this->run(
 			static fn (): CartState => Plugin::instance()->cart()->cart()->add(
 				get_current_user_id(),
@@ -157,7 +177,7 @@ final class CartEndpoint extends StoreEndpoint {
 				(int) $request->get_param( 'variant_id' ),
 				(int) $request->get_param( 'quantity' ),
 				$attributes,
-				is_array( $options ) && $options !== [] ? ProductOptions::posted( $options ) : []
+				$options
 			),
 			201
 		);

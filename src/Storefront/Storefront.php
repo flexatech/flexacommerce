@@ -223,8 +223,7 @@ final class Storefront {
 			case 'related-products':
 				return $this->related()->html( $product, (int) ( $attributes['count'] ?? 4 ) );
 		}
-		$mode = $block !== null && isset( $block->context['queryId'] ) ? AddToCartForm::LOOP : AddToCartForm::SINGLE;
-		return $this->form()->html( $product, $mode, $user );
+		return $this->form()->html( $product, self::in_list( $attributes, $block ) ? AddToCartForm::LOOP : AddToCartForm::SINGLE, $user );
 	}
 
 	/**
@@ -305,6 +304,25 @@ final class Storefront {
 		return $this->table()->html( $cart->cart()->state( get_current_user_id() ) );
 	}
 
+	/**
+	 * Whether a block shows a product of a list. The Post Template passes
+	 * its inner blocks only `postId` and `postType` (WordPress 6.3+), so a
+	 * missing `queryId` proves nothing: a block that takes its product from
+	 * the context is in a list unless that product is the page being viewed.
+	 * A block with its own `productId` is a buy box wherever it stands.
+	 *
+	 * @param array<string,mixed> $attributes
+	 */
+	private static function in_list( array $attributes, ?\WP_Block $block ): bool {
+		if ( $block === null || (int) ( $attributes['productId'] ?? 0 ) > 0 ) {
+			return false;
+		}
+		if ( isset( $block->context['queryId'] ) ) {
+			return true;
+		}
+		return isset( $block->context['postId'] ) && ! ( is_singular() && (int) $block->context['postId'] === get_queried_object_id() );
+	}
+
 	/** @param array<string,mixed> $attributes */
 	private function product_id( array $attributes, ?\WP_Block $block ): int {
 		$id = isset( $attributes['productId'] ) ? (int) $attributes['productId'] : 0;
@@ -343,7 +361,7 @@ final class Storefront {
 
 	private function table(): CartTable {
 		$cart                 = Plugin::instance()->cart();
-		return $this->table ??= new CartTable( $cart->presenter(), $cart->cart(), $cart->pricing() );
+		return $this->table ??= new CartTable( $cart->presenter(), $cart->cart(), $cart->pricing(), static fn (): ProductOptions => Plugin::instance()->product_options() );
 	}
 
 	private function mini(): MiniCart {

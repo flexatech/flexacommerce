@@ -11,6 +11,7 @@ use Flexa\Commerce\Cart\CartState;
 use Flexa\Commerce\Catalog\PostTypes;
 use Flexa\Commerce\Contracts\Money;
 use Flexa\Commerce\Coupons\Coupon;
+use Flexa\Commerce\Options\ProductOptions;
 use Flexa\Commerce\Contracts\Pricing\PriceResolution;
 use Flexa\Commerce\Pricing\PricingService;
 use Flexa\Commerce\Storefront\Assets;
@@ -28,10 +29,12 @@ defined( 'ABSPATH' ) || exit;
 final class CartTable {
 	private const COUPON_FORM = 'fxc-cart-coupon';
 
+	/** @param ?\Closure():ProductOptions $product_options to tell which lines have options to change */
 	public function __construct(
 		private readonly CartPresenter $presenter,
 		private readonly CartService $cart,
 		private readonly PricingService $pricing,
+		private readonly ?\Closure $product_options = null,
 	) {}
 
 	public function html( CartState $state ): string {
@@ -245,6 +248,13 @@ final class CartTable {
 		$html .= '<td class="fxc-cart__product">'
 			. ( $link !== '' ? '<a href="' . esc_url( $link ) . '">' . esc_html( $name ) . '</a>' : esc_html( $name ) )
 			. ( $labels !== '' ? '<ul class="fxc-cart__attributes">' . $labels . '</ul>' : '' )
+			. ( $link !== '' && $this->editable( $item ) ? sprintf(
+				'<a class="fxc-cart__edit" href="%1$s" aria-label="%2$s">%3$s</a>',
+				esc_url( add_query_arg( AddToCartForm::EDIT, $line->key, $link ) ),
+				/* translators: %s: product name */
+				esc_attr( sprintf( __( 'Change the options of %s', 'flexacommerce' ), $name ) ),
+				esc_html__( 'Edit', 'flexacommerce' )
+			) : '' )
 			. '</td>';
 		$html .= '<td class="fxc-cart__price">' . ( $item->unit !== null ? ProductPrice::single( $this->pricing, self::unit( $item, $shown ) ) : '' ) . '</td>';
 		$html .= sprintf(
@@ -283,6 +293,17 @@ final class CartTable {
 		}
 		$currency = $unit->active->currency;
 		return new PriceResolution( new Money( (int) $prices['regular']['amount'], $currency ), new Money( (int) $prices['active']['amount'], $currency ), $unit->on_sale );
+	}
+
+	/** A line with a variation or option fields to pick again (ADR-037). */
+	private function editable( CartItem $item ): bool {
+		if ( $item->product === null ) {
+			return false;
+		}
+		if ( $item->product->is_variable() || $item->line->options !== [] ) {
+			return true;
+		}
+		return $this->product_options !== null && ProductOptions::in_use() && ( $this->product_options )()->sets_for( $item->product ) !== [];
 	}
 
 	private function line_max( CartItem $item ): int {

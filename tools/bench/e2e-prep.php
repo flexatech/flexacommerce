@@ -6,12 +6,15 @@
  *   wp eval-file tools/bench/e2e-prep.php <spec.json> <out.json>
  *
  * Cash on delivery on, one US zone with a flat rate of 5.00, a terms page,
- * a page with the filter block, a customer account, and the pages and products the journeys open.
+ * a page with the filter block, a customer account, a product with colour
+ * swatches in a category of its own, and the pages and products the journeys open.
  */
 
 // No strict_types: wp eval-file runs this through eval(), where a declare is not allowed.
 
+use Flexa\Commerce\Catalog\AttributeRepository;
 use Flexa\Commerce\Catalog\PostTypes;
+use Flexa\Commerce\Catalog\ProductInput;
 use Flexa\Commerce\Plugin;
 use Flexa\Commerce\Setup\Activator;
 use Flexa\Commerce\Shipping\MethodInstance;
@@ -108,6 +111,54 @@ foreach ( $variant['attributes'] as $attribute => $value ) {
 	$choices[ $attribute ] = $names[ $value ];
 }
 
+// A tee with a colour swatch attribute (ADR-038); Satin is out of stock.
+$attributes = Plugin::instance()->catalog()->attributes();
+$finish     = $attributes->create_attribute( 'Finish' );
+$attributes->set_swatch( $finish, AttributeRepository::COLOR );
+$looks  = [ 'Matte' => '#333333', 'Gloss' => '#d4af37', 'Satin' => '#8a8a8a' ];
+$values = [];
+foreach ( $looks as $name => $color ) {
+	$values[ $name ] = $attributes->create_value( $finish, $name );
+	$attributes->set_look( $values[ $name ], $color, null );
+}
+$tee_id   = (int) wp_insert_post(
+	[
+		'post_type'   => PostTypes::PRODUCT,
+		'post_status' => 'publish',
+		'post_title'  => 'Swatch tee',
+		'post_name'   => 'swatch-tee',
+	]
+);
+$products = Plugin::instance()->catalog()->product_service();
+$products->save(
+	$tee_id,
+	ProductInput::from_array(
+		[
+			'type'       => 'variable',
+			'attributes' => [
+				[
+					'type'              => 'global',
+					'attribute_term_id' => $finish,
+					'value_term_ids'    => array_values( $values ),
+					'variation'         => true,
+				],
+			],
+		]
+	)
+);
+$rows = [];
+foreach ( $products->generate_variants( $tee_id )->product->variations as $variation ) {
+	$rows[] = [
+		'id'             => $variation->id,
+		'regular_price'  => 2500,
+		'manage_stock'   => true,
+		'stock_quantity' => in_array( (string) $values['Satin'], $variation->combination->to_array(), true ) ? 0 : 5,
+	];
+}
+$products->save( $tee_id, ProductInput::from_array( [ 'variations' => $rows ] ) );
+$tees = wp_insert_term( 'Swatch tees', PostTypes::CATEGORY, [ 'slug' => 'swatch-tees' ] );
+wp_set_object_terms( $tee_id, [ (int) $tees['term_id'] ], PostTypes::CATEGORY );
+
 $category = get_term_by( 'slug', (string) $simple['categories'][0], PostTypes::CATEGORY );
 
 $out = [
@@ -133,6 +184,12 @@ $out = [
 		'url'     => (string) get_permalink( $post( $variable ) ),
 		'choices' => $choices,
 		'price'   => $variant['regular_price'],
+	],
+	'swatches' => [
+		'name'     => 'Swatch tee',
+		'url'      => (string) get_permalink( $tee_id ),
+		'category' => (string) get_term_link( (int) $tees['term_id'], PostTypes::CATEGORY ),
+		'price'    => 2500,
 	],
 	'category' => [
 		'slug' => $category instanceof WP_Term ? $category->slug : '',

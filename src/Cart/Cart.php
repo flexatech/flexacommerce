@@ -151,6 +151,18 @@ final class Cart {
 		return $this->copy( lines: $lines );
 	}
 
+	/**
+	 * The line `$key` becomes `$line`, in its place. When another line
+	 * already has the new key, the two are merged there.
+	 */
+	public function with_replaced( string $key, CartLine $line ): self {
+		$other = $line->key !== $key ? $this->line( $line->key ) : null;
+		if ( $other !== null ) {
+			return $this->without( $key )->with_added( $line );
+		}
+		return $this->copy( lines: array_map( static fn ( CartLine $l ): CartLine => $l->key === $key ? $line : $l, $this->lines ) );
+	}
+
 	public function with_quantity( string $key, int $quantity ): self {
 		if ( $quantity <= 0 ) {
 			return $this->without( $key );

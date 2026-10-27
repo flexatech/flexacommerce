@@ -21,15 +21,16 @@ defined( 'ABSPATH' ) || exit;
  */
 final class OptionFields {
 	/**
-	 * @param list<OptionSet> $sets
+	 * @param list<OptionSet>                         $sets
+	 * @param array<string,string|list<string>>|null $chosen the values of a cart line being changed (ADR-037), else the defaults
 	 */
-	public static function html( array $sets, PricingService $money ): string {
+	public static function html( array $sets, PricingService $money, ?array $chosen = null ): string {
 		$html = '';
 		foreach ( $sets as $set ) {
-			$values = self::defaults( $set );
+			$values = $chosen !== null ? self::chosen( $set, $chosen ) : self::defaults( $set );
 			$html  .= '<div class="fxc-options__set">';
 			foreach ( $set->fields as $field ) {
-				$html .= self::field( $set, $field, $field->visible( $values ), $money );
+				$html .= self::field( $set, $field, $field->visible( $values ), $money, $chosen !== null ? ( $values[ $field->id ] ?? '' ) : null );
 			}
 			$html .= '</div>';
 		}
@@ -115,7 +116,25 @@ final class OptionFields {
 		return $values;
 	}
 
-	private static function field( OptionSet $set, OptionField $field, bool $visible, PricingService $money ): string {
+	/**
+	 * @param array<string,string|list<string>> $chosen
+	 * @return array<int,string|list<string>> field id => value
+	 */
+	private static function chosen( OptionSet $set, array $chosen ): array {
+		$values = [];
+		foreach ( $set->fields as $field ) {
+			$value = $chosen[ ProductOptions::key( $set->id, $field->id ) ] ?? null;
+			if ( $value !== null ) {
+				$values[ $field->id ] = $value;
+			}
+		}
+		return $values;
+	}
+
+	/** @param string|list<string>|null $value the value to show; null for the defaults */
+	private static function field( OptionSet $set, OptionField $field, bool $visible, PricingService $money, string|array|null $value = null ): string {
+		$picked = static fn ( array $choice ): bool => $value === null ? (bool) $choice['default'] : in_array( (string) $choice['id'], (array) $value, true );
+		$text   = is_string( $value ) ? $value : '';
 		$key    = ProductOptions::key( $set->id, $field->id );
 		$id     = wp_unique_id( 'fxc-option-' );
 		$hidden = $visible ? '' : ' hidden';
@@ -143,7 +162,7 @@ final class OptionFields {
 					$swatch ? ' title="' . esc_attr( wp_strip_all_tags( $text ) ) . '"' : '',
 					esc_attr( $name ),
 					$choice['id'],
-					$choice['default'] ? ' checked' : '',
+					$picked( $choice ) ? ' checked' : '',
 					$field->required ? ' required' : '',
 					$off,
 					$swatch ? ' style="--fxc-swatch-color:' . esc_attr( $choice['color'] ) . '"' : '',
@@ -163,7 +182,7 @@ final class OptionFields {
 					$radio ? 'radio' : 'checkbox',
 					esc_attr( $radio ? $name : $name . '[]' ),
 					$choice['id'],
-					$choice['default'] ? ' checked' : '',
+					$picked( $choice ) ? ' checked' : '',
 					$radio && $field->required ? ' required' : '',
 					$off,
 					esc_html( $choice['label'] ),
@@ -181,6 +200,7 @@ final class OptionFields {
 			$required
 		);
 		$common = sprintf( 'id="%1$s" name="%2$s"%3$s%4$s%5$s', esc_attr( $id ), esc_attr( $name ), $field->required ? ' required' : '', $about, $off );
+		$filled = $text !== '' ? ' value="' . esc_attr( $text ) . '"' : '';
 
 		if ( $field->type === OptionField::SELECT ) {
 			$control = '<select ' . $common . '><option value="">' . esc_html__( 'Choose an option', 'flexacommerce' ) . '</option>';
@@ -188,7 +208,7 @@ final class OptionFields {
 				$control .= sprintf(
 					'<option value="%1$d"%2$s>%3$s%4$s</option>',
 					$choice['id'],
-					$choice['default'] ? ' selected' : '',
+					$picked( $choice ) ? ' selected' : '',
 					esc_html( $choice['label'] ),
 					wp_strip_all_tags( self::price_tag( $choice['price_mode'], $choice['price'], $money ) )
 				);
@@ -198,16 +218,16 @@ final class OptionFields {
 			[ $earliest, $latest ] = $field->date_range();
 			$control               = sprintf(
 				'<input type="date" %1$s%2$s%3$s>',
-				$common,
+				$common . $filled,
 				$earliest !== null ? ' min="' . esc_attr( $earliest ) . '"' : '',
 				$latest !== null ? ' max="' . esc_attr( $latest ) . '"' : ''
 			);
 		} elseif ( $field->type === OptionField::COLOR ) {
-			$control = sprintf( '<input type="color" %1$s value="%2$s">', $common, esc_attr( $field->placeholder !== '' ? $field->placeholder : OptionField::START ) );
+			$control = sprintf( '<input type="color" %1$s value="%2$s">', $common, esc_attr( $text !== '' ? $text : ( $field->placeholder !== '' ? $field->placeholder : OptionField::START ) ) );
 		} elseif ( $field->type === OptionField::NUMBER ) {
 			$control = sprintf(
 				'<input type="number" %1$s%2$s%3$s step="%4$s"%5$s inputmode="decimal">',
-				$common,
+				$common . $filled,
 				$field->min !== null ? ' min="' . esc_attr( self::number( $field->min ) ) . '"' : '',
 				$field->max !== null ? ' max="' . esc_attr( self::number( $field->max ) ) . '"' : '',
 				esc_attr( $field->step !== null ? self::number( $field->step ) : 'any' ),
@@ -217,8 +237,8 @@ final class OptionFields {
 			$max     = $field->max_length > 0 ? sprintf( ' maxlength="%d"', $field->max_length ) : '';
 			$hint    = $field->placeholder !== '' ? ' placeholder="' . esc_attr( $field->placeholder ) . '"' : '';
 			$control = $field->type === OptionField::TEXTAREA
-				? '<textarea ' . $common . $max . $hint . ' rows="3"></textarea>'
-				: '<input type="text" ' . $common . $max . $hint . '>';
+				? '<textarea ' . $common . $max . $hint . ' rows="3">' . esc_textarea( $text ) . '</textarea>'
+				: '<input type="text" ' . $common . $max . $hint . $filled . '>';
 		}
 		return sprintf( '<div %1$s>%2$s%3$s%4$s</div>', $attrs, $label, $control, $help );
 	}

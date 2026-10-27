@@ -42,6 +42,21 @@ final class CartTest extends TestCase {
 		self::assertSame( 4, $cart->item_count() );
 	}
 
+	public function test_a_replaced_line_keeps_its_place_or_joins_its_twin(): void {
+		$s    = $this->line( 3, 1, [ 'size' => 's' ] );
+		$m    = $this->line( 3, 2, [ 'size' => 'm' ] );
+		$cart = ( new Cart() )->with_added( $s )->with_added( $m );
+
+		$l    = $this->line( 3, 4, [ 'size' => 'l' ] );
+		$next = $cart->with_replaced( $s->key, $l );
+		self::assertSame( [ $l->key, $m->key ], array_column( $next->lines, 'key' ) );
+		self::assertSame( 4, $next->with_replaced( $l->key, $this->line( 3, 4, [ 'size' => 'l' ] ) )->lines[0]->quantity );
+
+		$joined = $cart->with_replaced( $s->key, $this->line( 3, 5, [ 'size' => 'm' ] ) );
+		self::assertSame( [ $m->key ], array_column( $joined->lines, 'key' ) );
+		self::assertSame( 7, $joined->lines[0]->quantity );
+	}
+
 	public function test_quantity_zero_removes_the_line(): void {
 		$line = $this->line( 3, 2 );
 		$cart = ( new Cart() )->with_added( $line );

@@ -286,7 +286,8 @@ A store attribute can be shown as a dropdown (the default), colour swatches, ima
 
 - **Markup.** A swatch attribute renders as a `fieldset` of radio inputs named `attributes[{key}]`, the same field the dropdown posts. The form works without JavaScript and the server matching (§7.2) is unchanged. Keyboard users get the native radio group (arrow keys); screen readers hear the value name, which sits in a visually hidden span for colour and image swatches. A value with no colour or image falls back to a button with its name.
 - **Store.** The radios call the same `actions.choose` and bind `disabled` to the same `state.optionUnavailable` as the dropdown options. `state.chosenLabel` prints the picked value after the legend ("Color: Red").
-- **Settings > Storefront.** `swatch_size` (20 to 96 px), `swatch_shape` (round or square), `swatch_show_choice`, `swatch_unavailable` (cross out or hide; hiding uses `:has()`, so an older browser shows them crossed out), `swatch_custom` (dropdown or buttons). The screen previews the result.
+- **Lists (ADR-038).** In a product list a variable product shows its first swatch attribute under the price, as links: each one opens the product page with `?fxc_pick[{key}]={value}`, which picks that value (and, when every attribute is named, the variation with its price). A value with no variation in stock is crossed out, or left out under `swatch_unavailable = hide`. Past `swatch_list` values a "+N" link opens the product. The links carry `rel="nofollow"`, so crawlers do not follow one URL per value. The card keeps its "Choose options" button.
+- **Settings > Storefront.** `swatch_size` (20 to 96 px; lists use three quarters of it), `swatch_shape` (round or square), `swatch_show_choice`, `swatch_unavailable` (cross out or hide; hiding uses `:has()`, so an older browser shows them crossed out), `swatch_custom` (dropdown or buttons), `swatch_list` (values per product in a list, 0 turns list swatches off, default 5). The screen previews the result.
 - **Cost.** `PurchaseOptions` primes term meta with the terms it already loads, so swatches add no query per value. The REST variants route (`store/products/{id}/variants`) returns `swatch`, `color` and `image` with each attribute.
 
 #### 7.2.2 Gallery and badges
@@ -303,6 +304,7 @@ A store attribute can be shown as a dropdown (the default), colour swatches, ima
 2. The session is created on this first write (§7.3.1).
 3. Cart lines store `variant_id`, `qty`, `attributes`, `added_at`. **No prices are stored in the cart.**
 4. Every cart read recalculates: `PricingService` resolves the current unit price, lines whose product became unpurchasable are flagged (not silently dropped), and the response lists notices ("price changed", "only 3 left").
+5. A line can be changed in place (ADR-037). The cart's "Edit" link opens the product page with `?fxc_edit=<line key>`; the form starts from the line's variation, options and quantity and posts them with `replace=<key>` (REST `POST store/cart/items`, or the no-JS form). `CartService::replace()` checks the choices like `add()`, then puts the new line where the old one was, or adds it to a line that already has the same choices.
 
 #### 7.3.1 Session storage
 
