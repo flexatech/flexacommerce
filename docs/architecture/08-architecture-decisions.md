@@ -767,3 +767,19 @@ Status of every ADR: **Accepted** (plan approved 2026-10-24) unless it says othe
 **Consequences.** No `DB_VERSION`, no new setting (still 61). The editor script now depends on `wp-api-fetch`. storefront.css grows by about 60 bytes gzip and cart.js by about 300. Empty blocks show a short placeholder in the editor so they can still be found. The four shortcodes are registered on every request, which on PHP 8.5 macOS takes one more 4 KB allocator page on a page without commerce content (82,704 B over the plugin-off run, was 78,632 B); the Darwin-8.5 memory baseline is recorded again, the Linux ones are not measured here.
 
 **Revisit when.** Merchants ask for the progress bar for free shipping thresholds, or for the discount badge to show amounts instead of percents.
+
+## ADR-051: Pricing rules from WP-CLI
+
+**Context.** flexa-extra has WP-CLI commands to list, turn on, turn off and delete its pricing rules. A store owner or agency uses them to switch a sale on at midnight from a cron job, to turn every fee off during an incident, or to check from a deploy script which rules are live.
+
+**Decision.**
+1. **`wp flexacommerce pricing-rule list|enable|disable|delete`**, next to `doctor`, `db` and `migrate`, registered only under WP-CLI. Several ids at once, so `disable $(wp flexacommerce pricing-rule list --type=fee --format=ids)` works.
+2. **One row a rule, in the words of the Promotions screen.** Status is `live`, `scheduled`, `ended` or `off`, worked out the same way as the list on the screen. `change` says what the rule does in store money ("-12.5%", "price $8.99", "5+ -10%, 10+ -$1.50", "+3% fee (at most $5.00)"). `products` and `customers` sum up the targets ("1 category, 2 left out", "editor"). Dates show in the site time zone, as on the screen. `--status` and `--type` filter; `--fields` picks columns and refuses unknown ones.
+3. **The repository is the only path.** Enable and disable save `enabled` through `PriceRuleRepository::save()`, delete through `delete()`, so the checks and the `flexacommerce.price_rules.saved` action (page cache clearing) are the same as from REST. A rule that no longer passes the checks (a role removed since) is reported and left unchanged. An id that is already in the wanted state is reported, not an error.
+4. **Failures exit with 1.** Unknown ids are warnings after the found ones are done, then the command exits with 1, so a script notices. Delete asks first unless `--yes`.
+
+**Alternatives.** Commands to create and edit rules: the dialog has many fields that depend on each other (tiers, targets, conditions), and a JSON payload is already accepted by `POST /admin/pricing-rules` for scripts. `wp option update` on the rules option: skips the checks and the cache action.
+
+**Consequences.** No `DB_VERSION`, no setting, nothing loaded outside WP-CLI. `PriceRuleCommand::rows()` is a plain function of the rules, the time and the money format, which the integration test checks; the commands themselves were run against the bench store.
+
+**Revisit when.** Merchants ask to create rules from a file, or to reorder them from the command line.

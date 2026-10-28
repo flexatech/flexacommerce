@@ -116,6 +116,7 @@ final class Plugin {
 			Cli\ShopCommand::register();
 			Cli\DbCommand::register();
 			Cli\MigrateCommand::register();
+			Cli\PriceRuleCommand::register();
 		}
 
 		add_action( 'plugins_loaded', [ $this, 'announce' ], 20 );
