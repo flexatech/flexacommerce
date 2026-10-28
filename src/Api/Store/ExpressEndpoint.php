@@ -8,7 +8,9 @@ use Flexa\Commerce\Cart\Cart;
 use Flexa\Commerce\Checkout\CheckoutRequest;
 use Flexa\Commerce\Checkout\CheckoutService;
 use Flexa\Commerce\Contracts\CommerceException;
+use Flexa\Commerce\Contracts\Exceptions\InvalidCheckout;
 use Flexa\Commerce\Options\ProductOptions;
+use Flexa\Commerce\Payments\ExpressSession;
 use Flexa\Commerce\Plugin;
 use Flexa\Commerce\Support\ClientIp;
 use Flexa\Commerce\Support\Countries;
@@ -25,6 +27,11 @@ defined( 'ABSPATH' ) || exit;
  * `product` with a `product` choice for "buy now" on the product page,
  * which never touches the cart. The quote does not store the address the
  * wallet shares; the order goes through the same checks as the form.
+ *
+ * `store/express/session` (ADR-054) is the quote for a gateway whose sheet
+ * needs an order on its side first (PayPal): it opens that order, or
+ * brings it to the new quote, and returns its id as `session`. The order
+ * then takes the contact from the gateway, not from the browser.
  */
 final class ExpressEndpoint extends StoreEndpoint {
 	public function register_routes(): void {
@@ -66,6 +73,28 @@ final class ExpressEndpoint extends StoreEndpoint {
 		);
 		register_rest_route(
 			self::NAMESPACE,
+			'/store/express/session',
+			[
+				[
+					'methods'             => WP_REST_Server::CREATABLE,
+					'callback'            => [ $this, 'session' ],
+					'permission_callback' => [ $this, 'write_permission' ],
+					'args'                => $common + [
+						'address' => [
+							'type'    => 'object',
+							'default' => [],
+						],
+						'session' => [
+							'type'    => 'string',
+							'default' => '',
+							'pattern' => '^[A-Za-z0-9-]{0,64}$',
+						],
+					],
+				],
+			]
+		);
+		register_rest_route(
+			self::NAMESPACE,
 			'/store/express/order',
 			[
 				[
@@ -80,29 +109,55 @@ final class ExpressEndpoint extends StoreEndpoint {
 
 	/** @param WP_REST_Request<array<string,mixed>> $request */
 	public function quote( WP_REST_Request $request ): WP_REST_Response|WP_Error {
-		$raw     = $request->get_param( 'address' );
-		$raw     = is_array( $raw ) ? $raw : [];
-		$country = strtoupper( sanitize_text_field( (string) ( $raw['country'] ?? '' ) ) );
-		$address = $country === '' ? null : [
-			'country'  => $country,
-			'state'    => Countries::state_code( $country, sanitize_text_field( (string) ( $raw['state'] ?? '' ) ) ),
-			'postcode' => Countries::normalize_postcode( sanitize_text_field( (string) ( $raw['postcode'] ?? '' ) ) ),
-			'city'     => sanitize_text_field( (string) ( $raw['city'] ?? '' ) ),
-		];
+		return $this->run( fn ( CheckoutService $checkout ): array => $this->quoted( $checkout, $request ) );
+	}
+
+	/** @param WP_REST_Request<array<string,mixed>> $request */
+	public function session( WP_REST_Request $request ): WP_REST_Response|WP_Error {
+		$gateway = self::session_gateway( sanitize_key( (string) $request->get_param( 'payment_method' ) ) );
+		if ( $gateway === null ) {
+			return new WP_Error( 'flexacommerce_express_unavailable', __( 'This payment method is not available.', 'flexacommerce' ), [ 'status' => 400 ] );
+		}
+		$session = (string) $request->get_param( 'session' );
 		return $this->run(
-			fn ( CheckoutService $checkout ): array => $checkout->express_quote(
-				get_current_user_id(),
-				$this->single( $request ),
-				$address,
-				sanitize_text_field( (string) $request->get_param( 'shipping_rate' ) ),
-				sanitize_key( (string) $request->get_param( 'payment_method' ) )
-			)
+			function ( CheckoutService $checkout ) use ( $request, $gateway, $session ): array {
+				$quote = $this->quoted( $checkout, $request );
+				if ( ! (bool) $quote['payable'] || ( (bool) $quote['needs_shipping'] && $quote['shipping_rates'] === [] && $session !== '' ) ) {
+					// Nothing the sheet could pay: the buttons read why from the quote.
+					return $quote + [ 'session' => $session ];
+				}
+				try {
+					if ( $session === '' ) {
+						$session = $gateway->open_express( $quote );
+					} else {
+						$gateway->update_express( $session, $quote );
+					}
+				} catch ( \RuntimeException $e ) {
+					throw new InvalidCheckout( [ 'payment_method' => __( 'The payment provider could not be reached. Please try again.', 'flexacommerce' ) ] );
+				}
+				return $quote + [ 'session' => $session ];
+			}
 		);
 	}
 
 	/** @param WP_REST_Request<array<string,mixed>> $request */
 	public function place( WP_REST_Request $request ): WP_REST_Response|WP_Error {
-		$data = (array) $request->get_json_params();
+		$data    = (array) $request->get_json_params();
+		$gateway = self::session_gateway( is_string( $data['payment_method'] ?? null ) ? sanitize_key( $data['payment_method'] ) : '' );
+		$session = $data['gateway_input']['session'] ?? '';
+		if ( $gateway !== null && is_string( $session ) && $session !== '' ) {
+			// Who pays and where it goes, as the gateway has it; the form's own fields stay.
+			try {
+				$contact = $gateway->express_contact( $session );
+			} catch ( \RuntimeException $e ) {
+				return new WP_Error( 'flexacommerce_invalid_checkout', __( 'The payment provider could not be reached. Please try again.', 'flexacommerce' ), [ 'status' => 502 ] );
+			}
+			$data['billing']  = array_merge( is_array( $data['billing'] ?? null ) ? $data['billing'] : [], array_filter( $contact['billing'] ) );
+			$data['shipping'] = $contact['shipping'] !== null ? array_merge( is_array( $data['shipping'] ?? null ) ? $data['shipping'] : [], array_filter( $contact['shipping'] ) ) : [];
+			if ( $contact['shipping_rate'] !== '' ) {
+				$data['shipping_rate'] = $contact['shipping_rate'];
+			}
+		}
 		foreach ( [ 'billing', 'shipping' ] as $type ) {
 			if ( is_array( $data[ $type ] ?? null ) && is_string( $data[ $type ]['country'] ?? null ) ) {
 				$country                   = strtoupper( $data[ $type ]['country'] );
@@ -122,6 +177,41 @@ final class ExpressEndpoint extends StoreEndpoint {
 			},
 			201
 		);
+	}
+
+	/**
+	 * The quote for the address the sheet shares, which is not stored.
+	 *
+	 * @param WP_REST_Request<array<string,mixed>> $request
+	 * @return array<string,mixed>
+	 */
+	private function quoted( CheckoutService $checkout, WP_REST_Request $request ): array {
+		$raw     = $request->get_param( 'address' );
+		$raw     = is_array( $raw ) ? $raw : [];
+		$country = strtoupper( sanitize_text_field( (string) ( $raw['country'] ?? '' ) ) );
+		$address = $country === '' ? null : [
+			'country'  => $country,
+			'state'    => Countries::state_code( $country, sanitize_text_field( (string) ( $raw['state'] ?? '' ) ) ),
+			'postcode' => Countries::normalize_postcode( sanitize_text_field( (string) ( $raw['postcode'] ?? '' ) ) ),
+			'city'     => sanitize_text_field( (string) ( $raw['city'] ?? '' ) ),
+		];
+		return $checkout->express_quote(
+			get_current_user_id(),
+			$this->single( $request ),
+			$address,
+			sanitize_text_field( (string) $request->get_param( 'shipping_rate' ) ),
+			sanitize_key( (string) $request->get_param( 'payment_method' ) )
+		);
+	}
+
+	/** The enabled gateway `$id` when its buttons open a session, else null. */
+	private static function session_gateway( string $id ): ?ExpressSession {
+		$gateways = Plugin::instance()->payments()->gateways();
+		if ( $id === '' || ! $gateways->has( $id ) ) {
+			return null;
+		}
+		$gateway = $gateways->get( $id );
+		return $gateway instanceof ExpressSession && $gateways->settings()->enabled( $gateway ) ? $gateway : null;
 	}
 
 	/**

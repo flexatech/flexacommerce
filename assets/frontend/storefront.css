@@ -323,6 +323,8 @@
 .fxc-express { margin-block: 1rem; }
 .fxc-express--cart { margin-inline-start: auto; max-width: 20rem; }
 .fxc-express__title { margin: 0 0 .5rem; font-weight: 600; }
+.fxc-express__methods { display: grid; gap: .5rem; }
+.fxc-paypal { margin-top: .5rem; max-width: 30rem; }
 .fxc-express__terms, .fxc-express__message { margin: .5rem 0 0; font-size: .875em; }
 .fxc-express__message { color: #b32d2e; }
 .fxc-express__or { display: flex; align-items: center; gap: .75rem; margin: 1rem 0 0; opacity: .7; }

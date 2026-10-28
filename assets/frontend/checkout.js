@@ -571,9 +571,10 @@ function setup( root ) {
 		return Promise.all( waits );
 	}
 
+	// True once the order is placed and the page is leaving.
 	async function submit() {
 		if ( busy ) {
-			return;
+			return false;
 		}
 		busy = true;
 		place?.setAttribute( 'aria-disabled', 'true' );
@@ -595,7 +596,7 @@ function setup( root ) {
 				} ).catch( () => {} );
 			}
 			window.location.assign( result.redirect );
-			return;
+			return true;
 		} catch ( error ) {
 			message.textContent = '';
 			if ( error.code === 'payment' ) {
@@ -612,6 +613,7 @@ function setup( root ) {
 		busy = false;
 		place?.removeAttribute( 'aria-disabled' );
 		form.classList.remove( 'is-busy' );
+		return false;
 	}
 
 	/*
@@ -853,6 +855,20 @@ function setup( root ) {
 			return;
 		}
 		submit();
+	} );
+
+	/*
+	 * A gateway that draws its own pay button (PayPal, ADR-054) places the
+	 * order through this event: `check` only reports the fields, else
+	 * `placed` is the promise of submit().
+	 */
+	form.addEventListener( 'fxc:place', ( event ) => {
+		event.detail.ok = steps.length
+			? ! refused( 0, steps.length )
+			: form.reportValidity();
+		if ( event.detail.ok && ! event.detail.check ) {
+			event.detail.placed = submit();
+		}
 	} );
 
 	form.addEventListener( 'change', ( event ) => {

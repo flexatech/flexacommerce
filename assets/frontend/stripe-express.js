@@ -4,7 +4,8 @@
  * the address the wallet shares; the order goes to `store/express/order`
  * with a payment method made from the wallet, and Stripe.js finishes
  * 3-D Secure when the bank asks. On a product page the button buys that
- * product alone. The box stays hidden on a device without a wallet.
+ * product alone. The row stays hidden on a device without a wallet; the
+ * box around the rows shows once one gateway has buttons (ADR-054).
  */
 const SCRIPT = 'https://js.stripe.com/v3/';
 const WALLET = [
@@ -106,12 +107,13 @@ function filled( field ) {
 	return field.type === 'checkbox' ? field.checked : field.value.trim() !== '';
 }
 
-async function mount( box ) {
+async function mount( row ) {
 	let config = {};
 	try {
-		config = JSON.parse( box.dataset.fxcExpress || '{}' );
+		config = JSON.parse( row.dataset.fxcExpress || '{}' );
 	} catch {}
-	if ( ! config.key || ! data.api ) {
+	const box = row.closest( '.fxc-express' );
+	if ( config.gateway !== 'stripe' || ! config.key || ! data.api || ! box ) {
 		return;
 	}
 	const product = config.place === 'product' ? box.closest( 'form' ) : null;
@@ -248,7 +250,10 @@ async function mount( box ) {
 	} );
 	button.on( 'ready', ( event ) => {
 		const found = event.availablePaymentMethods;
-		box.hidden = ! ( found && Object.values( found ).some( Boolean ) );
+		row.hidden = ! ( found && Object.values( found ).some( Boolean ) );
+		if ( ! row.hidden ) {
+			box.hidden = false;
+		}
 	} );
 
 	// The sheet must open within a second of the click, so it uses the last quote.
@@ -407,7 +412,7 @@ async function mount( box ) {
 		}
 	} );
 
-	button.mount( box.querySelector( '.fxc-express__buttons' ) );
+	button.mount( row.querySelector( '.fxc-express__buttons' ) );
 
 	// Totals follow the product choice, the cart and the coupons.
 	let timer = 0;
@@ -417,10 +422,10 @@ async function mount( box ) {
 	};
 	product?.addEventListener( 'change', later );
 	product?.addEventListener( 'input', later );
-	box.addEventListener( 'pointerenter', later );
-	box.addEventListener( 'focusin', later );
+	row.addEventListener( 'pointerenter', later );
+	row.addEventListener( 'focusin', later );
 }
 
-for ( const box of document.querySelectorAll( '[data-fxc-express]' ) ) {
-	mount( box );
+for ( const row of document.querySelectorAll( '[data-fxc-express]' ) ) {
+	mount( row );
 }

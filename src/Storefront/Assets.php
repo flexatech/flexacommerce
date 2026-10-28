@@ -32,7 +32,8 @@ final class Assets {
 	/** @var array<string,mixed>|null */
 	private static ?array $checkout = null;
 
-	private static bool $express = false;
+	/** @var array<string,true> express modules on the page */
+	private static array $express = [];
 
 	public static function register(): void {
 		if ( self::$registered ) {
@@ -91,19 +92,19 @@ final class Assets {
 	}
 
 	/**
-	 * The wallet buttons' script module (ADR-053), from the gateway that
-	 * draws them, with the store API and the strings it shows.
+	 * An express gateway's script module (ADR-053, ADR-054), the one that
+	 * draws its buttons, with the store API and the strings it shows.
 	 */
-	public static function use_express( string $script ): void {
+	public static function use_express( string $module, string $script ): void {
 		self::register();
 		wp_enqueue_style( self::STYLE );
-		if ( self::$express ) {
+		if ( isset( self::$express[ $module ] ) ) {
 			return;
 		}
-		self::$express = true;
-		wp_register_script_module( self::EXPRESS, $script, [], FLEXACOMMERCE_VERSION );
-		wp_enqueue_script_module( self::EXPRESS );
-		add_filter( 'script_module_data_' . self::EXPRESS, [ self::class, 'express_data' ] );
+		self::$express[ $module ] = true;
+		wp_register_script_module( $module, $script, [], FLEXACOMMERCE_VERSION );
+		wp_enqueue_script_module( $module );
+		add_filter( 'script_module_data_' . $module, [ self::class, 'express_data' ] );
 	}
 
 	/**

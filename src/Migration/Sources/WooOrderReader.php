@@ -24,6 +24,12 @@ final class WooOrderReader {
 
 	private const PAID_STATUSES = [ 'processing', 'completed', 'refunded' ];
 
+	/** Woo gateway ids whose payments the built-in gateways can refund (ADR-054). */
+	private const GATEWAYS = [
+		'ppcp-gateway'             => 'paypal',
+		'ppcp-credit-card-gateway' => 'paypal',
+	];
+
 	public function order( int $id ): ?Record {
 		$order = wc_get_order( $id );
 		if ( ! $order instanceof \WC_Order || $order->get_type() !== 'shop_order' ) {
@@ -67,7 +73,7 @@ final class WooOrderReader {
 				'id'           => Ref::make( 'wc', 'transaction', 'payment-' . $id ),
 				'type'         => 'payment',
 				'status'       => 'succeeded',
-				'gateway'      => $order->get_payment_method( 'edit' ),
+				'gateway'      => self::gateway( $order ),
 				'reference'    => $reference !== '' ? $reference : null,
 				'amount'       => $money( $total ),
 				'completed_at' => $paid_at ?? Dates::from_wc( $order->get_date_created( 'edit' ) ),
@@ -296,7 +302,7 @@ final class WooOrderReader {
 			'id'           => Ref::make( 'wc', 'refund', $refund->get_id() ),
 			'type'         => 'refund',
 			'status'       => 'succeeded',
-			'gateway'      => $order->get_payment_method( 'edit' ),
+			'gateway'      => self::gateway( $order ),
 			'reference'    => null,
 			'amount'       => $money( $refund->get_amount( 'edit' ) ),
 			'reason'       => $refund->get_reason( 'edit' ),
@@ -323,6 +329,11 @@ final class WooOrderReader {
 		}
 		ksort( $out, SORT_STRING );
 		return $out;
+	}
+
+	private static function gateway( \WC_Order $order ): string {
+		$id = $order->get_payment_method( 'edit' );
+		return self::GATEWAYS[ $id ] ?? $id;
 	}
 
 	private static function decimal( mixed $value ): string {

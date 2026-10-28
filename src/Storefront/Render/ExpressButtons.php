@@ -15,9 +15,10 @@ defined( 'ABSPATH' ) || exit;
 
 /**
  * Wallet buttons (ADR-053): Apple Pay and Google Pay on the product page,
- * the cart and the top of the checkout. The box stays hidden until the
- * gateway's script finds a wallet on the device, so a shopper without one
- * sees nothing. A required field a wallet cannot fill (a company, a field
+ * the cart and the top of the checkout, and the PayPal buttons beside them
+ * (ADR-054). Each gateway gets its own row in one box, which stays hidden
+ * until a gateway's script has buttons to show, so a shopper without a
+ * wallet sees nothing. A required field a wallet cannot fill (a company, a field
  * of the merchant's) keeps the buttons off the product page and the
  * cart; on the checkout the shopper fills it in the form first. Pages
  * where no gateway turned them on never build the gateways (WalletPlaces).
@@ -34,14 +35,13 @@ final class ExpressButtons {
 		if ( ! WalletPlaces::on( $place ) ) {
 			return '';
 		}
-		$found = self::gateway( $place );
-		if ( $found === null ) {
+		$found = self::gateways( $place );
+		if ( $found === [] ) {
 			return '';
 		}
-		[ $id, $config ] = $found;
-		$country         = Settings::string( 'store_country' );
-		$extra           = [];
-		$phone           = false;
+		$country = Settings::string( 'store_country' );
+		$extra   = [];
+		$phone   = false;
 		foreach ( [ 'billing', 'shipping' ] as $type ) {
 			foreach ( FieldSchema::for_address( $type, $country )->fields() as $field ) {
 				if ( $field->id === 'phone' && $type === 'billing' ) {
@@ -60,29 +60,37 @@ final class ExpressButtons {
 		if ( $extra !== [] && $place !== 'checkout' ) {
 			return '';
 		}
-		$script = (string) ( $config['script'] ?? '' );
-		unset( $config['script'] );
-		if ( $script === '' ) {
+		$methods = '';
+		foreach ( $found as $id => $config ) {
+			$script = (string) ( $config['script'] ?? '' );
+			$module = (string) ( $config['module'] ?? Assets::EXPRESS );
+			unset( $config['script'], $config['module'] );
+			if ( $script === '' ) {
+				continue;
+			}
+			Assets::use_express( $module, $script );
+			$data     = $config + [
+				'payment_method' => $id,
+				'place'          => $place,
+				'phone'          => $phone,
+				'fields'         => $extra,
+			] + $context;
+			$methods .= '<div class="fxc-express__method fxc-express__method--' . esc_attr( $id ) . '" data-fxc-express="' . esc_attr( (string) wp_json_encode( $data ) ) . '" hidden><div class="fxc-express__buttons"></div></div>';
+		}
+		if ( $methods === '' ) {
 			return '';
 		}
-		Assets::use_express( $script );
 
 		$terms = Plugin::instance()->checkout()->service()->pages()->terms_url();
-		$data  = $config + [
-			'payment_method' => $id,
-			'place'          => $place,
-			'phone'          => $phone,
-			'fields'         => $extra,
-		] + $context;
-		$html  = '<div class="fxc-express fxc-express--' . esc_attr( $place ) . '" data-fxc-express="' . esc_attr( (string) wp_json_encode( $data ) ) . '" hidden>';
+		$html  = '<div class="fxc-express fxc-express--' . esc_attr( $place ) . '" hidden>';
 		if ( $place === 'checkout' ) {
 			$html .= '<p class="fxc-express__title">' . esc_html__( 'Express checkout', 'flexacommerce' ) . '</p>';
 		}
-		$html .= '<div class="fxc-express__buttons"></div>';
+		$html .= '<div class="fxc-express__methods">' . $methods . '</div>';
 		if ( $terms !== '' ) {
 			$html .= '<p class="fxc-express__terms">' . sprintf(
 				/* translators: %s: link to the terms and conditions */
-				esc_html__( 'Paying with a wallet means you accept the %s.', 'flexacommerce' ),
+				esc_html__( 'Paying with an express button means you accept the %s.', 'flexacommerce' ),
 				'<a href="' . esc_url( $terms ) . '" target="_blank">' . esc_html__( 'terms and conditions', 'flexacommerce' ) . '</a>'
 			) . '</p>';
 		}
@@ -94,13 +102,14 @@ final class ExpressButtons {
 	}
 
 	/**
-	 * The first enabled gateway with buttons for this place.
+	 * Every enabled gateway with buttons for this place, in the merchant's order.
 	 *
-	 * @return array{0:string,1:array<string,mixed>}|null
+	 * @return array<string,array<string,mixed>>
 	 */
-	private static function gateway( string $place ): ?array {
+	private static function gateways( string $place ): array {
 		$gateways = Plugin::instance()->payments()->gateways();
 		$gateways->settings()->prime( $gateways->ids() );
+		$found = [];
 		foreach ( $gateways->ids() as $id ) {
 			try {
 				$gateway = $gateways->get( $id );
@@ -109,12 +118,12 @@ final class ExpressButtons {
 				}
 				$config = $gateway->express_config( $place );
 				if ( $config !== null ) {
-					return [ $id, $config ];
+					$found[ $id ] = $config;
 				}
 			} catch ( \Throwable $e ) {
 				unset( $e );
 			}
 		}
-		return null;
+		return $found;
 	}
 }

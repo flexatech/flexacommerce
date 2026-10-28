@@ -63,6 +63,8 @@ final class CheckoutService {
 	public const WALLETS = [
 		'apple_pay'  => 'Apple Pay',
 		'google_pay' => 'Google Pay',
+		'venmo'      => 'Venmo',
+		'paylater'   => 'Pay Later',
 	];
 
 	private readonly CartTaxes $cart_taxes;
@@ -382,21 +384,25 @@ final class CheckoutService {
 				'amount' => $rate->cost->amount,
 			];
 		}
-		$fees  = $state->fee_total()->amount;
+		$fees = $state->fee_total()->amount;
+		// `kind` lets a gateway split the total the way its sheet does (PayPal, ADR-054).
 		$lines = [
 			[
+				'kind'   => 'subtotal',
 				'label'  => __( 'Subtotal', 'flexacommerce' ),
 				'amount' => $quote->total->amount - $quote->shipping->amount - $quote->tax->amount - $fees,
 			],
 		];
 		foreach ( $state->fees as $fee ) {
 			$lines[] = [
+				'kind'   => 'fee',
 				'label'  => $fee->name,
 				'amount' => $fee->amount->amount,
 			];
 		}
 		if ( $quote->tax->amount > 0 ) {
 			$lines[] = [
+				'kind'   => 'tax',
 				'label'  => __( 'Tax', 'flexacommerce' ),
 				'amount' => $quote->tax->amount,
 			];

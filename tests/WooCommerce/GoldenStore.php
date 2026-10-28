@@ -303,6 +303,9 @@ final class GoldenStore {
 			[ [ $store->products['tee'], 2 ] ],
 			'completed',
 			static function ( \WC_Order $o ): void {
+				// Paid through WooCommerce PayPal Payments, which keeps the capture id.
+				$o->set_payment_method( 'ppcp-gateway' );
+				$o->set_payment_method_title( 'PayPal' );
 				$o->set_transaction_id( 'ch_completed' );
 			}
 		);

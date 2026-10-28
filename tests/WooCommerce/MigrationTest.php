@@ -303,6 +303,8 @@ final class MigrationTest extends \WP_UnitTestCase {
 		$this->assertCount( 1, $payments );
 		$this->assertSame( 'import', $payments[0]['method'] );
 		$this->assertSame( 'ch_completed', $payments[0]['gateway_reference'] );
+		$this->assertSame( 'paypal', $payments[0]['gateway'], 'PayPal Payments orders refund through the PayPal gateway' );
+		$this->assertSame( 'ppcp-gateway', $completed['payment_method'], 'the order keeps what it was paid with' );
 		$notes = array_column( array_filter( $this->rows( 'order_history', (int) $completed['id'] ), static fn ( array $h ): bool => $h['type'] === 'note' ), 'customer_visible', 'message' );
 		$this->assertSame( '0', $notes['Packed by the warehouse.'] );
 		$this->assertSame( '1', $notes['Thanks for your order!'] );
