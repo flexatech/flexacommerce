@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Layers, Pencil, Percent, Plus, Receipt, Trash2, Users } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Layers, LayoutTemplate, Pencil, Percent, Plus, Receipt, Trash2, Users } from "lucide-react";
 
 import { showToast } from "@/shared/components/showToast";
 import { Badge } from "@/shared/components/ui/badge";
@@ -8,6 +8,7 @@ import { Card } from "@/shared/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/components/ui/dialog";
 import { Switch } from "@/shared/components/ui/switch";
 import { __, sprintf } from "@/shared/lib/i18n";
+import type { TemplateProps } from "../promotions/templates";
 import { PriceRuleDialog, RULE_PRESETS, type RulePreset } from "./PriceRuleDialog";
 import { summary } from "./ruleText";
 import { useDeletePriceRule, usePriceRules, useSavePriceRule, type PriceRule } from "./usePriceRules";
@@ -37,12 +38,19 @@ function RuleIcon({ rule }: { rule: Pick<PriceRule, "type" | "customers"> }) {
 }
 
 /** The Pricing rules tab of Promotions: prices that change without a code. */
-export function PriceRulesPanel() {
+export function PriceRulesPanel({ template, onTemplates, onTemplateUsed }: TemplateProps) {
     const list = usePriceRules();
     const save = useSavePriceRule();
     const remove = useDeletePriceRule();
     const [editing, setEditing] = useState<{ rule: PriceRule | null; preset?: RulePreset } | null>(null);
     const [deleting, setDeleting] = useState<PriceRule | null>(null);
+
+    useEffect(() => {
+        if (template?.kind === "rule") {
+            setEditing({ rule: null, preset: template.preset });
+            onTemplateUsed?.();
+        }
+    }, [template, onTemplateUsed]);
 
     const items = list.data?.items ?? [];
     const roles = list.data?.roles ?? [];
@@ -62,7 +70,13 @@ export function PriceRulesPanel() {
                 <p className="fxc:text-muted-foreground fxc:max-w-2xl fxc:text-sm">
                     {__("Prices that change on their own, with no code to type: a sale on a category, a lower price from a quantity up, or a price for a customer role. When several rules fit, the customer gets the lowest price; rules do not add up. A checkout fee adds its own line to the total instead.")}
                 </p>
-                <Button className="fxc:ms-auto" onClick={() => setEditing({ rule: null })}>
+                {onTemplates && (
+                    <Button variant="ghost" className="fxc:ms-auto" onClick={onTemplates}>
+                        <LayoutTemplate aria-hidden className="fxc:size-4" />
+                        {__("Templates")}
+                    </Button>
+                )}
+                <Button className={onTemplates ? undefined : "fxc:ms-auto"} onClick={() => setEditing({ rule: null })}>
                     <Plus aria-hidden className="fxc:size-4" />
                     {__("Add rule")}
                 </Button>
@@ -92,6 +106,11 @@ export function PriceRulesPanel() {
                                 </button>
                             ))}
                         </div>
+                        {onTemplates && (
+                            <Button variant="link" onClick={onTemplates}>
+                                {__("See all templates, coupons included")}
+                            </Button>
+                        )}
                     </div>
                 ) : (
                     <ul>

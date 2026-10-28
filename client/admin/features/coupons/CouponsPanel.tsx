@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Pencil, Plus, Search, Sparkles, Trash2 } from "lucide-react";
+import { LayoutTemplate, Pencil, Plus, Search, Sparkles, Trash2 } from "lucide-react";
 
 import { showToast } from "@/shared/components/showToast";
 import { Badge } from "@/shared/components/ui/badge";
@@ -11,7 +11,8 @@ import { __, sprintf } from "@/shared/lib/i18n";
 import { useDebounced } from "@/shared/lib/useDebounced";
 import { Select } from "@/shared/components/ui/select";
 import { formatDate, orderMoney } from "../orders/format";
-import { CouponDialog } from "./CouponDialog";
+import type { TemplateProps } from "../promotions/templates";
+import { CouponDialog, type CouponPreset } from "./CouponDialog";
 import { useCoupons, useDeleteCoupon, type Coupon, type CouponListParams } from "./useCoupons";
 
 function amountText(coupon: Coupon): string {
@@ -58,13 +59,13 @@ function stateOf(coupon: Coupon): { label: string; tone: "success" | "muted" | "
 }
 
 /** The Coupons tab of Promotions. */
-export function CouponsPanel() {
+export function CouponsPanel({ template, onTemplates, onTemplateUsed }: TemplateProps) {
     const [params, setParams] = useState<CouponListParams>({ status: "", search: "", page: 1 });
     const [search, setSearch] = useState("");
     const debounced = useDebounced(search);
     const list = useCoupons(params);
     const remove = useDeleteCoupon();
-    const [editing, setEditing] = useState<{ coupon: Coupon | null; automatic?: boolean } | null>(null);
+    const [editing, setEditing] = useState<{ coupon: Coupon | null; automatic?: boolean; preset?: CouponPreset } | null>(null);
     const [deleting, setDeleting] = useState<Coupon | null>(null);
 
     useEffect(() => {
@@ -72,6 +73,13 @@ export function CouponsPanel() {
             setParams({ ...params, search: debounced, page: 1 });
         }
     }, [debounced, params]);
+
+    useEffect(() => {
+        if (template?.kind === "coupon") {
+            setEditing({ coupon: null, automatic: template.automatic, preset: template.preset });
+            onTemplateUsed?.();
+        }
+    }, [template, onTemplateUsed]);
 
     const pages = list.data?.pages ?? 1;
 
@@ -99,7 +107,13 @@ export function CouponsPanel() {
                         { value: "disabled", label: __("Disabled") },
                     ]}
                 />
-                <Button variant="outline" className="fxc:ms-auto" onClick={() => setEditing({ coupon: null, automatic: true })}>
+                {onTemplates && (
+                    <Button variant="ghost" className="fxc:ms-auto" onClick={onTemplates}>
+                        <LayoutTemplate aria-hidden className="fxc:size-4" />
+                        {__("Templates")}
+                    </Button>
+                )}
+                <Button variant="outline" className={onTemplates ? undefined : "fxc:ms-auto"} onClick={() => setEditing({ coupon: null, automatic: true })}>
                     <Sparkles aria-hidden className="fxc:size-4" />
                     {__("Add automatic discount")}
                 </Button>
@@ -212,6 +226,7 @@ export function CouponsPanel() {
                 open={editing !== null}
                 coupon={editing?.coupon ?? null}
                 automatic={editing?.automatic ?? false}
+                preset={editing?.preset}
                 onOpenChange={(open) => !open && setEditing(null)}
             />
 

@@ -72,6 +72,42 @@ const picks = (type: Pick["type"], ids: number[] | undefined): Pick[] => (ids ??
 
 const idsOf = (list: Pick[], type: Pick["type"]): number[] => list.filter((p) => p.type === type).map((p) => p.id);
 
+/**
+ * A new coupon's starting values, from a template (ADR-047). Money (the amount, the minimum spend, a lifetime
+ * spend) is written for a currency with 2 decimals and scaled to the store's.
+ */
+export type CouponPreset = Partial<
+    Omit<CouponInput, "status" | "starts_at" | "expires_at" | "max_subtotal" | "usage_limit" | "item_limit" | "individual_use" | "exclude_sale_items" | "emails" | "repeat_limit">
+>;
+
+function presetDraft(preset: CouponPreset): Draft {
+    const { currency } = getPluginGlobal();
+    const money = (minor: number) => Math.round((minor * 10 ** currency.exponent) / 100);
+    const base = draftOf(null);
+    const type = preset.type ?? base.type;
+    const mode = preset.bundle_mode || base.bundle_mode;
+    const amount = preset.amount ?? 0;
+    const percent = isPercentType(type, mode);
+    return {
+        ...base,
+        automatic: preset.automatic ?? false,
+        code: preset.code ?? "",
+        type,
+        bundle_mode: mode,
+        percent: percent && amount > 0 ? String(amount / 100) : "",
+        amount: percent ? 0 : money(amount),
+        description: preset.description ?? "",
+        min_subtotal: preset.min_subtotal != null ? money(preset.min_subtotal) : null,
+        per_customer_limit: preset.per_customer_limit ? String(preset.per_customer_limit) : "",
+        free_shipping: preset.free_shipping ?? false,
+        buy_qty: preset.buy_qty ? String(preset.buy_qty) : base.buy_qty,
+        get_qty: preset.get_qty ? String(preset.get_qty) : base.get_qty,
+        conditions: preset.conditions
+            ? { ...preset.conditions, items: preset.conditions.items.map((c) => (c.type === "lifetime_spend" ? { ...c, value: money(c.value) } : c)) }
+            : base.conditions,
+    };
+}
+
 function draftOf(coupon: Coupon | null): Draft {
     const bogo = coupon?.type === "buy_x_get_y";
     const sets = bogo || coupon?.type === "bundle";
@@ -254,10 +290,12 @@ interface Props {
     coupon: Coupon | null;
     /** For a new one: start as an automatic discount. */
     automatic?: boolean;
+    /** For a new one: start from a template. */
+    preset?: CouponPreset;
     onOpenChange: (open: boolean) => void;
 }
 
-export function CouponDialog({ open, coupon, automatic = false, onOpenChange }: Props) {
+export function CouponDialog({ open, coupon, automatic = false, preset, onOpenChange }: Props) {
     const { currency } = getPluginGlobal();
     const [draft, setDraft] = useState<Draft>(() => draftOf(coupon));
     const [errors, setErrors] = useState<Record<string, string>>({});
@@ -265,10 +303,10 @@ export function CouponDialog({ open, coupon, automatic = false, onOpenChange }: 
 
     useEffect(() => {
         if (open) {
-            setDraft(coupon === null ? { ...draftOf(null), automatic } : draftOf(coupon));
+            setDraft(coupon !== null ? draftOf(coupon) : preset !== undefined ? presetDraft(preset) : { ...draftOf(null), automatic });
             setErrors({});
         }
-    }, [open, coupon, automatic]);
+    }, [open, coupon, automatic, preset]);
 
     const set = <K extends keyof Draft>(key: K, value: Draft[K]) => setDraft((d) => ({ ...d, [key]: value }));
 

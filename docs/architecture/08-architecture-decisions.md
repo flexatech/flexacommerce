@@ -703,3 +703,19 @@ Status of every ADR: **Accepted** (plan approved 2026-10-24) unless it says othe
 **Consequences.** No `DB_VERSION` and still 61 settings. Product options are not simulated; a variable product must be added as one of its variations. There is no "as of a date" run: a rule with a future start or a past end shows as `scheduled` or `ended`.
 
 **Revisit when.** Merchants ask to test a cart on a future date, with product options, or to save test carts and rerun them after editing rules.
+
+## ADR-047: Promotion templates
+
+**Context.** flexa-extra ships rule templates: a merchant picks "Bulk discount" or "BOGO" and gets a rule with the values filled in. FlexaCommerce had six presets inside the pricing rule editor and on the empty rule list, and nothing for coupons. A merchant who wants "free shipping over 75" or "a first order discount" had to know that it is a coupon, which type, and which condition.
+
+**Decision.**
+1. **One gallery, by goal.** A Templates button on the Coupons and Pricing rules tabs (and a link on the empty rule list) opens a gallery grouped by what the merchant wants to do: run a sale, grow the cart, sell more units, reward customers, charge a fee. Each card says what it creates (pricing rule, checkout fee, automatic discount or coupon code), so the merchant does not need to know where a promotion lives.
+2. **Templates fill the editor.** Picking one switches to its tab and opens the pricing rule or coupon editor with its values. Nothing is saved until the merchant saves; targets (products, categories, roles, payment methods) are left for the merchant to pick, and the editor's checks say what is missing.
+3. **Money follows the store.** Amounts are written for a currency with 2 decimals and scaled to the store's exponent when the editor opens; the descriptions show them in the store currency.
+4. **The list.** Store-wide sale, category sale, clearance, discount code; spend and save, amount off a big order, free shipping over an amount; bulk discount, graduated tiers, buy one get one free, buy 2 get 1 half price, bundle price; wholesale price, first order discount (`order_count` at most 0, once per customer), loyal customer discount (`lifetime_spend` from 500); small order fee, payment fee, handling fee. The pricing rule editor keeps its "Start from" presets.
+
+**Alternatives.** Templates stored on the server and editable by the merchant: more to build and test for a list that changes with releases. Creating the promotion straight from the card: one click, but it would save a rule with no targets or a coupon code the merchant never chose.
+
+**Consequences.** Client only: no route, no `DB_VERSION`, still 61 settings. `TemplatePayloadTest` saves the values of the templates that need no targets, so a merchant who changes nothing gets no error.
+
+**Revisit when.** Merchants ask to save their own templates, or to share them between stores.
