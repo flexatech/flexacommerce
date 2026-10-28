@@ -17,7 +17,8 @@ defined( 'ABSPATH' ) || exit;
 
 /**
  * Product badges (ADR-023). Every call answers with the whole list, in
- * order, so the screen never has to merge a change into what it shows.
+ * order, and the roles a badge can name (ADR-049), so the screen never has
+ * to merge a change into what it shows.
  */
 final class BadgesEndpoint extends Endpoint {
 	public function register_routes(): void {
@@ -149,6 +150,19 @@ final class BadgesEndpoint extends Endpoint {
 			},
 			Plugin::instance()->badges()->all()
 		);
-		return new WP_REST_Response( [ 'items' => $items ], $status );
+		$roles = [];
+		foreach ( wp_roles()->get_names() as $value => $label ) {
+			$roles[] = [
+				'value' => (string) $value,
+				'label' => translate_user_role( $label ),
+			];
+		}
+		return new WP_REST_Response(
+			[
+				'items' => $items,
+				'roles' => $roles,
+			],
+			$status
+		);
 	}
 }

@@ -21,7 +21,7 @@ Status: **Approved 2026-10-24**. All table names below are shown without `{$wpdb
 | Plugin log | `fxc_logs` | Filterable by channel and level, pruned by cron (§4.12). |
 | Migration | `fxc_id_map`, `fxc_migration_jobs`, `fxc_migration_log` | Idempotency and resumability (doc 05). |
 | Customers | `wp_users` + user options `fxc_billing`, `fxc_shipping` (JSON, site-prefixed meta keys) | No separate customer table (§7). |
-| Settings | `wp_options`: `flexacommerce_settings` (autoload), `flexacommerce_badges` (autoload, ordered list of up to 50 badges, ADR-023), `flexacommerce_price_rules` (autoload, ordered list of up to 100 rules, ADR-024, type `adjust`, `bulk`, `graduated` (ADR-042) or `fee` (ADR-043, with `cap`), each with its `conditions`, ADR-041), `flexacommerce_product_options` (autoload, ordered list of up to 200 option sets, ADR-025, ADR-029), `flexacommerce_shipping_zones`, `flexacommerce_gateway_{id}`, `flexacommerce_email_{id}` (no autoload) | Small configuration data. |
+| Settings | `wp_options`: `flexacommerce_settings` (autoload), `flexacommerce_badges` (autoload, ordered list of up to 50 badges, ADR-023, each with `customers` and `roles`, ADR-049), `flexacommerce_price_rules` (autoload, ordered list of up to 100 rules, ADR-024, type `adjust`, `bulk`, `graduated` (ADR-042) or `fee` (ADR-043, with `cap`), each with its `conditions`, ADR-041), `flexacommerce_product_options` (autoload, ordered list of up to 200 option sets, ADR-025, ADR-029), `flexacommerce_shipping_zones`, `flexacommerce_gateway_{id}`, `flexacommerce_email_{id}` (no autoload) | Small configuration data. |
 | Media | Media Library attachments | Product meta and variants store attachment IDs only. |
 
 ## 2. Cross-cutting rules

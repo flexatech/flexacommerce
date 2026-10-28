@@ -7,6 +7,12 @@ export type BadgeShape = "rounded" | "pill" | "square" | "circle";
 export type BadgeCondition = "always" | "on_sale" | "new" | "featured" | "low_stock" | "out_of_stock";
 export type BadgeScope = "all" | "products" | "categories";
 export type BadgePlaces = "all" | "single" | "loop";
+export type BadgeCustomers = "all" | "logged_in" | "guests" | "roles";
+
+export interface Role {
+    value: string;
+    label: string;
+}
 
 export interface ProductBadge {
     id: number;
@@ -28,12 +34,17 @@ export interface ProductBadge {
     /** UTC, ISO 8601 with Z. */
     starts_at: string | null;
     ends_at: string | null;
+    /** Who sees it (ADR-049); `roles` is used with `roles` only. */
+    customers: BadgeCustomers;
+    roles: string[];
 }
 
 export type BadgeInput = Omit<ProductBadge, "id">;
 
 interface Listing {
     items: ProductBadge[];
+    /** The roles a badge can name. */
+    roles: Role[];
 }
 
 const KEY = ["badges"] as const;
@@ -44,6 +55,15 @@ export function useBadges() {
         queryFn: () => api.get<Listing>("admin/badges"),
         select: (data) => data.items,
     });
+}
+
+export function useBadgeRoles(): Role[] {
+    const query = useQuery({
+        queryKey: KEY,
+        queryFn: () => api.get<Listing>("admin/badges"),
+        select: (data) => data.roles,
+    });
+    return query.data ?? [];
 }
 
 /** Every call answers with the whole list; it replaces the cached one. */

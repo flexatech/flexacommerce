@@ -10,7 +10,7 @@ import { Switch } from "@/shared/components/ui/switch";
 import { __, sprintf } from "@/shared/lib/i18n";
 import { BadgeChip, sampleLabel } from "./BadgeChip";
 import { BadgeDialog, PRESETS, type Preset } from "./BadgeDialog";
-import { useBadges, useDeleteBadge, useReorderBadges, useSaveBadge, type BadgeCondition, type ProductBadge } from "./useBadges";
+import { useBadgeRoles, useBadges, useDeleteBadge, useReorderBadges, useSaveBadge, type BadgeCondition, type ProductBadge, type Role } from "./useBadges";
 
 export const CONDITION_LABELS: Record<BadgeCondition, string> = {
     always: __("Always"),
@@ -22,7 +22,7 @@ export const CONDITION_LABELS: Record<BadgeCondition, string> = {
 };
 
 /** One line on who gets the badge and where. */
-function summary(badge: ProductBadge): string {
+function summary(badge: ProductBadge, roles: Role[]): string {
     const when = badge.condition === "new" ? sprintf(__("Added in the last %d days"), badge.new_days) : CONDITION_LABELS[badge.condition];
     const who =
         badge.applies_to === "products"
@@ -31,7 +31,16 @@ function summary(badge: ProductBadge): string {
               ? sprintf(__("%d categories"), badge.category_ids.length)
               : __("All products");
     const where = badge.places === "single" ? __("Product page") : badge.places === "loop" ? __("Product lists") : __("Everywhere");
-    return [when, who, where].join(" · ");
+    const names = badge.roles.map((r) => roles.find((role) => role.value === r)?.label ?? r);
+    const shoppers =
+        badge.customers === "logged_in"
+            ? __("Logged-in customers")
+            : badge.customers === "guests"
+              ? __("Guests only")
+              : badge.customers === "roles"
+                ? names.join(", ")
+                : null;
+    return [when, who, where, shoppers].filter((part) => part !== null).join(" · ");
 }
 
 /** Off, scheduled or ended; null when it shows now. */
@@ -52,6 +61,7 @@ function stateOf(badge: ProductBadge): { label: string; tone: "muted" | "destruc
 /** The Badges tab of Promotions: labels drawn over product images, in the order they stack. */
 export function BadgesPanel() {
     const list = useBadges();
+    const roles = useBadgeRoles();
     const save = useSaveBadge();
     const reorder = useReorderBadges();
     const remove = useDeleteBadge();
@@ -124,7 +134,7 @@ export function BadgesPanel() {
                                             <span className="fxc:truncate">{badge.label}</span>
                                             {state && <Badge variant={state.tone}>{state.label}</Badge>}
                                         </div>
-                                        <div className="fxc:text-muted-foreground fxc:text-xs">{summary(badge)}</div>
+                                        <div className="fxc:text-muted-foreground fxc:text-xs">{summary(badge, roles)}</div>
                                     </div>
                                     <div className="fxc:flex fxc:items-center fxc:gap-1">
                                         <Switch

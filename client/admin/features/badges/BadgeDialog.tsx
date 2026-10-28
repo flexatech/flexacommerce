@@ -13,8 +13,10 @@ import { __ } from "@/shared/lib/i18n";
 import { TargetPicker, type Pick as Choice } from "../coupons/TargetPicker";
 import { BadgeChip } from "./BadgeChip";
 import {
+    useBadgeRoles,
     useSaveBadge,
     type BadgeCondition,
+    type BadgeCustomers,
     type BadgeInput,
     type BadgePlaces,
     type BadgePosition,
@@ -54,6 +56,8 @@ interface Draft {
     places: BadgePlaces;
     starts_at: string;
     ends_at: string;
+    customers: BadgeCustomers;
+    roles: string[];
 }
 
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -98,6 +102,8 @@ function draftOf(badge: ProductBadge | null, preset: Preset | undefined): Draft 
         places: badge?.places ?? "all",
         starts_at: toLocalInput(badge?.starts_at ?? null),
         ends_at: toLocalInput(badge?.ends_at ?? null),
+        customers: badge?.customers ?? "all",
+        roles: badge?.roles ?? [],
     };
 }
 
@@ -118,6 +124,8 @@ function inputOf(draft: Draft): BadgeInput {
         places: draft.places,
         starts_at: toUtc(draft.starts_at),
         ends_at: toUtc(draft.ends_at),
+        customers: draft.customers,
+        roles: draft.customers === "roles" ? draft.roles : [],
     };
 }
 
@@ -242,6 +250,7 @@ interface Props {
 export function BadgeDialog({ open, badge, preset, onOpenChange }: Props) {
     const [draft, setDraft] = useState<Draft>(() => draftOf(badge, preset));
     const [errors, setErrors] = useState<Record<string, string>>({});
+    const roles = useBadgeRoles();
     const [chosen, setChosen] = useState<string>(preset?.key ?? PRESETS[0].key);
     const save = useSaveBadge();
 
@@ -447,7 +456,7 @@ export function BadgeDialog({ open, badge, preset, onOpenChange }: Props) {
                         </section>
 
                         <section className="fxc:space-y-4 fxc:border-t fxc:pt-5">
-                            <h3 className="fxc:text-sm fxc:font-semibold">{__("Where and when")}</h3>
+                            <h3 className="fxc:text-sm fxc:font-semibold">{__("Where, who and when")}</h3>
                             <Field label={__("Show on")}>
                                 {(id) => (
                                     <Select
@@ -463,6 +472,53 @@ export function BadgeDialog({ open, badge, preset, onOpenChange }: Props) {
                                     />
                                 )}
                             </Field>
+                            <Field
+                                label={__("Customers")}
+                                help={
+                                    draft.customers === "all"
+                                        ? undefined
+                                        : draft.customers === "guests"
+                                          ? __("Hidden once a customer logs in. Use it to invite guests to sign up.")
+                                          : __("Guests never see it. Page caches keep logged-in pages apart from guest pages by default, so the badge stays with the right shoppers.")
+                                }
+                                error={errors.customers}
+                            >
+                                {(id) => (
+                                    <Select
+                                        id={id}
+                                        className="fxc:sm:w-64"
+                                        value={draft.customers}
+                                        onChange={(e) => set("customers", e.target.value as BadgeCustomers)}
+                                        options={[
+                                            { value: "all", label: __("Everyone") },
+                                            { value: "logged_in", label: __("Logged-in customers") },
+                                            { value: "guests", label: __("Guests only") },
+                                            { value: "roles", label: __("Customers with chosen roles") },
+                                        ]}
+                                    />
+                                )}
+                            </Field>
+                            {draft.customers === "roles" && (
+                                <fieldset>
+                                    <legend className="fxc:mb-2 fxc:text-sm fxc:font-medium">{__("Roles")}</legend>
+                                    <div className="fxc:grid fxc:gap-2 fxc:sm:grid-cols-2">
+                                        {roles.map((role) => (
+                                            <label key={role.value} className="fxc:flex fxc:items-center fxc:gap-2 fxc:text-sm">
+                                                <input
+                                                    type="checkbox"
+                                                    className="flexacommerce-check"
+                                                    checked={draft.roles.includes(role.value)}
+                                                    onChange={(e) =>
+                                                        set("roles", e.target.checked ? [...draft.roles, role.value] : draft.roles.filter((r) => r !== role.value))
+                                                    }
+                                                />
+                                                {role.label}
+                                            </label>
+                                        ))}
+                                    </div>
+                                    {errors.roles && <p className="fxc:text-destructive fxc:mt-1 fxc:text-xs">{errors.roles}</p>}
+                                </fieldset>
+                            )}
                             <div className="fxc:grid fxc:gap-4 fxc:sm:grid-cols-2">
                                 <Field label={__("Starts")} help={__("Empty: right away.")} error={errors.starts_at}>
                                     {(id) => <Input id={id} type="datetime-local" value={draft.starts_at} onChange={(e) => set("starts_at", e.target.value)} />}

@@ -207,6 +207,60 @@ final class BadgesTest extends CartTestCase {
 		self::assertSame( [ 'Mug', 'All but mug' ], array_slice( $this->labels( $shirt, Badge::LOOP, '2026-05-01 00:00:00' ), 1 ) );
 	}
 
+	public function test_customers_pick_who_sees_it(): void {
+		$id = $this->simple();
+		$this->badges()->save( [ 'label' => 'All' ] );
+		$this->badges()->save(
+			[
+				'label'     => 'Members',
+				'customers' => Badge::LOGGED_IN,
+			]
+		);
+		$this->badges()->save(
+			[
+				'label'     => 'Sign up',
+				'customers' => Badge::GUESTS,
+			]
+		);
+		$trade = $this->badges()->save(
+			[
+				'label'     => 'Trade',
+				'customers' => Badge::ROLES,
+				'roles'     => [ 'editor', 'editor' ],
+			]
+		);
+		self::assertSame( [ 'editor' ], $trade->roles );
+
+		$editor     = self::factory()->user->create( [ 'role' => 'editor' ] );
+		$subscriber = self::factory()->user->create( [ 'role' => 'subscriber' ] );
+		self::assertSame( [ 'All', 'Sign up' ], $this->labels( $id ) );
+		self::assertSame( [ 'All', 'Members' ], $this->labels( $id, Badge::LOOP, self::NOW, $subscriber ) );
+		self::assertSame( [ 'All', 'Members', 'Trade' ], $this->labels( $id, Badge::LOOP, self::NOW, $editor ) );
+
+		$open = $this->badges()->save( [ 'customers' => Badge::EVERYONE ], $trade->id );
+		self::assertSame( [], $open->roles, 'roles are dropped when no longer used' );
+
+		foreach ( [ [ 'roles' => [] ], [ 'roles' => [ 'no_such_role' ] ], [ 'roles' => 'editor' ] ] as $input ) {
+			try {
+				$this->badges()->save( [ 'customers' => Badge::ROLES ] + $input, $trade->id );
+				self::fail( 'saved roles ' . wp_json_encode( $input ) );
+			} catch ( InvalidBadge $e ) {
+				self::assertSame( 'roles', $e->field );
+			}
+		}
+		try {
+			$this->badges()->save( [ 'customers' => 'vip' ], $trade->id );
+			self::fail( 'saved an unknown audience' );
+		} catch ( InvalidBadge $e ) {
+			self::assertSame( 'customers', $e->field );
+		}
+
+		wp_set_current_user( $editor );
+		$html = Storefront::instance()->part( 'badges', $id );
+		self::assertStringContainsString( '>Members<', $html, 'the overlay reads the current shopper' );
+		self::assertStringNotContainsString( '>Sign up<', $html );
+	}
+
 	public function test_the_overlay_in_the_gallery_and_in_lists(): void {
 		$id = $this->simple();
 		$this->badges()->save(
@@ -276,6 +330,8 @@ final class BadgesTest extends CartTestCase {
 		);
 		self::assertSame( [ 'A', 'B' ], array_column( $response->get_data()['items'], 'label' ) );
 		self::assertSame( '2026-07-01T10:00:00Z', $response->get_data()['items'][1]['ends_at'] );
+		self::assertSame( 'all', $response->get_data()['items'][1]['customers'] );
+		self::assertContains( 'editor', array_column( $response->get_data()['roles'], 'value' ), 'the roles a badge can name' );
 
 		$response = $this->send( $server, 'PATCH', '/1', [ 'enabled' => false ] );
 		self::assertSame( 200, $response->get_status() );
@@ -300,8 +356,8 @@ final class BadgesTest extends CartTestCase {
 	}
 
 	/** @return list<string> */
-	private function labels( int $id, string $place = Badge::LOOP, string $now = self::NOW ): array {
-		return array_column( ( new BadgeMatcher( $this->badges() ) )->for_product( $this->find( $id ), $place, $now ), 'label' );
+	private function labels( int $id, string $place = Badge::LOOP, string $now = self::NOW, int $user_id = 0 ): array {
+		return array_column( ( new BadgeMatcher( $this->badges() ) )->for_product( $this->find( $id ), $place, $now, $user_id ), 'label' );
 	}
 
 	private function server(): \WP_REST_Server {

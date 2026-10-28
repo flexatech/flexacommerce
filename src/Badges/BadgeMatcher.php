@@ -18,19 +18,26 @@ defined( 'ABSPATH' ) || exit;
  * so a product list costs no query per badge.
  */
 final class BadgeMatcher {
+	/** @var array<int,list<string>> roles by user id */
+	private array $roles = [];
+
 	public function __construct( private readonly BadgeRepository $badges ) {}
 
 	/**
 	 * The badges of `$product` shown in `$place`, in list order, each with
 	 * its label after `{percent}` is filled in.
 	 *
-	 * @param string $now UTC `Y-m-d H:i:s`
+	 * @param string $now     UTC `Y-m-d H:i:s`
+	 * @param int    $user_id the shopper, 0 for a guest (ADR-049)
 	 * @return list<array{badge:Badge,label:string}>
 	 */
-	public function for_product( Product $product, string $place, string $now ): array {
+	public function for_product( Product $product, string $place, string $now, int $user_id ): array {
 		$out = [];
 		foreach ( $this->badges->all() as $badge ) {
-			if ( ! $badge->is_live( $now ) || ! $badge->shows_in( $place ) || ! $this->targets( $badge, $product ) || ! $this->holds( $badge, $product, $now ) ) {
+			if ( ! $badge->is_live( $now ) || ! $badge->shows_in( $place ) || ! $badge->shows_to( $user_id, $this->roles_of( $badge, $user_id ) ) ) {
+				continue;
+			}
+			if ( ! $this->targets( $badge, $product ) || ! $this->holds( $badge, $product, $now ) ) {
 				continue;
 			}
 			$label = $badge->label;
@@ -47,6 +54,18 @@ final class BadgeMatcher {
 			];
 		}
 		return $out;
+	}
+
+	/** @return list<string> read once per user, and only for a badge that asks */
+	private function roles_of( Badge $badge, int $user_id ): array {
+		if ( $badge->customers !== Badge::ROLES || $user_id <= 0 ) {
+			return [];
+		}
+		if ( ! isset( $this->roles[ $user_id ] ) ) {
+			$user                    = get_userdata( $user_id );
+			$this->roles[ $user_id ] = $user instanceof \WP_User ? array_values( $user->roles ) : [];
+		}
+		return $this->roles[ $user_id ];
 	}
 
 	private function targets( Badge $badge, Product $product ): bool {

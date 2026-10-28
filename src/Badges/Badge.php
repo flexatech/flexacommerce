@@ -35,12 +35,20 @@ final class Badge {
 	public const LOOP       = 'loop';
 	public const PLACES     = [ self::EVERYWHERE, self::SINGLE, self::LOOP ];
 
+	/** Who sees it (ADR-049): everyone, signed-in shoppers, guests, or chosen roles. */
+	public const EVERYONE  = 'all';
+	public const LOGGED_IN = 'logged_in';
+	public const GUESTS    = 'guests';
+	public const ROLES     = 'roles';
+	public const CUSTOMERS = [ self::EVERYONE, self::LOGGED_IN, self::GUESTS, self::ROLES ];
+
 	public const PERCENT_TOKEN = '{percent}';
 
 	/**
-	 * @param list<int> $product_ids         with PRODUCTS
-	 * @param list<int> $category_ids        with CATEGORIES, children included
-	 * @param list<int> $exclude_product_ids never shown on these
+	 * @param list<int>    $product_ids         with PRODUCTS
+	 * @param list<int>    $category_ids        with CATEGORIES, children included
+	 * @param list<int>    $exclude_product_ids never shown on these
+	 * @param list<string> $roles               with ROLES
 	 */
 	public function __construct(
 		public readonly int $id,
@@ -59,6 +67,8 @@ final class Badge {
 		public readonly string $places = self::EVERYWHERE,
 		public readonly ?string $starts_at = null,
 		public readonly ?string $ends_at = null,
+		public readonly string $customers = self::EVERYONE,
+		public readonly array $roles = [],
 	) {}
 
 	/** @param array<string,mixed> $row a stored row, already checked */
@@ -82,6 +92,8 @@ final class Badge {
 			places: in_array( $row['places'] ?? null, self::PLACES, true ) ? (string) $row['places'] : self::EVERYWHERE,
 			starts_at: $opt( 'starts_at' ),
 			ends_at: $opt( 'ends_at' ),
+			customers: in_array( $row['customers'] ?? null, self::CUSTOMERS, true ) ? (string) $row['customers'] : self::EVERYONE,
+			roles: array_values( array_filter( is_array( $row['roles'] ?? null ) ? $row['roles'] : [], 'is_string' ) ),
 		);
 	}
 
@@ -104,6 +116,8 @@ final class Badge {
 			'places'              => $this->places,
 			'starts_at'           => $this->starts_at,
 			'ends_at'             => $this->ends_at,
+			'customers'           => $this->customers,
+			'roles'               => $this->roles,
 		];
 	}
 
@@ -116,5 +130,19 @@ final class Badge {
 
 	public function shows_in( string $place ): bool {
 		return $this->places === self::EVERYWHERE || $this->places === $place;
+	}
+
+	/**
+	 * Shown to a shopper signed in as `$user_id` (0: a guest) with `$roles`.
+	 *
+	 * @param list<string> $roles
+	 */
+	public function shows_to( int $user_id, array $roles ): bool {
+		return match ( $this->customers ) {
+			self::LOGGED_IN => $user_id > 0,
+			self::GUESTS    => $user_id === 0,
+			self::ROLES     => $user_id > 0 && array_intersect( $this->roles, $roles ) !== [],
+			default         => true,
+		};
 	}
 }

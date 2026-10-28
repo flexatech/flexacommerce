@@ -25,7 +25,7 @@ final class BadgeOverlay {
 			'badges',
 			function () use ( $product, $place ): string {
 				$corners = [];
-				foreach ( $this->matcher->for_product( $product, $place, gmdate( 'Y-m-d H:i:s' ) ) as [ 'badge' => $badge, 'label' => $label ] ) {
+				foreach ( $this->matcher->for_product( $product, $place, gmdate( 'Y-m-d H:i:s' ), get_current_user_id() ) as [ 'badge' => $badge, 'label' => $label ] ) {
 					$corners[ $badge->position ][] = self::badge( $badge, $label );
 				}
 				if ( $corners === [] ) {

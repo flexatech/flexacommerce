@@ -735,3 +735,18 @@ Status of every ADR: **Accepted** (plan approved 2026-10-24) unless it says othe
 **Consequences.** No `DB_VERSION` and still 61 settings. A product with a video and no image shows no gallery, since the video needs a cover; the editor says so. `cart.js` grows by about 380 bytes gzip (8327 of 10240) and `storefront.css` by about 230 (5349).
 
 **Revisit when.** Merchants ask for several videos, a custom cover image, or autoplay without sound.
+
+## ADR-049: Badge customer conditions
+
+**Context.** flexa-extra can show a badge to logged-in customers, to guests, or to chosen roles: "Member price" for logged-in shoppers, "Sign up for 10% off" for guests, "Trade" for wholesale roles. ADR-023 left this out because a badge drawn on the server ends up in cached pages. ADR-024 later accepted role and logged-in pricing on the basis that page caches keep logged-in pages apart from guest pages, which is how WordPress page caches behave by default (they skip pages for a request with a login cookie).
+
+**Decision.**
+1. **Four choices.** A badge gets `customers`: `all` (default), `logged_in`, `guests` or `roles`, with `roles` (a list of role slugs) for the last. These are the pricing rule choices plus `guests`, which a price rule has no use for and a badge does. Roles must exist (`wp_roles()->is_role()`), at least one is needed, duplicates collapse, and they are dropped when the badge no longer uses them. An unknown value is refused with field `customers`.
+2. **Checked first, on the server.** `BadgeMatcher::for_product()` takes the user id and checks `Badge::shows_to()` before the product checks, so a badge for another audience costs nothing. Roles are read once per user per request, and only when a badge asks for them. `BadgeOverlay` passes `get_current_user_id()`. The overlay stays server-rendered: no request after load and no flash of a badge.
+3. **The editor.** The badge dialog's last section becomes "Where, who and when", with a Customers select and role checkboxes, and help text that says guests never see a logged-in badge. The list line names the audience when it is not everyone. `GET /admin/badges` returns `roles` beside `items`, as the pricing rules route does.
+
+**Alternatives.** Rendering the badges in the browser from a per-user request: correct under any cache, but every product list waits for a request, and badges appear after the images. Sending `Vary: Cookie`: most page caches ignore it, and it would split the guest cache by every cookie.
+
+**Consequences.** No `DB_VERSION`, no new setting (still 61). Stored badges without the keys read as `all`. A page cache set to serve cached pages to logged-in users would show the badges of whoever filled it; that cache would already be wrong for pricing rules (ADR-024) and carts, so it needs no special handling here.
+
+**Revisit when.** Merchants ask for conditions on purchase history (`order_count`, `lifetime_spend`, ADR-041) for badges, or a store runs a page cache that does not split by login.

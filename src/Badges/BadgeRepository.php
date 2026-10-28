@@ -154,6 +154,7 @@ final class BadgeRepository {
 				'condition'  => Badge::CONDITIONS,
 				'applies_to' => Badge::SCOPES,
 				'places'     => Badge::PLACES,
+				'customers'  => Badge::CUSTOMERS,
 			] as $field => $allowed
 		) {
 			if ( ! in_array( $in[ $field ], $allowed, true ) ) {
@@ -174,6 +175,7 @@ final class BadgeRepository {
 		if ( $in['applies_to'] === Badge::CATEGORIES && $in['category_ids'] === [] ) {
 			throw new InvalidBadge( __( 'Pick at least one category.', 'flexacommerce' ), 'category_ids' );
 		}
+		$in['roles']     = $in['customers'] === Badge::ROLES ? self::roles( $in['roles'] ) : [];
 		$in['starts_at'] = self::date( $in['starts_at'], 'starts_at' );
 		$in['ends_at']   = self::date( $in['ends_at'], 'ends_at' );
 		if ( $in['starts_at'] !== null && $in['ends_at'] !== null && $in['ends_at'] <= $in['starts_at'] ) {
@@ -196,7 +198,27 @@ final class BadgeRepository {
 			places: $in['places'],
 			starts_at: $in['starts_at'],
 			ends_at: $in['ends_at'],
+			customers: $in['customers'],
+			roles: $in['roles'],
 		);
+	}
+
+	/**
+	 * @return list<string>
+	 * @throws InvalidBadge
+	 */
+	private static function roles( mixed $value ): array {
+		$roles = [];
+		foreach ( is_array( $value ) ? $value : [] as $role ) {
+			if ( ! is_string( $role ) || ! wp_roles()->is_role( $role ) ) {
+				throw new InvalidBadge( __( 'Choose roles from the list.', 'flexacommerce' ), 'roles' );
+			}
+			$roles[ $role ] = $role;
+		}
+		if ( $roles === [] ) {
+			throw new InvalidBadge( __( 'Pick at least one role.', 'flexacommerce' ), 'roles' );
+		}
+		return array_values( $roles );
 	}
 
 	/**
