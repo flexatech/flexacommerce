@@ -473,7 +473,7 @@ POST /webhooks/{gateway}
      with the transaction, so the retry is not treated as a duplicate.
 ```
 
-- Redirect returns (`return_url`) are treated as a hint: the order page shows "confirming payment" and asks the gateway (`verify_return()`) or waits for the webhook. A return URL alone never marks an order paid unless the gateway contract says the return is signed (doc 04 §3).
+- Redirect returns (`return_url`) are treated as a hint: the order page shows "confirming payment" and asks the gateway (`verify_return()`) or waits for the webhook. A return URL alone never marks an order paid unless the gateway contract says the return is signed (doc 04 §3). A return whose check says the attempt failed (3-D Secure refused) fails that transaction only: the order stays `pending`, the shopper lands on the order-pay page with the reason and can try again or pick another method (ADR-052). A webhook `failed` event still fails the order, since it arrives after the shopper left.
 - Gateways that need it get a replay window check (`PaymentEvent::occurred_at` older than the gateway's tolerance → reject) in addition to the dedupe table.
 
 ### 7.9 Emails
@@ -898,4 +898,4 @@ Call rules:
 
 **Checkout (COD):** `POST store/checkout` → `CheckoutService::place_order()` → transaction (stock, number, order, items, addresses, transaction, history) → commit → events: `order.created`, emails (new order, processing) → response redirect to order confirmation.
 
-**Online gateway (post-MVP add-on):** same as COD up to commit with status `pending` → `PaymentService::initiate()` → gateway returns redirect → customer pays → webhook → `PaymentService::apply()` → `OrderService::apply_payment_outcome()` → processing → emails.
+**Online gateway (Stripe, ADR-052):** same as COD up to commit with status `pending` → `PaymentService::initiate()` → gateway returns succeeded, requires_action or redirect → customer pays → return check or webhook → `PaymentService::apply()` → `OrderService::apply_payment_outcome()` → processing → emails.

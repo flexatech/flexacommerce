@@ -21,7 +21,9 @@ use Flexa\Commerce\Shipping\ZoneRepository;
 use Flexa\Commerce\Storefront\CheckoutPage;
 use Flexa\Commerce\Support\Settings;
 use Flexa\Commerce\Tests\Integration\Orders\OrderTestCase;
+use Flexa\Commerce\Payments\Gateways\Stripe\StripeGateway;
 use Flexa\Commerce\Tests\Integration\Payments\FakeGateway;
+use Flexa\Commerce\Tests\Integration\Payments\FakeStripe;
 
 /**
  * The checkout without JavaScript: the form posts to the page, the page
@@ -84,9 +86,12 @@ final class CheckoutPageTest extends OrderTestCase {
 		$_GET  = [];
 		unset( $_SERVER['HTTP_REFERER'], $_SERVER['HTTP_ORIGIN'] );
 		CheckoutLayout::preview( null );
-		foreach ( [ 'cod', 'bacs', FakeGateway::ID ] as $id ) {
+		foreach ( [ 'cod', 'bacs', FakeGateway::ID, StripeGateway::ID ] as $id ) {
 			delete_option( GatewaySettings::PREFIX . $id );
 		}
+		delete_option( StripeGateway::STATUS_OPTION );
+		FakeStripe::uninstall();
+		FakeStripe::forget( StripeGateway::ID );
 		delete_option( ZoneRepository::OPTION );
 		$this->swap( null );
 		parent::tear_down();
@@ -234,6 +239,70 @@ final class CheckoutPageTest extends OrderTestCase {
 		$order = $this->orders()->find_by_checkout_token( $token );
 		self::assertSame( OrderStatus::PROCESSING, $order?->status );
 		self::assertSame( 'cod', $order?->payment_method );
+	}
+
+	public function test_stripe_mounts_on_the_checkout_and_a_failed_return_goes_to_order_pay(): void {
+		FakeStripe::install();
+		FakeStripe::connectable();
+		$gateways = Plugin::instance()->payments()->gateways();
+		$stripe   = $gateways->get( StripeGateway::ID );
+		self::assertNotNull( $stripe );
+		$gateways->settings()->save(
+			$stripe,
+			[
+				'enabled'              => true,
+				'test_publishable_key' => 'pk_test_page',
+				'test_secret_key'      => 'sk_test_page',
+			]
+		);
+		$this->add( $this->simple( 1000, 5 ), 1 );
+
+		$html = do_shortcode( '[flexacommerce_checkout]' );
+		self::assertSame( 1, preg_match( '/data-fxc-method="stripe"[^>]*data-fxc-config=\'([^\']+)\'/', $html, $m ) );
+		$config = json_decode( html_entity_decode( $m[1] ), true );
+		self::assertSame( 'pk_test_page', $config['key'] );
+		self::assertSame( 1500, $config['amount'] );
+		self::assertStringNotContainsString( 'sk_test_page', $html );
+
+		FakeStripe::$routes['POST payment_intents']        = [
+			200,
+			[
+				'id'            => 'pi_page',
+				'status'        => 'requires_action',
+				'client_secret' => 'pi_page_secret',
+			],
+		];
+		FakeStripe::$routes['GET payment_intents/pi_page'] = [
+			200,
+			[
+				'id'                 => 'pi_page',
+				'status'             => 'requires_payment_method',
+				'amount'             => 1500,
+				'currency'           => 'usd',
+				'last_payment_error' => [
+					'code'    => 'payment_intent_authentication_failure',
+					'message' => 'We are unable to authenticate your payment method.',
+				],
+			],
+		];
+		$token    = $this->token( $html );
+		$location = (string) $this->post(
+			$this->form(
+				$token,
+				[
+					'payment_method' => StripeGateway::ID,
+					'gateway_input'  => [ StripeGateway::ID => [ 'payment_method' => 'pm_card_3ds' ] ],
+				]
+			)
+		);
+		self::assertStringContainsString( CheckoutService::RETURN_ARG . '=', $location, '3-D Secure ends on the return URL' );
+
+		$pay = $this->visit( $location, true );
+		self::assertStringContainsString( 'order-pay=', $pay );
+		$html = $this->visit( $pay );
+		self::assertStringContainsString( 'The payment did not go through: We are unable to authenticate your payment method.', $html );
+		$order = $this->orders()->find_by_checkout_token( $token );
+		self::assertSame( OrderStatus::PENDING, $order?->status );
 	}
 
 	public function test_without_a_layout_the_form_is_the_one_of_before(): void {

@@ -49,8 +49,14 @@ final class OrderPay {
 			) . '</p></div>';
 		}
 
+		$failure = isset( $errors['order'] ) || $posted !== [] ? '' : $this->checkout->last_failure( $order );
 		if ( isset( $errors['order'] ) ) {
 			$html .= '<p class="fxc-notice fxc-notice--error" role="alert">' . esc_html( $errors['order'] ) . '</p>';
+		} elseif ( $failure !== '' ) {
+			$html .= '<p class="fxc-notice fxc-notice--error" role="alert">' . esc_html(
+				/* translators: %s: the reason the payment provider gave */
+				sprintf( __( 'The payment did not go through: %s Try again or choose another payment method.', 'flexacommerce' ), $failure )
+			) . '</p>';
 		}
 		$html .= $this->details->items( $order );
 

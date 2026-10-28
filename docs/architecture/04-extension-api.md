@@ -81,10 +81,11 @@ interface PaymentGateway {
 | DTO | Fields (all readonly) |
 |---|---|
 | `PaymentRequest` | `transaction_id`, `idempotency_key`, `order` (`OrderView`), `amount` (`Money`), `return_url`, `cancel_url`, `webhook_url`, `gateway_input` (sanitized array from `validate`) |
-| `PaymentResult` | factory methods: `redirect( url, ?reference )`, `succeeded( reference )`, `pending( ?reference, ?instructions )`, `authorized( reference )`, `requires_action( payload )`, `failed( code, message )` |
+| `PaymentResult` | factory methods: `redirect( url, ?reference )`, `succeeded( reference )`, `pending( ?reference, ?instructions )`, `authorized( reference )`, `requires_action( payload, ?reference )`, `failed( code, message )` |
 | `PaymentEvent` | `event_id`, `type` (`succeeded`, `failed`, `authorized`, `cancelled`, `refund_succeeded`, `refund_failed`), `transaction_ref` (our transaction id or gateway reference), `amount` (`Money`), `occurred_at`, `raw` (redacted array) |
 | `RefundRequest` | `refund_transaction_id`, `payment_reference`, `amount`, `reason`, `idempotency_key` |
 | `RefundResult` | `succeeded( reference )`, `pending( reference )`, `failed( code, message )` |
+| `CheckoutFields` | `description`, `fields` (list of `SettingField`), `script_module` (URL of an ES module), `data` (public values for the module, rendered as `data-fxc-config`; never a secret) |
 
 Core rules applied to gateway output (doc 02 §7.7 and §7.8):
 - An event amount different from the transaction amount marks the order `needs_attention` and does **not** mark it paid.
@@ -96,18 +97,30 @@ Core rules applied to gateway output (doc 02 §7.7 and §7.8):
 
 `refunds`, `partial_refunds`, `webhooks`, `signed_returns`, `authorize_capture` (post-MVP UI), `tokenization` (post-MVP). Unknown flags return false.
 
-### 3.3 Core gateways (MVP)
+### 3.3 Core gateways
 
 | Gateway | Behavior |
 |---|---|
 | `cod` | `process_payment` returns `pending(null)`. Order goes to `processing` (stock held, paid later). Admin marks paid with "Record payment" (manual transaction). Optional: enabled shipping methods filter. |
 | `bacs` | Returns `pending(null, instructions)`. Order goes to `on-hold`. Bank details shown on confirmation and email. Admin records payment. |
+| `stripe` | ADR-052. The Payment Element makes a payment method in the browser, `process_payment` confirms a PaymentIntent with it; 3-D Secure returns `requires_action` and ends on the return URL, which `verify_return` checks with the secret key. Without a payment method (scripts off, order-pay page) it returns `redirect` to a Stripe Checkout Session. Refunds by PaymentIntent, or by charge for orders imported from the WooCommerce Stripe extension. Saving the keys checks the account and creates the webhook endpoint. |
 
 ### 3.4 Gateway security obligations (documented for authors, enforced where possible)
 
 - Verify webhook signatures in `parse_webhook()` with a constant-time comparison. Core provides `Contracts\Security\Signature::hmac_sha256_equals()`.
 - Never return card data, CVC or full bank account numbers in `raw` or `data`. `redact()` runs before every write. Core additionally drops keys matching `/card|cvc|cvv|pan|secret|password|iban/i` as a safety net.
 - Secrets go into `settings_fields()` with `type: secret`, stored in the gateway option, never sent to the browser or REST responses (masked as `••••last4`).
+
+### 3.5 Checkout scripts
+
+A gateway with a `script_module` gets it loaded as an ES module on the checkout, once for each method box `[data-fxc-method="{id}"]`, which carries `data-fxc-config` with the JSON of `CheckoutFields::data`. The module talks to checkout.js through two events on the form, both with `detail.wait( promise )`:
+
+- `fxc:payment` (`detail.method`) fires when the shopper places the order, before the request. A module for that method puts what it made into hidden `gateway_input[{id}][...]` inputs inside its box. A rejected promise stops the submit and shows its `message` at the payment methods.
+- `fxc:payment-action` (`detail.method`, `detail.payload`) fires when the result is `requires_action`. The payload is what the gateway put in `PaymentResult::requires_action()`; it is sent to the browser once and never stored. When the promise settles, checkout.js goes to the redirect, which is the return URL, so `verify_return()` decides.
+
+checkout.js does not render the method boxes again on a requote, so a mounted element stays. A gateway whose module fails to load should still work without it (Stripe falls back to a hosted page).
+
+An internal `Payments\ConnectedGateway` interface (core gateways only, not part of the contract) adds `connect( values, before )`, run when the settings are saved: it may add to the values or throw `InvalidArgumentException`, which the admin endpoint answers with 400 and nothing is saved; and `notes()`, shown on the gateway's card.
 
 ## 4. Shipping method contract
 

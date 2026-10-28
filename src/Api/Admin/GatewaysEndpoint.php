@@ -7,6 +7,7 @@ namespace Flexa\Commerce\Api\Admin;
 use Flexa\Commerce\Api\Endpoint;
 use Flexa\Commerce\Contracts\Payments\PaymentGateway;
 use Flexa\Commerce\Contracts\SettingField;
+use Flexa\Commerce\Payments\ConnectedGateway;
 use Flexa\Commerce\Plugin;
 use Flexa\Commerce\Support\FieldValues;
 use WP_Error;
@@ -79,7 +80,12 @@ final class GatewaysEndpoint extends Endpoint {
 			return new WP_Error( 'flexacommerce_gateway_not_found', __( 'Payment method not found.', 'flexacommerce' ), [ 'status' => 404 ] );
 		}
 		$values = $request->get_param( 'values' );
-		Plugin::instance()->payments()->gateways()->settings()->save( $gateway, is_array( $values ) ? $values : [] );
+		try {
+			Plugin::instance()->payments()->gateways()->settings()->save( $gateway, is_array( $values ) ? $values : [] );
+		} catch ( \InvalidArgumentException $e ) {
+			// A key the provider refused: nothing was saved.
+			return new WP_Error( 'flexacommerce_gateway_invalid', $e->getMessage(), [ 'status' => 400 ] );
+		}
 		return new WP_REST_Response( $this->gateway_data( $gateway ), 200 );
 	}
 
@@ -96,6 +102,7 @@ final class GatewaysEndpoint extends Endpoint {
 			],
 			'fields'   => array_map( static fn ( SettingField $f ): array => $f->to_array(), $fields ),
 			'values'   => FieldValues::masked( $fields, $settings->values( $gateway ) ),
+			'notes'    => $gateway instanceof ConnectedGateway ? $gateway->notes() : [],
 		];
 	}
 }

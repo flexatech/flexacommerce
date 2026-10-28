@@ -494,7 +494,7 @@ final class FxcOrderWriter {
 					'parent_id'         => $type === Transaction::REFUND ? $payment : null,
 					'type'              => $type,
 					'status'            => Transaction::SUCCEEDED,
-					'method'            => 'import',
+					'method'            => Transaction::IMPORT,
 					'gateway'           => $gateway,
 					'amount'            => $amount,
 					'currency'          => $this->currency,

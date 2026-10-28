@@ -28,6 +28,8 @@ final class Transaction {
 
 	public const GATEWAY = 'gateway';
 	public const MANUAL  = 'manual';
+	/** Moved from another store; refundable through its gateway when that gateway is here (ADR-052). */
+	public const IMPORT = 'import';
 
 	/** Payment moves of the diagram in doc 02 §7.7; refunds go pending to succeeded or failed. */
 	private const MOVES = [

@@ -195,7 +195,9 @@ final class PaymentService {
 	/**
 	 * The customer came back from the gateway. Only a gateway with signed
 	 * returns can mark the order paid from here; for the others a success is
-	 * a hint and the webhook decides (doc 02 §7.8).
+	 * a hint and the webhook decides (doc 02 §7.8). A failure fails the
+	 * attempt only, like a declined card at checkout: the order stays
+	 * pending and the customer can pay again (`failed`, ADR-052).
 	 *
 	 * @param array<string,mixed> $query
 	 */
@@ -208,6 +210,9 @@ final class PaymentService {
 		}
 		if ( in_array( $event->type, [ 'succeeded', 'authorized' ], true ) && ! $gateway->supports( 'signed_returns' ) ) {
 			return 'ignored';
+		}
+		if ( $event->type === 'failed' ) {
+			return $this->fail_attempt( $txn->id, $event->failure_code, $event->failure_message, new TransitionContext( 'customer' ) ) ? 'failed' : 'ignored';
 		}
 		return $this->apply( $gateway->id(), $event, new TransitionContext( 'customer' ), $txn->id );
 	}
@@ -321,17 +326,7 @@ final class PaymentService {
 				$this->apply( $gateway->id(), new PaymentEvent( 'initiate-' . $txn->id, $result->type, (string) $result->reference, $txn->money() ), $ctx, $txn->id );
 				return;
 			case PaymentResult::FAILED:
-				$this->db->run(
-					function () use ( $txn, $result, $now, $ctx ): void {
-						$locked = $this->transactions->find( $txn->id, true );
-						if ( $locked === null || ! $locked->can_move_to( Transaction::FAILED ) ) {
-							return;
-						}
-						$this->transactions->update_status( $txn->id, Transaction::FAILED, $now, null, $result->failure_code !== '' ? $result->failure_code : 'failed', $result->failure_message );
-						// The order stays pending: the customer can retry (doc 02 §7.5 step 6).
-						$this->orders->payment_note( $txn->order_id, $this->failure_text( $result->failure_message ), $ctx );
-					}
-				);
+				$this->fail_attempt( $txn->id, $result->failure_code, $result->failure_message, $ctx );
 				return;
 			case PaymentResult::REQUIRES_ACTION:
 				$this->transactions->update_status( $txn->id, Transaction::REQUIRES_ACTION, $now, $result->reference, '', '', $this->clean( $gateway, [ 'action' => $result->payload ] ) );
@@ -342,6 +337,24 @@ final class PaymentService {
 					$this->transactions->update_status( $txn->id, Transaction::PENDING, $now, $result->reference, '', '', $data );
 				}
 		}
+	}
+
+	/**
+	 * One attempt failed while the customer is still there. The order stays
+	 * pending: the customer can retry (doc 02 §7.5 step 6).
+	 */
+	private function fail_attempt( int $transaction_id, string $code, string $message, TransitionContext $ctx ): bool {
+		return $this->db->run(
+			function () use ( $transaction_id, $code, $message, $ctx ): bool {
+				$locked = $this->transactions->find( $transaction_id, true );
+				if ( $locked === null || ! $locked->can_move_to( Transaction::FAILED ) ) {
+					return false;
+				}
+				$this->transactions->update_status( $locked->id, Transaction::FAILED, $this->clock->db_now(), null, $code !== '' ? $code : 'failed', $message );
+				$this->orders->payment_note( $locked->order_id, $this->failure_text( $message ), $ctx );
+				return true;
+			}
+		);
 	}
 
 	private function apply_locked( Transaction $txn, PaymentEvent $event, TransitionContext $ctx ): string {
@@ -441,7 +454,7 @@ final class PaymentService {
 	/** The succeeded gateway payment a refund goes back to. */
 	private function refundable_payment( Order $order, int $amount ): Transaction {
 		foreach ( $this->transactions->for_order( $order->id ) as $txn ) {
-			if ( $txn->type !== Transaction::PAYMENT || $txn->status !== Transaction::SUCCEEDED || $txn->method !== Transaction::GATEWAY ) {
+			if ( $txn->type !== Transaction::PAYMENT || $txn->status !== Transaction::SUCCEEDED || ! in_array( $txn->method, [ Transaction::GATEWAY, Transaction::IMPORT ], true ) ) {
 				continue;
 			}
 			$gateway = $this->gateways->get( $txn->gateway );

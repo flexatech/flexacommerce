@@ -10,6 +10,7 @@ export interface Gateway {
     supports: { refunds: boolean };
     fields: SettingField[];
     values: FieldValues;
+    notes: { tone: string; text: string }[];
 }
 
 const GATEWAYS_KEY = ["payments", "gateways"] as const;

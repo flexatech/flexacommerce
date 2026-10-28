@@ -372,7 +372,7 @@ final class CheckoutService {
 		$redirect = $this->pages->confirmation_url( $order );
 		if ( $txn !== null ) {
 			$result   = $this->payments->initiate( $txn->id, $this->return_url( $order, $txn ), $this->pages->pay_url( $order ), $request->gateway_input, $order );
-			$redirect = $this->redirect_for( $order, $result );
+			$redirect = $this->redirect_for( $order, $result, $txn );
 		}
 
 		if ( $request->user_id > 0 ) {
@@ -450,7 +450,22 @@ final class CheckoutService {
 		}
 		$result = $this->payments->initiate( $txn->id, $this->return_url( $order, $txn ), $this->pages->pay_url( $order ), $input );
 
-		return new CheckoutResult( $this->orders->get( $order->id ), $this->redirect_for( $order, $result ), $result, false );
+		return new CheckoutResult( $this->orders->get( $order->id ), $this->redirect_for( $order, $result, $txn ), $result, false );
+	}
+
+	/** Why the last attempt to pay this order failed, for the order-pay page; '' when it did not fail. */
+	public function last_failure( Order $order ): string {
+		foreach ( $this->payments->for_order( $order->id ) as $txn ) {
+			if ( $txn->type !== Transaction::PAYMENT ) {
+				continue;
+			}
+			if ( $txn->status !== Transaction::FAILED ) {
+				return '';
+			}
+			$message = rtrim( trim( (string) $txn->failure_message ), '.' );
+			return $message !== '' ? $message . '.' : __( 'The last payment attempt did not go through.', 'flexacommerce' );
+		}
+		return '';
 	}
 
 	/** @return list<array<string,mixed>> gateways the order-pay page offers for a pending order */
@@ -507,17 +522,18 @@ final class CheckoutService {
 	/**
 	 * The customer is back from the gateway with a transaction id in the
 	 * URL. The id must belong to the order; a failure here is logged and the
-	 * webhook stays in charge (doc 02 §7.8).
+	 * webhook stays in charge (doc 02 §7.8). Returns what handle_return()
+	 * said; `failed` sends the customer to the order-pay page to try again.
 	 *
 	 * @param array<string,mixed> $query
 	 */
-	public function returned( Order $order, int $transaction_id, array $query ): void {
+	public function returned( Order $order, int $transaction_id, array $query ): string {
 		$txn = $this->payments->find( $transaction_id );
 		if ( $txn === null || $txn->order_id !== $order->id ) {
-			return;
+			return 'unknown';
 		}
 		try {
-			$this->payments->handle_return( $txn->id, $query );
+			return $this->payments->handle_return( $txn->id, $query );
 		} catch ( \Throwable $e ) {
 			$this->log->warning(
 				'Return from gateway for order {order_id} failed: {message}',
@@ -526,6 +542,7 @@ final class CheckoutService {
 					'message'  => $e->getMessage(),
 				]
 			);
+			return 'error';
 		}
 	}
 
@@ -748,6 +765,7 @@ final class CheckoutService {
 				'description'   => $fields->description,
 				'fields'        => array_map( static fn ( $field ): array => $field->to_array(), $fields->fields ),
 				'script_module' => $fields->script_module,
+				'config'        => $fields->data,
 			];
 		}
 		return $out;
@@ -899,9 +917,13 @@ final class CheckoutService {
 		return add_query_arg( self::RETURN_ARG, $txn->id, $this->pages->confirmation_url( $order ) );
 	}
 
-	private function redirect_for( Order $order, PaymentResult $result ): string {
+	private function redirect_for( Order $order, PaymentResult $result, Transaction $txn ): string {
 		if ( $result->type === PaymentResult::REDIRECT && $result->redirect_url !== null && $result->redirect_url !== '' ) {
 			return $result->redirect_url;
+		}
+		if ( $result->type === PaymentResult::REQUIRES_ACTION ) {
+			// The gateway's script finishes the action, then the return checks the outcome.
+			return $this->return_url( $order, $txn );
 		}
 		if ( $result->type === PaymentResult::FAILED ) {
 			return $this->pages->pay_url( $order );

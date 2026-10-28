@@ -107,8 +107,8 @@ Legend: **MVP** = required for MVP. **FND** = architectural foundation in MVP, u
 | Live carrier rates | POST | Through the shipping method contract. |
 | Cash on delivery | MVP | |
 | Manual bank transfer | MVP | |
-| Payment gateway extension contract | MVP | Must be stable at 1.0 so the first online gateway (Stripe/PayPal add-on) can ship without core changes. |
-| Online gateway (e.g. Stripe) | POST | First-party add-on recommended right after MVP (Q4). |
+| Payment gateway extension contract | MVP | Must be stable at 1.0 so online gateways can ship without core changes (Stripe is built in, ADR-052; PayPal and others as add-ons). |
+| Online gateway (e.g. Stripe) | POST | Stripe built into the plugin (ADR-052, Q4 changed). PayPal and others through the contract. |
 | Checkout validation | MVP | Required fields per country, email, phone, stock, shipping availability, gateway availability. |
 | Order creation | MVP | Atomic: one DB transaction for stock, order, items, addresses, history. |
 | Order status transitions | MVP | State machine (doc 02 §7.6). |

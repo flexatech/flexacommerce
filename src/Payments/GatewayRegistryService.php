@@ -16,7 +16,7 @@ defined( 'ABSPATH' ) || exit;
  * (doc 04 §2). Core ids and the `fxc_` prefix are reserved.
  */
 final class GatewayRegistryService implements GatewayRegistry {
-	public const CORE = [ 'cod', 'bacs' ];
+	public const CORE = [ 'cod', 'bacs', 'stripe' ];
 
 	/** @var array<string,callable():PaymentGateway> */
 	private array $factories = [];
@@ -25,8 +25,9 @@ final class GatewayRegistryService implements GatewayRegistry {
 	private array $built = [];
 
 	public function __construct( private readonly GatewaySettings $settings ) {
-		$this->factories['cod']  = static fn (): PaymentGateway => new Gateways\CashOnDelivery();
-		$this->factories['bacs'] = static fn (): PaymentGateway => new Gateways\BankTransfer();
+		$this->factories['cod']    = static fn (): PaymentGateway => new Gateways\CashOnDelivery();
+		$this->factories['bacs']   = static fn (): PaymentGateway => new Gateways\BankTransfer();
+		$this->factories['stripe'] = static fn (): PaymentGateway => new Gateways\Stripe\StripeGateway();
 	}
 
 	public function register( string $id, callable $factory ): void {

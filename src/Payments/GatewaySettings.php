@@ -38,11 +38,19 @@ final class GatewaySettings {
 	}
 
 	/**
+	 * A connected gateway checks the values with its provider first and
+	 * may add to them (a webhook secret); when it throws, nothing is saved.
+	 *
 	 * @param array<string,mixed> $input
 	 * @return array<string,mixed> the saved values
+	 * @throws \InvalidArgumentException from ConnectedGateway::connect()
 	 */
 	public function save( PaymentGateway $gateway, array $input ): array {
-		$values = FieldValues::sanitize( $this->fields( $gateway ), $input, $this->stored( $gateway->id() ) );
+		$stored = $this->stored( $gateway->id() );
+		$values = FieldValues::sanitize( $this->fields( $gateway ), $input, $stored );
+		if ( $gateway instanceof ConnectedGateway ) {
+			$values = $gateway->connect( $values, FieldValues::with_defaults( $this->fields( $gateway ), $stored ) );
+		}
 		update_option( self::PREFIX . $gateway->id(), $values, false );
 		$this->cache[ $gateway->id() ] = $values;
 		$gateway->configure( $values );

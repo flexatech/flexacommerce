@@ -557,6 +557,20 @@ function setup( root ) {
 		return body;
 	}
 
+	/*
+	 * A gateway's script module listens on the form (doc 04 §3.6): it gets
+	 * `wait( promise )` to hold the checkout until its promise settles.
+	 */
+	function handOff( type, detail ) {
+		const waits = [];
+		form.dispatchEvent(
+			new CustomEvent( type, {
+				detail: { ...detail, wait: ( promise ) => waits.push( promise ) },
+			} )
+		);
+		return Promise.all( waits );
+	}
+
 	async function submit() {
 		if ( busy ) {
 			return;
@@ -566,13 +580,27 @@ function setup( root ) {
 		form.classList.add( 'is-busy' );
 		clearErrors();
 		message.textContent = i18n.placing || '';
+		const method =
+			form.querySelector( '[name="payment_method"]:checked' )?.value || '';
 		try {
+			await handOff( 'fxc:payment', { method } ).catch( ( error ) => {
+				throw { code: 'payment', message: error?.message || '' };
+			} );
 			const result = await request( 'checkout', payload() );
+			if ( result.payment?.result === 'requires_action' ) {
+				// 3-D Secure and the like; the return URL then checks the outcome.
+				await handOff( 'fxc:payment-action', {
+					method,
+					payload: result.payment.payload,
+				} ).catch( () => {} );
+			}
 			window.location.assign( result.redirect );
 			return;
 		} catch ( error ) {
 			message.textContent = '';
-			if ( error.code === 'flexacommerce_invalid_checkout' ) {
+			if ( error.code === 'payment' ) {
+				showErrors( { payment_method: error.message } );
+			} else if ( error.code === 'flexacommerce_invalid_checkout' ) {
 				showErrors( error.data.errors || { cart: error.message } );
 			} else if ( error.code === 'flexacommerce_totals_changed' ) {
 				await requote();

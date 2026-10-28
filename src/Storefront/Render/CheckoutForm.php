@@ -621,7 +621,9 @@ final class CheckoutForm {
 			$html .= sprintf(
 				'<div class="fxc-method" data-fxc-method="%1$s"%2$s><p class="fxc-choice"><label><input type="radio" name="payment_method" value="%1$s"%3$s> %4$s</label></p>%5$s%6$s</div>',
 				esc_attr( $id ),
-				is_string( $method['script_module'] ?? null ) && $method['script_module'] !== '' ? ' data-fxc-module="' . esc_attr( $method['script_module'] ) . '"' : '',
+				is_string( $method['script_module'] ?? null ) && $method['script_module'] !== ''
+					? ' data-fxc-module="' . esc_attr( $method['script_module'] ) . '"' . ( is_array( $method['config'] ?? null ) && $method['config'] !== [] ? " data-fxc-config='" . esc_attr( (string) wp_json_encode( $method['config'] ) ) . "'" : '' )
+					: '',
 				checked( $id, $chosen, false ),
 				esc_html( (string) $method['title'] ),
 				(string) $method['description'] !== '' ? '<div class="fxc-method__description">' . wp_kses_post( wpautop( (string) $method['description'] ) ) . '</div>' : '',

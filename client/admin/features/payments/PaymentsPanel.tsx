@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ChevronDown, CreditCard } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, CreditCard, Info } from "lucide-react";
 
 import { showToast } from "@/shared/components/showToast";
 import { Badge } from "@/shared/components/ui/badge";
@@ -9,6 +9,48 @@ import { cn } from "@/shared/lib/cn";
 import { __ } from "@/shared/lib/i18n";
 import { FieldRow, type FieldValues } from "../../components/FieldControl";
 import { useGateways, useSaveGateway, type Gateway } from "./usePayments";
+
+const NOTE_STYLES: Record<string, { icon: typeof Info; className: string }> = {
+    success: {
+        icon: CheckCircle2,
+        className:
+            "fxc:border-emerald-300 fxc:bg-emerald-50 fxc:text-emerald-900 fxc:dark:border-emerald-700 fxc:dark:bg-emerald-950 fxc:dark:text-emerald-100",
+    },
+    warning: {
+        icon: AlertTriangle,
+        className:
+            "fxc:border-amber-300 fxc:bg-amber-50 fxc:text-amber-900 fxc:dark:border-amber-700 fxc:dark:bg-amber-950 fxc:dark:text-amber-100",
+    },
+    info: {
+        icon: Info,
+        className: "fxc:border-border fxc:bg-muted/50 fxc:text-foreground",
+    },
+};
+
+// What the gateway says about its connection: the account it reached, or what is missing.
+function GatewayNotes({ notes }: { notes: Gateway["notes"] }) {
+    if (!notes?.length) {
+        return null;
+    }
+    return (
+        <div className="fxc:space-y-2">
+            {notes.map((note, i) => {
+                const style = NOTE_STYLES[note.tone] ?? NOTE_STYLES.info;
+                const Icon = style.icon;
+                return (
+                    <div
+                        key={i}
+                        role={note.tone === "warning" ? "alert" : undefined}
+                        className={cn("fxc:flex fxc:gap-3 fxc:rounded-md fxc:border fxc:p-3 fxc:text-sm", style.className)}
+                    >
+                        <Icon aria-hidden className="fxc:mt-0.5 fxc:size-4 fxc:shrink-0" />
+                        <p className="fxc:whitespace-pre-line fxc:break-words">{note.text}</p>
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
 
 export function PaymentsPanel() {
     const gateways = useGateways();
@@ -79,6 +121,7 @@ function GatewayCard({ gateway, open, onToggle }: { gateway: Gateway; open: bool
             </button>
             {open && (
                 <div className="fxc:space-y-4 fxc:border-t fxc:px-5 fxc:py-4">
+                    <GatewayNotes notes={gateway.notes} />
                     {gateway.fields.map((field) => (
                         <FieldRow
                             key={field.id}

@@ -89,8 +89,9 @@ final class CheckoutPage {
 		}
 
 		if ( $received > 0 && $this->order !== null && isset( $_GET[ CheckoutService::RETURN_ARG ] ) ) {
-			$service->returned( $this->order, absint( $_GET[ CheckoutService::RETURN_ARG ] ), $this->query() );
-			self::redirect( $service->pages()->confirmation_url( $this->order ) );
+			$returned = $service->returned( $this->order, absint( $_GET[ CheckoutService::RETURN_ARG ] ), $this->query() );
+			// A declined card or a failed 3-D Secure: back to paying, with the reason.
+			self::redirect( $returned === 'failed' ? $service->pages()->pay_url( $this->order ) : $service->pages()->confirmation_url( $this->order ) );
 		}
 
 		if ( $pay > 0 && $this->order !== null && isset( $_POST[ self::PAY ] ) ) {
