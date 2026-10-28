@@ -1,0 +1,22 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "flexacommerce/discount-nudge",
+	"version": "0.1.0",
+	"title": "Discount progress",
+	"category": "widgets",
+	"icon": "chart-bar",
+	"description": "How much more the cart needs for the next automatic discount. Hidden while no discount is within reach.",
+	"textdomain": "flexacommerce",
+	"attributes": {},
+	"supports": {
+		"html": false,
+		"interactivity": true,
+		"typography": {
+			"fontSize": true
+		}
+	},
+	"editorScript": "flexacommerce-blocks-editor",
+	"style": "flexacommerce-storefront",
+	"render": "file:./render.php"
+}

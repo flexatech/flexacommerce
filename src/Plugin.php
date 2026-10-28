@@ -84,6 +84,10 @@ final class Plugin {
 		add_shortcode( 'flexacommerce_checkout', [ $this, 'shortcode_checkout' ] );
 		add_shortcode( 'flexacommerce_account', [ $this, 'shortcode_account' ] );
 		add_shortcode( 'flexacommerce_order_confirmation', [ $this, 'shortcode_order_confirmation' ] );
+		// Listed here, not read from the Storefront class, so the class loads only when one is used.
+		foreach ( [ 'flexacommerce_quantity_prices', 'flexacommerce_discount_badge', 'flexacommerce_countdown', 'flexacommerce_discount_nudge' ] as $tag ) {
+			add_shortcode( $tag, [ $this, 'shortcode_pricing' ] );
+		}
 
 		if ( is_admin() ) {
 			add_action( 'init', [ $this, 'register_blocks' ] );
@@ -479,6 +483,16 @@ final class Plugin {
 	/** @param array<string,string>|string $atts */
 	public function shortcode_order_confirmation( array|string $atts = [] ): string {
 		return Storefront\Storefront::instance()->shortcode_order_confirmation( $atts );
+	}
+
+	/**
+	 * The pricing shortcodes (ADR-050); core passes the tag third.
+	 *
+	 * @param array<string,string>|string $atts
+	 */
+	public function shortcode_pricing( array|string $atts = [], ?string $content = null, string $tag = '' ): string {
+		unset( $content );
+		return Storefront\Storefront::instance()->shortcode_pricing( $tag, $atts );
 	}
 
 	public function extensions(): Extensions {

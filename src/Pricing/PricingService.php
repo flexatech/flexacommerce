@@ -266,6 +266,16 @@ final class PricingService {
 		return null;
 	}
 
+	/**
+	 * When the pricing rule `$rule_id` ends for this customer (ADR-050).
+	 *
+	 * @return ?string UTC `Y-m-d H:i:s`
+	 */
+	public function rule_ends( int $rule_id, int $user_id ): ?string {
+		$now = $this->clock->now()->setTimezone( new \DateTimeZone( 'UTC' ) )->format( Clock::DB_FORMAT );
+		return $this->rules()?->ends_of( $rule_id, $user_id, $now );
+	}
+
 	/** Whether `$moment` (UTC `Y-m-d H:i:s`) is after now and at most `$days` days away. */
 	public function ends_within( ?string $moment, int $days ): bool {
 		$now = $this->clock->now()->setTimezone( new \DateTimeZone( 'UTC' ) );

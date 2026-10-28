@@ -196,6 +196,9 @@
 .fxc-cart__next p { margin: 0 0 .4rem; }
 .fxc-cart__progress { height: .5rem; border-radius: 1rem; background: color-mix(in srgb, currentColor 15%, transparent); overflow: hidden; }
 .fxc-cart__progress span { display: block; height: 100%; border-radius: inherit; background: currentColor; transition: width .3s; }
+.fxc-discount-nudge { margin-inline: 0; max-width: none; }
+.fxc-discount-badge { width: fit-content; margin-block: 0 .5rem; }
+.fxc-quantity-prices .fxc-tiers, .fxc-offer-countdown { margin-block-end: 1rem; }
 
 .fxc-mini-cart { display: inline-flex; align-items: center; gap: .35rem; text-decoration: none; }
 .fxc-mini-cart__count:empty { display: none; }

@@ -1,0 +1,32 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "flexacommerce/quantity-prices",
+	"version": "0.1.0",
+	"title": "Quantity prices",
+	"category": "widgets",
+	"icon": "editor-table",
+	"description": "The price at each quantity under a bulk pricing rule, with the time left when the rule ends soon.",
+	"textdomain": "flexacommerce",
+	"usesContext": [
+		"postId",
+		"postType"
+	],
+	"attributes": {
+		"productId": {
+			"type": "integer",
+			"default": 0
+		}
+	},
+	"supports": {
+		"html": false,
+		"interactivity": true,
+		"align": true,
+		"typography": {
+			"fontSize": true
+		}
+	},
+	"editorScript": "flexacommerce-blocks-editor",
+	"style": "flexacommerce-storefront",
+	"render": "file:./render.php"
+}

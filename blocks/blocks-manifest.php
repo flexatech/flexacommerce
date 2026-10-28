@@ -408,4 +408,123 @@ return [
 		'style' => 'flexacommerce-storefront',
 		'render' => 'file:./render.php',
 	],
+	'discount-badge' => [
+		'apiVersion' => 3,
+		'name' => 'flexacommerce/discount-badge',
+		'version' => '0.1.0',
+		'title' => 'Discount badge',
+		'category' => 'widgets',
+		'icon' => 'tag',
+		'description' => 'How much the product is off its regular price, from a sale or a pricing rule.',
+		'textdomain' => 'flexacommerce',
+		'usesContext' => [
+			'postId',
+			'postType',
+		],
+		'attributes' => [
+			'productId' => [
+				'type' => 'integer',
+				'default' => 0,
+			],
+		],
+		'supports' => [
+			'html' => false,
+			'color' => [
+				'text' => true,
+				'background' => true,
+			],
+			'typography' => [
+				'fontSize' => true,
+			],
+		],
+		'editorScript' => 'flexacommerce-blocks-editor',
+		'style' => 'flexacommerce-storefront',
+		'render' => 'file:./render.php',
+	],
+	'discount-nudge' => [
+		'apiVersion' => 3,
+		'name' => 'flexacommerce/discount-nudge',
+		'version' => '0.1.0',
+		'title' => 'Discount progress',
+		'category' => 'widgets',
+		'icon' => 'chart-bar',
+		'description' => 'How much more the cart needs for the next automatic discount. Hidden while no discount is within reach.',
+		'textdomain' => 'flexacommerce',
+		'attributes' => [],
+		'supports' => [
+			'html' => false,
+			'interactivity' => true,
+			'typography' => [
+				'fontSize' => true,
+			],
+		],
+		'editorScript' => 'flexacommerce-blocks-editor',
+		'style' => 'flexacommerce-storefront',
+		'render' => 'file:./render.php',
+	],
+	'offer-countdown' => [
+		'apiVersion' => 3,
+		'name' => 'flexacommerce/offer-countdown',
+		'version' => '0.1.0',
+		'title' => 'Offer countdown',
+		'category' => 'widgets',
+		'icon' => 'clock',
+		'description' => 'The time left before a pricing rule ends, or before the current product\'s price goes up.',
+		'textdomain' => 'flexacommerce',
+		'usesContext' => [
+			'postId',
+			'postType',
+		],
+		'attributes' => [
+			'productId' => [
+				'type' => 'integer',
+				'default' => 0,
+			],
+			'ruleId' => [
+				'type' => 'integer',
+				'default' => 0,
+			],
+		],
+		'supports' => [
+			'html' => false,
+			'interactivity' => true,
+			'typography' => [
+				'fontSize' => true,
+			],
+		],
+		'editorScript' => 'flexacommerce-blocks-editor',
+		'style' => 'flexacommerce-storefront',
+		'render' => 'file:./render.php',
+	],
+	'quantity-prices' => [
+		'apiVersion' => 3,
+		'name' => 'flexacommerce/quantity-prices',
+		'version' => '0.1.0',
+		'title' => 'Quantity prices',
+		'category' => 'widgets',
+		'icon' => 'editor-table',
+		'description' => 'The price at each quantity under a bulk pricing rule, with the time left when the rule ends soon.',
+		'textdomain' => 'flexacommerce',
+		'usesContext' => [
+			'postId',
+			'postType',
+		],
+		'attributes' => [
+			'productId' => [
+				'type' => 'integer',
+				'default' => 0,
+			],
+		],
+		'supports' => [
+			'html' => false,
+			'interactivity' => true,
+			'align' => true,
+			'typography' => [
+				'fontSize' => true,
+			],
+		],
+		'editorScript' => 'flexacommerce-blocks-editor',
+		'style' => 'flexacommerce-storefront',
+		'render' => 'file:./render.php',
+	],
 ];

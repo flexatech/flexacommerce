@@ -27,9 +27,11 @@ defined( 'ABSPATH' ) || exit;
 final class QuantityTiers {
 	/** @param ?string $shown_end the end the offer countdown already shows, so the table does not repeat it */
 	public static function html( PricingService $pricing, Product $product, int $user_id, ?string $shown_end = null ): string {
-		if ( ! Settings::bool( 'tier_table' ) ) {
-			return '';
-		}
+		return Settings::bool( 'tier_table' ) ? self::table( $pricing, $product, $user_id, $shown_end ) : '';
+	}
+
+	/** The table whatever the setting says: the Quantity prices block shows it where the merchant placed it (ADR-050). */
+	public static function table( PricingService $pricing, Product $product, int $user_id, ?string $shown_end = null ): string {
 		$rule = $pricing->tier_rule( $product, $user_id );
 		if ( $rule === null || $rule->tiers === [] ) {
 			return '';

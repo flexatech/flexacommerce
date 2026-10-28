@@ -1,0 +1,35 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "flexacommerce/offer-countdown",
+	"version": "0.1.0",
+	"title": "Offer countdown",
+	"category": "widgets",
+	"icon": "clock",
+	"description": "The time left before a pricing rule ends, or before the current product's price goes up.",
+	"textdomain": "flexacommerce",
+	"usesContext": [
+		"postId",
+		"postType"
+	],
+	"attributes": {
+		"productId": {
+			"type": "integer",
+			"default": 0
+		},
+		"ruleId": {
+			"type": "integer",
+			"default": 0
+		}
+	},
+	"supports": {
+		"html": false,
+		"interactivity": true,
+		"typography": {
+			"fontSize": true
+		}
+	},
+	"editorScript": "flexacommerce-blocks-editor",
+	"style": "flexacommerce-storefront",
+	"render": "file:./render.php"
+}

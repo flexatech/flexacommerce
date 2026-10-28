@@ -17,6 +17,7 @@ use Flexa\Commerce\Storefront\Render\Breadcrumbs;
 use Flexa\Commerce\Storefront\Render\CartTable;
 use Flexa\Commerce\Storefront\Render\Gallery;
 use Flexa\Commerce\Storefront\Render\MiniCart;
+use Flexa\Commerce\Storefront\Render\PricingBlocks;
 use Flexa\Commerce\Storefront\Render\ProductDetails;
 use Flexa\Commerce\Storefront\Render\ProductPrice;
 use Flexa\Commerce\Storefront\Render\RelatedProducts;
@@ -49,6 +50,18 @@ final class Storefront {
 		'catalog-sorting',
 		'product-filters',
 		'related-products',
+		'quantity-prices',
+		'discount-badge',
+		'offer-countdown',
+		'discount-nudge',
+	];
+
+	/** The pricing shortcodes and the blocks they show (ADR-050). */
+	public const PRICING_SHORTCODES = [
+		'flexacommerce_quantity_prices' => 'quantity-prices',
+		'flexacommerce_discount_badge'  => 'discount-badge',
+		'flexacommerce_countdown'       => 'offer-countdown',
+		'flexacommerce_discount_nudge'  => 'discount-nudge',
 	];
 
 	private bool $blocks = false;
@@ -71,6 +84,8 @@ final class Storefront {
 
 	private ?BadgeOverlay $badges = null;
 
+	private ?PricingBlocks $pricing = null;
+
 	public function register_blocks(): void {
 		if ( $this->blocks ) {
 			return;
@@ -80,7 +95,7 @@ final class Storefront {
 		wp_register_script(
 			'flexacommerce-blocks-editor',
 			FLEXACOMMERCE_URL . 'assets/frontend/blocks-editor.js',
-			[ 'wp-blocks', 'wp-element', 'wp-server-side-render', 'wp-block-editor', 'wp-components', 'wp-i18n' ],
+			[ 'wp-blocks', 'wp-element', 'wp-server-side-render', 'wp-block-editor', 'wp-components', 'wp-i18n', 'wp-api-fetch' ],
 			FLEXACOMMERCE_VERSION,
 			true
 		);
@@ -204,6 +219,13 @@ final class Storefront {
 			case 'product-filters':
 				$slugs = is_array( $attributes['attributeSlugs'] ?? null ) ? array_values( array_filter( $attributes['attributeSlugs'], 'is_string' ) ) : [];
 				return $this->controls()->filters( (bool) ( $attributes['showCategories'] ?? true ), $slugs );
+			case 'discount-nudge':
+				return $this->pricing()->nudge( $user );
+			case 'offer-countdown':
+				// A rule's countdown needs no product.
+				if ( (int) ( $attributes['ruleId'] ?? 0 ) > 0 ) {
+					return $this->pricing()->countdown( (int) $attributes['ruleId'], null, $user );
+				}
 		}
 		$product = $this->product( $this->product_id( $attributes, $block ) );
 		if ( $product === null ) {
@@ -222,6 +244,12 @@ final class Storefront {
 				return $this->details()->attributes( $product );
 			case 'related-products':
 				return $this->related()->html( $product, (int) ( $attributes['count'] ?? 4 ) );
+			case 'quantity-prices':
+				return $this->pricing()->quantity_prices( $product, $user );
+			case 'discount-badge':
+				return $this->pricing()->discount_badge( $product, $user );
+			case 'offer-countdown':
+				return $this->pricing()->countdown( 0, $product, $user );
 		}
 		return $this->form()->html( $product, self::in_list( $attributes, $block ) ? AddToCartForm::LOOP : AddToCartForm::SINGLE, $user );
 	}
@@ -297,6 +325,33 @@ final class Storefront {
 		}
 		$price = $atts['show_price'] !== 'no' ? $this->price()->html( $product, get_current_user_id() ) : '';
 		return $price . $this->form()->html( $product, AddToCartForm::SINGLE, get_current_user_id() );
+	}
+
+	/**
+	 * `[flexacommerce_quantity_prices id="12"]`, `[flexacommerce_discount_badge id="12"]`,
+	 * `[flexacommerce_countdown rule="3"]` or `[flexacommerce_countdown id="12"]`, and
+	 * `[flexacommerce_discount_nudge]` (ADR-050). Without an id they show the current product.
+	 *
+	 * @param array<string,mixed>|string $atts
+	 */
+	public function shortcode_pricing( string $tag, array|string $atts = [] ): string {
+		$name = self::PRICING_SHORTCODES[ $tag ] ?? null;
+		if ( $name === null ) {
+			return '';
+		}
+		$atts       = shortcode_atts(
+			[
+				'id'   => 0,
+				'rule' => 0,
+			],
+			is_array( $atts ) ? $atts : [],
+			$tag
+		);
+		$attributes = [
+			'productId' => absint( $atts['id'] ),
+			'ruleId'    => absint( $atts['rule'] ),
+		];
+		return $this->block_html( $name, $attributes, null );
 	}
 
 	private function cart_html(): string {
@@ -387,6 +442,11 @@ final class Storefront {
 			fn ( Product $product ): string => $this->card( $product ),
 			fn ( Product $product ): string => $this->badges()->html( $product, Badge::LOOP )
 		);
+	}
+
+	private function pricing(): PricingBlocks {
+		$cart                   = Plugin::instance()->cart();
+		return $this->pricing ??= new PricingBlocks( $cart->pricing(), $cart->cart(), $cart->presenter() );
 	}
 
 	private function badges(): BadgeOverlay {

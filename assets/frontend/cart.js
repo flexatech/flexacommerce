@@ -15,6 +15,7 @@ const config = getConfig( 'flexacommerce/cart' );
 const i18n = config.i18n || {};
 let nonce = config.nonce || '';
 let countRequested = false;
+let nudgeRequested = false;
 // Lines with a DELETE in flight. Typing a quantity and then clicking that
 // line's remove button sends a PUT (the input's change on blur) and a DELETE
 // at once; the PUT may land second and fail with `unknown_line`.
@@ -367,9 +368,21 @@ function applyCart( data ) {
 	state.count = data.item_count;
 }
 
-/** Marks the quantity tier row that `quantity` falls in. */
+function nudgeOf() {
+	return state.cart ? state.cart.next_discount ?? null : state.nudge ?? null;
+}
+
+/**
+ * Marks the quantity tier row that `quantity` falls in, in the form and in
+ * a Quantity prices block of the same product (ADR-050).
+ */
 function markTier( form, quantity ) {
-	form?.querySelectorAll( '.fxc-tiers tr[data-min]' ).forEach( ( row ) => {
+	const id = form?.elements.product_id?.value;
+	const rows = [ ...( form?.querySelectorAll( '.fxc-tiers tr[data-min]' ) || [] ) ];
+	if ( id ) {
+		rows.push( ...document.querySelectorAll( '.fxc-quantity-prices[data-product="' + id + '"] tr[data-min]' ) );
+	}
+	rows.forEach( ( row ) => {
 		const max = parseInt( row.dataset.max, 10 ) || Infinity;
 		row.classList.toggle( 'is-current', quantity >= parseInt( row.dataset.min, 10 ) && quantity <= max );
 	} );
@@ -421,6 +434,16 @@ const { state, actions } = store( 'flexacommerce/cart', {
 		get couponLabel() {
 			const { coupon } = getContext();
 			return ( ( coupon.automatic ? i18n.discount : i18n.coupon ) || '%s' ).replace( '%s', () => coupon.label );
+		},
+		// The Discount progress block (ADR-050): the cart once read, else what the server rendered.
+		get noNudge() {
+			return ! nudgeOf();
+		},
+		get nudgeLabel() {
+			return nudgeOf()?.message ?? '';
+		},
+		get nudgeWidth() {
+			return ( nudgeOf()?.percent ?? 0 ) + '%';
 		},
 		get nextLabel() {
 			return state.cart?.next_discount?.message ?? '';
@@ -836,6 +859,18 @@ const { state, actions } = store( 'flexacommerce/cart', {
 			tick();
 			timer = window.setInterval( tick, 1000 );
 			return () => window.clearInterval( timer );
+		},
+		/** A guest's page is the same for everyone: read the cart when the cookie says it has items. */
+		*nudge() {
+			if ( nudgeRequested || state.cart || config.loggedIn || readCount() === 0 ) {
+				return;
+			}
+			nudgeRequested = true;
+			try {
+				applyCart( yield request( 'cart' ) );
+			} catch ( error ) {
+				// The bar stays hidden.
+			}
 		},
 		*initCount() {
 			if ( countRequested ) {

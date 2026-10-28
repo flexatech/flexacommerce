@@ -239,6 +239,22 @@ final class PriceRules {
 	}
 
 	/**
+	 * When one rule ends, for a countdown a merchant placed (ADR-050):
+	 * null unless the rule changes prices, is live and has an end, and
+	 * the customer is one it is for. Its products and conditions are not
+	 * checked; the merchant picked the rule for the page.
+	 *
+	 * @param string $now UTC `Y-m-d H:i:s`
+	 */
+	public function ends_of( int $id, int $user_id, string $now ): ?string {
+		$rule = $this->rules->find( $id );
+		if ( $rule === null || $rule->is_fee() || $rule->ends_at === null || ! $rule->is_live( $now ) || ! $this->for_customer( $rule, $user_id ) ) {
+			return null;
+		}
+		return $rule->ends_at;
+	}
+
+	/**
 	 * When the live rules for this product and customer end, soonest first:
 	 * the moments its price may go up.
 	 *
