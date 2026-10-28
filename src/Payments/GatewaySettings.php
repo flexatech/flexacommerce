@@ -7,6 +7,7 @@ namespace Flexa\Commerce\Payments;
 use Flexa\Commerce\Contracts\Payments\PaymentGateway;
 use Flexa\Commerce\Contracts\SettingField;
 use Flexa\Commerce\Support\FieldValues;
+use Flexa\Commerce\Support\WalletPlaces;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -54,6 +55,12 @@ final class GatewaySettings {
 		update_option( self::PREFIX . $gateway->id(), $values, false );
 		$this->cache[ $gateway->id() ] = $values;
 		$gateway->configure( $values );
+		if ( $gateway instanceof ExpressGateway ) {
+			$places = (bool) ( $values['enabled'] ?? false )
+				? array_values( array_filter( ExpressGateway::PLACES, static fn ( string $place ): bool => $gateway->express_config( $place ) !== null ) )
+				: [];
+			WalletPlaces::put( $gateway->id(), $places );
+		}
 		return $values;
 	}
 

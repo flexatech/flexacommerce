@@ -37,11 +37,15 @@ final class StripeGatewayTest extends OrderTestCase {
 	}
 
 	public function tear_down(): void {
+		global $wpdb;
 		FakeStripe::uninstall();
+		parent::tear_down();
+		// The orders committed the keys saved in set_up, so they go after the rollback.
 		delete_option( GatewaySettings::PREFIX . StripeGateway::ID );
 		delete_option( StripeGateway::STATUS_OPTION );
+		\Flexa\Commerce\Support\WalletPlaces::put( StripeGateway::ID, [] );
 		FakeStripe::forget( StripeGateway::ID );
-		parent::tear_down();
+		$wpdb->query( 'COMMIT' );
 	}
 
 	public function test_saving_keys_reads_the_account_and_creates_the_webhook(): void {
@@ -159,6 +163,66 @@ final class StripeGatewayTest extends OrderTestCase {
 		self::assertStringContainsString( rest_url( 'flexacommerce/v1/webhooks/stripe' ), $notes );
 		self::assertStringContainsString( 'checkout.session.async_payment_succeeded', $notes );
 		self::assertSame( '', $this->settings()->values( $this->gateway() )['test_webhook_secret'] );
+	}
+
+	public function test_saving_keys_registers_the_domain_for_apple_pay(): void {
+		$host    = (string) wp_parse_url( home_url(), PHP_URL_HOST );
+		$created = FakeStripe::calls_to( 'POST', 'payment_method_domains' );
+		self::assertCount( 1, $created );
+		self::assertSame( $host, $created[0]['body']['domain_name'] );
+		self::assertStringContainsString( 'Apple Pay and Google Pay can show on ' . $host . '.', $this->notes() );
+
+		FakeStripe::$routes['POST payment_method_domains'] = [
+			200,
+			[
+				'id'        => 'pmd_1',
+				'apple_pay' => [
+					'status'         => 'inactive',
+					'status_details' => [ 'error_message' => 'The domain is not reachable.' ],
+				],
+			],
+		];
+		$this->settings()->save( $this->gateway(), [ 'test_secret_key' => 'sk_test_new456' ] );
+		self::assertStringContainsString( 'Stripe could not register ' . $host . ' for Apple Pay: The domain is not reachable.', $this->notes() );
+
+		// With every wallet place off the domain is not mentioned.
+		$this->settings()->save(
+			$this->gateway(),
+			[
+				'express_product'  => false,
+				'express_cart'     => false,
+				'express_checkout' => false,
+			]
+		);
+		self::assertStringNotContainsString( 'Apple Pay', $this->notes() );
+		self::assertNull( $this->gateway()->express_config( 'cart' ) );
+	}
+
+	public function test_the_wallet_buttons_get_the_public_key_only(): void {
+		$config = $this->gateway()->express_config( 'product' );
+		self::assertIsArray( $config );
+		self::assertStringContainsString( 'assets/frontend/stripe-express.js', (string) $config['script'] );
+		self::assertSame( 'pk_test_abc123', $config['key'] );
+		self::assertSame( 'black', $config['theme'] );
+		self::assertStringNotContainsString( 'sk_test', (string) wp_json_encode( $config ) );
+		self::assertNull( $this->gateway()->express_config( 'mini-cart' ) );
+
+		$this->settings()->save( $this->gateway(), [ 'express_product' => false ] );
+		self::assertNull( $this->gateway()->express_config( 'product' ) );
+		self::assertIsArray( $this->gateway()->express_config( 'checkout' ) );
+
+		$context = new \Flexa\Commerce\Contracts\Payments\CheckoutContext( new \Flexa\Commerce\Contracts\Money( 1999, 'USD' ), 'US', 'US', true, '', null, 1 );
+		self::assertFalse( $this->gateway()->validate( $context, [ 'express' => 'apple_pay' ] )->is_valid(), 'a wallet without a payment method' );
+		self::assertTrue(
+			$this->gateway()->validate(
+				$context,
+				[
+					'payment_method'      => 'pm_wallet',
+					'payment_method_type' => 'card',
+					'express'             => 'google_pay',
+				]
+			)->is_valid()
+		);
 	}
 
 	public function test_the_checkout_offers_the_payment_element_with_its_public_config(): void {
@@ -528,6 +592,7 @@ final class StripeGatewayTest extends OrderTestCase {
 		self::assertNotSame( '', $status['test']['account'] );
 		// The fixture has no signing secret (Stripe sends it on creation only), but the request passed the spec.
 		self::assertSame( 'Stripe did not return the webhook signing secret.', $status['test']['error'] );
+		self::assertSame( '', $status['test']['domain_error'], 'the domain request passed the spec' );
 
 		$order = $this->place( [ $this->simple( 1500, 5 ) => 1 ], 0, null, OrderStatus::PENDING, StripeGateway::ID );
 		$view  = $order->view();

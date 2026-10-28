@@ -34,9 +34,11 @@ return [
 	// Autoloaded options owned by FlexaCommerce, on any request: the
 	// settings, the badge, price rule and product option lists (empty
 	// here) and the automatic coupon flag (ADR-026: 2 B, saves carts a
-	// query in stores without automatic discounts).
+	// query in stores without automatic discounts), and the wallet places
+	// (ADR-053: 6 B empty, saves product pages, the cart and the checkout a
+	// query in stores without wallet buttons; 5 options before, 6 after).
 	'P10'         => [
-		'options' => 5,
+		'options' => 6,
 		'bytes'   => 10240,
 	],
 	// Product archive at 12 and 48 per page, against a core archive of the

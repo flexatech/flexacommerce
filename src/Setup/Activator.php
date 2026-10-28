@@ -11,6 +11,7 @@ use Flexa\Commerce\Maintenance\Cron;
 use Flexa\Commerce\Options\ProductOptions;
 use Flexa\Commerce\Pricing\PricingService;
 use Flexa\Commerce\Support\Settings;
+use Flexa\Commerce\Support\WalletPlaces;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -66,8 +67,8 @@ final class Activator {
 	}
 
 	/**
-	 * Badges, pricing rules and product options are read on storefront pages, and
-	 * the automatic coupon flag by every cart. An empty list
+	 * Badges, pricing rules, product options and the wallet places are read
+	 * on storefront pages, and the automatic coupon flag by every cart. An empty list
 	 * that exists rides in the autoloaded options; a missing one costs a
 	 * query on every page without a persistent object cache.
 	 */
@@ -76,6 +77,7 @@ final class Activator {
 		add_option( PricingService::RULES_OPTION, [], '', true );
 		add_option( ProductOptions::OPTION, [], '', true );
 		add_option( CouponRepository::AUTOMATIC_OPTION, 0, '', true );
+		add_option( WalletPlaces::OPTION, [], '', true );
 	}
 
 	/** New site on a network where the plugin is network-active. */

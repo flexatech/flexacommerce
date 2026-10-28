@@ -103,7 +103,7 @@ Core rules applied to gateway output (doc 02 §7.7 and §7.8):
 |---|---|
 | `cod` | `process_payment` returns `pending(null)`. Order goes to `processing` (stock held, paid later). Admin marks paid with "Record payment" (manual transaction). Optional: enabled shipping methods filter. |
 | `bacs` | Returns `pending(null, instructions)`. Order goes to `on-hold`. Bank details shown on confirmation and email. Admin records payment. |
-| `stripe` | ADR-052. The Payment Element makes a payment method in the browser, `process_payment` confirms a PaymentIntent with it; 3-D Secure returns `requires_action` and ends on the return URL, which `verify_return` checks with the secret key. Without a payment method (scripts off, order-pay page) it returns `redirect` to a Stripe Checkout Session. Refunds by PaymentIntent, or by charge for orders imported from the WooCommerce Stripe extension. Saving the keys checks the account and creates the webhook endpoint. |
+| `stripe` | ADR-052. The Payment Element makes a payment method in the browser, `process_payment` confirms a PaymentIntent with it; 3-D Secure returns `requires_action` and ends on the return URL, which `verify_return` checks with the secret key. Without a payment method (scripts off, order-pay page) it returns `redirect` to a Stripe Checkout Session. Refunds by PaymentIntent, or by charge for orders imported from the WooCommerce Stripe extension. Saving the keys checks the account, creates the webhook endpoint and registers the domain for Apple Pay. Apple Pay and Google Pay buttons on the product page, the cart and the checkout (ADR-053). |
 
 ### 3.4 Gateway security obligations (documented for authors, enforced where possible)
 
@@ -119,6 +119,8 @@ A gateway with a `script_module` gets it loaded as an ES module on the checkout,
 - `fxc:payment-action` (`detail.method`, `detail.payload`) fires when the result is `requires_action`. The payload is what the gateway put in `PaymentResult::requires_action()`; it is sent to the browser once and never stored. When the promise settles, checkout.js goes to the redirect, which is the return URL, so `verify_return()` decides.
 
 checkout.js does not render the method boxes again on a requote, so a mounted element stays. A gateway whose module fails to load should still work without it (Stripe falls back to a hosted page).
+
+An internal `Payments\ExpressGateway` interface (core gateways only, ADR-053) adds wallet buttons: `express_config( place )` for `product`, `cart` or `checkout` returns the public config and the `script` that draws them, or null. The script gets the box `[data-fxc-express]` with that config, the store route `store/express` for quotes and `store/express/order` to place the order, with the PaymentMethod in `gateway_input`.
 
 An internal `Payments\ConnectedGateway` interface (core gateways only, not part of the contract) adds `connect( values, before )`, run when the settings are saved: it may add to the values or throw `InvalidArgumentException`, which the admin endpoint answers with 400 and nothing is saved; and `notes()`, shown on the gateway's card.
 

@@ -29,24 +29,31 @@ final class FakeStripe {
 		self::$calls  = [];
 	}
 
-	/** The connected account and an empty webhook list, so a save of keys works. */
+	/** The connected account, an empty webhook list and the wallet domain, so a save of keys works. */
 	public static function connectable(): void {
-		self::$routes['GET account']               = [
+		self::$routes['GET account']                 = [
 			200,
 			[
 				'id'       => 'acct_1',
 				'settings' => [ 'dashboard' => [ 'display_name' => 'Hopper Goods' ] ],
 			],
 		];
-		self::$routes['GET webhook_endpoints']     = [ 200, [ 'data' => [] ] ];
-		self::$routes['POST webhook_endpoints']    = [
+		self::$routes['GET webhook_endpoints']       = [ 200, [ 'data' => [] ] ];
+		self::$routes['POST webhook_endpoints']      = [
 			200,
 			[
 				'id'     => 'we_1',
 				'secret' => 'whsec_made_for_you',
 			],
 		];
-		self::$routes['DELETE webhook_endpoints/'] = [ 200, [ 'deleted' => true ] ];
+		self::$routes['DELETE webhook_endpoints/']   = [ 200, [ 'deleted' => true ] ];
+		self::$routes['POST payment_method_domains'] = [
+			200,
+			[
+				'id'        => 'pmd_1',
+				'apple_pay' => [ 'status' => 'active' ],
+			],
+		];
 	}
 
 	/** Drop a built gateway and its cached option, as the next request would. */

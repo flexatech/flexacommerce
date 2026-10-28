@@ -225,6 +225,9 @@ final class AddToCartForm {
 		if ( $mode === self::SINGLE && $this->pricing !== null ) {
 			$html .= QuantityTiers::html( $this->pricing, $product, $user_id, $ends );
 		}
+		if ( $mode === self::SINGLE && $editing === null ) {
+			$html .= ExpressButtons::html( 'product', [ 'product_id' => $product->id ] );
+		}
 		$html .= '<p class="fxc-add-to-cart__message" role="status" aria-live="polite" data-wp-text="context.message" data-wp-class--is-error="context.failed"></p>';
 		$html .= FormHandler::notice_for( $product->id );
 		return $html . '</form>';

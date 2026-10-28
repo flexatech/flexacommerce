@@ -320,3 +320,10 @@
 .fxc-products { list-style: none; margin: 1.5rem 0; padding: 0; display: grid; gap: 1.5rem; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); }
 .fxc-products__image img { display: block; width: 100%; height: auto; aspect-ratio: 1; object-fit: cover; }
 .fxc-products__name { font-size: 1rem; margin: .75rem 0 .25rem; }
+.fxc-express { margin-block: 1rem; }
+.fxc-express--cart { margin-inline-start: auto; max-width: 20rem; }
+.fxc-express__title { margin: 0 0 .5rem; font-weight: 600; }
+.fxc-express__terms, .fxc-express__message { margin: .5rem 0 0; font-size: .875em; }
+.fxc-express__message { color: #b32d2e; }
+.fxc-express__or { display: flex; align-items: center; gap: .75rem; margin: 1rem 0 0; opacity: .7; }
+.fxc-express__or::before, .fxc-express__or::after { content: ""; flex: 1; border-top: 1px solid currentColor; }

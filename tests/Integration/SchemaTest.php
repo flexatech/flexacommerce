@@ -40,7 +40,7 @@ final class SchemaTest extends \WP_UnitTestCase {
 		self::assertNotNull( $value );
 	}
 
-	public function test_only_the_settings_the_storefront_lists_and_the_coupon_flag_are_autoloaded(): void {
+	public function test_only_the_settings_the_storefront_lists_and_the_flags_are_autoloaded(): void {
 		global $wpdb;
 		$autoloaded = $wpdb->get_col(
 			$wpdb->prepare(
@@ -49,6 +49,6 @@ final class SchemaTest extends \WP_UnitTestCase {
 			)
 		);
 		sort( $autoloaded );
-		self::assertSame( [ 'flexacommerce_automatic_coupons', 'flexacommerce_badges', 'flexacommerce_price_rules', 'flexacommerce_product_options', 'flexacommerce_settings' ], $autoloaded );
+		self::assertSame( [ 'flexacommerce_automatic_coupons', 'flexacommerce_badges', 'flexacommerce_price_rules', 'flexacommerce_product_options', 'flexacommerce_settings', 'flexacommerce_wallet_places' ], $autoloaded );
 	}
 }

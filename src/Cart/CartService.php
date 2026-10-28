@@ -203,6 +203,24 @@ final class CartService {
 	}
 
 	/**
+	 * A cart of this one product choice that is never stored: "buy now"
+	 * with a wallet on the product page (ADR-053), which leaves the
+	 * shopper's own cart as it is. Checked as add() checks a line.
+	 *
+	 * @param array<string,string>   $attributes
+	 * @param array<array-key,mixed> $options
+	 * @throws InvalidCartRequest|NotPurchasable|InsufficientStock
+	 */
+	public function single( int $user_id, int $product_id, int $variant_id, int $quantity, array $attributes = [], array $options = [] ): Cart {
+		[ $product, $variant, $line ] = $this->prepare( $product_id, $variant_id, $quantity, $attributes, $options );
+		$cart                         = new Cart();
+		$this->assert_stock( $cart, $product, $variant, $line->quantity );
+		$this->assert_option_stock( $cart, $line->options, $line->quantity, $line->quantity, $line->key, $variant->id );
+		$this->validate_add( $cart, $product, $variant, $line->quantity, $user_id );
+		return $cart->with_added( $line );
+	}
+
+	/**
 	 * Changes the variation, options and quantity of the line `$key` (ADR-037).
 	 * The line keeps its place; when the new choices match another line, the
 	 * two are merged.

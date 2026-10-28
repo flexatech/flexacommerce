@@ -108,6 +108,7 @@ final class CartTable {
 		$html .= '</tbody></table>';
 		$html .= self::next_discount( $data['next_discount'] ?? null );
 		$html .= self::totals( $data );
+		$html .= ExpressButtons::html( 'cart' );
 		$html .= '<p class="fxc-cart__actions"><button type="submit" class="wp-element-button">' . esc_html__( 'Update cart', 'flexacommerce' ) . '</button></p>';
 		$html .= '<p class="fxc-cart__message" role="status" aria-live="polite" data-wp-text="state.message"></p>';
 		$html .= '</form>';

@@ -204,7 +204,7 @@ Full method signatures are in §8. Responsibilities:
 | Family | Prefix | Auth | Examples |
 |---|---|---|---|
 | Admin | `/flexacommerce/v1/admin/*` | Cookie + `X-WP-Nonce` (`wp_rest`), capability check per route | `admin/orders`, `admin/orders/{id}/transitions`, `admin/products/{id}/variants`, `admin/settings`, `admin/coupons`, `admin/coupons/{id}`, `admin/migrations` |
-| Store | `/flexacommerce/v1/store/*` | Public, but every mutating route requires the cart session token + `X-FXC-Nonce` (doc 06 §2.3) | `store/cart`, `store/cart/items`, `store/cart/items/{key}`, `store/cart/coupons`, `store/cart/coupons/{code}`, `store/shipping-rates`, `store/checkout`, `store/products/{id}/variants` |
+| Store | `/flexacommerce/v1/store/*` | Public, but every mutating route requires the cart session token + `X-FXC-Nonce` (doc 06 §2.3) | `store/cart`, `store/cart/items`, `store/cart/items/{key}`, `store/cart/coupons`, `store/cart/coupons/{code}`, `store/shipping-rates`, `store/checkout`, `store/express`, `store/express/order` (ADR-053), `store/products/{id}/variants` |
 | Webhooks | `/flexacommerce/v1/webhooks/{gateway}` | Public, gateway signature verification | |
 
 - Responses never expose table columns directly. Each endpoint has a schema (`get_item_schema`) and maps value objects through `to_array()`.

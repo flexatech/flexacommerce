@@ -59,6 +59,12 @@ defined( 'ABSPATH' ) || exit;
 final class CheckoutService {
 	public const RETURN_ARG = 'fxc_return';
 
+	/** Wallets an express button pays with (ADR-053), named on the order. */
+	public const WALLETS = [
+		'apple_pay'  => 'Apple Pay',
+		'google_pay' => 'Google Pay',
+	];
+
 	private readonly CartTaxes $cart_taxes;
 
 	private readonly CustomerProfile $profile;
@@ -147,7 +153,7 @@ final class CheckoutService {
 	 */
 	public function form_state( int $user_id ): array {
 		$stored                     = $this->cart->state( $user_id );
-		$destination                = $this->stored_destination( $stored, $user_id );
+		$destination                = $this->stored_destination( $stored->cart, $user_id );
 		[ $state, $quote, $method ] = $this->quoted( $user_id, $destination, $stored->cart->shipping_rate, $stored->cart->payment_method );
 		$saved                      = [];
 		foreach ( $this->profile->addresses( $user_id ) as $type => $address ) {
@@ -307,15 +313,122 @@ final class CheckoutService {
 			throw new InvalidCheckout( [ 'cart' => __( 'Some items in your cart are no longer available. Review your cart and try again.', 'flexacommerce' ) ] );
 		}
 
+		return $this->complete(
+			$request,
+			fn ( array $choices ): CartState => $this->cart->state( $request->user_id, $choices + [ 'final' => true ] ),
+			true
+		);
+	}
+
+	/**
+	 * "Buy now" with a wallet on the product page (ADR-053): an order for
+	 * a cart of one product that was never stored, so the shopper's own
+	 * cart stays as it is. The wallet script makes the checkout token.
+	 *
+	 * @throws InvalidCheckout|TotalsChanged|RateLimited
+	 */
+	public function place_single( CheckoutRequest $request, Cart $cart ): CheckoutResult {
+		if ( Settings::bool( 'checkout_paused' ) ) {
+			throw new InvalidCheckout( [ 'cart' => __( 'Checkout is paused for maintenance. Please try again shortly.', 'flexacommerce' ) ] );
+		}
+		if ( preg_match( '/^[A-Za-z0-9-]{20,64}$/', $request->checkout_token ) !== 1 ) {
+			throw new InvalidCheckout( [ 'cart' => __( 'Your session has expired. Reload the page and try again.', 'flexacommerce' ) ] );
+		}
+		$existing = $this->orders->find_by_checkout_token( $request->checkout_token );
+		if ( $existing !== null ) {
+			return $this->duplicate( $existing );
+		}
+		$this->limiter->hit( 'checkout_session', $request->checkout_token );
+		$this->limiter->hit( 'checkout_ip', $request->customer_ip );
+		if ( $this->cart->preview( $cart, $request->user_id )->has_problems() ) {
+			throw new InvalidCheckout( [ 'cart' => __( 'This product is no longer available.', 'flexacommerce' ) ] );
+		}
+		return $this->complete(
+			$request,
+			fn ( array $choices ): CartState => $this->cart->preview(
+				$cart->with_shipping( [ 'country' => $choices['country'] ] + $cart->destination, $choices['shipping_rate'] )->with_payment_method( $choices['payment_method'] ),
+				$request->user_id,
+				true
+			),
+			false
+		);
+	}
+
+	/**
+	 * What a wallet sheet shows (ADR-053): the cart, or one product, quoted
+	 * for the address the wallet shares, without storing that address.
+	 * Amounts are in minor units; the shipping line is not among `lines`,
+	 * since the wallet adds the chosen rate itself.
+	 *
+	 * @param array{country:string,state:string,postcode:string,city:string}|null $address null before the wallet shares one
+	 * @return array<string,mixed>
+	 * @throws InvalidCheckout the cart is empty
+	 */
+	public function express_quote( int $user_id, ?Cart $single, ?array $address, string $rate_id, string $method ): array {
+		$stored = $single === null ? $this->cart->state( $user_id ) : null;
+		$cart   = $single ?? $stored->cart ?? new Cart();
+		if ( $cart->is_empty() ) {
+			throw new InvalidCheckout( [ 'cart' => __( 'Your cart is empty.', 'flexacommerce' ) ] );
+		}
+		$destination             = $address !== null && $address['country'] !== ''
+			? new Destination( $address['country'], $address['state'], $address['postcode'], $address['city'] )
+			: $this->stored_destination( $cart, $user_id );
+		[ $state, $quote, $pay ] = $this->preview( $cart->with_shipping( $cart->destination, $rate_id )->with_payment_method( $method ), $user_id, $destination );
+		$rates                   = [];
+		foreach ( $quote->rates as $rate ) {
+			$rates[] = [
+				'id'     => $rate->id,
+				'label'  => $rate->label,
+				'amount' => $rate->cost->amount,
+			];
+		}
+		$fees  = $state->fee_total()->amount;
+		$lines = [
+			[
+				'label'  => __( 'Subtotal', 'flexacommerce' ),
+				'amount' => $quote->total->amount - $quote->shipping->amount - $quote->tax->amount - $fees,
+			],
+		];
+		foreach ( $state->fees as $fee ) {
+			$lines[] = [
+				'label'  => $fee->name,
+				'amount' => $fee->amount->amount,
+			];
+		}
+		if ( $quote->tax->amount > 0 ) {
+			$lines[] = [
+				'label'  => __( 'Tax', 'flexacommerce' ),
+				'amount' => $quote->tax->amount,
+			];
+		}
+		return [
+			'currency'       => $quote->total->currency,
+			'total'          => $quote->total->amount,
+			'payable'        => $quote->total->amount > 0 && $pay === $method && ! $state->has_problems(),
+			'needs_shipping' => $quote->needs_shipping,
+			'shipping_rates' => $rates,
+			'shipping_rate'  => $quote->rate->id ?? '',
+			'lines'          => $lines,
+			'checkout_token' => $stored !== null ? $this->cart->checkout_token( $user_id, $stored ) : '',
+		];
+	}
+
+	/**
+	 * The order from a request whose cart is checked: priced for the
+	 * choices on the form, validated, created, then paid. `$session` says
+	 * the cart is the shopper's stored one, emptied after the order.
+	 *
+	 * @param \Closure(array{country:string,shipping_rate:string,payment_method:string}):CartState $priced
+	 * @throws InvalidCheckout|TotalsChanged
+	 */
+	private function complete( CheckoutRequest $request, \Closure $priced, bool $session ): CheckoutResult {
 		// Priced for the choices on the form; a condition still unknown is not met (ADR-041).
 		$destination = $this->validator->destination( $request );
-		$state       = $this->cart->state(
-			$request->user_id,
+		$state       = $priced(
 			[
 				'country'        => $destination->country,
 				'shipping_rate'  => $request->shipping_rate,
 				'payment_method' => $request->payment_method,
-				'final'          => true,
 			]
 		);
 		if ( $state->has_rejected_coupons() ) {
@@ -384,7 +497,9 @@ final class CheckoutService {
 		}
 
 		try {
-			$this->cart->finish_checkout( $request->user_id, $request->checkout_token );
+			if ( $session ) {
+				$this->cart->finish_checkout( $request->user_id, $request->checkout_token );
+			}
 		} catch ( \Throwable $e ) {
 			$this->log->warning(
 				'Could not empty the cart after order {order_id}: {message}',
@@ -646,8 +761,8 @@ final class CheckoutService {
 		return new CheckoutResult( $order, $this->pages->confirmation_url( $order ), null, true );
 	}
 
-	private function stored_destination( CartState $state, int $user_id = 0 ): Destination {
-		$saved = $state->cart->destination;
+	private function stored_destination( Cart $cart, int $user_id = 0 ): Destination {
+		$saved = $cart->destination;
 		if ( $saved['country'] !== '' ) {
 			return new Destination( $saved['country'], $saved['state'], $saved['postcode'], $saved['city'] );
 		}
@@ -833,6 +948,12 @@ final class CheckoutService {
 			);
 		}
 		$currency = $quote->total->currency;
+		$title    = $gateway !== null ? $this->payments->gateways()->title( $gateway ) : '';
+		$wallet   = $request->gateway_input['express'] ?? '';
+		if ( $gateway !== null && is_string( $wallet ) && isset( self::WALLETS[ $wallet ] ) ) {
+			$title                = sprintf( '%1$s (%2$s)', $title, self::WALLETS[ $wallet ] );
+			$meta['_fxc_express'] = $wallet;
+		}
 
 		return new NewOrder(
 			status: $this->payments->initial_status( $gateway, $quote->total->amount ),
@@ -849,7 +970,7 @@ final class CheckoutService {
 			customer_note: $this->validator->note( $request ),
 			customer_ip: Settings::bool( 'store_customer_ip' ) ? $request->customer_ip : '',
 			payment_method: $gateway?->id() ?? '',
-			payment_method_title: $gateway !== null ? $this->payments->gateways()->title( $gateway ) : '',
+			payment_method_title: $title,
 			checkout_token: $request->checkout_token,
 			locale: determine_locale(),
 			discount_total: $discount,

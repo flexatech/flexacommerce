@@ -44,6 +44,7 @@ final class Router {
 		if ( $scope !== 'none' ) {
 			( new Store\CartEndpoint() )->register_routes();
 			( new Store\CheckoutEndpoint() )->register_routes();
+			( new Store\ExpressEndpoint() )->register_routes();
 			( new Store\ProductsEndpoint() )->register_routes();
 			add_filter( 'rest_authentication_errors', [ $this, 'keep_cookie_user_on_store' ], 50 );
 		}

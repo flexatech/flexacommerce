@@ -16,8 +16,10 @@ use Flexa\Commerce\Contracts\Payments\ReturnRequest;
 use Flexa\Commerce\Contracts\SettingField;
 use Flexa\Commerce\Contracts\ValidationResult;
 use Flexa\Commerce\Payments\ConnectedGateway;
+use Flexa\Commerce\Payments\ExpressGateway;
 use Flexa\Commerce\Support\ClientIp;
 use Flexa\Commerce\Support\Currency;
+use Flexa\Commerce\Support\Settings;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -27,9 +29,11 @@ defined( 'ABSPATH' ) || exit;
  * confirms a PaymentIntent with it and Stripe.js finishes 3-D Secure in a
  * modal. Without scripts, and on the order-pay page, the shopper pays on a
  * Stripe Checkout page instead. Returns are checked with the secret key,
- * so a forged return URL cannot mark an order paid.
+ * so a forged return URL cannot mark an order paid. Apple Pay and Google
+ * Pay buttons on the product page, the cart and the checkout use the
+ * Express Checkout Element (ADR-053).
  */
-final class StripeGateway extends AbstractPaymentGateway implements ConnectedGateway {
+final class StripeGateway extends AbstractPaymentGateway implements ConnectedGateway, ExpressGateway {
 	public const ID = 'stripe';
 
 	/** What the last save learned from Stripe, per mode. Erased with the store's options. */
@@ -90,7 +94,50 @@ final class StripeGateway extends AbstractPaymentGateway implements ConnectedGat
 				__( 'Filled in for you when the keys are saved. Starts with whsec_.', 'flexacommerce' )
 			);
 		}
+		$places = [
+			'product'  => __( 'Wallet buttons on product pages', 'flexacommerce' ),
+			'cart'     => __( 'Wallet buttons on the cart', 'flexacommerce' ),
+			'checkout' => __( 'Wallet buttons on the checkout', 'flexacommerce' ),
+		];
+		foreach ( $places as $place => $label ) {
+			$fields[] = new SettingField(
+				'express_' . $place,
+				'checkbox',
+				$label,
+				true,
+				$place === 'product' ? __( 'Apple Pay and Google Pay, shown when the shopper\'s device supports them. On a product page the button buys that product alone and leaves the cart as it is.', 'flexacommerce' ) : ''
+			);
+		}
+		$fields[] = new SettingField(
+			'express_theme',
+			'select',
+			__( 'Wallet button color', 'flexacommerce' ),
+			'black',
+			'',
+			[
+				'black'         => __( 'Black', 'flexacommerce' ),
+				'white'         => __( 'White', 'flexacommerce' ),
+				'white-outline' => __( 'White with outline', 'flexacommerce' ),
+			]
+		);
 		return $fields;
+	}
+
+	public function express_config( string $place ): ?array {
+		if ( ! in_array( $place, self::PLACES, true ) || ! (bool) $this->setting( 'express_' . $place ) || $this->key( 'publishable_key' ) === '' || $this->key( 'secret_key' ) === '' ) {
+			return null;
+		}
+		$currency = Settings::string( 'currency' );
+		$theme    = (string) $this->setting( 'express_theme' );
+		return [
+			'script'   => FLEXACOMMERCE_URL . 'assets/frontend/stripe-express.js',
+			'gateway'  => self::ID,
+			'key'      => $this->key( 'publishable_key' ),
+			'currency' => strtolower( $currency ),
+			'shift'    => StripeAmount::exponent( $currency ) - Currency::exponent( $currency ),
+			'locale'   => str_replace( '_', '-', determine_locale() ),
+			'theme'    => in_array( $theme, [ 'black', 'white', 'white-outline' ], true ) ? $theme : 'black',
+		];
 	}
 
 	public function mode(): string {
@@ -124,7 +171,8 @@ final class StripeGateway extends AbstractPaymentGateway implements ConnectedGat
 		$result = new ValidationResult();
 		$method = $gateway_input['payment_method'] ?? '';
 		$type   = $gateway_input['payment_method_type'] ?? '';
-		if ( ! is_string( $method ) || ( $method !== '' && preg_match( '/^pm_[A-Za-z0-9_]{1,250}$/', $method ) !== 1 ) || ! is_string( $type ) || preg_match( '/^[a-z_]{0,40}$/', $type ) !== 1 ) {
+		$wallet = $gateway_input['express'] ?? '';
+		if ( ! is_string( $method ) || ( $method !== '' && preg_match( '/^pm_[A-Za-z0-9_]{1,250}$/', $method ) !== 1 ) || ! is_string( $type ) || preg_match( '/^[a-z_]{0,40}$/', $type ) !== 1 || ! is_string( $wallet ) || ( $wallet !== '' && $method === '' ) ) {
 			$result = $result->with_error( 'stripe', __( 'The payment details could not be read. Enter them again.', 'flexacommerce' ) );
 		}
 		return $result;
@@ -325,11 +373,12 @@ final class StripeGateway extends AbstractPaymentGateway implements ConnectedGat
 				$account = [];
 				$error   = $e->getMessage();
 			}
-			$entry = [
+			$entry  = [
 				'account' => self::account_name( $account ),
 				'webhook' => '',
 				'error'   => $error,
 			];
+			$entry += $this->register_domain( $client );
 			if ( $typed_own ) {
 				$entry['webhook'] = 'manual';
 			} else {
@@ -393,7 +442,54 @@ final class StripeGateway extends AbstractPaymentGateway implements ConnectedGat
 					. sprintf( __( 'Payments still confirm when the shopper comes back from Stripe. For payments that settle later and for refunds, add an endpoint for %1$s in the Stripe Dashboard (Developers, Webhooks) with the events %2$s, then paste its signing secret here.', 'flexacommerce' ), $url, implode( ', ', StripeEvents::ENABLED ) ),
 			];
 		}
+		$express = false;
+		foreach ( self::PLACES as $place ) {
+			$express = $express || (bool) $this->setting( 'express_' . $place );
+		}
+		$host = (string) wp_parse_url( home_url(), PHP_URL_HOST );
+		if ( $express && ( $entry['domain'] ?? '' ) === 'registered' ) {
+			$notes[] = [
+				'tone' => 'success',
+				/* translators: %s: the site's domain */
+				'text' => sprintf( __( 'Apple Pay and Google Pay can show on %s.', 'flexacommerce' ), $host ),
+			];
+		} elseif ( $express && ( $entry['domain_error'] ?? '' ) !== '' ) {
+			$notes[] = [
+				'tone' => 'warning',
+				/* translators: 1: the site's domain; 2: Stripe's message */
+				'text' => sprintf( __( 'Stripe could not register %1$s for Apple Pay: %2$s Add it in the Stripe Dashboard (Settings, Payment method domains), or save the keys again later. Google Pay works without it.', 'flexacommerce' ), $host, (string) $entry['domain_error'] ),
+			];
+		}
 		return $notes;
+	}
+
+	/**
+	 * Registers the site's domain for Apple Pay, which shows its button only
+	 * on registered domains (ADR-053). Stripe keeps one entry per domain,
+	 * so saving again does no harm.
+	 *
+	 * @return array{domain:string,domain_error:string}
+	 */
+	private function register_domain( StripeClient $client ): array {
+		try {
+			$domain = $client->post( 'payment_method_domains', [ 'domain_name' => (string) wp_parse_url( home_url(), PHP_URL_HOST ) ] );
+		} catch ( StripeError $e ) {
+			return [
+				'domain'       => '',
+				'domain_error' => $e->getMessage(),
+			];
+		}
+		$apple = is_array( $domain['apple_pay'] ?? null ) ? $domain['apple_pay'] : [];
+		$error = is_string( $apple['status_details']['error_message'] ?? null ) ? $apple['status_details']['error_message'] : '';
+		return ( $apple['status'] ?? 'active' ) === 'active'
+			? [
+				'domain'       => 'registered',
+				'domain_error' => '',
+			]
+			: [
+				'domain'       => '',
+				'domain_error' => $error !== '' ? $error : __( 'Stripe has not verified the domain yet.', 'flexacommerce' ),
+			];
 	}
 
 	/** One of the keys of the current mode: publishable_key, secret_key or webhook_secret. */

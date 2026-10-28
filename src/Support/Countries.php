@@ -104,6 +104,24 @@ final class Countries {
 		};
 	}
 
+	/**
+	 * The state code for a value that may be the code or the name, as a
+	 * wallet shares it ("CA" or "California"). Anything else is kept.
+	 */
+	public static function state_code( string $country, string $value ): string {
+		$value  = trim( $value );
+		$states = self::states( $country );
+		if ( $states === [] || isset( $states[ strtoupper( $value ) ] ) ) {
+			return $states === [] ? $value : strtoupper( $value );
+		}
+		foreach ( $states as $code => $name ) {
+			if ( strcasecmp( $name, $value ) === 0 ) {
+				return (string) $code;
+			}
+		}
+		return $value;
+	}
+
 	public static function uses_postcode( string $country ): bool {
 		return ! in_array( $country, self::NO_POSTCODE, true );
 	}

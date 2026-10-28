@@ -68,6 +68,7 @@ final class CheckoutForm {
 			$html .= '<p class="fxc-notice fxc-checkout__preview" role="status">' . esc_html__( 'Preview of your unsaved checkout layout. Orders cannot be placed from this page.', 'flexacommerce' ) . '</p>';
 		}
 		$steps = $layout->flow() === CheckoutLayout::FLOW_STEPS;
+		$html .= empty( $state['preview'] ) ? ExpressButtons::html( 'checkout' ) : '';
 		$html .= '<form class="fxc-checkout__form" method="post" action="' . esc_url( CheckoutPage::form_action() ) . '"' . ( $steps ? ' data-fxc-flow="steps"' : '' ) . '>';
 		$html .= CheckoutPage::hidden_fields( (string) $state['checkout_token'], (int) ( $state['totals']['total']['amount'] ?? 0 ) );
 		if ( $steps ) {

@@ -23,12 +23,16 @@ final class Assets {
 
 	public const CHECKOUT = '@flexacommerce/checkout';
 
+	public const EXPRESS = '@flexacommerce/express';
+
 	private static bool $registered = false;
 
 	private static bool $used = false;
 
 	/** @var array<string,mixed>|null */
 	private static ?array $checkout = null;
+
+	private static bool $express = false;
 
 	public static function register(): void {
 		if ( self::$registered ) {
@@ -84,6 +88,45 @@ final class Assets {
 			];
 		}
 		self::$checkout = array_merge( self::$checkout, $config );
+	}
+
+	/**
+	 * The wallet buttons' script module (ADR-053), from the gateway that
+	 * draws them, with the store API and the strings it shows.
+	 */
+	public static function use_express( string $script ): void {
+		self::register();
+		wp_enqueue_style( self::STYLE );
+		if ( self::$express ) {
+			return;
+		}
+		self::$express = true;
+		wp_register_script_module( self::EXPRESS, $script, [], FLEXACOMMERCE_VERSION );
+		wp_enqueue_script_module( self::EXPRESS );
+		add_filter( 'script_module_data_' . self::EXPRESS, [ self::class, 'express_data' ] );
+	}
+
+	/**
+	 * @param array<string,mixed> $data
+	 * @return array<string,mixed>
+	 */
+	public static function express_data( array $data ): array {
+		$cart = Plugin::instance()->cart();
+		return array_merge(
+			$data,
+			[
+				'api'   => esc_url_raw( rest_url( FLEXACOMMERCE_REST_NAMESPACE . '/store/' ) ),
+				'nonce' => $cart->nonce()->create( get_current_user_id(), wp_get_session_token(), $cart->sessions()->token() ),
+				'i18n'  => [
+					'failed'   => __( 'The payment did not go through. Try again or use another payment method.', 'flexacommerce' ),
+					'choose'   => __( 'Choose product options before paying.', 'flexacommerce' ),
+					'fill'     => __( 'Fill in the highlighted fields first, then pay with your wallet.', 'flexacommerce' ),
+					'noRates'  => __( 'We do not ship to this address.', 'flexacommerce' ),
+					'shipping' => __( 'Shipping', 'flexacommerce' ),
+					'pending'  => __( 'Calculated with your address', 'flexacommerce' ),
+				],
+			]
+		);
 	}
 
 	/**
