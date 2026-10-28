@@ -15,6 +15,7 @@ final class ProductRepository {
 	public const META_TYPE         = '_fxc_type';
 	public const META_ATTRIBUTES   = '_fxc_attributes';
 	public const META_GALLERY      = '_fxc_gallery_ids';
+	public const META_VIDEO        = '_fxc_gallery_video';
 	public const META_VISIBILITY   = '_fxc_visibility';
 	public const META_FEATURED     = '_fxc_featured';
 	public const META_PRICE_MIN    = '_fxc_price_min';
@@ -61,6 +62,7 @@ final class ProductRepository {
 			gallery_ids: self::id_list( (string) get_post_meta( $product_id, self::META_GALLERY, true ) ),
 			visibility: in_array( $visibility, Product::VISIBILITIES, true ) ? $visibility : 'visible',
 			featured: get_post_meta( $product_id, self::META_FEATURED, true ) === '1',
+			video: ProductVideo::from_meta( (string) get_post_meta( $product_id, self::META_VIDEO, true ) ),
 		);
 	}
 
@@ -90,6 +92,11 @@ final class ProductRepository {
 			delete_post_meta( $id, self::META_GALLERY );
 		} else {
 			update_post_meta( $id, self::META_GALLERY, implode( ',', $product->gallery_ids ) );
+		}
+		if ( $product->video === null ) {
+			delete_post_meta( $id, self::META_VIDEO );
+		} else {
+			update_post_meta( $id, self::META_VIDEO, wp_slash( $product->video->to_meta() ) );
 		}
 		update_post_meta( $id, self::META_VISIBILITY, $product->visibility );
 		update_post_meta( $id, self::META_FEATURED, $product->featured ? '1' : '0' );

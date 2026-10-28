@@ -151,6 +151,7 @@ Stored in **grams and millimetres** as `decimal(12,3)`, converted from the store
 | `_fxc_type` | `simple` \| `variable` | Required. |
 | `_fxc_attributes` | JSON list | Definitions (§3.1). |
 | `_fxc_gallery_ids` | comma-separated attachment ids | `_thumbnail_id` (core) is the main image. |
+| `_fxc_gallery_video` | JSON `{url, attachment_id, position}` | The gallery video (ADR-048). A media library file keeps only its id; the provider, embed and file URL are worked out on read. Absent when there is none. |
 | `_fxc_visibility` | `visible` \| `catalog` \| `search` \| `hidden` | |
 | `_fxc_featured` | `0`/`1` | |
 | `_fxc_price_min`, `_fxc_price_max` | integer minor units | Denormalized, for sorting and range display. |

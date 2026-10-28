@@ -169,6 +169,11 @@ final class FxcCatalogReader {
 				'downloadable'   => false,
 				'image'          => $image > 0 ? Ref::make( 'wp', 'attachment', $image ) : null,
 				'gallery'        => array_map( static fn ( int $attachment ): string => Ref::make( 'wp', 'attachment', $attachment ), $product->gallery_ids ),
+				'video'          => $product->video === null ? null : [
+					'url'        => $product->video->attachment_id > 0 ? '' : $product->video->url,
+					'attachment' => $product->video->attachment_id > 0 ? Ref::make( 'wp', 'attachment', $product->video->attachment_id ) : null,
+					'position'   => $product->video->position,
+				],
 				'categories'     => $categories,
 				'tags'           => $tags,
 				'attributes'     => $attributes,

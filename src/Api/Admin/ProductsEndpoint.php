@@ -355,6 +355,27 @@ final class ProductsEndpoint extends Endpoint {
 		);
 	}
 
+	/**
+	 * Thumbnails for the gallery editor, in gallery order; attachments that are gone are left out.
+	 *
+	 * @param list<int> $ids
+	 * @return list<array{id:int,thumb:string,alt:string}>
+	 */
+	private static function gallery_thumbs( array $ids ): array {
+		$out = [];
+		foreach ( $ids as $id ) {
+			$thumb = wp_get_attachment_image_url( $id, 'thumbnail' );
+			if ( is_string( $thumb ) && $thumb !== '' ) {
+				$out[] = [
+					'id'    => $id,
+					'thumb' => $thumb,
+					'alt'   => (string) get_post_meta( $id, '_wp_attachment_image_alt', true ),
+				];
+			}
+		}
+		return $out;
+	}
+
 	/** @return array<string,mixed> */
 	private function product_data( Product $product ): array {
 		$data = [
@@ -366,6 +387,8 @@ final class ProductsEndpoint extends Endpoint {
 			'base'         => $this->variant_data( $product->base ),
 			'variations'   => array_map( [ $this, 'variant_data' ], $product->variations ),
 			'gallery_ids'  => $product->gallery_ids,
+			'gallery'      => self::gallery_thumbs( $product->gallery_ids ),
+			'video'        => $product->video?->to_array(),
 			'visibility'   => $product->visibility,
 			'featured'     => $product->featured,
 			'price_min'    => self::meta_int( $product->id, ProductRepository::META_PRICE_MIN ),
@@ -679,6 +702,15 @@ final class ProductsEndpoint extends Endpoint {
 					'items' => $row,
 				],
 				'gallery_ids'    => $ids,
+				'gallery'        => [
+					'type'     => 'array',
+					'items'    => [ 'type' => 'object' ],
+					'readonly' => true,
+				],
+				'video'          => [
+					'type'        => [ 'object', 'null' ],
+					'description' => __( 'The gallery video: a YouTube or Vimeo link, or a video file. Send { url } or { attachment_id }, with an optional position (first, second, last); null removes it.', 'flexacommerce' ),
+				],
 				'visibility'     => [
 					'type' => 'string',
 					'enum' => Product::VISIBILITIES,

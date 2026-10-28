@@ -1,5 +1,5 @@
 import type { KeyboardEvent } from "react";
-import { Boxes, Layers, Package, Tag, Truck } from "lucide-react";
+import { Boxes, Images, Layers, Package, Tag, Truck } from "lucide-react";
 
 import { showToast } from "@/shared/components/showToast";
 import { Button } from "@/shared/components/ui/button";
@@ -9,6 +9,7 @@ import { __, _n, sprintf } from "@/shared/lib/i18n";
 import { AttributesPanel } from "./AttributesPanel";
 import type { Draft } from "./draft";
 import { Field, InvalidFields, Toggle } from "./fields";
+import { GalleryPanel } from "./GalleryPanel";
 import { InventoryFields, PricingFields, ShippingFields, TaxFields } from "./RowFields";
 import type { ProductType, VariantRow, Visibility } from "./types";
 import type { ProductDraftState, Tab } from "./useProductDraft";
@@ -23,7 +24,7 @@ const VISIBILITY_OPTIONS: { value: Visibility; label: string }[] = [
 
 /**
  * The commerce half of the product editor: type, visibility, prices, stock,
- * shipping, attributes and variations. It renders a draft and knows nothing
+ * shipping, gallery, attributes and variations. It renders a draft and knows nothing
  * about where it is mounted, so the metabox and a standalone editor app can
  * both use it.
  */
@@ -45,6 +46,7 @@ export function ProductDataPanel({ editor }: { editor: ProductDraftState }) {
         { id: "general", label: __("General"), icon: Tag },
         { id: "inventory", label: __("Inventory"), icon: Boxes },
         { id: "shipping", label: __("Shipping"), icon: Truck },
+        { id: "gallery", label: __("Gallery"), icon: Images },
         { id: "attributes", label: __("Attributes"), icon: Package },
         { id: "variations", label: __("Variations"), icon: Layers, hidden: draft.type !== "variable" },
     ];
@@ -154,6 +156,9 @@ export function ProductDataPanel({ editor }: { editor: ProductDraftState }) {
                             </>
                         )}
                         {visibleTab === "shipping" && <ShippingFields row={draft.base} onChange={setBase} errors={errors} path="base" />}
+                        {visibleTab === "gallery" && (
+                            <GalleryPanel gallery={draft.gallery} video={draft.video} errors={errors} onGallery={(gallery) => set({ gallery })} onVideo={(video) => set({ video })} />
+                        )}
                         {visibleTab === "attributes" && (
                             <AttributesPanel attributes={draft.attributes} productType={draft.type} onChange={(attributes) => set({ attributes })} errors={errors} />
                         )}

@@ -65,6 +65,8 @@ export function toPayload(draft: Draft, saved?: ProductData): Record<string, unk
         type: draft.type,
         visibility: draft.visibility,
         featured: draft.featured,
+        gallery_ids: draft.gallery.map((image) => image.id),
+        video: draft.video === null ? null : { url: draft.video.attachment_id > 0 ? "" : draft.video.url, attachment_id: draft.video.attachment_id, position: draft.video.position },
         attributes: draft.attributes.map(attributePayload),
         base: rowFields(draft.base),
     };

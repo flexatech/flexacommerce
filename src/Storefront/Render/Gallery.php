@@ -6,6 +6,7 @@ namespace Flexa\Commerce\Storefront\Render;
 
 use Flexa\Commerce\Badges\Badge;
 use Flexa\Commerce\Catalog\Product;
+use Flexa\Commerce\Catalog\ProductVideo;
 use Flexa\Commerce\Storefront\Assets;
 use Flexa\Commerce\Support\Settings;
 
@@ -16,7 +17,8 @@ defined( 'ABSPATH' ) || exit;
  * (or dot) links to the full size. Without scripts a link opens its image;
  * with the `flexacommerce/cart` store it replaces the large image, and so
  * does the image of the variation the add-to-cart form picks. The store
- * also adds arrows, swipe, hover zoom and a full-size view (ADR-023).
+ * also adds arrows, swipe, hover zoom and a full-size view (ADR-023), and
+ * plays the product video in its place among the images (ADR-048).
  */
 final class Gallery {
 	public const MAIN  = 'large';
@@ -63,6 +65,16 @@ final class Gallery {
 			}
 			$shown = [ $first ];
 		}
+		$video = $product->video;
+		if ( $video !== null ) {
+			// The video slide is id 0; the product image is its cover, so nothing loads from the video's host until play.
+			$images[0] = $images[ $shown[0] ];
+			$shown     = match ( $video->position ) {
+				'first' => [ 0, ...$shown ],
+				'last'  => [ ...$shown, 0 ],
+				default => [ $shown[0], 0, ...array_slice( $shown, 1 ) ],
+			};
+		}
 		$main     = $shown[0];
 		$thumbs   = Settings::string( 'gallery_thumbs' );
 		$lightbox = Settings::bool( 'gallery_lightbox' );
@@ -88,6 +100,7 @@ final class Gallery {
 							'zoomed'    => false,
 							'origin'    => '50% 50%',
 							'touchX'    => null,
+							'playing'   => false,
 						]
 					)
 				)
@@ -112,6 +125,9 @@ final class Gallery {
 			$img['height'],
 			$interactive ? ' data-wp-bind--src="state.galleryImage.src" data-wp-bind--srcset="state.galleryImage.srcset" data-wp-bind--alt="state.galleryImage.alt" data-wp-bind--width="state.galleryImage.width" data-wp-bind--height="state.galleryImage.height"' . ( $zoom ? ' data-wp-style--transform-origin="context.origin"' : '' ) : ''
 		);
+		if ( $video !== null ) {
+			$html .= self::video( $video, $product->title );
+		}
 		if ( $this->badges !== null ) {
 			$html .= $this->badges->html( $product, Badge::SINGLE );
 		}
@@ -120,7 +136,7 @@ final class Gallery {
 		}
 		$html .= '</figure>';
 		if ( $several ) {
-			$html .= $this->thumbs( $shown, $images, $thumbs === 'dots' );
+			$html .= $this->thumbs( $shown, $images, $thumbs === 'dots', $video );
 		}
 		if ( $interactive && $lightbox ) {
 			$html .= $this->lightbox( $several, $img['full'], $img['alt'] !== '' ? $img['alt'] : $product->title );
@@ -132,13 +148,16 @@ final class Gallery {
 	 * Links to each image: thumbnails, or dots that keep the label for
 	 * screen readers. They work as plain links without scripts.
 	 *
+	 * The video's link (id 0) goes to the video itself, with the cover as its thumbnail.
+	 *
 	 * @param list<int>                        $shown
 	 * @param array<int,array{full:string}>    $images
 	 */
-	private function thumbs( array $shown, array $images, bool $dots ): string {
-		$html = '<ul class="fxc-gallery__thumbs' . ( $dots ? ' fxc-gallery__thumbs--dots' : '' ) . '" aria-label="' . esc_attr__( 'Product images', 'flexacommerce' ) . '">';
+	private function thumbs( array $shown, array $images, bool $dots, ?ProductVideo $video ): string {
+		$html  = '<ul class="fxc-gallery__thumbs' . ( $dots ? ' fxc-gallery__thumbs--dots' : '' ) . '" aria-label="' . esc_attr__( 'Product images', 'flexacommerce' ) . '">';
+		$cover = $shown[0] === 0 ? ( $shown[1] ?? 0 ) : $shown[0];
 		foreach ( $shown as $index => $id ) {
-			$label = sprintf(
+			$label = $id === 0 ? __( 'Show the video', 'flexacommerce' ) : sprintf(
 				/* translators: 1: image number, 2: number of images */
 				__( 'Show image %1$d of %2$d', 'flexacommerce' ),
 				$index + 1,
@@ -147,21 +166,52 @@ final class Gallery {
 			if ( $dots ) {
 				$inner = '<span class="screen-reader-text">' . esc_html( $label ) . '</span>';
 			} else {
-				$thumb = wp_get_attachment_image_src( $id, self::THUMB );
+				$thumb = wp_get_attachment_image_src( $id === 0 ? $cover : $id, self::THUMB );
 				if ( ! is_array( $thumb ) ) {
 					continue;
 				}
 				$inner = sprintf( '<img src="%1$s" width="%2$d" height="%3$d" alt="%4$s" loading="lazy" decoding="async">', esc_url( (string) $thumb[0] ), (int) $thumb[1], (int) $thumb[2], esc_attr( $label ) );
 			}
 			$html .= sprintf(
-				'<li><a href="%1$s" data-image="%2$d" data-wp-on--click="actions.showImage" data-wp-bind--aria-current="state.galleryCurrent"%3$s>%4$s</a></li>',
-				esc_url( $images[ $id ]['full'] ),
+				'<li%5$s><a href="%1$s" data-image="%2$d" data-wp-on--click="actions.showImage" data-wp-bind--aria-current="state.galleryCurrent"%3$s>%4$s</a></li>',
+				esc_url( $id === 0 && $video !== null ? $video->link() : $images[ $id ]['full'] ),
 				$id,
 				$index === 0 ? ' aria-current="true"' : '',
-				$inner
+				$inner,
+				$id === 0 ? ' class="fxc-gallery__video-thumb"' : ''
 			);
 		}
 		return $html . '</ul>';
+	}
+
+	/**
+	 * The video over the cover image while the video slide is shown: a play
+	 * button, then the player. The iframe gets its address on play, and a
+	 * file loads nothing before (`preload="none"`). Hidden without scripts,
+	 * where the thumbnail links to the video instead.
+	 */
+	private static function video( ProductVideo $video, string $title ): string {
+		/* translators: %s: product name */
+		$label = sprintf( __( 'Video: %s', 'flexacommerce' ), $title );
+		if ( $video->is_file() ) {
+			$player = sprintf(
+				'<video src="%1$s" controls playsinline preload="none" aria-label="%2$s" hidden data-wp-bind--hidden="!context.playing"></video>',
+				esc_url( $video->embed_url() ),
+				esc_attr( $label )
+			);
+		} else {
+			$player = sprintf(
+				'<iframe title="%1$s" data-src="%2$s" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" hidden data-wp-bind--hidden="!context.playing" data-wp-bind--src="state.videoSrc"></iframe>',
+				esc_attr( $label ),
+				esc_url( $video->embed_url() )
+			);
+		}
+		return sprintf(
+			'<div class="fxc-gallery__video" hidden data-wp-bind--hidden="!state.galleryVideo" data-wp-watch="callbacks.galleryVideo"><button type="button" class="fxc-gallery__play" aria-label="%1$s" data-wp-on--click="actions.playVideo" data-wp-bind--hidden="context.playing"><span aria-hidden="true"></span></button>%2$s</div>',
+			/* translators: %s: product name */
+			esc_attr( sprintf( __( 'Play video: %s', 'flexacommerce' ), $title ) ),
+			$player
+		);
 	}
 
 	/**

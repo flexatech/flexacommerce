@@ -10,7 +10,7 @@ defined( 'ABSPATH' ) || exit;
 
 /**
  * Coerced product data for ProductService::save(). A null member means
- * "keep what is stored"; inside a row, only the fields present in the input
+ * "keep what is stored" (`video` false removes the video); inside a row, only the fields present in the input
  * change (doc 03 §3).
  */
 final class ProductInput {
@@ -33,6 +33,7 @@ final class ProductInput {
 		public readonly ?array $gallery_ids = null,
 		public readonly ?string $visibility = null,
 		public readonly ?bool $featured = null,
+		public readonly ProductVideo|false|null $video = null,
 	) {}
 
 	/**
@@ -90,6 +91,11 @@ final class ProductInput {
 			}
 		}
 
+		$video = null;
+		if ( array_key_exists( 'video', $data ) ) {
+			$video = self::video( $data['video'] );
+		}
+
 		return new self(
 			type: $type,
 			attributes: $attributes,
@@ -98,7 +104,27 @@ final class ProductInput {
 			gallery_ids: $gallery,
 			visibility: $visibility,
 			featured: array_key_exists( 'featured', $data ) ? self::to_bool( $data['featured'] ) : null,
+			video: $video,
 		);
+	}
+
+	/**
+	 * Null, an empty object or an empty link removes the video.
+	 *
+	 * @throws InvalidProduct
+	 */
+	private static function video( mixed $value ): ProductVideo|false {
+		if ( $value === null || $value === '' || $value === [] ) {
+			return false;
+		}
+		$value      = self::map_of( $value, 'video' );
+		$url        = is_string( $value['url'] ?? null ) ? $value['url'] : '';
+		$attachment = max( 0, (int) ( $value['attachment_id'] ?? 0 ) );
+		if ( trim( $url ) === '' && $attachment === 0 ) {
+			return false;
+		}
+		$position = is_string( $value['position'] ?? null ) ? $value['position'] : 'second';
+		return ProductVideo::parse( $url, $attachment, $position );
 	}
 
 	/**

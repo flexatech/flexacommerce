@@ -375,14 +375,25 @@ function markTier( form, quantity ) {
 	} );
 }
 
+/** The id of the gallery slide shown; 0 is the video (ADR-048). */
+function shownOf( context ) {
+	return state.gallery[ context.productId ] ?? context.main;
+}
+
+/** The slides in order; the full-size view leaves out the video. */
+function orderOf( context, full ) {
+	const order = context.order || [];
+	return full ? order.filter( ( id ) => id !== 0 ) : order;
+}
+
 /** Shows the image `delta` places away in the gallery, wrapping at the ends. */
 function step( delta ) {
 	const context = getContext();
-	const order = context.order || [];
+	const order = orderOf( context, !! getElement().ref?.closest( 'dialog' ) );
 	if ( order.length < 2 ) {
 		return;
 	}
-	const at = order.indexOf( state.gallery[ context.productId ] ?? context.main );
+	const at = order.indexOf( shownOf( context ) );
 	const next = at < 0 ? ( delta > 0 ? 0 : order.length - 1 ) : ( at + delta + order.length ) % order.length;
 	state.gallery[ context.productId ] = order[ next ];
 }
@@ -454,15 +465,23 @@ const { state, actions } = store( 'flexacommerce/cart', {
 		get galleryStatic() {
 			return false;
 		},
+		/** Shown in the full-size view, which has no video. */
 		get galleryCount() {
 			const context = getContext();
-			const at = context.order.indexOf( state.gallery[ context.productId ] ?? context.main );
-			return at < 0 ? '' : `${ at + 1 } / ${ context.order.length }`;
+			const order = orderOf( context, true );
+			const at = order.indexOf( shownOf( context ) );
+			return at < 0 ? '' : `${ at + 1 } / ${ order.length }`;
 		},
 		get galleryCurrent() {
+			return getElement().attributes[ 'data-image' ] === String( shownOf( getContext() ) ) ? 'true' : false;
+		},
+		get galleryVideo() {
+			return shownOf( getContext() ) === 0;
+		},
+		/** The player's address, only once the shopper pressed play. */
+		get videoSrc() {
 			const context = getContext();
-			const shown = String( state.gallery[ context.productId ] ?? context.main );
-			return getElement().attributes[ 'data-image' ] === shown ? 'true' : false;
+			return context.playing && shownOf( context ) === 0 ? getElement().attributes[ 'data-src' ] : false;
 		},
 		get cannotAdd() {
 			const context = getContext();
@@ -614,6 +633,14 @@ const { state, actions } = store( 'flexacommerce/cart', {
 			event.preventDefault();
 			state.gallery[ context.productId ] = id;
 		} ),
+		playVideo() {
+			const context = getContext();
+			const player = getElement().ref.parentElement.querySelector( 'video, iframe' );
+			context.playing = true;
+			context.zoomed = false;
+			player?.play?.()?.catch( () => {} );
+			setTimeout( () => player?.focus() );
+		},
 		galleryPrev() {
 			step( -1 );
 		},
@@ -661,6 +688,9 @@ const { state, actions } = store( 'flexacommerce/cart', {
 		/** Hover zoom: the image scales from the point under the pointer. */
 		zoom( event ) {
 			const context = getContext();
+			if ( shownOf( context ) === 0 ) {
+				return;
+			}
 			const box = getElement().ref.getBoundingClientRect();
 			if ( ! box.width || ! box.height ) {
 				return;
@@ -763,6 +793,17 @@ const { state, actions } = store( 'flexacommerce/cart', {
 		} ),
 	},
 	callbacks: {
+		/** Leaving the video slide stops the video, and coming back shows the play button again. */
+		galleryVideo() {
+			const context = getContext();
+			const player = getElement().ref.querySelector( 'video' );
+			if ( shownOf( context ) !== 0 ) {
+				context.playing = false;
+			}
+			if ( ! context.playing ) {
+				player?.pause();
+			}
+		},
 		/** Ticks a countdown (ADR-030); at zero it says the offer has ended. */
 		countdown() {
 			const { ref } = getElement();

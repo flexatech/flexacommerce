@@ -1,9 +1,14 @@
 import { __ } from "@/shared/lib/i18n";
 
+interface Attachment {
+    id: number;
+    get(key: string): unknown;
+}
+
 interface MediaFrame {
     on(event: "select", callback: () => void): void;
     open(): void;
-    state(): { get(key: "selection"): { first(): { id: number; get(key: string): unknown } | undefined } };
+    state(): { get(key: "selection"): { first(): Attachment | undefined; toArray(): Attachment[] } };
 }
 
 declare global {
@@ -33,8 +38,53 @@ export function pickImage(title: string, onPick: (image: PickedImage) => void): 
     frame.on("select", () => {
         const attachment = frame.state().get("selection").first();
         if (attachment) {
-            const sizes = attachment.get("sizes") as Record<string, { url: string }> | undefined;
-            onPick({ id: attachment.id, url: sizes?.thumbnail?.url ?? (attachment.get("url") as string) });
+            onPick({ id: attachment.id, url: thumbOf(attachment) });
+        }
+    });
+    frame.open();
+}
+
+const thumbOf = (attachment: Attachment): string => {
+    const sizes = attachment.get("sizes") as Record<string, { url: string }> | undefined;
+    return sizes?.thumbnail?.url ?? (attachment.get("url") as string);
+};
+
+/** Opens the media library for several images, in the order they were selected. */
+export function pickImages(title: string, onPick: (images: (PickedImage & { alt: string })[]) => void): void {
+    const media = window.wp?.media;
+    if (!media) {
+        return;
+    }
+    const frame = media({ title, multiple: "add", library: { type: "image" }, button: { text: __("Add to gallery") } });
+    frame.on("select", () => {
+        onPick(
+            frame
+                .state()
+                .get("selection")
+                .toArray()
+                .map((attachment) => ({ id: attachment.id, url: thumbOf(attachment), alt: String(attachment.get("alt") ?? "") })),
+        );
+    });
+    frame.open();
+}
+
+export interface PickedVideo {
+    id: number;
+    url: string;
+    filename: string;
+}
+
+/** Opens the media library for one video file. */
+export function pickVideo(title: string, onPick: (video: PickedVideo) => void): void {
+    const media = window.wp?.media;
+    if (!media) {
+        return;
+    }
+    const frame = media({ title, multiple: false, library: { type: "video" }, button: { text: __("Use this video") } });
+    frame.on("select", () => {
+        const attachment = frame.state().get("selection").first();
+        if (attachment) {
+            onPick({ id: attachment.id, url: String(attachment.get("url") ?? ""), filename: String(attachment.get("filename") ?? "") });
         }
     });
     frame.open();

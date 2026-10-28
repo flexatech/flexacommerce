@@ -74,6 +74,24 @@ export interface LocalAttribute extends AttributeCommon {
 
 export type ProductAttribute = GlobalAttribute | LocalAttribute;
 
+export interface GalleryImage {
+    id: number;
+    thumb: string;
+    alt: string;
+}
+
+export type VideoProvider = "youtube" | "vimeo" | "file";
+
+/** Where the video sits in the gallery: before the product image, right after it, or after the gallery images. */
+export type VideoPosition = "first" | "second" | "last";
+
+export interface ProductVideo {
+    provider: VideoProvider;
+    url: string;
+    attachment_id: number;
+    position: VideoPosition;
+}
+
 export interface ProductData {
     id: number;
     type: ProductType;
@@ -82,6 +100,9 @@ export interface ProductData {
     base: VariantRow;
     variations: VariantRow[];
     gallery_ids: number[];
+    /** The gallery images with thumbnails, in order: what the editor shows and sends back. */
+    gallery: GalleryImage[];
+    video: ProductVideo | null;
     visibility: Visibility;
     featured: boolean;
     price_min: number | null;

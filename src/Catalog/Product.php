@@ -31,6 +31,7 @@ final class Product {
 		public readonly array $gallery_ids = [],
 		public readonly string $visibility = 'visible',
 		public readonly bool $featured = false,
+		public readonly ?ProductVideo $video = null,
 	) {}
 
 	public function is_variable(): bool {

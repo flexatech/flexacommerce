@@ -9,6 +9,7 @@ use Flexa\Commerce\Catalog\Combination;
 use Flexa\Commerce\Catalog\PostTypes;
 use Flexa\Commerce\Catalog\ProductInput;
 use Flexa\Commerce\Catalog\ProductService;
+use Flexa\Commerce\Catalog\ProductVideo;
 use Flexa\Commerce\Catalog\Variant;
 use Flexa\Commerce\Catalog\VariantRepository;
 use Flexa\Commerce\Contracts\Exceptions\DuplicateSku;
@@ -193,6 +194,17 @@ final class FxcCatalogWriter {
 			}
 		}
 
+		$video = false;
+		if ( is_array( $data['video'] ?? null ) ) {
+			$entry      = $data['video'];
+			$attachment = is_string( $entry['attachment'] ?? null ) ? ( $this->attachment( $entry['attachment'], $map, $problems ) ?? 0 ) : 0;
+			try {
+				$video = ProductVideo::parse( is_string( $entry['url'] ?? null ) ? $entry['url'] : '', $attachment, is_string( $entry['position'] ?? null ) ? $entry['position'] : 'second' );
+			} catch ( InvalidProduct ) {
+				$problems[] = Problem::warning( 'video_skipped', 'The gallery video could not be read, so it was skipped.' );
+			}
+		}
+
 		[ $raw, $axes ] = $this->attributes_of( $data, $map, $problems );
 		$kind           = ( $data['kind'] ?? 'simple' ) === 'variable' ? 'variable' : 'simple';
 		$base           = $this->fields( is_array( $data['base'] ?? null ) ? $data['base'] : [], 'base', $map, $problems );
@@ -258,6 +270,7 @@ final class FxcCatalogWriter {
 					gallery_ids: $gallery,
 					visibility: in_array( $data['visibility'] ?? '', [ 'visible', 'catalog', 'search', 'hidden' ], true ) ? (string) $data['visibility'] : 'visible',
 					featured: (bool) ( $data['featured'] ?? false ),
+					video: $video,
 				)
 			);
 		} catch ( InvalidProduct | DuplicateSku | ProductNotFound $e ) {

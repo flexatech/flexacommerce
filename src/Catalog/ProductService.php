@@ -79,6 +79,7 @@ final class ProductService {
 			gallery_ids: $product->gallery_ids,
 			visibility: $product->visibility,
 			featured: $product->featured,
+			video: $product->video,
 		);
 	}
 
@@ -118,6 +119,7 @@ final class ProductService {
 					gallery_ids: $input->gallery_ids ?? $before->gallery_ids,
 					visibility: $input->visibility ?? $before->visibility,
 					featured: $input->featured ?? $before->featured,
+					video: $input->video === null ? $before->video : ( $input->video === false ? null : $input->video ),
 				);
 
 				$this->write_rows( $before, $product );
@@ -304,6 +306,7 @@ final class ProductService {
 					gallery_ids: $source->gallery_ids,
 					visibility: $source->visibility,
 					featured: false,
+					video: $source->video,
 				);
 				$this->products->save_meta( $copy );
 				$this->products->sync_denormalized( $copy_id, $this->clock->db_now() );

@@ -719,3 +719,19 @@ Status of every ADR: **Accepted** (plan approved 2026-10-24) unless it says othe
 **Consequences.** Client only: no route, no `DB_VERSION`, still 61 settings. `TemplatePayloadTest` saves the values of the templates that need no targets, so a merchant who changes nothing gets no error.
 
 **Revisit when.** Merchants ask to save their own templates, or to share them between stores.
+
+## ADR-048: Gallery video and gallery editor
+
+**Context.** flexa-extra adds one video to the product gallery: a YouTube, Vimeo or MP4 link, shown first or last, with the product image as its poster so the page makes no third-party calls. FlexaCommerce stored gallery images (`_fxc_gallery_ids`, ADR-023) but the admin had no way to edit them; only migration and REST could set them.
+
+**Decision.**
+1. **A Gallery tab.** The product data panel gets a Gallery tab: add several images from the media library at once, move them earlier or later, remove them. The product image stays in the sidebar, as in core, and the tab says it shows first. REST returns `gallery` (`id`, `thumb`, `alt`) beside `gallery_ids`; attachments that are gone are left out and dropped on the next save.
+2. **One video per product.** `Catalog\ProductVideo` reads a YouTube link (watch, youtu.be, shorts, live, embed, m. and nocookie hosts), a Vimeo link (with the hash of an unlisted video, as a path segment or `?h=`), a link to an `.mp4`, `.m4v` or `.webm` file, or a media library video. Anything else is refused with field `video.url` (or `video.attachment_id` for a file that is not a video), and the editor flags the link while typing. It is stored as JSON in `_fxc_gallery_video`; a media library file keeps only its id. `ProductInput::video`: absent keeps it, null or an empty link removes it. Saving, duplicating, and FlexaCommerce to FlexaCommerce migration carry it.
+3. **Placed by the merchant.** `position` is `second` by default (right after the product image), `first` or `last`. The product page needs no new setting.
+4. **Nothing loads before play.** The video is slide `0` in the gallery context, with the product image as its cover. A layer over the main image holds a play button; on play, the iframe's `src` is bound from its `data-src` (youtube-nocookie.com with `rel=0`, Vimeo with `dnt=1`), or the file (`preload="none"`) plays. Leaving the slide (thumbnail, arrow, swipe, a variation's image) removes the iframe address or pauses the file, and coming back shows the play button again. Hover zoom and the full-screen view skip the video. Without scripts the layer stays hidden and the video's thumbnail links to the video.
+
+**Alternatives.** A global setting for the video position (flexa-extra): one less field per product, but a merchant cannot put a demo first on one product and last on another, and Settings is near its 64-key budget. Several videos per product: more editor and context weight for a case few stores need. oEmbed through WordPress: it calls the video host when the page renders and returns markup we cannot keep lazy.
+
+**Consequences.** No `DB_VERSION` and still 61 settings. A product with a video and no image shows no gallery, since the video needs a cover; the editor says so. `cart.js` grows by about 380 bytes gzip (8327 of 10240) and `storefront.css` by about 230 (5349).
+
+**Revisit when.** Merchants ask for several videos, a custom cover image, or autoplay without sound.
