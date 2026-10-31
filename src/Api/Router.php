@@ -23,6 +23,7 @@ final class Router {
 			( new Admin\StatusEndpoint() )->register_routes();
 			( new Admin\LogsEndpoint() )->register_routes();
 			( new Admin\ProductsEndpoint() )->register_routes();
+			( new Admin\ProductCsvEndpoint() )->register_routes();
 			( new Admin\AttributesEndpoint() )->register_routes();
 			( new Admin\OrdersEndpoint() )->register_routes();
 			( new Admin\CustomersEndpoint() )->register_routes();

@@ -207,6 +207,8 @@ Because these fire after commit, a listener that throws cannot roll back the ord
 
 Rule: filters that affect money run on the server only. The browser never receives a price it can send back.
 
+The product CSV import (ADR-059) saves through `ProductService::save()`, so `flexacommerce.product.saved` and `flexacommerce.product.price_changed` fire for each imported product as they do for the editor. There are no import-specific hooks in 1.0.
+
 ### Checkout layout action
 
 | Action | Args | Notes |

@@ -10,6 +10,7 @@ import { CustomersPage } from "./features/customers/CustomersPage";
 import { MigrationPage } from "./features/migration/MigrationPage";
 import { OptionSetsPage } from "./features/options/OptionSetsPage";
 import { OrdersPage } from "./features/orders/OrdersPage";
+import { ProductCsvPage } from "./features/productcsv/ProductCsvPage";
 import { PromotionsPage } from "./features/promotions/PromotionsPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
 import { StatusPage } from "./features/status/StatusPage";
@@ -41,6 +42,8 @@ export function App({ page }: { page: AdminPage }) {
                     <AttributesPage />
                 ) : page === "flexacommerce-product-options" ? (
                     <OptionSetsPage />
+                ) : page === "flexacommerce-product-csv" ? (
+                    <ProductCsvPage />
                 ) : (
                     <StatusPage />
                 )}

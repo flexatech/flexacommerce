@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace Flexa\Commerce\Catalog;
 
+use Flexa\Commerce\Catalog\Csv\MediaResolver;
+use Flexa\Commerce\Catalog\Csv\ProductCsvExporter;
+use Flexa\Commerce\Catalog\Csv\ProductCsvImporter;
+use Flexa\Commerce\Catalog\Csv\ProductCsvRepository;
 use Flexa\Commerce\Support\Services;
 
 defined( 'ABSPATH' ) || exit;
@@ -46,5 +50,14 @@ final class CatalogServices {
 			$this->services->after_commit(),
 			$this->services->clock(),
 		);
+	}
+
+	/** Product CSV export (ADR-059); built on demand, not kept. */
+	public function csv_exporter(): ProductCsvExporter {
+		return new ProductCsvExporter( $this->product_service(), $this->products(), $this->attributes(), new ProductCsvRepository( $this->services->wpdb() ) );
+	}
+
+	public function csv_importer(): ProductCsvImporter {
+		return new ProductCsvImporter( $this->product_service(), $this->variants(), $this->attributes(), new MediaResolver() );
 	}
 }

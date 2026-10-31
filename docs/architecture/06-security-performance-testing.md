@@ -81,6 +81,13 @@ Order key (32 random bytes) + `hash_equals()`, `Cache-Control: private, no-store
 - Uploads from the product editor go to `uploads/flexacommerce_uploads`, which has an `.htaccess` that denies every request and an empty `index.html`. On nginx, which ignores `.htaccess`, the store needs an equivalent `deny` rule. A redirect cannot reach that folder, so its files are streamed instead.
 - The admin order screen copies a link instead of opening it, so a merchant checking a link does not use the customer's downloads.
 
+### 2.7.2 Product CSV (ADR-059)
+
+- The three `admin/products/csv/*` routes and the screen need the manage capability; the import context transient is keyed by the user id and a random session id, so one admin cannot continue another's run.
+- Export guards every cell that starts with `=`, `+`, `-`, `@`, tab or carriage return with a leading `'`, so a spreadsheet does not run it as a formula, and leaves out custom fields whose key starts with `_`.
+- Import never writes custom fields starting with `_fxc`, `_wp_`, `_edit_` or `_thumbnail_id`, and saves through `ProductService::save()`, so the editor's validation applies. Mapping keys from the browser are checked with `CsvColumns::is_key()`.
+- Image URLs from another site are fetched with `download_url()` (which uses `wp_safe_remote_get()`, so private and local addresses are refused) and stored with `media_handle_sideload()`, which applies WordPress's file type checks. A check run downloads nothing.
+
 ### 2.8 Privacy
 
 - Exporters and erasers for orders (by billing email and user), addresses, sessions, saved user addresses, and download permissions (by email; erasing deletes them, so the links stop working).

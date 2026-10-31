@@ -20,6 +20,9 @@ final class Menu {
 
 	public const SLUG = 'flexacommerce';
 
+	/** Product CSV import and export (ADR-059): reached from the product list, not the menu. */
+	public const PRODUCT_CSV = self::SLUG . '-product-csv';
+
 	/** Core's comments screen, filtered to product reviews (ADR-056). */
 	private const REVIEWS = 'edit-comments.php?comment_type=review';
 
@@ -55,6 +58,7 @@ final class Menu {
 		add_filter( 'admin_body_class', [ $this, 'admin_body_class' ] );
 		add_filter( 'parent_file', [ $this, 'parent_file' ] );
 		add_filter( 'submenu_file', [ $this, 'submenu_file' ] );
+		add_action( 'admin_footer-edit.php', [ $this, 'product_list_buttons' ] );
 	}
 
 	public function register_menu(): void {
@@ -177,6 +181,23 @@ final class Menu {
 				[ $this, 'render_page' ]
 			)
 		);
+		// No parent: a page without a menu entry. The product list links to it.
+		$csv = (string) add_submenu_page(
+			'',
+			__( 'Import and export products', 'flexacommerce' ),
+			__( 'Import and export products', 'flexacommerce' ),
+			Capabilities::MANAGE,
+			self::PRODUCT_CSV,
+			[ $this, 'render_page' ]
+		);
+		$this->add( self::PRODUCT_CSV, $csv );
+		// Without a menu entry core finds no page title, so set it.
+		add_action(
+			'load-' . $csv,
+			static function (): void {
+				$GLOBALS['title'] = __( 'Import and export products', 'flexacommerce' ); // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- the admin page title.
+			}
+		);
 		$this->add(
 			self::SLUG . '-migration',
 			(string) add_submenu_page(
@@ -213,9 +234,9 @@ final class Menu {
 		);
 	}
 
-	/** Keeps the menu open on product, term and review screens. */
+	/** Keeps the menu open on product, term, review and product CSV screens. */
 	public function parent_file( string $parent_file ): string {
-		if ( $this->on_reviews() ) {
+		if ( $this->on_reviews() || $this->on_product_csv() ) {
 			return self::SLUG;
 		}
 		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
@@ -226,6 +247,9 @@ final class Menu {
 		if ( $this->on_reviews() ) {
 			return self::REVIEWS;
 		}
+		if ( $this->on_product_csv() ) {
+			return 'edit.php?post_type=' . PostTypes::PRODUCT;
+		}
 		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
 		if ( $screen === null || $screen->post_type !== PostTypes::PRODUCT ) {
 			return $submenu_file;
@@ -234,6 +258,33 @@ final class Menu {
 			return 'edit-tags.php?taxonomy=' . $screen->taxonomy . '&post_type=' . PostTypes::PRODUCT;
 		}
 		return 'edit.php?post_type=' . PostTypes::PRODUCT;
+	}
+
+	/** Import and Export next to "Add New" on the product list. */
+	public function product_list_buttons(): void {
+		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+		if ( $screen === null || $screen->id !== 'edit-' . PostTypes::PRODUCT || ! current_user_can( Capabilities::MANAGE ) ) {
+			return;
+		}
+		$url   = admin_url( 'admin.php?page=' . self::PRODUCT_CSV );
+		$links = sprintf(
+			'<a href="%s" class="page-title-action">%s</a><a href="%s" class="page-title-action">%s</a>',
+			esc_url( add_query_arg( 'tab', 'import', $url ) ),
+			esc_html__( 'Import', 'flexacommerce' ),
+			esc_url( add_query_arg( 'tab', 'export', $url ) ),
+			esc_html__( 'Export', 'flexacommerce' )
+		);
+		wp_print_inline_script_tag(
+			sprintf(
+				'(function(){var a=document.querySelector(".wrap .page-title-action");if(a){a.insertAdjacentHTML("afterend",%s);}})();',
+				wp_json_encode( $links )
+			)
+		);
+	}
+
+	private function on_product_csv(): bool {
+		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+		return $screen !== null && $this->page_for( $screen->id ) === self::PRODUCT_CSV;
 	}
 
 	/** The comments screen showing product reviews only. */

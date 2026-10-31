@@ -133,6 +133,7 @@ final class Plugin {
 			Cli\DbCommand::register();
 			Cli\MigrateCommand::register();
 			Cli\PriceRuleCommand::register();
+			Cli\ProductCsvCommand::register();
 			Reviews\Reviews::instance()->register();
 		}
 
