@@ -876,3 +876,20 @@ Status of every ADR: **Accepted** (plan approved 2026-10-24) unless it says othe
 **Consequences.** No `DB_VERSION`. The store settings grow to 62 keys. storefront.css grows to 6228 bytes gzipped (6216 as P8 measures it). Tests cover the type and summary, held and trashed reviews, the rating and reply rules, buyers mode and a pending order, reviews off, the rendered blocks, the rating sort, the price sort without a price, and the migration stage both ways with replies, a reply whose review was not imported, and the setting.
 
 **Revisit when.** Merchants ask for photos, votes or reminder emails, or a store with a very large number of reviews finds the comment queries slow.
+
+## ADR-057: Guest order lookup
+
+**Context.** Product scope had guest order lookup as post-MVP: the order key link in the emails was enough. A guest who deleted the email, or who opens the store on another device, had no way back to their order, and stores coming from WooCommerce have the `[woocommerce_order_tracking]` page for it.
+
+**Decision.**
+1. **Order number and billing email.** The form asks for both; a leading `#` is dropped and the email matches case-insensitively. A match redirects (303) to the order's page on the account page with the order key in the URL (`view-order/{id}/?key=`), or to the order confirmation when the store has no account page. The key then works as it does in the emails (doc 06 §2.7): the order key failure limit applies, and a wrong key looks like a missing order.
+2. **Where the form is.** Under the sign-in form on the account page for logged-out visitors, so a store gets it without a new page or setting. The `order-lookup` block and the `[flexacommerce_order_tracking]` shortcode put it on any other page.
+3. **No nonce, a failure limit instead.** The form only reads, and a nonce on a cached page goes stale and refuses real customers. The post must come from this site (`SameSite`), and failures (an unknown number or a wrong email, with one message for both) count toward `order_lookup_ip`, 10 per hour per IP, filter `flexacommerce.rate_limit.order_lookup_ip`. Empty or malformed fields are reported per field and do not count. A blocked IP is told to try later, even with the right answer.
+4. **The order page for a key holder.** A guest, or a logged-in customer who is not the owner, sees the order (status sentence, pay link, order updates, items, fields, addresses) without the account navigation, with a link back to the lookup. The owner gets the usual account page.
+5. **Literal gate.** `Plugin::on_template_redirect()` checks `$_POST['fxc_order_lookup']` literally, so other requests do not load `OrderLookup` (P1). A successful lookup fires `flexacommerce.order.looked_up`.
+
+**Alternatives.** Emailing the order link instead of showing the order: safer against someone who knows a customer's email and order number, but slower for the shopper, and WooCommerce shows the order right away. A separate tracking page created on activation: one more page and setting (the settings are capped at 64 keys) for something the account page already hosts.
+
+**Consequences.** No `DB_VERSION`, no new setting. storefront.css gains two short rules. Tests cover the form on the account page, the block and the shortcode, a match with `#` and upper-case email, a wrong number and a wrong email with one message and the counter, field errors that do not count, the limit (and another IP passing), a foreign origin, the guest and non-owner views by key, the owner view, and a wrong key.
+
+**Revisit when.** Stores report lookups by guessing, or merchants want the lookup to send the link by email.

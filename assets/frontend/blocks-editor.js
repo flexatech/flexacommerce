@@ -242,6 +242,7 @@
 		'flexacommerce/discount-nudge',
 		'flexacommerce/product-rating',
 		'flexacommerce/product-reviews',
+		'flexacommerce/order-lookup',
 	].forEach( ( name ) => {
 		registerBlockType( name, {
 			edit: ( props ) => el( Edit, Object.assign( { name }, props ) ),

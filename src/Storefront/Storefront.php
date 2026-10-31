@@ -58,6 +58,7 @@ final class Storefront {
 		'discount-nudge',
 		'product-rating',
 		'product-reviews',
+		'order-lookup',
 	];
 
 	/** The pricing shortcodes and the blocks they show (ADR-050). */
@@ -218,6 +219,8 @@ final class Storefront {
 				return AccountPage::instance()->render();
 			case 'order-confirmation':
 				return CheckoutPage::instance()->render_confirmation();
+			case 'order-lookup':
+				return OrderLookup::instance()->render();
 			case 'breadcrumbs':
 				return ( new Breadcrumbs() )->html();
 			case 'catalog-sorting':
@@ -322,6 +325,12 @@ final class Storefront {
 	public function shortcode_order_confirmation( array|string $atts = [] ): string {
 		unset( $atts );
 		return CheckoutPage::instance()->render_confirmation();
+	}
+
+	/** @param array<string,mixed>|string $atts */
+	public function shortcode_order_tracking( array|string $atts = [] ): string {
+		unset( $atts );
+		return OrderLookup::instance()->render();
 	}
 
 	/** @param array<string,mixed>|string $atts */

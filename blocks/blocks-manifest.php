@@ -159,6 +159,28 @@ return [
 		'style'        => 'flexacommerce-storefront',
 		'render'       => 'file:./render.php',
 	],
+	'order-lookup'        => [
+		'apiVersion'   => 3,
+		'name'         => 'flexacommerce/order-lookup',
+		'version'      => '0.1.0',
+		'title'        => 'Order lookup',
+		'category'     => 'widgets',
+		'icon'         => 'search',
+		'description'  => 'A form where guests find an order with its number and billing email.',
+		'textdomain'   => 'flexacommerce',
+		'attributes'   => [],
+		'supports'     => [
+			'html'     => false,
+			'multiple' => false,
+			'align'    => [
+				'wide',
+				'full',
+			],
+		],
+		'editorScript' => 'flexacommerce-blocks-editor',
+		'style'        => 'flexacommerce-storefront',
+		'render'       => 'file:./render.php',
+	],
 	'order-confirmation'  => [
 		'apiVersion'   => 3,
 		'name'         => 'flexacommerce/order-confirmation',

@@ -84,6 +84,7 @@ final class Plugin {
 		add_shortcode( 'flexacommerce_checkout', [ $this, 'shortcode_checkout' ] );
 		add_shortcode( 'flexacommerce_account', [ $this, 'shortcode_account' ] );
 		add_shortcode( 'flexacommerce_order_confirmation', [ $this, 'shortcode_order_confirmation' ] );
+		add_shortcode( 'flexacommerce_order_tracking', [ $this, 'shortcode_order_tracking' ] );
 		// Listed here, not read from the Storefront class, so the class loads only when one is used.
 		foreach ( [ 'flexacommerce_quantity_prices', 'flexacommerce_discount_badge', 'flexacommerce_countdown', 'flexacommerce_discount_nudge' ] as $tag ) {
 			add_shortcode( $tag, [ $this, 'shortcode_pricing' ] );
@@ -425,6 +426,11 @@ final class Plugin {
 			self::no_page_cache();
 			Storefront\CheckoutPage::instance()->handle();
 		}
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- routing only; OrderLookup checks the origin. The literal keeps the class unloaded elsewhere (P1).
+		if ( isset( $_POST['fxc_order_lookup'] ) ) {
+			self::no_page_cache();
+			Storefront\OrderLookup::instance()->handle();
+		}
 		$account = Support\Settings::int( 'account_page_id' );
 		if ( $account > 0 && is_page( $account ) ) {
 			self::no_page_cache();
@@ -491,6 +497,11 @@ final class Plugin {
 	/** @param array<string,string>|string $atts */
 	public function shortcode_order_confirmation( array|string $atts = [] ): string {
 		return Storefront\Storefront::instance()->shortcode_order_confirmation( $atts );
+	}
+
+	/** @param array<string,string>|string $atts */
+	public function shortcode_order_tracking( array|string $atts = [] ): string {
+		return Storefront\Storefront::instance()->shortcode_order_tracking( $atts );
 	}
 
 	/**

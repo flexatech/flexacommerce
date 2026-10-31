@@ -87,6 +87,7 @@ Order key (32 random bytes) + `hash_equals()`, `Cache-Control: private, no-store
 | Checkout attempts | 10 per 10 min | session, then IP | session row + transient per IP (only written on checkout) |
 | Add to cart | 60 per min | session | session row |
 | Order key failures | 10 per hour | IP | transient |
+| Order lookup failures (number + email, ADR-057) | 10 per hour | IP | transient |
 | Customer cancel | 5 per hour | order | order history count |
 
 Limits are filterable. IPs come from `REMOTE_ADDR` unless the admin configures a trusted proxy header (no automatic trust of `X-Forwarded-For`). The site names the header with the filter `flexacommerce.client_ip_header` (for example `HTTP_X_FORWARDED_FOR`; there is no settings field for it in 1.0). The header is read from the right: each proxy appends the address it saw, so the left entries are whatever the client sent. The client is the right-most public address in the list; private and reserved hops (internal proxies) are skipped, and a list of only internal hops yields the nearest one.

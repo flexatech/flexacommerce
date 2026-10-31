@@ -13,6 +13,7 @@ use Flexa\Commerce\Orders\OrderStatus;
 use Flexa\Commerce\Plugin;
 use Flexa\Commerce\Storefront\AccountPage;
 use Flexa\Commerce\Storefront\CheckoutPage;
+use Flexa\Commerce\Storefront\OrderLookup;
 use Flexa\Commerce\Support\Countries;
 use Flexa\Commerce\Support\Settings;
 
@@ -47,6 +48,41 @@ final class Account {
 				return $html . '</div>';
 			},
 			[]
+		);
+	}
+
+	/**
+	 * The order lookup form (ADR-057): order number and billing email. It
+	 * posts to the page it is on; Plugin sends the post to OrderLookup.
+	 *
+	 * @param array<string,string> $posted
+	 * @param array<string,string> $errors
+	 */
+	public static function lookup( array $posted, array $errors ): string {
+		return Component::wrap(
+			'order-lookup',
+			static function () use ( $posted, $errors ): string {
+				$html  = '<div class="fxc-account fxc-account--login fxc-order-lookup"><h2>' . esc_html__( 'Look up an order', 'flexacommerce' ) . '</h2>';
+				$html .= '<form method="post" class="fxc-account__form" novalidate>';
+				$html .= self::summary( $errors );
+				$html .= '<p>' . esc_html__( 'Checked out without an account? Enter the order number from your confirmation email and the email address you used.', 'flexacommerce' ) . '</p>';
+				$html .= self::input( OrderLookup::NUMBER, __( 'Order number', 'flexacommerce' ), $posted[ OrderLookup::NUMBER ] ?? '', 'text', 'off', true, $errors );
+				$html .= self::input( OrderLookup::EMAIL, __( 'Email address', 'flexacommerce' ), $posted[ OrderLookup::EMAIL ] ?? '', 'email', 'email', true, $errors );
+				$html .= '<input type="hidden" name="' . esc_attr( OrderLookup::ACTION ) . '" value="1">';
+				return $html . '<p><button type="submit" class="fxc-button">' . esc_html__( 'Find order', 'flexacommerce' ) . '</button></p></form></div>';
+			},
+			[]
+		);
+	}
+
+	/** An order opened with its key, for a visitor who is not its owner: no account navigation. */
+	public function guest_order( ?Order $order ): string {
+		$content = $this->order( $order );
+		return Component::wrap(
+			'account',
+			static fn (): string => '<div class="fxc-account fxc-account--guest"><div class="fxc-account__content">' . $content
+				. '<p><a href="' . esc_url( AccountPage::url() ) . '">' . esc_html__( 'Look up another order', 'flexacommerce' ) . '</a></p></div></div>',
+			[ 'endpoint' => 'view-order' ]
 		);
 	}
 

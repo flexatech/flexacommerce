@@ -23,6 +23,8 @@ defined( 'ABSPATH' ) || exit;
  * the page (PostTypes::ACCOUNT_ENDPOINTS). Forms post to the page itself:
  * template_redirect checks the nonce and the origin, saves, and redirects
  * with a notice; on errors the page renders again with the posted values.
+ * Guests get the sign-in form and the order lookup, and see one order when
+ * the link carries its key (ADR-057).
  */
 final class AccountPage {
 	use HasInstance;
@@ -106,12 +108,19 @@ final class AccountPage {
 
 	/** What the account block or shortcode shows for this request. */
 	public function render(): string {
-		$view = new Account( $this->profile(), Plugin::instance()->checkout()->service() );
-		if ( ! is_user_logged_in() ) {
-			return $view->login( self::url() );
-		}
+		$view                 = new Account( $this->profile(), Plugin::instance()->checkout()->service() );
 		$user                 = get_current_user_id();
 		[ $endpoint, $value ] = self::current();
+		$key                  = self::key();
+		if ( $endpoint === 'view-order' && $key !== '' ) {
+			$order = Plugin::instance()->checkout()->service()->viewable_order( absint( $value ), $key, $user );
+			if ( $user === 0 || $order === null || ! OrderAccess::is_owner( $order, $user ) ) {
+				return $view->guest_order( $order );
+			}
+		}
+		if ( $user === 0 ) {
+			return $view->login( self::url() ) . OrderLookup::instance()->render();
+		}
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- display only.
 		$saved = isset( $_GET[ self::SAVED ] ) ? sanitize_key( wp_unslash( (string) $_GET[ self::SAVED ] ) ) : '';
 
@@ -123,6 +132,12 @@ final class AccountPage {
 			default => $view->dashboard( $user ),
 		};
 		return $view->page( $endpoint, $saved, $content );
+	}
+
+	/** The order key of a guest order link (ADR-057). */
+	private static function key(): string {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- the key is the credential; CheckoutService checks it with a failure limit.
+		return isset( $_GET['key'] ) && is_string( $_GET['key'] ) ? sanitize_text_field( wp_unslash( $_GET['key'] ) ) : '';
 	}
 
 	private function order( int $order_id, int $user ): ?Order {

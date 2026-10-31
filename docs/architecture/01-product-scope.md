@@ -88,7 +88,7 @@ Legend: **MVP** = required for MVP. **FND** = architectural foundation in MVP, u
 | Guest checkout | MVP | Default on. |
 | Customer accounts (register at checkout, login, order history, addresses) | MVP | Uses WordPress users. No custom login system. |
 | Order confirmation page | MVP | Access by signed order key (doc 02 §7.5). |
-| Guest order lookup (email + order number) | POST | The order key link in the email covers MVP needs. |
+| Guest order lookup (email + order number) | POST | A form under the sign-in form on the account page, plus a block and a shortcode, opens the order with its key; failures are rate limited (ADR-057). |
 | Theme compatibility (block and classic) | MVP | Tested on Twenty Twenty-Five and one popular classic theme (Q9). |
 | Blocks | MVP | List in doc 02 §6.3. |
 | Shortcodes as fallback | MVP | Same renderers as the blocks. |
