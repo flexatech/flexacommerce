@@ -112,6 +112,25 @@ final class PricingService {
 		return $this->money->format( $money );
 	}
 
+	/** Decimal places of the store currency. */
+	public function exponent(): int {
+		return $this->money->exponent();
+	}
+
+	/**
+	 * Shown catalog price over stored price for the standard tax class at
+	 * the store base address: 1.0 when taxes are off or the shop shows
+	 * prices as they are entered. The price filter scales its bounds by it.
+	 */
+	public function catalog_ratio(): float {
+		if ( $this->tax === null || ! Settings::bool( 'tax_enabled' ) ) {
+			return 1.0;
+		}
+		$tax  = ( $this->tax )();
+		$base = $this->money->from_minor( 1000000 );
+		return $tax->display_price( $base, '', (string) $this->shop( $tax )['tax_display_shop'] )->amount / 1000000;
+	}
+
 	/**
 	 * The price a catalog page shows: with or without tax per
 	 * `tax_display_shop` of the store base country's market, at the store

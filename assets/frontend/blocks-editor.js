@@ -6,7 +6,7 @@
 	const { registerBlockType } = wp.blocks;
 	const { createElement: el, Fragment, useEffect, useState } = wp.element;
 	const { InspectorControls, useBlockProps } = wp.blockEditor;
-	const { PanelBody, SelectControl, TextControl } = wp.components;
+	const { CheckboxControl, PanelBody, SelectControl, TextControl, ToggleControl } = wp.components;
 	const { __ } = wp.i18n;
 	const ServerSideRender = wp.serverSideRender;
 
@@ -71,6 +71,92 @@
 		} );
 	}
 
+	let attributesRequest = null;
+
+	/** The global attributes; false for users who cannot edit products. */
+	function useAttributes() {
+		const [ found, setFound ] = useState( null );
+		useEffect( () => {
+			let live = true;
+			attributesRequest =
+				attributesRequest ||
+				wp.apiFetch( { path: '/flexacommerce/v1/admin/attributes' } ).then(
+					( data ) => data.items || [],
+					() => false
+				);
+			attributesRequest.then( ( items ) => live && setFound( items ) );
+			return () => {
+				live = false;
+			};
+		}, [] );
+		return found;
+	}
+
+	function FilterControls( { attributes, setAttributes } ) {
+		const found = useAttributes();
+		const chosen = attributes.attributeSlugs || [];
+		const toggle = ( key, label, help ) =>
+			el( ToggleControl, {
+				label,
+				help,
+				checked: attributes[ key ] !== false,
+				onChange: ( value ) => setAttributes( { [ key ]: value } ),
+			} );
+		let list;
+		if ( found === false ) {
+			list = el( TextControl, {
+				label: __( 'Attribute slugs', 'flexacommerce' ),
+				help: __( 'Separate with commas. Leave empty to offer every attribute.', 'flexacommerce' ),
+				value: chosen.join( ', ' ),
+				onChange: ( value ) =>
+					setAttributes( {
+						attributeSlugs: value
+							.split( ',' )
+							.map( ( slug ) => slug.trim() )
+							.filter( Boolean ),
+					} ),
+			} );
+		} else if ( found === null ) {
+			list = el( 'p', null, __( 'Loading attributes…', 'flexacommerce' ) );
+		} else {
+			list = el(
+				Fragment,
+				null,
+				el( 'p', null, __( 'Leave all unticked to offer every attribute.', 'flexacommerce' ) ),
+				found.map( ( item ) =>
+					el( CheckboxControl, {
+						key: item.slug,
+						label: item.name,
+						checked: chosen.includes( item.slug ),
+						onChange: ( on ) =>
+							setAttributes( {
+								attributeSlugs: on
+									? chosen.concat( [ item.slug ] )
+									: chosen.filter( ( slug ) => slug !== item.slug ),
+							} ),
+					} )
+				)
+			);
+		}
+		return el(
+			InspectorControls,
+			null,
+			el(
+				PanelBody,
+				{ title: __( 'Filters', 'flexacommerce' ) },
+				toggle( 'showCategories', __( 'Categories', 'flexacommerce' ) ),
+				toggle( 'showPrice', __( 'Price', 'flexacommerce' ) ),
+				toggle( 'showStock', __( 'Availability', 'flexacommerce' ) ),
+				toggle(
+					'showCounts',
+					__( 'Product counts', 'flexacommerce' ),
+					__( 'Shows how many products each choice lists and hides choices that list none.', 'flexacommerce' )
+				)
+			),
+			el( PanelBody, { title: __( 'Attributes', 'flexacommerce' ), initialOpen: false }, list )
+		);
+	}
+
 	function Edit( { name, attributes, setAttributes, context } ) {
 		const blockProps = useBlockProps();
 		const hasProduct = Object.prototype.hasOwnProperty.call( attributes, 'productId' );
@@ -82,7 +168,7 @@
 
 		const hasRule = Object.prototype.hasOwnProperty.call( attributes, 'ruleId' );
 		const askProduct = hasProduct && ! inProduct && ! ( hasRule && attributes.ruleId );
-		const controls =
+		let controls =
 			askProduct || hasRule
 				? el(
 						InspectorControls,
@@ -111,6 +197,9 @@
 							)
 				  )
 				: null;
+		if ( name === 'flexacommerce/product-filters' ) {
+			controls = el( FilterControls, { attributes, setAttributes } );
+		}
 		const empty = EMPTY[ name ];
 
 		return el(

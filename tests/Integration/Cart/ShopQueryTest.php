@@ -267,8 +267,143 @@ final class ShopQueryTest extends CartTestCase {
 		self::assertStringContainsString( '<input type="hidden" name="orderby" value="date">', $html );
 		self::assertStringContainsString( 'Clear filters', $html );
 
-		$html = do_blocks( '<!-- wp:flexacommerce/product-filters {"showCategories":false,"attributeSlugs":["no-such-attribute"]} /-->' );
+		$html = do_blocks( '<!-- wp:flexacommerce/product-filters {"showCategories":false,"showPrice":false,"showStock":false,"attributeSlugs":["no-such-attribute"]} /-->' );
 		self::assertSame( '', $html );
+	}
+
+	public function test_price_and_stock_filters(): void {
+		$cheap = $this->simple( 1000 );
+		$mid   = $this->simple( 2500 );
+		$dear  = $this->simple( 5000 );
+		$gone  = $this->simple( 2500, 0 );
+		$ids   = [ $cheap, $mid, $dear, $gone ];
+		$shop  = add_query_arg( 'post_type', PostTypes::PRODUCT, home_url( '/' ) );
+
+		$this->go_to( add_query_arg( 'min_price', '20', $shop ) );
+		self::assertEqualsCanonicalizing( [ $mid, $dear, $gone ], $this->found( $ids ) );
+		$this->go_to( add_query_arg( 'max_price', '25', $shop ) );
+		self::assertEqualsCanonicalizing( [ $cheap, $mid, $gone ], $this->found( $ids ), 'the bound itself is in' );
+		$this->go_to(
+			add_query_arg(
+				[
+					'min_price' => '40,5',
+					'max_price' => '',
+				],
+				$shop
+			)
+		);
+		self::assertSame( [ $dear ], $this->found( $ids ), 'a decimal comma reads as a point' );
+		$this->go_to(
+			add_query_arg(
+				[
+					'min_price' => '30',
+					'max_price' => '20',
+				],
+				$shop
+			)
+		);
+		self::assertSame( [ 20.0, 30.0 ], ShopQuery::price(), 'swapped bounds are put right' );
+		self::assertEqualsCanonicalizing( [ $mid, $gone ], $this->found( $ids ) );
+
+		$this->go_to( add_query_arg( 'filter_stock_status', 'outofstock', $shop ) );
+		self::assertSame( [ $gone ], $this->found( $ids ) );
+		$this->go_to( add_query_arg( 'filter_stock_status', 'instock', $shop ) );
+		self::assertEqualsCanonicalizing( [ $cheap, $mid, $dear ], $this->found( $ids ) );
+
+		$this->go_to( add_query_arg( 'min_price', '-3', $shop ) );
+		self::assertNull( ShopQuery::price(), 'a negative bound is ignored' );
+		self::assertCount( 4, $this->found( $ids ) );
+	}
+
+	/**
+	 * A value counts the products it would list with the other filters on;
+	 * its own group's choice does not narrow it, and a category counts its
+	 * children's products.
+	 */
+	public function test_filter_counts(): void {
+		$parent             = self::factory()->term->create(
+			[
+				'taxonomy' => PostTypes::CATEGORY,
+				'name'     => 'Tops ' . $this->run,
+			]
+		);
+		$child              = self::factory()->term->create(
+			[
+				'taxonomy' => PostTypes::CATEGORY,
+				'name'     => 'Shirts ' . $this->run,
+				'parent'   => $parent,
+			]
+		);
+		[ $color, $values ] = $this->attribute( 'Color', 'Red', 'Blue', 'Green' );
+		$colored            = function ( int $value, int $price, int $category ) use ( $color ): int {
+			$id = $this->simple( $price );
+			wp_set_object_terms( $id, [ $category ], PostTypes::CATEGORY );
+			$this->save(
+				$id,
+				[
+					'attributes' => [
+						[
+							'type'              => 'global',
+							'attribute_term_id' => $color,
+							'value_term_ids'    => [ $value ],
+						],
+					],
+				]
+			);
+			return $id;
+		};
+		$colored( $values[0], 1000, $child );
+		$colored( $values[0], 3000, $parent );
+		$colored( $values[1], 2000, $child );
+		$slug  = (string) get_term( $color )->slug;
+		$red   = (string) get_term( $values[0] )->slug;
+		$block = '<!-- wp:flexacommerce/product-filters {"attributeSlugs":["' . $slug . '"]} /-->';
+
+		$this->go_to( add_query_arg( 'post_type', PostTypes::PRODUCT, home_url( '/' ) ) );
+		$html = do_blocks( $block );
+		self::assertMatchesRegularExpression( '#value="' . $red . '"> Red <span class="fxc-filters__count">\(2\)</span>#', $html );
+		self::assertStringContainsString( 'Blue <span class="fxc-filters__count">(1)</span>', $html );
+		self::assertStringNotContainsString( 'Green', $html, 'a value no product has is left out' );
+		self::assertStringContainsString( 'Tops ' . $this->run . ' <span class="fxc-filters__count">(3)</span>', $html, 'a parent counts its children' );
+		self::assertStringContainsString( 'Shirts ' . $this->run . ' <span class="fxc-filters__count">(2)</span>', $html );
+		self::assertStringContainsString( 'In stock <span class="fxc-filters__count">', $html );
+		self::assertStringContainsString( 'name="min_price" min="0" step="any" inputmode="decimal" value="" placeholder="', $html );
+		self::assertStringContainsString( 'data-wp-init="callbacks.filters"', $html );
+		self::assertStringNotContainsString( 'fxc-filters__active', $html, 'nothing chosen, no chips' );
+
+		$this->go_to(
+			add_query_arg(
+				[
+					'post_type'       => PostTypes::PRODUCT,
+					'filter_' . $slug => $red,
+					'max_price'       => '25',
+					'orderby'         => 'price',
+				],
+				home_url( '/' )
+			)
+		);
+		$html = do_blocks( $block );
+		self::assertMatchesRegularExpression( '#value="' . $red . '" checked=\'checked\'> Red <span class="fxc-filters__count">\(1\)</span>#', $html, 'the price narrows the colours' );
+		self::assertStringContainsString( 'Blue <span class="fxc-filters__count">(1)</span>', $html, 'choosing Red does not narrow the colours' );
+		self::assertStringContainsString( 'Shirts ' . $this->run . ' <span class="fxc-filters__count">(1)</span>', $html, 'categories count Red at that price' );
+		self::assertStringContainsString( 'name="max_price" min="0" step="any" inputmode="decimal" value="25"', $html );
+		self::assertStringContainsString( '<p class="fxc-filters__active-title">Active filters</p>', $html );
+		self::assertMatchesRegularExpression( '#<a class="fxc-filters__chip" href="[^"]*\?orderby=price&\#038;max_price=25" aria-label="Remove filter Color [A-Z0-9]+: Red">Red#', $html );
+		self::assertMatchesRegularExpression( '#<a class="fxc-filters__chip" href="[^"]*\?orderby=price&\#038;filter_' . $slug . '=' . $red . '" aria-label="Remove filter Price up to 25">#', $html );
+		self::assertMatchesRegularExpression( '#<a class="fxc-filters__clear" href="[^"?]*\?orderby=price">Clear filters</a>#', $html );
+
+		$sort = do_blocks( '<!-- wp:flexacommerce/catalog-sorting /-->' );
+		self::assertStringContainsString( '<input type="hidden" name="max_price" value="25">', $sort, 'sorting keeps the price' );
+
+		$plain = do_blocks( '<!-- wp:flexacommerce/product-filters {"showCounts":false,"attributeSlugs":["' . $slug . '"]} /-->' );
+		self::assertStringNotContainsString( 'fxc-filters__count', $plain );
+		self::assertStringNotContainsString( 'Green', $plain, 'without counts, unused values are still left out' );
+		self::assertStringContainsString( 'Blue', $plain );
+	}
+
+	public function test_the_stored_price_range(): void {
+		self::assertSame( [ 1050, null ], ShopQuery::stored_range( [ 10.5, null ] ) );
+		self::assertSame( [ 1000, 2001 ], ShopQuery::stored_range( [ 10.0, 20.001 ] ) );
 	}
 
 	/**

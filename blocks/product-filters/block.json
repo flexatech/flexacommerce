@@ -6,10 +6,22 @@
 	"title": "Product filters",
 	"category": "widgets",
 	"icon": "filter",
-	"description": "Category and attribute filters for the shop page.",
+	"description": "Category, price, attribute and stock filters for the shop page.",
 	"textdomain": "flexacommerce",
 	"attributes": {
 		"showCategories": {
+			"type": "boolean",
+			"default": true
+		},
+		"showPrice": {
+			"type": "boolean",
+			"default": true
+		},
+		"showStock": {
+			"type": "boolean",
+			"default": true
+		},
+		"showCounts": {
 			"type": "boolean",
 			"default": true
 		},

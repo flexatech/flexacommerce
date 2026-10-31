@@ -81,7 +81,7 @@ Legend: **MVP** = required for MVP. **FND** = architectural foundation in MVP, u
 | Product detail page | MVP | Block template for block themes. PHP template for classic themes. |
 | Product search and pagination | MVP | WordPress search scoped to `fxc_product`, plus SKU search (exact match). |
 | Category/tag archives | MVP | |
-| Attribute filtering, price filtering | FND | Data model supports it (taxonomy + denormalized price meta). Filter blocks are post-MVP. |
+| Attribute filtering, price filtering | POST | The product filters block filters by category, price, attribute and stock, with counts and active-filter links (ADR-055). |
 | Variation selection | MVP | Interactivity API store, server-provided variant matrix, server validation on add to cart. |
 | Add to cart, update quantity, remove | MVP | Works without JavaScript through form POST. Enhanced with JavaScript. |
 | Mini-cart / cart count | MVP | Fetched client-side so full pages stay cacheable. |

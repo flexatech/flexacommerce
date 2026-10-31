@@ -218,7 +218,13 @@ final class Storefront {
 				return $this->controls()->sorting();
 			case 'product-filters':
 				$slugs = is_array( $attributes['attributeSlugs'] ?? null ) ? array_values( array_filter( $attributes['attributeSlugs'], 'is_string' ) ) : [];
-				return $this->controls()->filters( (bool) ( $attributes['showCategories'] ?? true ), $slugs );
+				return $this->controls()->filters(
+					(bool) ( $attributes['showCategories'] ?? true ),
+					$slugs,
+					(bool) ( $attributes['showPrice'] ?? true ),
+					(bool) ( $attributes['showStock'] ?? true ),
+					(bool) ( $attributes['showCounts'] ?? true )
+				);
 			case 'discount-nudge':
 				return $this->pricing()->nudge( $user );
 			case 'offer-countdown':

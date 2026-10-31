@@ -827,6 +827,29 @@ const { state, actions } = store( 'flexacommerce/cart', {
 				player?.pause();
 			}
 		},
+		/**
+		 * The shop filter form (ADR-055): a ticked box applies at once, and
+		 * empty price boxes are left out of the address.
+		 */
+		filters() {
+			const form = getElement().ref;
+			const change = ( event ) => {
+				if ( event.target.type === 'checkbox' ) {
+					form.requestSubmit();
+				}
+			};
+			const submit = () => {
+				form.querySelectorAll( 'input[type="number"]' ).forEach( ( input ) => {
+					input.disabled = input.value === '';
+				} );
+			};
+			form.addEventListener( 'change', change );
+			form.addEventListener( 'submit', submit );
+			return () => {
+				form.removeEventListener( 'change', change );
+				form.removeEventListener( 'submit', submit );
+			};
+		},
 		/** Ticks a countdown (ADR-030); at zero it says the offer has ended. */
 		countdown() {
 			const { ref } = getElement();
