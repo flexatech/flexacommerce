@@ -150,6 +150,62 @@ final class AdminProductsTest extends CatalogTestCase {
 		self::assertSame( 'post', \Flexa\Commerce\Admin\ProductEditor::mode() );
 	}
 
+	public function test_a_grouped_product_lists_its_children_and_an_external_its_link(): void {
+		$child = $this->product( 'Child ' . $this->run );
+		$this->service()->save( $child, \Flexa\Commerce\Catalog\ProductInput::from_array( [ 'base' => [ 'sku' => 'CH-' . $this->run ] ] ) );
+		$response = $this->send(
+			'POST',
+			'/admin/products',
+			[
+				'title'    => 'Pack',
+				'type'     => 'grouped',
+				'children' => [ [ 'id' => $child ] ],
+			]
+		);
+		self::assertSame( 201, $response->get_status(), (string) wp_json_encode( $response->get_data() ) );
+		$this->track_post( $response->get_data()['id'] );
+		self::assertSame( 'grouped', $response->get_data()['type'] );
+		self::assertSame( [ $child ], array_column( $response->get_data()['children'], 'id' ) );
+		self::assertSame( 'CH-' . $this->run, $response->get_data()['children'][0]['sku'] );
+		self::assertSame(
+			1,
+			count(
+				$this->send(
+					'GET',
+					'/admin/products',
+					null,
+					[
+						'type'   => 'grouped',
+						'search' => 'Pack',
+					]
+				)->get_data()
+			)
+		);
+
+		$response = $this->send(
+			'POST',
+			'/admin/products',
+			[
+				'title'       => 'Lamp',
+				'type'        => 'external',
+				'product_url' => 'not a link',
+			]
+		);
+		self::assertSame( 400, $response->get_status() );
+		$response = $this->send(
+			'POST',
+			'/admin/products',
+			[
+				'title'       => 'Lamp',
+				'type'        => 'external',
+				'product_url' => 'https://partner.example/lamp',
+			]
+		);
+		self::assertSame( 201, $response->get_status(), (string) wp_json_encode( $response->get_data() ) );
+		$this->track_post( $response->get_data()['id'] );
+		self::assertSame( [ 'https://partner.example/lamp', '' ], [ $response->get_data()['product_url'], $response->get_data()['button_text'] ] );
+	}
+
 	private function count_products(): int {
 		global $wpdb;
 		return (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type = %s", PostTypes::PRODUCT ) );

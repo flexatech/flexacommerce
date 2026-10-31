@@ -24,6 +24,19 @@ final class ProductCsvImportTest extends \WP_UnitTestCase {
 	}
 
 	public function test_woocommerce_export_imports(): void {
+		$grouped = new \WC_Product_Grouped();
+		$grouped->set_name( 'Tee Pack' );
+		$grouped->set_status( 'publish' );
+		$grouped->set_children( [ $this->store->products['sale'], $this->store->products['tee'] ] );
+		$grouped->save();
+		$external = new \WC_Product_External();
+		$external->set_name( 'Partner Lamp' );
+		$external->set_status( 'publish' );
+		$external->set_regular_price( '80' );
+		$external->set_product_url( 'https://partner.example/lamp' );
+		$external->set_button_text( 'Buy at Partner' );
+		$external->save();
+
 		[ $headers, $rows ] = $this->woocommerce_csv();
 		$mapping            = array_map( static fn ( string $header ): string => CsvColumns::match( $header ) ?? '', $headers );
 		self::assertNotContains( '', $mapping, (string) wp_json_encode( array_combine( $headers, $mapping ) ) );
@@ -42,10 +55,9 @@ final class ProductCsvImportTest extends \WP_UnitTestCase {
 		}
 		$debug = (string) wp_json_encode( $results );
 
-		self::assertSame( 'error', $by_name['Gift Set']['action'], $debug );
 		self::assertSame( 'error', $by_name['Second Tee']['action'], $debug );
 		self::assertStringContainsString( 'line', $by_name['Second Tee']['message'] );
-		foreach ( [ 'Plain Tee', 'Sale Mug', 'Áo dài Việt Nam', 'Draft Lamp', 'Hoodie', 'Scarf' ] as $name ) {
+		foreach ( [ 'Plain Tee', 'Sale Mug', 'Áo dài Việt Nam', 'Draft Lamp', 'Hoodie', 'Scarf', 'Tee Pack', 'Partner Lamp' ] as $name ) {
 			self::assertSame( 'create', $by_name[ $name ]['action'] ?? null, $name . ' ' . $debug );
 		}
 
@@ -81,6 +93,14 @@ final class ProductCsvImportTest extends \WP_UnitTestCase {
 
 		$scarf = $this->product( (int) $by_name['Scarf']['id'] );
 		self::assertCount( 2, $scarf->variations );
+
+		// The group row names its products by SKU; they keep their order (ADR-062).
+		$pack = $this->product( (int) $by_name['Tee Pack']['id'] );
+		self::assertTrue( $pack->is_grouped() );
+		self::assertSame( [ $mug->id, $tee->id ], $pack->children );
+		$lamp = $this->product( (int) $by_name['Partner Lamp']['id'] );
+		self::assertTrue( $lamp->is_external() );
+		self::assertSame( [ 'https://partner.example/lamp', 'Buy at Partner', 8000 ], [ $lamp->product_url, $lamp->button_text, $lamp->base->regular_price ] );
 	}
 
 	/** @return array{list<string>,list<list<string>>} */

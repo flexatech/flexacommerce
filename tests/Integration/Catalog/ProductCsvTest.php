@@ -149,6 +149,57 @@ final class ProductCsvTest extends CatalogTestCase {
 		self::assertStringContainsString( 'line 2', $results[1]['message'] );
 	}
 
+	public function test_grouped_and_external_rows_round_trip(): void {
+		$mug = $this->product( 'Pack mug' );
+		$this->save( $mug, [ 'base' => [ 'sku' => $this->sku( 'PMUG' ) ] ] );
+		$plain = $this->product( 'Pack plain' );
+		$group = $this->product( 'Pack' );
+		$this->save(
+			$group,
+			[
+				'type'     => 'grouped',
+				'base'     => [ 'sku' => $this->sku( 'PACK' ) ],
+				'children' => [ $mug, $plain ],
+			]
+		);
+		$lamp = $this->product( 'Lamp' );
+		$this->save(
+			$lamp,
+			[
+				'type'        => 'external',
+				'base'        => [
+					'sku'           => $this->sku( 'LAMP' ),
+					'regular_price' => 8000,
+				],
+				'product_url' => 'https://partner.example/lamp',
+				'button_text' => 'Buy at Partner',
+			]
+		);
+
+		[ $headers, $rows ] = $this->export_rows( [ $this->sku( 'PACK' ), $this->sku( 'LAMP' ) ] );
+		$cell               = static fn ( array $row, string $header ): string => $row[ (int) array_search( $header, $headers, true ) ];
+		self::assertSame( [ 'grouped', 'external' ], [ $cell( $rows[0], 'Type' ), $cell( $rows[1], 'Type' ) ] );
+		self::assertSame( $this->sku( 'PMUG' ) . ', id:' . $plain, $cell( $rows[0], 'Grouped products' ) );
+		self::assertSame( [ 'https://partner.example/lamp', 'Buy at Partner' ], [ $cell( $rows[1], 'External URL' ), $cell( $rows[1], 'Button text' ) ] );
+
+		// Change both products, then import the exported file back.
+		$this->save( $group, [ 'children' => [ $plain ] ] );
+		$this->save( $lamp, [ 'product_url' => 'https://other.example/' ] );
+		$results = $this->import( $headers, $rows, true );
+
+		self::assertSame( [ 'update', 'update' ], array_column( $results, 'action' ), wp_json_encode( $results ) );
+		self::assertSame( [ $mug, $plain ], $this->get( $group )->children );
+		self::assertSame( 'https://partner.example/lamp', $this->get( $lamp )->product_url );
+		self::assertSame( 8000, $this->get( $lamp )->base->regular_price );
+	}
+
+	public function test_an_unknown_type_is_an_error(): void {
+		$results = $this->import( [ 'Type', 'SKU', 'Name' ], [ [ 'bundle', $this->sku( 'BUN' ), 'Bundle' ], [ 'grouped, virtual', $this->sku( 'GRP' ), 'Group' ] ], false, true );
+
+		self::assertSame( [ 'error', 'create' ], array_column( $results, 'action' ), wp_json_encode( $results ) );
+		self::assertStringContainsString( 'bundle', $results[0]['message'] );
+	}
+
 	/**
 	 * Exports the store and keeps the rows whose SKU is listed.
 	 *

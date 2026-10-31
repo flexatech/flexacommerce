@@ -7,8 +7,8 @@
  *
  * Cash on delivery on, one US zone with a flat rate of 5.00, a terms page,
  * a page with the filter block, a customer account, a product with colour
- * swatches in a category of its own, a sign priced by formula, and the
- * pages and products the journeys open.
+ * swatches in a category of its own, a sign priced by formula, a grouped
+ * pack and an external lamp, and the pages and products the journeys open.
  */
 
 // No strict_types: wp eval-file runs this through eval(), where a declare is not allowed.
@@ -210,6 +210,40 @@ Plugin::instance()->option_sets()->save(
 	]
 );
 
+// A pack of the simple product and a mug, and a partner's lamp (ADR-062).
+$make = static fn ( string $title, string $slug ): int => (int) wp_insert_post(
+	[
+		'post_type'   => PostTypes::PRODUCT,
+		'post_status' => 'publish',
+		'post_title'  => $title,
+		'post_name'   => $slug,
+	]
+);
+$mug_id = $make( 'Pack mug', 'pack-mug' );
+$products->save( $mug_id, ProductInput::from_array( [ 'base' => [ 'regular_price' => 400 ] ] ) );
+$pack_id = $make( 'Starter pack', 'starter-pack' );
+$products->save(
+	$pack_id,
+	ProductInput::from_array(
+		[
+			'type'     => 'grouped',
+			'children' => [ $post( $simple )->ID, $mug_id ],
+		]
+	)
+);
+$lamp_id = $make( 'Partner lamp', 'partner-lamp' );
+$products->save(
+	$lamp_id,
+	ProductInput::from_array(
+		[
+			'type'        => 'external',
+			'base'        => [ 'regular_price' => 8000 ],
+			'product_url' => 'https://partner.example/lamp',
+			'button_text' => 'Buy at Partner',
+		]
+	)
+);
+
 $category = get_term_by( 'slug', (string) $simple['categories'][0], PostTypes::CATEGORY );
 
 $out = [
@@ -246,6 +280,15 @@ $out = [
 		'name'  => 'Custom sign',
 		'url'   => (string) get_permalink( $sign_id ),
 		'price' => 1000,
+	],
+	'grouped'  => [
+		'url' => (string) get_permalink( $pack_id ),
+		'mug' => 'Pack mug',
+	],
+	'external' => [
+		'url'  => (string) get_permalink( $lamp_id ),
+		'link' => 'https://partner.example/lamp',
+		'text' => 'Buy at Partner',
 	],
 	'category' => [
 		'slug' => $category instanceof WP_Term ? $category->slug : '',

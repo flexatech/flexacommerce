@@ -4,7 +4,16 @@
  * millimetres, both as decimal strings.
  */
 
-export type ProductType = "simple" | "variable";
+export type ProductType = "simple" | "variable" | "grouped" | "external";
+
+/** A product a grouped product lists (ADR-062). */
+export interface GroupChild {
+    id: number;
+    title: string;
+    sku: string | null;
+    type: ProductType;
+    status: string;
+}
 
 export type Visibility = "visible" | "catalog" | "search" | "hidden";
 
@@ -126,6 +135,11 @@ export interface ProductData {
     video: ProductVideo | null;
     visibility: Visibility;
     featured: boolean;
+    /** A grouped product: the products it lists, in order. */
+    children: GroupChild[];
+    /** An external product: where it is sold, and the text of its button. */
+    product_url: string;
+    button_text: string;
     price_min: number | null;
     price_max: number | null;
     stock_status: string;

@@ -435,7 +435,8 @@ final class Storefront {
 		return $this->form ??= new AddToCartForm(
 			Plugin::instance()->cart()->purchase_options(),
 			Plugin::instance()->cart()->pricing(),
-			static fn (): ProductOptions => Plugin::instance()->product_options()
+			static fn (): ProductOptions => Plugin::instance()->product_options(),
+			$this->price()
 		);
 	}
 

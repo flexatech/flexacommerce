@@ -145,6 +145,15 @@ final class FxcCatalogReader {
 			$modified = $changed;
 		}
 
+		$children = array_map( static fn ( int $child ): string => Ref::make( 'fxc', Record::PRODUCT, $child ), $product->children );
+		array_push( $depends, ...$children );
+		$external = $product->is_external()
+			? [
+				'product_url' => $product->product_url,
+				'button_text' => $product->button_text,
+			]
+			: [];
+
 		$image = (int) get_post_thumbnail_id( $id );
 		$base  = $this->row( $product->base, true );
 		unset( $base['image'], $base['description'], $base['enabled'], $base['menu_order'] );
@@ -179,6 +188,8 @@ final class FxcCatalogReader {
 				'attributes'     => $attributes,
 				'base'           => $base,
 				'variants'       => $variants,
+				'children'       => $children,
+				...$external,
 				'extra'          => self::extra( [ 'meta' => is_array( $import['meta'] ?? null ) ? $import['meta'] : [] ] + $import ),
 			],
 			array_values( array_unique( $depends ) )

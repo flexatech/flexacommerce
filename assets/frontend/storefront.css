@@ -25,6 +25,11 @@
 .fxc-option__required { color: #b32d2e; }
 .fxc-options__total { margin: 0; font-weight: 600; }
 .fxc-add-to-cart__quantity { width: 4.5rem; padding: .5rem; }
+.fxc-add-to-cart--group { flex-direction: column; align-items: flex-start; }
+.fxc-group { width: 100%; border-collapse: collapse; }
+.fxc-group th, .fxc-group td { padding: .5rem .75rem .5rem 0; text-align: start; vertical-align: middle; border-block-end: 1px solid color-mix(in srgb, currentcolor 15%, transparent); }
+.fxc-group__name { font-weight: 400; }
+.fxc-group .fxc-price, .fxc-group .fxc-stock { margin: 0; }
 .fxc-tiers { flex-basis: 100%; border-collapse: collapse; font-size: .875em; }
 .fxc-tiers caption { text-align: start; font-weight: 600; padding-block-end: .25rem; }
 .fxc-tiers th, .fxc-tiers td { padding: .375rem .75rem; border: 1px solid currentcolor; border-color: color-mix(in srgb, currentcolor 20%, transparent); text-align: start; }

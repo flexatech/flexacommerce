@@ -73,6 +73,13 @@ export function toPayload(draft: Draft, saved?: ProductData): Record<string, unk
         attributes: draft.attributes.map(attributePayload),
         base: rowFields(draft.base),
     };
+    if (draft.type === "grouped") {
+        payload.children = draft.children.map((child) => child.id);
+    }
+    if (draft.type === "external") {
+        payload.product_url = draft.product_url;
+        payload.button_text = draft.button_text;
+    }
     if (draft.type === "variable") {
         payload.variations = draft.variations.map((row, index) => ({
             ...(row.id > 0 ? { id: row.id } : {}),

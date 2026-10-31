@@ -12,6 +12,7 @@ use Flexa\Commerce\Catalog\PostTypes;
 use Flexa\Commerce\Catalog\ProductInput;
 use Flexa\Commerce\Catalog\ProductPostInput;
 use Flexa\Commerce\Catalog\ProductRepository;
+use Flexa\Commerce\Catalog\ProductTypes;
 use Flexa\Commerce\Catalog\Variant;
 use Flexa\Commerce\Contracts\CommerceException;
 use Flexa\Commerce\Contracts\Exceptions\InvalidProduct;
@@ -391,6 +392,9 @@ final class ProductsEndpoint extends Endpoint {
 			'video'        => $product->video?->to_array(),
 			'visibility'   => $product->visibility,
 			'featured'     => $product->featured,
+			'children'     => self::children_data( $product->children ),
+			'product_url'  => $product->product_url,
+			'button_text'  => $product->button_text,
 			'price_min'    => self::meta_int( $product->id, ProductRepository::META_PRICE_MIN ),
 			'price_max'    => self::meta_int( $product->id, ProductRepository::META_PRICE_MAX ),
 			'stock_status' => (string) get_post_meta( $product->id, ProductRepository::META_STOCK_STATUS, true ),
@@ -403,6 +407,36 @@ final class ProductsEndpoint extends Endpoint {
 		 * @param Product             $product
 		 */
 		return (array) apply_filters( 'flexacommerce.rest.product.response', $data, $product );
+	}
+
+	/**
+	 * The products a grouped product lists, for its picker; ids that are
+	 * no longer products are left out.
+	 *
+	 * @param list<int> $ids
+	 * @return list<array{id:int,title:string,sku:?string,type:string,status:string}>
+	 */
+	private static function children_data( array $ids ): array {
+		if ( $ids === [] ) {
+			return [];
+		}
+		$products = Plugin::instance()->catalog()->products();
+		_prime_post_caches( $ids, false, true );
+		$products->prime( $ids );
+		$out = [];
+		foreach ( $ids as $id ) {
+			$child = $products->find( $id );
+			if ( $child !== null ) {
+				$out[] = [
+					'id'     => $child->id,
+					'title'  => $child->title,
+					'sku'    => $child->base->sku,
+					'type'   => $child->type,
+					'status' => $child->status,
+				];
+			}
+		}
+		return $out;
 	}
 
 	/** @return array<string,mixed> */
@@ -547,7 +581,7 @@ final class ProductsEndpoint extends Endpoint {
 			],
 			'type'     => [
 				'type'    => 'string',
-				'enum'    => [ '', 'simple', 'variable' ],
+				'enum'    => [ '', ...ProductTypes::all() ],
 				'default' => '',
 			],
 			'category' => [
@@ -659,7 +693,7 @@ final class ProductsEndpoint extends Endpoint {
 				],
 				'type'           => [
 					'type' => 'string',
-					'enum' => [ 'simple', 'variable' ],
+					'enum' => ProductTypes::all(),
 				],
 				'status'         => [
 					'type' => 'string',
@@ -716,6 +750,19 @@ final class ProductsEndpoint extends Endpoint {
 					'enum' => Product::VISIBILITIES,
 				],
 				'featured'       => [ 'type' => 'boolean' ],
+				'children'       => [
+					'type'        => 'array',
+					'items'       => [ 'type' => [ 'integer', 'object' ] ],
+					'description' => __( 'A grouped product: the IDs of the products it lists, in order. Read back as objects with id, title, sku, type and status.', 'flexacommerce' ),
+				],
+				'product_url'    => [
+					'type'        => 'string',
+					'description' => __( 'An external product: the address where it is sold.', 'flexacommerce' ),
+				],
+				'button_text'    => [
+					'type'        => 'string',
+					'description' => __( 'An external product: the text of its button.', 'flexacommerce' ),
+				],
 				'price_min'      => [
 					'type'     => [ 'integer', 'null' ],
 					'readonly' => true,

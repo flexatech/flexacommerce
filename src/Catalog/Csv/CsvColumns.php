@@ -21,11 +21,8 @@ final class CsvColumns {
 		'sold_individually' => 'Sold individually?',
 		'purchase_note'     => 'Purchase note',
 		'shipping_class_id' => 'Shipping class',
-		'grouped_products'  => 'Grouped products',
 		'upsell_ids'        => 'Upsells',
 		'cross_sell_ids'    => 'Cross-sells',
-		'product_url'       => 'External URL',
-		'button_text'       => 'Button text',
 		'brand_ids'         => 'Brands',
 	];
 
@@ -84,6 +81,9 @@ final class CsvColumns {
 			'download_limit'     => 'Download limit',
 			'download_expiry'    => 'Download expiry days',
 			'parent_id'          => 'Parent',
+			'grouped_products'   => 'Grouped products',
+			'product_url'        => 'External URL',
+			'button_text'        => 'Button text',
 			'menu_order'         => 'Position',
 		];
 	}
@@ -126,6 +126,9 @@ final class CsvColumns {
 			'download_limit'     => __( 'Download limit', 'flexacommerce' ),
 			'download_expiry'    => __( 'Download expiry days', 'flexacommerce' ),
 			'parent_id'          => __( 'Parent', 'flexacommerce' ),
+			'grouped_products'   => __( 'Grouped products', 'flexacommerce' ),
+			'product_url'        => __( 'External URL', 'flexacommerce' ),
+			'button_text'        => __( 'Button text', 'flexacommerce' ),
 			'menu_order'         => __( 'Position', 'flexacommerce' ),
 		];
 	}

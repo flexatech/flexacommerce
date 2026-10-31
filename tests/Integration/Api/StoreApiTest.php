@@ -71,6 +71,43 @@ final class StoreApiTest extends OrderTestCase {
 		self::assertSame( 0, $response->get_data()['item_count'] );
 	}
 
+	public function test_a_group_adds_its_quantities_in_one_request(): void {
+		$tee   = $this->simple( 1000 );
+		$mug   = $this->simple( 400 );
+		$group = $this->product();
+		$this->save(
+			$group,
+			[
+				'type'     => 'grouped',
+				'children' => [ $tee, $mug ],
+			]
+		);
+		$response = $this->dispatch(
+			'POST',
+			'/store/cart/items',
+			[
+				'product_id' => $group,
+				'quantities' => [
+					(string) $tee => 1,
+					(string) $mug => 3,
+				],
+			]
+		);
+		self::assertSame( 201, $response->get_status(), (string) wp_json_encode( $response->get_data() ) );
+		self::assertSame( 2200, $response->get_data()['totals']['subtotal']['amount'] );
+
+		$this->next_request();
+		$response = $this->dispatch(
+			'POST',
+			'/store/cart/items',
+			[
+				'product_id' => $group,
+				'quantities' => [ (string) $tee => 0 ],
+			]
+		);
+		self::assertSame( 400, $response->get_status() );
+	}
+
 	public function test_writes_need_json(): void {
 		$request = $this->request( 'POST', '/store/cart/items', null );
 		$request->set_header( 'content-type', 'application/x-www-form-urlencoded' );

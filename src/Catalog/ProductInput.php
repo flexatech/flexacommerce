@@ -15,6 +15,9 @@ defined( 'ABSPATH' ) || exit;
  */
 final class ProductInput {
 	public const MAX_SKU_LENGTH = 100;
+	public const MAX_CHILDREN   = 100;
+	public const MAX_URL_LENGTH = 2000;
+	public const MAX_BUTTON     = 100;
 
 	private const DATETIME = '/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/';
 	private const DECIMAL  = '/^\d{1,9}(\.\d{1,3})?$/';
@@ -24,6 +27,7 @@ final class ProductInput {
 	 * @param array<string,mixed>|null                                             $base       Variant property => value
 	 * @param list<array{id:int,combination:?Combination,fields:array<string,mixed>}>|null $variations
 	 * @param list<int>|null                                                       $gallery_ids
+	 * @param list<int>|null                                                       $children    products of a grouped product, in order
 	 */
 	public function __construct(
 		public readonly ?string $type = null,
@@ -34,6 +38,9 @@ final class ProductInput {
 		public readonly ?string $visibility = null,
 		public readonly ?bool $featured = null,
 		public readonly ProductVideo|false|null $video = null,
+		public readonly ?array $children = null,
+		public readonly ?string $product_url = null,
+		public readonly ?string $button_text = null,
 	) {}
 
 	/**
@@ -96,6 +103,16 @@ final class ProductInput {
 			$video = self::video( $data['video'] );
 		}
 
+		$children = null;
+		if ( array_key_exists( 'children', $data ) ) {
+			// Ids, or the objects the API returns, so a read can be sent back as it is.
+			$ids      = array_map( static fn ( mixed $child ): int => (int) ( is_array( $child ) ? ( $child['id'] ?? 0 ) : $child ), self::list_of( $data['children'], 'children' ) );
+			$children = array_values( array_unique( array_filter( $ids, static fn ( int $id ): bool => $id > 0 ) ) );
+			if ( count( $children ) > self::MAX_CHILDREN ) {
+				throw new InvalidProduct( __( 'A grouped product can list at most 100 products.', 'flexacommerce' ), 'children' );
+			}
+		}
+
 		return new self(
 			type: $type,
 			attributes: $attributes,
@@ -105,7 +122,34 @@ final class ProductInput {
 			visibility: $visibility,
 			featured: array_key_exists( 'featured', $data ) ? self::to_bool( $data['featured'] ) : null,
 			video: $video,
+			children: $children,
+			product_url: array_key_exists( 'product_url', $data ) ? self::url( $data['product_url'] ) : null,
+			button_text: array_key_exists( 'button_text', $data ) ? self::button_text( $data['button_text'] ) : null,
 		);
+	}
+
+	/**
+	 * The page an external product links to: http or https, or empty.
+	 *
+	 * @throws InvalidProduct
+	 */
+	public static function url( mixed $value ): string {
+		$url = is_scalar( $value ) ? trim( (string) $value ) : '';
+		if ( $url === '' ) {
+			return '';
+		}
+		// esc_url_raw() prefixes http:// to bare words, so the scheme is checked on the input.
+		$clean = preg_match( '#^https?://#i', $url ) === 1 ? esc_url_raw( $url, [ 'http', 'https' ] ) : '';
+		if ( $clean === '' || strlen( $clean ) > self::MAX_URL_LENGTH || ! is_string( wp_parse_url( $clean, PHP_URL_HOST ) ) ) {
+			throw new InvalidProduct( __( 'Enter a full web address starting with http:// or https://.', 'flexacommerce' ), 'product_url' );
+		}
+		return $clean;
+	}
+
+	/** The label of an external product's button; empty uses the default. */
+	public static function button_text( mixed $value ): string {
+		$text = is_scalar( $value ) ? trim( sanitize_text_field( (string) $value ) ) : '';
+		return mb_substr( $text, 0, self::MAX_BUTTON );
 	}
 
 	/**

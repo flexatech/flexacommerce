@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Flexa\Commerce\Storefront;
 
+use Flexa\Commerce\Cart\CartService;
 use Flexa\Commerce\Contracts\CommerceException;
 use Flexa\Commerce\Contracts\Exceptions\InsufficientStock;
 use Flexa\Commerce\Contracts\Exceptions\InvalidCartRequest;
@@ -74,6 +75,11 @@ final class FormHandler {
 				$service->add( $user, $product, $variant, $quantity, $attributes, $options );
 				self::redirect( $back, 'added', $product );
 			}
+			if ( $operation === 'add_group' ) {
+				$raw = isset( $_POST['quantities'] ) && is_array( $_POST['quantities'] ) ? wp_unslash( $_POST['quantities'] ) : []; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- CartService::quantities() keeps positive integers only.
+				$service->add_group( $user, $product, CartService::quantities( $raw ) );
+				self::redirect( $back, 'added', $product );
+			}
 			if ( $operation === 'update' ) {
 				$remove = isset( $_POST['remove'] ) ? sanitize_key( wp_unslash( $_POST['remove'] ) ) : '';
 				if ( $remove !== '' ) {
@@ -142,6 +148,7 @@ final class FormHandler {
 			'expired'            => __( 'Your session has expired. Please try again.', 'flexacommerce' ),
 			'insufficient_stock' => __( 'There is not enough stock for that quantity.', 'flexacommerce' ),
 			'incomplete'         => __( 'Choose product options before adding to the cart.', 'flexacommerce' ),
+			'no_quantity'        => __( 'Choose the quantity of at least one product.', 'flexacommerce' ),
 			'not_purchasable'    => __( 'This product cannot be bought right now.', 'flexacommerce' ),
 			'rate_limited'       => __( 'Too many cart changes. Wait a minute and try again.', 'flexacommerce' ),
 			'invalid'            => __( 'Could not update the cart. Please try again.', 'flexacommerce' ),
@@ -160,6 +167,7 @@ final class FormHandler {
 			$e instanceof NotPurchasable => 'not_purchasable',
 			$e instanceof RateLimited => 'rate_limited',
 			$e instanceof InvalidCartRequest && $e->reason === 'incomplete_selection' => 'incomplete',
+			$e instanceof InvalidCartRequest && $e->field === 'quantities' => 'no_quantity',
 			$e instanceof InvalidCartRequest && $e->reason === 'coupon_applied' => 'coupon_duplicate',
 			$e instanceof InvalidCartRequest && in_array( $e->reason, [ 'coupon_empty', 'coupon_invalid', 'coupon_limit' ], true ) => $e->reason,
 			default => 'invalid',

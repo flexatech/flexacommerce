@@ -107,7 +107,7 @@ final class MigrationTest extends \WP_UnitTestCase {
 		$this->assertArrayNotHasKey( 'updated', $totals );
 		// settings, tax rate, shipping, 2 attributes, 6 terms (2 + 4 attribute values), 7 products, customer, 9 orders, 1 coupon.
 		$this->assertSame( 1 + 1 + 1 + 2 + 6 + 7 + 1 + 9 + 1, $totals['unchanged'] );
-		$this->assertSame( 1, $again->counter( 'products', 'rejected' ), 'The grouped product is rejected again.' );
+		$this->assertSame( 1, $again->counter( 'products', 'rejected' ), 'The bundle product is rejected again.' );
 		$this->assertSame( 9, $this->rows_in( 'orders' ) );
 	}
 

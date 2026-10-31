@@ -133,11 +133,12 @@ final class GoldenStore {
 		);
 		$store->products['doomed']  = self::simple( 'Doomed Item', 'DOOM-1', '9', null );
 
-		$grouped = new \WC_Product_Grouped();
-		$grouped->set_name( 'Gift Set' );
-		$grouped->set_status( 'publish' );
-		$grouped->set_children( [ $store->products['tee'] ] );
-		$store->products['grouped'] = $grouped->save();
+		BundleProduct::register();
+		$bundle = new BundleProduct();
+		$bundle->set_name( 'Gift Set' );
+		$bundle->set_status( 'publish' );
+		$bundle->set_regular_price( '30' );
+		$store->products['bundle'] = $bundle->save();
 
 		$color = self::attribute(
 			'Color',

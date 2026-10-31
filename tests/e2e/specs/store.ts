@@ -15,6 +15,8 @@ type Store = {
 	variable: { id: number; name: string; url: string; choices: Record< string, string >; price: number };
 	swatches: { name: string; url: string; category: string; price: number };
 	formula: { name: string; url: string; price: number };
+	grouped: { url: string; mug: string };
+	external: { url: string; link: string; text: string };
 	category: { slug: string; url: string };
 };
 

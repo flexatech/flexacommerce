@@ -56,6 +56,9 @@ final class WooCatalogReader {
 		'_transient_wc_count_comments',
 		'total_sales',
 		'_fxc_source_id',
+		'_children',
+		'_product_url',
+		'_button_text',
 	];
 
 	/** Term meta the term mapping covers. */
@@ -136,10 +139,10 @@ final class WooCatalogReader {
 			return null;
 		}
 		$type = $product->get_type();
-		if ( ! in_array( $type, [ 'simple', 'variable' ], true ) ) {
+		if ( ! in_array( $type, [ 'simple', 'variable', 'grouped', 'external' ], true ) ) {
 			throw new Rejected(
 				'unsupported_type',
-				sprintf( 'Product %d is a %s product; only simple and variable products are imported.', $id, $type ),
+				sprintf( 'Product %d is a %s product; only simple, variable, grouped and external products are imported.', $id, $type ),
 				[
 					'type'      => $type,
 					'edit_link' => admin_url( 'post.php?post=' . $id . '&action=edit' ),
@@ -188,6 +191,21 @@ final class WooCatalogReader {
 			}
 		}
 
+		// A grouped product lists its children; they import first so the group can point at them.
+		$children = [];
+		if ( $product instanceof \WC_Product_Grouped ) {
+			foreach ( $product->get_children( 'edit' ) as $child_id ) {
+				$children[] = Ref::make( 'wc', Record::PRODUCT, (int) $child_id );
+			}
+			array_push( $depends, ...$children );
+		}
+		$external = $product instanceof \WC_Product_External
+			? [
+				'product_url' => (string) $product->get_product_url( 'edit' ),
+				'button_text' => (string) $product->get_button_text( 'edit' ),
+			]
+			: [];
+
 		$image   = (int) $product->get_image_id( 'edit' );
 		$gallery = array_map( static fn ( $attachment ): string => Ref::make( 'wp', 'attachment', (int) $attachment ), $product->get_gallery_image_ids( 'edit' ) );
 		$base    = $this->row( $product, false );
@@ -218,6 +236,8 @@ final class WooCatalogReader {
 				'attributes'     => $attributes,
 				'base'           => $base,
 				'variants'       => $variants,
+				'children'       => $children,
+				...$external,
 				'extra'          => self::extra( self::meta_of( $product ), self::MAPPED_META ),
 			],
 			array_values( array_unique( $depends ) )

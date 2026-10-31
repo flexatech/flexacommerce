@@ -11,6 +11,7 @@ import { DownloadFields } from "./DownloadFields";
 import type { Draft } from "./draft";
 import { Field, InvalidFields, Toggle } from "./fields";
 import { GalleryPanel } from "./GalleryPanel";
+import { ExternalFields, GroupedFields } from "./GroupFields";
 import { InventoryFields, PricingFields, ShippingFields, TaxFields } from "./RowFields";
 import type { ProductType, VariantRow, Visibility } from "./types";
 import type { ProductDraftState, Tab } from "./useProductDraft";
@@ -44,12 +45,16 @@ export function ProductDataPanel({ editor }: { editor: ProductDraftState }) {
     const axes = (saved ?? draft).attributes.filter((a) => a.variation);
 
     const isVariable = draft.type === "variable";
+    const isGrouped = draft.type === "grouped";
+    const isExternal = draft.type === "external";
+    // Grouped and external products are not sold here: no stock, shipping or files (ADR-062).
+    const notSold = isGrouped || isExternal;
     // A variable product sets these on each variation; the shipping tab then holds the defaults.
-    const noShipping = !isVariable && draft.base.virtual;
-    const sellsFiles = !isVariable && draft.base.downloadable;
+    const noShipping = notSold || (!isVariable && draft.base.virtual);
+    const sellsFiles = !notSold && !isVariable && draft.base.downloadable;
     const tabs: { id: Tab; label: string; icon: typeof Tag; hidden?: boolean }[] = [
         { id: "general", label: __("General"), icon: Tag },
-        { id: "inventory", label: __("Inventory"), icon: Boxes },
+        { id: "inventory", label: __("Inventory"), icon: Boxes, hidden: notSold },
         { id: "shipping", label: __("Shipping"), icon: Truck, hidden: noShipping },
         { id: "downloads", label: __("Downloads"), icon: Download, hidden: !sellsFiles },
         { id: "gallery", label: __("Gallery"), icon: Images },
@@ -77,6 +82,8 @@ export function ProductDataPanel({ editor }: { editor: ProductDraftState }) {
                                 options={[
                                     { value: "simple", label: __("Simple product") },
                                     { value: "variable", label: __("Variable product") },
+                                    { value: "grouped", label: __("Grouped product") },
+                                    { value: "external", label: __("External/Affiliate product") },
                                 ]}
                                 onChange={(event) => set({ type: event.target.value as ProductType })}
                             />
@@ -94,7 +101,7 @@ export function ProductDataPanel({ editor }: { editor: ProductDraftState }) {
                     </Field>
                     <div className="fxc:flex fxc:flex-wrap fxc:gap-4 fxc:pb-2">
                         <Toggle checked={draft.featured} onChange={(featured) => set({ featured })} label={__("Featured")} />
-                        {!isVariable && (
+                        {!isVariable && !notSold && (
                             <>
                                 <Toggle checked={draft.base.virtual} onChange={(virtual) => setBase({ virtual })} label={__("Virtual")} />
                                 <Toggle checked={draft.base.downloadable} onChange={(downloadable) => setBase({ downloadable })} label={__("Downloadable")} />
@@ -113,8 +120,8 @@ export function ProductDataPanel({ editor }: { editor: ProductDraftState }) {
                     <p className="fxc:bg-warning/15 fxc:rounded-md fxc:px-3 fxc:py-2 fxc:text-sm">
                         {sprintf(
                             _n(
-                                "Saving as a simple product deletes its %d variation.",
-                                "Saving as a simple product deletes its %d variations.",
+                                "Saving as another product type deletes its %d variation.",
+                                "Saving as another product type deletes its %d variations.",
                                 saved.variations.length,
                             ),
                             saved.variations.length,
@@ -146,14 +153,19 @@ export function ProductDataPanel({ editor }: { editor: ProductDraftState }) {
                     <div className="fxc:min-w-0 fxc:p-5">
                         {visibleTab === "general" && (
                             <div className="fxc:space-y-6">
-                                {isVariable ? (
+                                {isExternal && (
+                                    <ExternalFields url={draft.product_url} text={draft.button_text} errors={errors} onChange={(patch) => set(patch)} />
+                                )}
+                                {isGrouped ? (
+                                    <GroupedFields productId={draft.id} items={draft.children} errors={errors} onChange={(children) => set({ children })} />
+                                ) : isVariable ? (
                                     <p className="fxc:text-muted-foreground fxc:text-sm">
                                         {__("Prices of a variable product are set on each variation. The shop shows the range from the lowest to the highest price.")}
                                     </p>
                                 ) : (
                                     <PricingFields row={draft.base} onChange={setBase} errors={errors} path="base" />
                                 )}
-                                <TaxFields row={draft.base} onChange={setBase} errors={errors} path="base" />
+                                {!isGrouped && <TaxFields row={draft.base} onChange={setBase} errors={errors} path="base" />}
                             </div>
                         )}
                         {visibleTab === "inventory" && (

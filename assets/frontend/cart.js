@@ -576,6 +576,38 @@ const { state, actions } = store( 'flexacommerce/cart', {
 				context.busy = false;
 			}
 		} ),
+		/** A grouped product: every product given a quantity, in one request (ADR-062). */
+		addGroup: withSyncEvent( function* ( event ) {
+			event.preventDefault();
+			const context = getContext();
+			if ( context.busy ) {
+				return;
+			}
+			const quantities = {};
+			for ( const input of getElement().ref.querySelectorAll( 'input[name^="quantities["]' ) ) {
+				const quantity = parseInt( input.value, 10 );
+				if ( quantity > 0 ) {
+					quantities[ input.name.slice( 11, -1 ) ] = quantity;
+				}
+			}
+			if ( ! Object.keys( quantities ).length ) {
+				context.message = i18n.pick;
+				context.failed = true;
+				return;
+			}
+			context.busy = true;
+			context.message = '';
+			try {
+				applyCart( yield request( 'cart/items', 'POST', { product_id: context.productId, quantities } ) );
+				context.message = i18n.added;
+				context.failed = false;
+			} catch ( error ) {
+				context.message = error.message || i18n.failed;
+				context.failed = true;
+			} finally {
+				context.busy = false;
+			}
+		} ),
 		*choose( event ) {
 			const context = getContext();
 			context.selection[ context.attribute ] = event.target.value;

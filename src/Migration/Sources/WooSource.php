@@ -21,7 +21,7 @@ final class WooSource implements SourceAdapter {
 	/** Statuses with a direct FXC equivalent (doc 05 §5.6). */
 	public const CORE_STATUSES = [ 'wc-pending', 'wc-on-hold', 'wc-processing', 'wc-completed', 'wc-cancelled', 'wc-refunded', 'wc-failed', 'wc-checkout-draft', 'trash', 'auto-draft', 'draft' ];
 
-	private const SUPPORTED_TYPES = [ 'simple', 'variable' ];
+	private const SUPPORTED_TYPES = [ 'simple', 'variable', 'grouped', 'external' ];
 
 	public function __construct(
 		private readonly WooEnumerationRepository $enumeration,

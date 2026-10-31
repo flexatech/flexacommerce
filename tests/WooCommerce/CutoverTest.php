@@ -30,8 +30,8 @@ final class CutoverTest extends \WP_UnitTestCase {
 	public function set_up(): void {
 		parent::set_up();
 		$this->store = GoldenStore::build();
-		// Grouped products are rejected, and a cutover needs a run without rejections.
-		wp_delete_post( $this->store->products['grouped'], true );
+		// The bundle product is rejected, and a cutover needs a run without rejections.
+		wp_delete_post( $this->store->products['bundle'], true );
 		$this->service = Plugin::instance()->migration()->service();
 		update_option(
 			'woocommerce_permalinks',

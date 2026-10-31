@@ -151,6 +151,7 @@ final class Assets {
 				'added'       => __( 'Added to your cart.', 'flexacommerce' ),
 				'failed'      => __( 'Could not update the cart. Please try again.', 'flexacommerce' ),
 				'choose'      => __( 'Choose product options before adding to the cart.', 'flexacommerce' ),
+				'pick'        => __( 'Choose the quantity of at least one product.', 'flexacommerce' ),
 				'unavailable' => __( 'This combination is not available.', 'flexacommerce' ),
 				'inStock'     => __( 'In stock', 'flexacommerce' ),
 				'outOfStock'  => __( 'Out of stock', 'flexacommerce' ),

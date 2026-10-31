@@ -87,7 +87,7 @@ final class CouponMigrationTest extends \WP_UnitTestCase {
 		self::wc_coupon( 'shipfree', 'fixed_cart', '0', static fn ( \WC_Coupon $c ) => $c->set_free_shipping( true ) );
 		self::wc_coupon( 'shipplus', 'fixed_cart', '4', static fn ( \WC_Coupon $c ) => $c->set_free_shipping( true ) );
 		self::wc_coupon( 'twoitems', 'percent', '5', static fn ( \WC_Coupon $c ) => $c->set_limit_usage_to_x_items( 2 ) );
-		self::wc_coupon( 'grouped', 'percent', '5', fn ( \WC_Coupon $c ) => $c->set_product_ids( [ $this->store->products['grouped'] ] ) );
+		self::wc_coupon( 'bundle', 'percent', '5', fn ( \WC_Coupon $c ) => $c->set_product_ids( [ $this->store->products['bundle'] ] ) );
 		self::wc_coupon( 'cart', 'fixed_cart', '33.333' );
 		self::wc_coupon( 'taken', 'percent', '5' );
 		$this->fxc_editor()->save(
@@ -108,8 +108,8 @@ final class CouponMigrationTest extends \WP_UnitTestCase {
 		$this->assertSame( 400, $this->fxc_coupon( 'shipplus' )->amount );
 		$this->assertTrue( $this->fxc_coupon( 'shipplus' )->free_shipping );
 		$this->assertSame( [ Coupon::ACTIVE, 2 ], [ $this->fxc_coupon( 'twoitems' )->status, $this->fxc_coupon( 'twoitems' )->item_limit ], 'An item limit is kept.' );
-		$this->assertSame( Coupon::DISABLED, $this->fxc_coupon( 'grouped' )->status );
-		$this->assertSame( [], $this->fxc_coupon( 'grouped' )->product_ids );
+		$this->assertSame( Coupon::DISABLED, $this->fxc_coupon( 'bundle' )->status );
+		$this->assertSame( [], $this->fxc_coupon( 'bundle' )->product_ids );
 		$this->assertSame( 3333, $this->fxc_coupon( 'cart' )->amount );
 
 		$codes = array_count_values( array_column( $this->service->log( $job->id )['rows'], 'code' ) );

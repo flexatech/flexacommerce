@@ -69,7 +69,8 @@ Legend: **MVP** = required for MVP. **FND** = architectural foundation in MVP, u
 | Product deletion with order history preserved | MVP | Orders hold snapshots. Deleting a product never deletes or alters order lines. |
 | Product weight and dimensions | MVP | Needed by shipping rules and for WooCommerce round-trip. |
 | Virtual and downloadable products | POST | Per variant flags and files, download limit per unit, expiry from payment, token links in emails and on the account page (ADR-058). |
-| Grouped, external/affiliate, subscription, bundle products | OUT (core) / POST (extension) | Migration reports them as unsupported (doc 05 §7). |
+| Grouped and external/affiliate products | POST | A grouped product lists other products on one page and adds them in one click; an external product links to where it is sold. Both migrate and import from CSV (ADR-062). |
+| Subscription and bundle products | OUT (core) / POST (extension) | Migration reports them as unsupported (doc 05 §7). |
 | Public product-type registration API | FND | Internal type registry exists in MVP; public contract is post-MVP (doc 04 §6). |
 | Reviews and ratings | POST | Reviews are WordPress comments with a star rating, a verified-buyer badge, a setting for who may review and a rating sort (ADR-056). |
 | Product import/export CSV | POST | WooCommerce's CSV columns both ways, so a WooCommerce export imports as it is: a column mapping screen, a check that writes nothing, batches with variations kept together, update by SKU or ID, and the same in WP-CLI (ADR-059). The migration format still covers moving a whole store. |
@@ -170,7 +171,7 @@ Legend: **MVP** = required for MVP. **FND** = architectural foundation in MVP, u
 | Coupons | Discount rules interact with tax, shipping and refunds. Built after the MVP scope with a fixed rule set and one mode (sequential), no amount filters and no buy-X-get-Y rules. Free-shipping coupons work through the free shipping method (ADR-021). |
 | Custom React storefront / headless API | Core blocks + Interactivity API meet the need without a frontend framework. |
 | Multi-currency | Changes the money model, reporting and refunds. Out. |
-| Product-type plugin API in 1.0 | A public API is a promise. Ship an internal registry first and publish the contract once two real types exist. |
+| Product-type plugin API in 1.0 | A public API is a promise. Ship an internal registry first and publish the contract once real consumers exist. The registry holds four types since ADR-062. |
 
 ## 7. Assumptions (to be validated, see doc 09)
 

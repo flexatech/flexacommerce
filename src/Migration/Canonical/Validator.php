@@ -159,8 +159,8 @@ final class Validator {
 	 */
 	private function product( array $data ): array {
 		$problems = [];
-		if ( ! in_array( $data['kind'] ?? null, [ 'simple', 'variable' ], true ) ) {
-			$problems[] = Problem::error( 'unsupported_type', 'Only simple and variable products are imported.' );
+		if ( ! in_array( $data['kind'] ?? null, [ 'simple', 'variable', 'grouped', 'external' ], true ) ) {
+			$problems[] = Problem::error( 'unsupported_type', 'Only simple, variable, grouped and external products are imported.' );
 		}
 		$rows = [ 'base' => is_array( $data['base'] ?? null ) ? $data['base'] : [] ];
 		foreach ( is_array( $data['variants'] ?? null ) ? $data['variants'] : [] as $i => $variant ) {

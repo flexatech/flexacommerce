@@ -10,7 +10,9 @@ defined( 'ABSPATH' ) || exit;
 
 /**
  * A product post with its catalog data: type, attribute definitions, the
- * base row and (for variable products) the variation rows.
+ * base row and (for variable products) the variation rows. A grouped
+ * product lists its `children`; an external one links to `product_url`
+ * (ADR-062).
  */
 final class Product {
 	public const VISIBILITIES = [ 'visible', 'catalog', 'search', 'hidden' ];
@@ -19,6 +21,7 @@ final class Product {
 	 * @param list<AttributeDefinition> $attributes sorted by position
 	 * @param list<Variant>             $variations
 	 * @param list<int>                 $gallery_ids
+	 * @param list<int>                 $children    product ids of a grouped product, in order
 	 */
 	public function __construct(
 		public readonly int $id,
@@ -32,10 +35,26 @@ final class Product {
 		public readonly string $visibility = 'visible',
 		public readonly bool $featured = false,
 		public readonly ?ProductVideo $video = null,
+		public readonly array $children = [],
+		public readonly string $product_url = '',
+		public readonly string $button_text = '',
 	) {}
 
 	public function is_variable(): bool {
 		return ProductTypes::has_variations( $this->type );
+	}
+
+	public function is_grouped(): bool {
+		return $this->type === ProductTypes::GROUPED;
+	}
+
+	public function is_external(): bool {
+		return $this->type === ProductTypes::EXTERNAL;
+	}
+
+	/** Whether rows of this product can go in the cart. */
+	public function is_sold(): bool {
+		return ProductTypes::is_sold( $this->type );
 	}
 
 	public function attribute( string $key ): ?AttributeDefinition {
@@ -53,11 +72,16 @@ final class Product {
 	}
 
 	/**
-	 * Rows a customer can buy: the base row of a simple product, or the variations.
+	 * Rows a customer can buy: the base row of a simple product, or the
+	 * variations. An external product's base row is listed for its price;
+	 * the cart refuses it. A grouped product has none.
 	 *
 	 * @return list<Variant>
 	 */
 	public function sellable_rows(): array {
+		if ( $this->is_grouped() ) {
+			return [];
+		}
 		return $this->is_variable() ? $this->variations : [ $this->base ];
 	}
 

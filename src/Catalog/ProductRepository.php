@@ -22,6 +22,10 @@ final class ProductRepository {
 	public const META_PRICE_MAX    = '_fxc_price_max';
 	public const META_STOCK_STATUS = '_fxc_stock_status';
 	public const META_NEXT_CHANGE  = '_fxc_next_price_change';
+	public const META_CHILDREN     = '_fxc_children';
+	public const META_GROUPED_IN   = '_fxc_grouped_in';
+	public const META_PRODUCT_URL  = '_fxc_product_url';
+	public const META_BUTTON_TEXT  = '_fxc_button_text';
 
 	private const JSON_FLAGS = JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR;
 	private const JSON_MAX   = 65536;
@@ -63,7 +67,42 @@ final class ProductRepository {
 			visibility: in_array( $visibility, Product::VISIBILITIES, true ) ? $visibility : 'visible',
 			featured: get_post_meta( $product_id, self::META_FEATURED, true ) === '1',
 			video: ProductVideo::from_meta( (string) get_post_meta( $product_id, self::META_VIDEO, true ) ),
+			children: $type === ProductTypes::GROUPED ? self::id_list( (string) get_post_meta( $product_id, self::META_CHILDREN, true ) ) : [],
+			product_url: $type === ProductTypes::EXTERNAL ? (string) get_post_meta( $product_id, self::META_PRODUCT_URL, true ) : '',
+			button_text: $type === ProductTypes::EXTERNAL ? (string) get_post_meta( $product_id, self::META_BUTTON_TEXT, true ) : '',
 		);
+	}
+
+	/**
+	 * The grouped products that list this one (ADR-062), kept on the child
+	 * so a price or stock change finds its groups without a query.
+	 *
+	 * @return list<int>
+	 */
+	public function groups_of( int $product_id ): array {
+		return self::id_list( (string) get_post_meta( $product_id, self::META_GROUPED_IN, true ) );
+	}
+
+	/**
+	 * The published products a grouped product lists, in its order; their
+	 * posts and rows are loaded together.
+	 *
+	 * @return list<Product>
+	 */
+	public function children_of( Product $group ): array {
+		if ( $group->children === [] ) {
+			return [];
+		}
+		_prime_post_caches( $group->children, false, true );
+		$this->prime( $group->children );
+		$out = [];
+		foreach ( $group->children as $id ) {
+			$child = $this->find( $id );
+			if ( $child !== null && $child->status === 'publish' && ! $child->is_grouped() ) {
+				$out[] = $child;
+			}
+		}
+		return $out;
 	}
 
 	/**
@@ -100,6 +139,7 @@ final class ProductRepository {
 		}
 		update_post_meta( $id, self::META_VISIBILITY, $product->visibility );
 		update_post_meta( $id, self::META_FEATURED, $product->featured ? '1' : '0' );
+		$this->save_type_meta( $product );
 
 		$value_terms = [];
 		foreach ( $product->attributes as $attribute ) {
@@ -108,6 +148,69 @@ final class ProductRepository {
 			}
 		}
 		wp_set_object_terms( $id, array_values( array_unique( $value_terms ) ), PostTypes::ATTRIBUTE );
+	}
+
+	/** The children of a grouped product, the link of an external one; other types drop both. */
+	private function save_type_meta( Product $product ): void {
+		$id     = $product->id;
+		$before = self::id_list( (string) get_post_meta( $id, self::META_CHILDREN, true ) );
+		$after  = $product->is_grouped() ? $product->children : [];
+		if ( $after === [] ) {
+			delete_post_meta( $id, self::META_CHILDREN );
+		} else {
+			update_post_meta( $id, self::META_CHILDREN, implode( ',', $after ) );
+		}
+		foreach ( array_diff( $before, $after ) as $child ) {
+			$this->link_group( $child, $id, false );
+		}
+		foreach ( array_diff( $after, $before ) as $child ) {
+			$this->link_group( $child, $id, true );
+		}
+
+		foreach ( [
+			self::META_PRODUCT_URL => $product->product_url,
+			self::META_BUTTON_TEXT => $product->button_text,
+		] as $key => $value ) {
+			if ( $product->is_external() && $value !== '' ) {
+				update_post_meta( $id, $key, wp_slash( $value ) );
+			} else {
+				delete_post_meta( $id, $key );
+			}
+		}
+	}
+
+	/** Adds or removes `$group` in the child's list of groups. */
+	public function link_group( int $child, int $group, bool $add ): void {
+		$groups = $this->groups_of( $child );
+		$next   = $add ? array_values( array_unique( [ ...$groups, $group ] ) ) : array_values( array_diff( $groups, [ $group ] ) );
+		if ( $next === $groups ) {
+			return;
+		}
+		if ( $next === [] ) {
+			delete_post_meta( $child, self::META_GROUPED_IN );
+		} else {
+			update_post_meta( $child, self::META_GROUPED_IN, implode( ',', $next ) );
+		}
+	}
+
+	/**
+	 * Takes a deleted product out of the groups that listed it, and out of
+	 * the lists of groups of its own children.
+	 */
+	public function unlink( int $product_id, string $now ): void {
+		foreach ( $this->groups_of( $product_id ) as $group ) {
+			$children = self::id_list( (string) get_post_meta( $group, self::META_CHILDREN, true ) );
+			$left     = array_values( array_diff( $children, [ $product_id ] ) );
+			if ( $left === [] ) {
+				delete_post_meta( $group, self::META_CHILDREN );
+			} else {
+				update_post_meta( $group, self::META_CHILDREN, implode( ',', $left ) );
+			}
+			$this->sync_denormalized( $group, $now );
+		}
+		foreach ( self::id_list( (string) get_post_meta( $product_id, self::META_CHILDREN, true ) ) as $child ) {
+			$this->link_group( $child, $product_id, false );
+		}
 	}
 
 	/**
@@ -121,6 +224,10 @@ final class ProductRepository {
 		if ( $product === null ) {
 			return;
 		}
+		if ( $product->is_grouped() ) {
+			$this->sync_group( $product );
+			return;
+		}
 
 		$in_stock_prices = [];
 		$all_prices      = [];
@@ -131,7 +238,8 @@ final class ProductRepository {
 			if ( ! $row->enabled ) {
 				continue;
 			}
-			$status     = $product->stock_owner( $row )->computed_stock_status();
+			// An external product is sold elsewhere: its own stock does not count.
+			$status     = $product->is_external() ? Variant::INSTOCK : $product->stock_owner( $row )->computed_stock_status();
 			$statuses[] = $status;
 
 			$price = $row->active_price( $now );
@@ -169,6 +277,50 @@ final class ProductRepository {
 		} else {
 			update_post_meta( $product_id, self::META_NEXT_CHANGE, $next_change );
 		}
+
+		foreach ( $this->groups_of( $product_id ) as $group ) {
+			$this->sync_denormalized( $group, $now );
+		}
+	}
+
+	/**
+	 * A grouped product's range is that of its published children, and it
+	 * is in stock while one of them is; it has no sale of its own.
+	 */
+	private function sync_group( Product $product ): void {
+		$children = $product->children;
+		if ( $children !== [] ) {
+			_prime_post_caches( $children, false, true );
+		}
+		$low      = [];
+		$high     = [];
+		$statuses = [];
+		foreach ( $children as $child ) {
+			if ( get_post_status( $child ) !== 'publish' || get_post_type( $child ) !== PostTypes::PRODUCT ) {
+				continue;
+			}
+			$statuses[] = (string) get_post_meta( $child, self::META_STOCK_STATUS, true );
+			$min        = get_post_meta( $child, self::META_PRICE_MIN, true );
+			$max        = get_post_meta( $child, self::META_PRICE_MAX, true );
+			if ( is_numeric( $min ) && is_numeric( $max ) ) {
+				$low[]  = (int) $min;
+				$high[] = (int) $max;
+			}
+		}
+		if ( $low === [] ) {
+			delete_post_meta( $product->id, self::META_PRICE_MIN );
+			delete_post_meta( $product->id, self::META_PRICE_MAX );
+		} else {
+			update_post_meta( $product->id, self::META_PRICE_MIN, (string) min( $low ) );
+			update_post_meta( $product->id, self::META_PRICE_MAX, (string) max( $high ) );
+		}
+		$aggregate = match ( true ) {
+			in_array( Variant::INSTOCK, $statuses, true )     => Variant::INSTOCK,
+			in_array( Variant::ONBACKORDER, $statuses, true ) => Variant::ONBACKORDER,
+			default                                         => Variant::OUTOFSTOCK,
+		};
+		update_post_meta( $product->id, self::META_STOCK_STATUS, $aggregate );
+		delete_post_meta( $product->id, self::META_NEXT_CHANGE );
 	}
 
 	/**

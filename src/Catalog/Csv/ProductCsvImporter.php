@@ -128,6 +128,12 @@ final class ProductCsvImporter {
 			$records[] = [ $row['line'], $record ];
 		}
 
+		// A grouped row names products by SKU or ID; it goes last so rows of the same batch exist by then.
+		$records = array_merge(
+			array_values( array_filter( $records, static fn ( array $r ): bool => ! in_array( ProductTypes::GROUPED, self::types( $r[1] ), true ) ) ),
+			array_values( array_filter( $records, static fn ( array $r ): bool => in_array( ProductTypes::GROUPED, self::types( $r[1] ), true ) ) )
+		);
+
 		$results = [];
 		$count   = count( $records );
 		for ( $i = 0; $i < $count; ) {
@@ -146,6 +152,7 @@ final class ProductCsvImporter {
 			}
 			array_push( $results, ...$this->variations( $parent, $group ) );
 		}
+		usort( $results, static fn ( array $a, array $b ): int => $a['line'] <=> $b['line'] );
 		return $results;
 	}
 
@@ -173,7 +180,7 @@ final class ProductCsvImporter {
 	}
 
 	/**
-	 * A simple or variable product row.
+	 * A product row of any type but variation.
 	 *
 	 * @param array<string,string> $record
 	 * @return Result
@@ -184,11 +191,9 @@ final class ProductCsvImporter {
 		$sku      = null;
 		try {
 			$types = self::types( $record );
-			foreach ( [ 'grouped', 'external' ] as $unsupported ) {
-				if ( in_array( $unsupported, $types, true ) ) {
-					/* translators: %s: WooCommerce product type */
-					throw new InvalidProduct( sprintf( __( 'FlexaCommerce does not sell %s products.', 'flexacommerce' ), $unsupported ), 'type' );
-				}
+			foreach ( array_diff( $types, [ ...ProductTypes::all(), 'virtual', 'downloadable' ] ) as $unknown ) {
+				/* translators: %s: product type from the file, such as "bundle" */
+				throw new InvalidProduct( sprintf( __( 'FlexaCommerce does not sell %s products.', 'flexacommerce' ), $unknown ), 'type' );
 			}
 			$sku     = array_key_exists( 'sku', $record ) ? ProductInput::sku( $record['sku'] ) : null;
 			$file_id = trim( $record['id'] ?? '' );
@@ -204,6 +209,10 @@ final class ProductCsvImporter {
 			$type = null;
 			if ( in_array( ProductTypes::VARIABLE, $types, true ) ) {
 				$type = ProductTypes::VARIABLE;
+			} elseif ( in_array( ProductTypes::GROUPED, $types, true ) ) {
+				$type = ProductTypes::GROUPED;
+			} elseif ( in_array( ProductTypes::EXTERNAL, $types, true ) ) {
+				$type = ProductTypes::EXTERNAL;
 			} elseif ( in_array( ProductTypes::SIMPLE, $types, true ) || $existing === 0 ) {
 				$type = ProductTypes::SIMPLE;
 			}
@@ -238,6 +247,12 @@ final class ProductCsvImporter {
 			if ( trim( $record['featured'] ?? '' ) !== '' ) {
 				$data['featured'] = CsvValues::bool( $record['featured'] );
 			}
+			if ( array_key_exists( 'product_url', $record ) ) {
+				$data['product_url'] = trim( $record['product_url'] );
+			}
+			if ( array_key_exists( 'button_text', $record ) ) {
+				$data['button_text'] = $record['button_text'];
+			}
 			$data['base'] = $this->row_fields( $record, $before?->base, false, $warnings );
 			self::check_prices( $data['base'], 'base' );
 
@@ -258,6 +273,9 @@ final class ProductCsvImporter {
 			}
 			if ( trim( $record['tag_ids'] ?? '' ) !== '' ) {
 				$post['tags'] = $this->tags( $record['tag_ids'], $warnings );
+			}
+			if ( trim( $record['grouped_products'] ?? '' ) !== '' ) {
+				$data['children'] = $this->children( $record['grouped_products'], $warnings );
 			}
 			$attributes = $this->attribute_rows( $record, $before, $warnings );
 			if ( $attributes !== null ) {
@@ -561,6 +579,28 @@ final class ProductCsvImporter {
 			return $this->context->ids[ $id ];
 		}
 		return $this->update && ctype_digit( $id ) && get_post_type( (int) $id ) === PostTypes::PRODUCT ? (int) $id : null;
+	}
+
+	/**
+	 * The products a Grouped products cell names, each as Parent does. One
+	 * that cannot be found is left out with a warning; a check keeps rows of
+	 * the file that it has not created.
+	 *
+	 * @param list<string> $warnings
+	 * @return list<int>
+	 */
+	private function children( string $cell, array &$warnings ): array {
+		$ids = [];
+		foreach ( CsvValues::split( $cell ) as $reference ) {
+			$id = $this->parent_of( $reference );
+			if ( $id !== null && $id > 0 ) {
+				$ids[] = $id;
+			} elseif ( $id === null || ! $this->dry_run ) {
+				/* translators: %s: SKU or ID from the Grouped products cell */
+				$warnings[] = sprintf( __( 'The grouped product %s was not found, so it was left out.', 'flexacommerce' ), $reference );
+			}
+		}
+		return $ids;
 	}
 
 	/** @throws InvalidProduct when an earlier line of the file used the SKU */

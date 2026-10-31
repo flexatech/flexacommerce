@@ -6,7 +6,9 @@ namespace Flexa\Commerce\Storefront\Render;
 
 use Flexa\Commerce\Cart\CartService;
 use Flexa\Commerce\Catalog\Product;
+use Flexa\Commerce\Catalog\Variant;
 use Flexa\Commerce\Contracts\Pricing\PriceResolution;
+use Flexa\Commerce\Plugin;
 use Flexa\Commerce\Pricing\PricingService;
 
 defined( 'ABSPATH' ) || exit;
@@ -31,24 +33,15 @@ final class ProductPrice {
 	}
 
 	private function markup( Product $product, int $user_id ): string {
-		$prices = [];
-		foreach ( $product->sellable_rows() as $row ) {
-			if ( ! $this->cart->is_purchasable( $product, $row ) ) {
-				continue;
-			}
-			$unit = $this->pricing->unit_price( $product, $row, 1, $user_id );
-			if ( $unit !== null ) {
-				$prices[] = [ $row, $unit, $this->pricing->for_display( $product, $row, $unit ) ];
-			}
-		}
+		$prices = $this->prices( $product, $user_id );
 		if ( $prices === [] ) {
 			return '';
 		}
 		// Ends of a range are picked by the shown price, which tax classes can reorder.
-		usort( $prices, static fn ( array $a, array $b ): int => $a[2]->active->amount <=> $b[2]->active->amount );
-		[ $row, $stored, $low ] = $prices[0];
-		$high                   = $prices[ count( $prices ) - 1 ][2];
-		$suffix                 = $this->pricing->display_suffix( $product, $row, $stored );
+		usort( $prices, static fn ( array $a, array $b ): int => $a[3]->active->amount <=> $b[3]->active->amount );
+		[ $owner, $row, $stored, $low ] = $prices[0];
+		$high                           = $prices[ count( $prices ) - 1 ][3];
+		$suffix                         = $this->pricing->display_suffix( $owner, $row, $stored );
 
 		if ( $low->active->amount !== $high->active->amount ) {
 			$text = sprintf(
@@ -60,6 +53,37 @@ final class ProductPrice {
 			return '<p class="fxc-price fxc-price--range">' . $text . self::suffix( $suffix ) . '</p>';
 		}
 		return self::single( $this->pricing, $low, $suffix );
+	}
+
+	/**
+	 * The rows to price: the purchasable ones; for an external product its
+	 * base row although it is sold elsewhere, and for a grouped product the
+	 * rows of the products it lists (ADR-062).
+	 *
+	 * @return list<array{0:Product,1:Variant,2:PriceResolution,3:PriceResolution}>
+	 */
+	private function prices( Product $product, int $user_id ): array {
+		if ( $product->is_grouped() ) {
+			$out = [];
+			foreach ( Plugin::instance()->catalog()->products()->children_of( $product ) as $child ) {
+				$out = [ ...$out, ...$this->prices( $child, $user_id ) ];
+			}
+			return $out;
+		}
+		$out = [];
+		foreach ( $product->sellable_rows() as $row ) {
+			$shown = $product->is_external()
+				? $product->status === 'publish' && $row->enabled && $row->regular_price !== null
+				: $this->cart->is_purchasable( $product, $row );
+			if ( ! $shown ) {
+				continue;
+			}
+			$unit = $this->pricing->unit_price( $product, $row, 1, $user_id );
+			if ( $unit !== null ) {
+				$out[] = [ $product, $row, $unit, $this->pricing->for_display( $product, $row, $unit ) ];
+			}
+		}
+		return $out;
 	}
 
 	/** `$unit` is the price to show; `$suffix` is plain text. */

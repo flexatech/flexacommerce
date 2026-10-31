@@ -53,7 +53,7 @@ final class RoundTripTest extends \WP_UnitTestCase {
 
 		$a = $this->normalize( $before, $map_a );
 		$b = $this->normalize( $after, $map_b );
-		// The grouped product is rejected and the checkout draft is skipped on the way there.
+		// The bundle product is rejected and the checkout draft is skipped on the way there.
 		unset( $a['product:'], $a['order:'] );
 		$this->assertSame( array_keys( $a ), array_keys( $b ) );
 

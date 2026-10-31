@@ -46,6 +46,7 @@ final class AddToCartForm {
 		private readonly PurchaseOptions $options,
 		private readonly ?PricingService $pricing = null,
 		private readonly ?\Closure $product_options = null,
+		private readonly ?ProductPrice $price = null,
 	) {}
 
 	public function html( Product $product, string $mode = self::SINGLE, int $user_id = 0 ): string {
@@ -60,6 +61,12 @@ final class AddToCartForm {
 	}
 
 	private function markup( Product $product, string $mode, int $user_id ): string {
+		if ( $product->is_external() ) {
+			return '<p class="fxc-add-to-cart fxc-add-to-cart--' . esc_attr( $mode ) . '">' . self::external_button( $product ) . '</p>';
+		}
+		if ( $product->is_grouped() ) {
+			return $mode === self::LOOP ? self::link( $product, __( 'View products', 'flexacommerce' ) ) : $this->group( $product, $user_id );
+		}
 		$sets = $this->option_sets( $product, $mode );
 		if ( $mode === self::LOOP && ( $product->is_variable() || $sets !== [] ) ) {
 			$swatches = '';
@@ -228,6 +235,109 @@ final class AddToCartForm {
 		if ( $mode === self::SINGLE && $editing === null ) {
 			$html .= ExpressButtons::html( 'product', [ 'product_id' => $product->id ] );
 		}
+		$html .= '<p class="fxc-add-to-cart__message" role="status" aria-live="polite" data-wp-text="context.message" data-wp-class--is-error="context.failed"></p>';
+		$html .= FormHandler::notice_for( $product->id );
+		return $html . '</form>';
+	}
+
+	/** The button of an external product: a link to where it is sold (ADR-062). */
+	private static function external_button( Product $product ): string {
+		if ( $product->product_url === '' ) {
+			return '';
+		}
+		$text = $product->button_text !== '' ? $product->button_text : __( 'Buy product', 'flexacommerce' );
+		return sprintf(
+			'<a class="wp-element-button fxc-add-to-cart__external" href="%1$s" rel="nofollow sponsored noopener" target="_blank" aria-label="%2$s">%3$s</a>',
+			esc_url( $product->product_url ),
+			/* translators: 1: button text, 2: product name */
+			esc_attr( sprintf( __( '%1$s: %2$s (opens in a new tab)', 'flexacommerce' ), $text, $product->title ) ),
+			esc_html( $text )
+		);
+	}
+
+	private static function link( Product $product, string $text ): string {
+		return sprintf(
+			'<p class="fxc-add-to-cart fxc-add-to-cart--loop"><a class="wp-element-button" href="%1$s" aria-label="%2$s">%3$s</a></p>',
+			esc_url( (string) get_permalink( $product->id ) ),
+			/* translators: 1: link text, 2: product name */
+			esc_attr( sprintf( __( '%1$s: %2$s', 'flexacommerce' ), $text, $product->title ) ),
+			esc_html( $text )
+		);
+	}
+
+	/**
+	 * The products of a grouped product, each with its price and a quantity
+	 * field when it can be added from here (ADR-062). A variable product, or
+	 * one with option fields, links to its own page; an external one shows
+	 * its button. The form adds every product with a quantity at once.
+	 */
+	private function group( Product $product, int $user_id ): string {
+		$children = Plugin::instance()->catalog()->products()->children_of( $product );
+		if ( $children === [] ) {
+			return '';
+		}
+		$rows = '';
+		$any  = false;
+		foreach ( $children as $child ) {
+			$name   = sprintf( '<a href="%1$s">%2$s</a>', esc_url( (string) get_permalink( $child->id ) ), esc_html( $child->title ) );
+			$action = '';
+			if ( $child->is_external() ) {
+				$action = self::external_button( $child );
+			} elseif ( $child->is_variable() || $this->option_sets( $child, self::SINGLE ) !== [] ) {
+				$action = sprintf( '<a href="%1$s">%2$s</a>', esc_url( (string) get_permalink( $child->id ) ), esc_html__( 'Choose options', 'flexacommerce' ) );
+			} else {
+				$options = $this->options->for_product( $child, $user_id );
+				if ( ! $options['purchasable'] ) {
+					$action = '';
+				} elseif ( ! $options['in_stock'] ) {
+					$action = '<span class="fxc-stock fxc-stock--out">' . esc_html__( 'Out of stock', 'flexacommerce' ) . '</span>';
+				} else {
+					$row    = $options['variants'][0];
+					$max    = $row['max'] !== null ? min( $row['max'], $options['max_quantity'] ) : $options['max_quantity'];
+					$id     = wp_unique_id( 'fxc-qty-' );
+					$action = sprintf(
+						'<label class="screen-reader-text" for="%1$s">%2$s</label><input class="fxc-add-to-cart__quantity" id="%1$s" type="number" name="quantities[%3$d]" value="0" min="0" max="%4$d" step="1" inputmode="numeric">',
+						esc_attr( $id ),
+						/* translators: %s: product name */
+						esc_html( sprintf( __( 'Quantity of %s', 'flexacommerce' ), $child->title ) ),
+						$child->id,
+						$max
+					);
+					$any = true;
+				}
+			}
+			$rows .= sprintf(
+				'<tr><td class="fxc-group__quantity">%1$s</td><th scope="row" class="fxc-group__name">%2$s</th><td class="fxc-group__price">%3$s</td></tr>',
+				$action,
+				$name,
+				$this->price?->html( $child, $user_id ) ?? ''
+			);
+		}
+
+		$table = '<table class="fxc-group"><caption class="screen-reader-text">' . esc_html__( 'Products in this group', 'flexacommerce' ) . '</caption><tbody>' . $rows . '</tbody></table>';
+		if ( ! $any ) {
+			return '<div class="fxc-add-to-cart fxc-add-to-cart--group">' . $table . '</div>';
+		}
+		Assets::use_store();
+		$html  = sprintf(
+			'<form class="fxc-add-to-cart fxc-add-to-cart--group" method="post" action="%1$s" data-wp-interactive="flexacommerce/cart" %2$s data-wp-on--submit="actions.addGroup">',
+			esc_url( admin_url( 'admin-post.php' ) ),
+			wp_interactivity_data_wp_context(
+				[
+					'productId' => $product->id,
+					'busy'      => false,
+					'message'   => '',
+					'failed'    => false,
+				]
+			)
+		);
+		$html .= FormHandler::hidden_fields( 'add_group' );
+		$html .= sprintf( '<input type="hidden" name="product_id" value="%d">', $product->id );
+		$html .= $table;
+		$html .= sprintf(
+			'<button type="submit" class="wp-element-button fxc-add-to-cart__button" data-wp-bind--aria-disabled="context.busy" data-wp-class--is-busy="context.busy">%s</button>',
+			esc_html__( 'Add to cart', 'flexacommerce' )
+		);
 		$html .= '<p class="fxc-add-to-cart__message" role="status" aria-live="polite" data-wp-text="context.message" data-wp-class--is-error="context.failed"></p>';
 		$html .= FormHandler::notice_for( $product->id );
 		return $html . '</form>';

@@ -133,7 +133,7 @@ final class WooCatalogWriter {
 	public function product( Record $record, Mapping $map, Job $job ): WriteResult {
 		$data     = $record->data;
 		$problems = [];
-		$kind     = ( $data['kind'] ?? 'simple' ) === 'variable' ? 'variable' : 'simple';
+		$kind     = in_array( $data['kind'] ?? null, [ 'simple', 'variable', 'grouped', 'external' ], true ) ? (string) $data['kind'] : 'simple';
 		$target   = $map->target_id( Record::PRODUCT, $record->source_id() );
 		$existing = $target > 0 ? wc_get_product( $target ) : null;
 		if ( ! $existing instanceof \WC_Product || $existing->is_type( 'variation' ) ) {
@@ -180,6 +180,19 @@ final class WooCatalogWriter {
 		[ $attributes, $axes ] = $this->attributes_of( $data, $map, $problems );
 		$product->set_attributes( $attributes );
 		$base = is_array( $data['base'] ?? null ) ? $data['base'] : [];
+		if ( $product instanceof \WC_Product_External ) {
+			// WooCommerce throws when an external product tracks stock or takes backorders.
+			$base = [
+				'manage_stock' => false,
+				'backorders'   => 'no',
+				'stock_status' => 'instock',
+			] + $base;
+			$product->set_product_url( is_string( $data['product_url'] ?? null ) ? $data['product_url'] : '' );
+			$product->set_button_text( is_string( $data['button_text'] ?? null ) ? $data['button_text'] : '' );
+		}
+		if ( $product instanceof \WC_Product_Grouped ) {
+			$product->set_children( $this->children_of( $data['children'] ?? null, $map, $problems ) );
+		}
 		$this->apply_row( $product, $base, $job, $problems );
 
 		foreach ( self::extra_meta( $data['extra'] ?? null, $problems ) as $key => $value ) {
@@ -513,6 +526,23 @@ final class WooCatalogWriter {
 				$ids[] = $id;
 			} else {
 				$problems[] = Problem::warning( 'missing_term', 'A category or tag of the product was not imported.', [ 'term' => $ref ] );
+			}
+		}
+		return $ids;
+	}
+
+	/**
+	 * @param list<Problem> $problems
+	 * @return list<int>
+	 */
+	private function children_of( mixed $refs, Mapping $map, array &$problems ): array {
+		$ids = [];
+		foreach ( is_array( $refs ) ? $refs : [] as $ref ) {
+			$id = $map->target_id( Record::PRODUCT, Ref::parse( is_string( $ref ) ? $ref : null )->id ?? '' );
+			if ( $id > 0 ) {
+				$ids[] = $id;
+			} else {
+				$problems[] = Problem::warning( 'child_skipped', 'A product in this group was not imported, so it was left out of the group.', [ 'child' => $ref ] );
 			}
 		}
 		return $ids;

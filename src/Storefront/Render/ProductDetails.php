@@ -57,7 +57,7 @@ final class ProductDetails {
 	public function stock( Product $product ): string {
 		return Component::wrap(
 			'product_stock',
-			fn (): string => $product->is_variable() ? '' : self::stock_line( $this->stock->availability( $product, $product->base )->status, $this->quantity( $product ) ),
+			fn (): string => $product->is_variable() || ! $product->is_sold() ? '' : self::stock_line( $this->stock->availability( $product, $product->base )->status, $this->quantity( $product ) ),
 			[ 'product_id' => $product->id ]
 		);
 	}

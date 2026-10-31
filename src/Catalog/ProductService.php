@@ -80,6 +80,9 @@ final class ProductService {
 			visibility: $product->visibility,
 			featured: $product->featured,
 			video: $product->video,
+			children: $product->children,
+			product_url: $product->product_url,
+			button_text: $product->button_text,
 		);
 	}
 
@@ -99,6 +102,18 @@ final class ProductService {
 				$attributes = $input->attributes !== null ? $this->resolve_attributes( $input->attributes ) : $before->attributes;
 
 				$base = $before->base->with( ( $input->base ?? [] ) + [ 'product_id' => $before->id ] );
+				if ( ! ProductTypes::has_stock( $type ) ) {
+					// Grouped and external products are not sold here: no stock, shipping or files (ADR-062).
+					$base = $base->with(
+						[
+							'manage_stock' => false,
+							'stock_status' => Variant::INSTOCK,
+							'virtual'      => true,
+							'downloadable' => false,
+							'downloads'    => new Downloads(),
+						]
+					);
+				}
 				$this->validate_row( $base, 'base' );
 
 				$variations = [];
@@ -107,6 +122,7 @@ final class ProductService {
 				}
 
 				$this->check_skus( $before->id, [ $base, ...$variations ] );
+				$children = $type === ProductTypes::GROUPED ? $this->children( $before->id, $input->children ?? $before->children ) : [];
 
 				$product = new Product(
 					id: $before->id,
@@ -120,6 +136,9 @@ final class ProductService {
 					visibility: $input->visibility ?? $before->visibility,
 					featured: $input->featured ?? $before->featured,
 					video: $input->video === null ? $before->video : ( $input->video === false ? null : $input->video ),
+					children: $children,
+					product_url: $type === ProductTypes::EXTERNAL ? $input->product_url ?? $before->product_url : '',
+					button_text: $type === ProductTypes::EXTERNAL ? $input->button_text ?? $before->button_text : '',
 				);
 
 				$this->write_rows( $before, $product );
@@ -141,6 +160,37 @@ final class ProductService {
 		);
 
 		return $this->get( $product_id );
+	}
+
+	/**
+	 * The products a grouped product lists: other products that exist and
+	 * are not grouped themselves, in the order given (ADR-062).
+	 *
+	 * @param list<int> $ids
+	 * @return list<int>
+	 * @throws InvalidProduct
+	 */
+	private function children( int $product_id, array $ids ): array {
+		if ( $this->products->groups_of( $product_id ) !== [] ) {
+			throw new InvalidProduct( __( 'This product is listed in a grouped product, so it cannot be grouped itself.', 'flexacommerce' ), 'type' );
+		}
+		if ( $ids === [] ) {
+			return [];
+		}
+		_prime_post_caches( $ids, false, true );
+		foreach ( $ids as $id ) {
+			if ( $id === $product_id ) {
+				throw new InvalidProduct( __( 'A grouped product cannot list itself.', 'flexacommerce' ), 'children' );
+			}
+			if ( get_post_type( $id ) !== PostTypes::PRODUCT || get_post_status( $id ) === 'trash' ) {
+				/* translators: %d: product ID */
+				throw new InvalidProduct( sprintf( __( 'Product %d does not exist.', 'flexacommerce' ), $id ), 'children' );
+			}
+			if ( get_post_meta( $id, ProductRepository::META_TYPE, true ) === ProductTypes::GROUPED ) {
+				throw new InvalidProduct( __( 'A grouped product cannot list another grouped product.', 'flexacommerce' ), 'children' );
+			}
+		}
+		return $ids;
 	}
 
 	/**
@@ -217,6 +267,10 @@ final class ProductService {
 	/** Gives a new product its base row and type (hooked on `save_post_fxc_product`). */
 	public function ensure_base( int $product_id ): void {
 		if ( $this->variants->for_product( $product_id ) !== [] ) {
+			// Published, drafted or trashed: the grouped products listing it show it or not (ADR-062).
+			foreach ( $this->products->groups_of( $product_id ) as $group ) {
+				$this->products->sync_denormalized( $group, $this->clock->db_now() );
+			}
 			return;
 		}
 		$this->variants->insert( Variant::base_for( $product_id ) );
@@ -233,6 +287,7 @@ final class ProductService {
 			return;
 		}
 		$this->variants->delete_for_product( $post_id );
+		$this->products->unlink( $post_id, $this->clock->db_now() );
 		do_action( 'flexacommerce.product.deleted', $post_id );
 	}
 
@@ -307,6 +362,9 @@ final class ProductService {
 					visibility: $source->visibility,
 					featured: false,
 					video: $source->video,
+					children: $source->children,
+					product_url: $source->product_url,
+					button_text: $source->button_text,
 				);
 				$this->products->save_meta( $copy );
 				$this->products->sync_denormalized( $copy_id, $this->clock->db_now() );

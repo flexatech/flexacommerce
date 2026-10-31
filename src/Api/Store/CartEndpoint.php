@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Flexa\Commerce\Api\Store;
 
+use Flexa\Commerce\Cart\CartService;
 use Flexa\Commerce\Cart\CartState;
 use Flexa\Commerce\Contracts\CommerceException;
 use Flexa\Commerce\Coupons\Coupon;
@@ -77,6 +78,14 @@ final class CartEndpoint extends StoreEndpoint {
 						'replace'    => [
 							'type'    => 'string',
 							'pattern' => '^[a-f0-9]{16}$',
+						],
+						// A grouped product: product id => quantity of each one to add (ADR-062).
+						'quantities' => [
+							'type'                 => 'object',
+							'additionalProperties' => [
+								'type'    => 'integer',
+								'minimum' => 0,
+							],
 						],
 					],
 				],
@@ -153,6 +162,17 @@ final class CartEndpoint extends StoreEndpoint {
 			if ( is_scalar( $value ) ) {
 				$attributes[ sanitize_text_field( (string) $key ) ] = sanitize_text_field( (string) $value );
 			}
+		}
+		$quantities = $request->get_param( 'quantities' );
+		if ( is_array( $quantities ) ) {
+			return $this->run(
+				static fn (): CartState => Plugin::instance()->cart()->cart()->add_group(
+					get_current_user_id(),
+					(int) $request->get_param( 'product_id' ),
+					CartService::quantities( $quantities )
+				),
+				201
+			);
 		}
 		$options = $request->get_param( 'options' );
 		$options = is_array( $options ) && $options !== [] ? ProductOptions::posted( $options ) : [];

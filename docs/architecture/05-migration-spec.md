@@ -310,7 +310,9 @@ Slug collisions inside a target taxonomy are impossible for a fresh store; on re
 | WooCommerce (`'edit'` context) | FlexaCommerce |
 |---|---|
 | post fields (title, content, excerpt, slug, status, dates, author, menu_order, comment_status) | new `fxc_product` post, same values (`post_name` identical, so URLs can stay identical after cutover) |
-| `get_type()` `simple` / `variable` | `_fxc_type`. Other types → skipped and reported (§7). |
+| `get_type()` `simple` / `variable` / `grouped` / `external` | `_fxc_type`. Other types → skipped and reported (§7). |
+| grouped: `get_children()` | `_fxc_children`, resolved through the mapping in the same order; a child that did not move is left out with `child_skipped` (ADR-062) |
+| external: `get_product_url()`, `get_button_text()` | `_fxc_product_url`, `_fxc_button_text`; an invalid URL becomes empty with `url_skipped`. FXC→WC saves the product with no stock management. |
 | `get_image_id()`, `get_gallery_image_ids()` | `_thumbnail_id`, `_fxc_gallery_ids` (same attachment ids, same site) |
 | `get_catalog_visibility()`, `get_featured()` | `_fxc_visibility`, `_fxc_featured` |
 | `get_attributes()` (`WC_Product_Attribute`: id, name, options, visible, variation, position) | `_fxc_attributes` definitions + global value terms set on the post |
@@ -480,7 +482,7 @@ Errors reject one entity, never the batch. A job ends `completed_with_warnings` 
 
 | Data | Handling |
 |---|---|
-| Grouped, external, and other product types; bundles; subscriptions | skipped, listed in report with ids and edit links |
+| Bundles, subscriptions and other product types (grouped and external move since ADR-062) | skipped, listed in report with ids and edit links |
 | Downloadable/virtual flags, files, limit and expiry | imported on the variant (§5.2), permissions with the order (§5.4), ADR-058 |
 | Product reviews | imported in the `reviews` stage (§5.11) |
 | Product add-on and SEO plugin meta | `_fxc_import` bucket on the product, round-tripped on FXC→WC; the official Product Add-ons data also becomes option sets (§5.9) |

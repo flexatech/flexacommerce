@@ -9,7 +9,9 @@ use Flexa\Commerce\Catalog\Combination;
 use Flexa\Commerce\Catalog\Downloads;
 use Flexa\Commerce\Catalog\PostTypes;
 use Flexa\Commerce\Catalog\ProductInput;
+use Flexa\Commerce\Catalog\ProductRepository;
 use Flexa\Commerce\Catalog\ProductService;
+use Flexa\Commerce\Catalog\ProductTypes;
 use Flexa\Commerce\Catalog\ProductVideo;
 use Flexa\Commerce\Catalog\Variant;
 use Flexa\Commerce\Catalog\VariantRepository;
@@ -201,7 +203,7 @@ final class FxcCatalogWriter {
 		}
 
 		[ $raw, $axes ] = $this->attributes_of( $data, $map, $problems );
-		$kind           = ( $data['kind'] ?? 'simple' ) === 'variable' ? 'variable' : 'simple';
+		$kind           = in_array( $data['kind'] ?? null, ProductTypes::all(), true ) ? (string) $data['kind'] : ProductTypes::SIMPLE;
 		$base_row       = ( is_array( $data['base'] ?? null ) ? $data['base'] : [] ) + array_intersect_key(
 			$data,
 			[
@@ -261,6 +263,17 @@ final class FxcCatalogWriter {
 
 		$this->apply_sku_policy( $target, $base, $variations, $job, $problems );
 
+		$children = $kind === ProductTypes::GROUPED ? $this->children_of( $data['children'] ?? null, $target, $map, $problems ) : null;
+		$url      = null;
+		if ( $kind === ProductTypes::EXTERNAL ) {
+			try {
+				$url = ProductInput::url( $data['product_url'] ?? '' );
+			} catch ( InvalidProduct ) {
+				$problems[] = Problem::warning( 'url_skipped', 'The product URL is not a full web address, so it was left empty.', [ 'url' => $data['product_url'] ?? null ] );
+				$url        = '';
+			}
+		}
+
 		try {
 			$product = $this->products->save(
 				$target,
@@ -273,6 +286,9 @@ final class FxcCatalogWriter {
 					visibility: in_array( $data['visibility'] ?? '', [ 'visible', 'catalog', 'search', 'hidden' ], true ) ? (string) $data['visibility'] : 'visible',
 					featured: (bool) ( $data['featured'] ?? false ),
 					video: $video,
+					children: $children,
+					product_url: $url,
+					button_text: $kind === ProductTypes::EXTERNAL ? ProductInput::button_text( $data['button_text'] ?? '' ) : null,
 				)
 			);
 		} catch ( InvalidProduct | DuplicateSku | ProductNotFound $e ) {
@@ -685,6 +701,26 @@ final class FxcCatalogWriter {
 				$variations[ $i ]['fields']['sku'] = $fix( is_string( $variation['fields']['sku'] ) ? $variation['fields']['sku'] : null );
 			}
 		}
+	}
+
+	/**
+	 * Target ids of a grouped product's children. A child that did not import, or that is
+	 * itself grouped, is left out with a warning so the rest of the group still imports.
+	 *
+	 * @param list<Problem> $problems
+	 * @return list<int>
+	 */
+	private function children_of( mixed $refs, int $group, Mapping $map, array &$problems ): array {
+		$ids = [];
+		foreach ( is_array( $refs ) ? $refs : [] as $ref ) {
+			$id = $map->target_id( Record::PRODUCT, Ref::parse( is_string( $ref ) ? $ref : null )->id ?? '' );
+			if ( $id > 0 && $id !== $group && get_post_type( $id ) === PostTypes::PRODUCT && get_post_meta( $id, ProductRepository::META_TYPE, true ) !== ProductTypes::GROUPED ) {
+				$ids[] = $id;
+				continue;
+			}
+			$problems[] = Problem::warning( 'child_skipped', 'A product in this group was not imported or is itself grouped, so it was left out of the group.', [ 'child' => $ref ] );
+		}
+		return array_slice( array_values( array_unique( $ids ) ), 0, ProductInput::MAX_CHILDREN );
 	}
 
 	/**

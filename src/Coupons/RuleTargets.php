@@ -80,7 +80,8 @@ final class RuleTargets {
 		$out = [];
 		foreach ( $wanted as $product_id => $which ) {
 			$product = $this->products->find( $product_id );
-			if ( $product === null || $product->status === 'trash' ) {
+			// Grouped and external products have nothing to sell here (ADR-062).
+			if ( $product === null || $product->status === 'trash' || ! $product->is_sold() ) {
 				continue;
 			}
 			$out[] = self::product_row( $product );

@@ -88,7 +88,7 @@ Status: **Approved 2026-10-24**. All table names below are shown without `{$wpdb
 
 ```
 fxc_product (post)
- ├── type: simple | variable                          (_fxc_type)
+ ├── type: simple | variable | grouped | external     (_fxc_type, ADR-062)
  ├── attribute definitions                           (_fxc_attributes JSON)
  │     global: { key:"g:12", attribute_term_id:12, value_term_ids:[31,32], visible, variation, position }
  │     local:  { key:"l:fabric", name:"Fabric", values:["Cotton","Linen"], visible, variation, position }
@@ -149,14 +149,17 @@ Stored in **grams and millimetres** as `decimal(12,3)`, converted from the store
 
 | Key | Type | Notes |
 |---|---|---|
-| `_fxc_type` | `simple` \| `variable` | Required. |
+| `_fxc_type` | `simple` \| `variable` \| `grouped` \| `external` | Required. Only simple and variable products are sold here (ADR-062). |
+| `_fxc_children` | comma-separated product ids | Grouped only: the listed products in their order, at most 100, none grouped (ADR-062). |
+| `_fxc_grouped_in` | comma-separated product ids | The grouped products that list this one, kept by the catalogue so a price or stock change updates them. |
+| `_fxc_product_url`, `_fxc_button_text` | string | External only: the http(s) link and the button label (empty means "Buy product"). |
 | `_fxc_attributes` | JSON list | Definitions (§3.1). |
 | `_fxc_gallery_ids` | comma-separated attachment ids | `_thumbnail_id` (core) is the main image. |
 | `_fxc_gallery_video` | JSON `{url, attachment_id, position}` | The gallery video (ADR-048). A media library file keeps only its id; the provider, embed and file URL are worked out on read. Absent when there is none. |
 | `_fxc_visibility` | `visible` \| `catalog` \| `search` \| `hidden` | |
 | `_fxc_featured` | `0`/`1` | |
 | `_fxc_price_min`, `_fxc_price_max` | integer minor units | Denormalized, for sorting and range display. |
-| `_fxc_stock_status` | `instock` \| `outofstock` \| `onbackorder` | Product-level aggregate (in stock if any purchasable variation is). |
+| `_fxc_stock_status` | `instock` \| `outofstock` \| `onbackorder` | Product-level aggregate (in stock if any purchasable variation is; for a grouped product, if any published child is). |
 | `_fxc_next_price_change` | UTC datetime string or absent | For the sale schedule cron. |
 | `_fxc_short_description` | HTML | Kept in meta (excerpt is also acceptable; decision: use `post_excerpt`, so this key is **not** created). |
 | `_fxc_import` | JSON | Unsupported source metadata bucket (doc 05 §7). |

@@ -147,6 +147,25 @@ final class ProductCsvExporter {
 	}
 
 	/**
+	 * How a Grouped products cell names each child: its SKU, else `id:N`, as WooCommerce writes it.
+	 *
+	 * @param list<int> $ids
+	 * @return list<string>
+	 */
+	private function references( array $ids ): array {
+		$references = [];
+		foreach ( $ids as $id ) {
+			try {
+				$sku = $this->service->get( $id )->base->sku;
+			} catch ( ProductNotFound ) {
+				continue;
+			}
+			$references[] = $sku !== null && $sku !== '' ? $sku : 'id:' . $id;
+		}
+		return $references;
+	}
+
+	/**
 	 * The product row, then its variation rows, as key => cell.
 	 *
 	 * @param Layout $layout
@@ -159,7 +178,7 @@ final class ProductCsvExporter {
 		}
 		$base = $product->base;
 		$type = [ $product->type ];
-		if ( ! $product->is_variable() ) {
+		if ( $product->is_sold() && ! $product->is_variable() ) {
 			$type = array_merge( $type, $base->virtual ? [ 'virtual' ] : [], $base->downloadable ? [ 'downloadable' ] : [] );
 		}
 
@@ -186,6 +205,9 @@ final class ProductCsvExporter {
 			'tag_ids'            => CsvValues::join( $this->term_names( $product->id, PostTypes::TAG ) ),
 			'images'             => CsvValues::join( $images ),
 			'menu_order'         => (string) $post->menu_order,
+			'grouped_products'   => CsvValues::join( $this->references( $product->children ) ),
+			'product_url'        => $product->product_url,
+			'button_text'        => $product->is_external() ? $product->button_text : '',
 		] + $this->row_fields( $base, $layout );
 
 		foreach ( $product->attributes as $i => $attribute ) {

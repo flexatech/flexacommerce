@@ -88,6 +88,33 @@ final class FormHandlerTest extends CartTestCase {
 		);
 	}
 
+	public function test_a_group_form_adds_each_quantity(): void {
+		$tee   = $this->simple( 1000, 5 );
+		$mug   = $this->simple( 400, 5 );
+		$group = $this->product();
+		$this->save(
+			$group,
+			[
+				'type'     => 'grouped',
+				'children' => [ $tee, $mug ],
+			]
+		);
+		$fields = [
+			'product_id' => (string) $group,
+			'quantities' => [
+				$tee => '0',
+				$mug => '',
+			],
+		];
+		self::assertSame( 'no_quantity', $this->post( 'add_group', $fields ) );
+		$fields['quantities'] = [
+			$tee => '2',
+			$mug => '1',
+		];
+		self::assertSame( 'added', $this->post( 'add_group', $fields ) );
+		self::assertSame( 3, Plugin::instance()->cart()->cart()->state( 0 )->cart->item_count() );
+	}
+
 	public function test_cross_site_posts_and_bad_nonces_change_nothing(): void {
 		$id                     = $this->simple();
 		$_SERVER['HTTP_ORIGIN'] = 'https://evil.test';

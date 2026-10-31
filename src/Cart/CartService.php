@@ -195,24 +195,78 @@ final class CartService {
 
 		return $this->mutate(
 			$user_id,
-			function ( Cart $cart ) use ( $product, $variant, $line, $max, $user_id ): Cart {
-				$existing = $cart->line( $line->key );
-				if ( $existing === null && count( $cart->lines ) >= Cart::MAX_LINES ) {
-					throw new InvalidCartRequest( __( 'Your cart is full.', 'flexacommerce' ), 'product_id' );
+			fn ( Cart $cart ): Cart => $this->added( $cart, $product, $variant, $line, $max, $user_id )
+		);
+	}
+
+	/**
+	 * Adds several products of a grouped product at once (ADR-062): all of
+	 * them or, when one cannot be added, none.
+	 *
+	 * @param array<int,int> $quantities product id => quantity; zeros are skipped
+	 * @throws InvalidCartRequest|NotPurchasable|InsufficientStock|RateLimited
+	 */
+	public function add_group( int $user_id, int $group_id, array $quantities ): CartState {
+		$group = $this->products->find( $group_id );
+		if ( $group === null || ! $group->is_grouped() || $group->status !== 'publish' ) {
+			throw new NotPurchasable( 0, __( 'This product does not exist.', 'flexacommerce' ) );
+		}
+		$this->load_products( $group->children );
+		$prepared = [];
+		foreach ( $group->children as $child_id ) {
+			$quantity = (int) ( $quantities[ $child_id ] ?? 0 );
+			if ( $quantity > 0 ) {
+				$prepared[] = $this->prepare( $child_id, 0, $quantity, [], [] );
+			}
+		}
+		if ( $prepared === [] ) {
+			throw new InvalidCartRequest( __( 'Choose the quantity of at least one product.', 'flexacommerce' ), 'quantities' );
+		}
+
+		return $this->mutate(
+			$user_id,
+			function ( Cart $cart ) use ( $prepared, $user_id ): Cart {
+				foreach ( $prepared as [ $product, $variant, $line, $max ] ) {
+					$cart = $this->added( $cart, $product, $variant, $line, $max, $user_id );
 				}
-				if ( $existing !== null && $existing->quantity + $line->quantity > $max ) {
-					throw new InvalidCartRequest(
-						/* translators: %d: maximum quantity. */
-						sprintf( __( 'You can add at most %d of this item.', 'flexacommerce' ), $max ),
-						'quantity'
-					);
-				}
-				$this->assert_stock( $cart, $product, $variant, $line->quantity );
-				$this->assert_option_stock( $cart, $line->options, ( $existing->quantity ?? 0 ) + $line->quantity, $line->quantity, $line->key, $variant->id );
-				$this->validate_add( $cart, $product, $variant, $line->quantity, $user_id );
-				return $cart->with_added( $line );
+				return $cart;
 			}
 		);
+	}
+
+	/**
+	 * Posted quantities of a grouped product, positive integers only.
+	 *
+	 * @param array<array-key,mixed> $raw
+	 * @return array<int,int>
+	 */
+	public static function quantities( array $raw ): array {
+		$out = [];
+		foreach ( $raw as $id => $quantity ) {
+			if ( (int) $id > 0 && is_numeric( $quantity ) && (int) $quantity > 0 ) {
+				$out[ (int) $id ] = (int) $quantity;
+			}
+		}
+		return $out;
+	}
+
+	/** The cart with one more line, checked as add() checks it. */
+	private function added( Cart $cart, Product $product, Variant $variant, CartLine $line, int $max, int $user_id ): Cart {
+		$existing = $cart->line( $line->key );
+		if ( $existing === null && count( $cart->lines ) >= Cart::MAX_LINES ) {
+			throw new InvalidCartRequest( __( 'Your cart is full.', 'flexacommerce' ), 'product_id' );
+		}
+		if ( $existing !== null && $existing->quantity + $line->quantity > $max ) {
+			throw new InvalidCartRequest(
+				/* translators: %d: maximum quantity. */
+				sprintf( __( 'You can add at most %d of this item.', 'flexacommerce' ), $max ),
+				'quantity'
+			);
+		}
+		$this->assert_stock( $cart, $product, $variant, $line->quantity );
+		$this->assert_option_stock( $cart, $line->options, ( $existing->quantity ?? 0 ) + $line->quantity, $line->quantity, $line->key, $variant->id );
+		$this->validate_add( $cart, $product, $variant, $line->quantity, $user_id );
+		return $cart->with_added( $line );
 	}
 
 	/**
@@ -775,6 +829,7 @@ final class CartService {
 	/** Published, enabled, priced, the right kind of row; `flexacommerce.product.is_purchasable` may only forbid. */
 	public function is_purchasable( Product $product, Variant $variant ): bool {
 		$ok = $product->status === 'publish'
+			&& $product->is_sold()
 			&& $variant->id > 0
 			&& $variant->enabled
 			&& $variant->regular_price !== null

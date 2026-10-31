@@ -182,7 +182,7 @@ Because these fire after commit, a listener that throws cannot roll back the ord
 
 ## 6. Product types
 
-[Decision] No public product-type registration in 1.0 (doc 01 §6). Internally `Catalog\ProductTypes` is a registry with `simple` and `variable`. It will be published as `Contracts\Catalog\ProductType` once a second real consumer exists (likely grouped or digital). Until then extensions can attach data to products with post meta and to variants through `VariantMeta` (JSON `meta` column, namespaced keys).
+[Decision] No public product-type registration in 1.0 (doc 01 §6). Internally `Catalog\ProductTypes` is a registry with `simple`, `variable`, `grouped` and `external` (ADR-062), with `is_sold()`, `has_stock()` and `has_variations()` deciding what the cart, stock and editor do with each. It will be published as `Contracts\Catalog\ProductType` once an extension needs a type of its own. Until then extensions can attach data to products with post meta and to variants through `VariantMeta` (JSON `meta` column, namespaced keys).
 
 ## 7. Catalog, pricing and cart hooks
 
