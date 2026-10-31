@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Flexa\Commerce\Migration;
 
 use Flexa\Commerce\Catalog\CatalogServices;
+use Flexa\Commerce\Catalog\PostTypes;
 use Flexa\Commerce\Coupons\CouponEditor;
 use Flexa\Commerce\Coupons\CouponRepository;
 use Flexa\Commerce\Customers\CustomerProfile;
@@ -16,6 +17,7 @@ use Flexa\Commerce\Migration\Sources\FxcOrderReader;
 use Flexa\Commerce\Migration\Sources\FxcShippingReader;
 use Flexa\Commerce\Migration\Sources\FxcSource;
 use Flexa\Commerce\Migration\Sources\FxcStoreReader;
+use Flexa\Commerce\Migration\Sources\ReviewReader;
 use Flexa\Commerce\Migration\Sources\SourceAdapter;
 use Flexa\Commerce\Migration\Sources\WooCatalogReader;
 use Flexa\Commerce\Migration\Sources\WooCheckoutReader;
@@ -34,6 +36,7 @@ use Flexa\Commerce\Migration\Targets\FxcOrderWriter;
 use Flexa\Commerce\Migration\Targets\FxcShippingWriter;
 use Flexa\Commerce\Migration\Targets\FxcStoreWriter;
 use Flexa\Commerce\Migration\Targets\FxcTarget;
+use Flexa\Commerce\Migration\Targets\ReviewWriter;
 use Flexa\Commerce\Migration\Targets\TargetAdapter;
 use Flexa\Commerce\Migration\Targets\WooCatalogWriter;
 use Flexa\Commerce\Migration\Targets\WooCouponWriter;
@@ -46,6 +49,7 @@ use Flexa\Commerce\Migration\Transport\FileExport;
 use Flexa\Commerce\Migration\Transport\FileIndex;
 use Flexa\Commerce\Migration\Transport\FileSource;
 use Flexa\Commerce\Options\OptionSetRepository;
+use Flexa\Commerce\Reviews\Reviews;
 use Flexa\Commerce\Shipping\ShippingServices;
 use Flexa\Commerce\Support\Services;
 use Flexa\Commerce\Tax\TaxServices;
@@ -175,7 +179,7 @@ final class MigrationServices {
 	public function woo_source(): WooSource {
 		if ( $this->woo_source === null ) {
 			$enumeration      = new WooEnumerationRepository( $this->services->wpdb() );
-			$this->woo_source = new WooSource( $enumeration, new WooStoreReader( $enumeration ), new WooCatalogReader(), new WooOrderReader(), new WooShippingReader(), new WooCouponReader(), new WooOptionReader( $enumeration ), new WooCheckoutReader() );
+			$this->woo_source = new WooSource( $enumeration, new WooStoreReader( $enumeration ), new WooCatalogReader(), new WooOrderReader(), new WooShippingReader(), new WooCouponReader(), new WooOptionReader( $enumeration ), new WooCheckoutReader(), new ReviewReader( 'wc', 'product' ) );
 		}
 		return $this->woo_source;
 	}
@@ -190,13 +194,30 @@ final class MigrationServices {
 				new FxcOrderReader( $enumeration ),
 				new FxcShippingReader( $this->shipping->service() ),
 				new FxcCouponReader( $this->coupons(), $this->catalog->variants() ),
+				new ReviewReader( 'fxc', PostTypes::PRODUCT ),
 			);
 		}
 		return $this->fxc_source;
 	}
 
 	public function woo_target(): WooTarget {
-		return $this->woo_target ??= new WooTarget( new WooStoreWriter(), new WooCatalogWriter(), new WooOrderWriter(), new WooShippingWriter( new WooShippingRepository( $this->services->wpdb() ) ), new WooCouponWriter() );
+		return $this->woo_target ??= new WooTarget(
+			new WooStoreWriter(),
+			new WooCatalogWriter(),
+			new WooOrderWriter(),
+			new WooShippingWriter( new WooShippingRepository( $this->services->wpdb() ) ),
+			new WooCouponWriter(),
+			new ReviewWriter(
+				'product',
+				'comment',
+				static function ( int $product ): void {
+					// WooCommerce stores the average, the count and the per-star counts when the count changes.
+					if ( class_exists( \WC_Comments::class ) ) {
+						\WC_Comments::clear_transients( $product );
+					}
+				}
+			)
+		);
 	}
 
 	public function fxc_target(): FxcTarget {
@@ -210,6 +231,7 @@ final class MigrationServices {
 			new FxcCouponWriter( $this->coupons(), new CouponEditor( $this->coupons(), $this->services->clock() ) ),
 			new FxcOptionWriter( new OptionSetRepository() ),
 			new FxcCheckoutWriter(),
+			new ReviewWriter( PostTypes::PRODUCT, Reviews::TYPE, static fn ( int $product ) => Reviews::instance()->refresh( $product ) ),
 		);
 	}
 }

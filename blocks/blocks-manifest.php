@@ -9,30 +9,30 @@ declare(strict_types=1);
 defined( 'ABSPATH' ) || exit;
 
 return [
-	'product-price' => [
-		'apiVersion' => 3,
-		'name' => 'flexacommerce/product-price',
-		'version' => '0.1.0',
-		'title' => 'Product price',
-		'category' => 'widgets',
-		'icon' => 'tag',
-		'description' => 'The price of the current product, or a price range for a product with options.',
-		'textdomain' => 'flexacommerce',
-		'usesContext' => [
+	'product-price'       => [
+		'apiVersion'   => 3,
+		'name'         => 'flexacommerce/product-price',
+		'version'      => '0.1.0',
+		'title'        => 'Product price',
+		'category'     => 'widgets',
+		'icon'         => 'tag',
+		'description'  => 'The price of the current product, or a price range for a product with options.',
+		'textdomain'   => 'flexacommerce',
+		'usesContext'  => [
 			'postId',
 			'postType',
 		],
-		'attributes' => [
+		'attributes'   => [
 			'productId' => [
-				'type' => 'integer',
+				'type'    => 'integer',
 				'default' => 0,
 			],
 		],
-		'supports' => [
-			'html' => false,
-			'align' => true,
-			'color' => [
-				'text' => true,
+		'supports'     => [
+			'html'       => false,
+			'align'      => true,
+			'color'      => [
+				'text'       => true,
 				'background' => false,
 			],
 			'typography' => [
@@ -40,200 +40,200 @@ return [
 			],
 		],
 		'editorScript' => 'flexacommerce-blocks-editor',
-		'style' => 'flexacommerce-storefront',
-		'render' => 'file:./render.php',
+		'style'        => 'flexacommerce-storefront',
+		'render'       => 'file:./render.php',
 	],
 	'product-add-to-cart' => [
-		'apiVersion' => 3,
-		'name' => 'flexacommerce/product-add-to-cart',
-		'version' => '0.1.0',
-		'title' => 'Add to cart',
-		'category' => 'widgets',
-		'icon' => 'cart',
-		'description' => 'Option selectors, quantity and the add-to-cart button for the current product.',
-		'textdomain' => 'flexacommerce',
-		'usesContext' => [
+		'apiVersion'   => 3,
+		'name'         => 'flexacommerce/product-add-to-cart',
+		'version'      => '0.1.0',
+		'title'        => 'Add to cart',
+		'category'     => 'widgets',
+		'icon'         => 'cart',
+		'description'  => 'Option selectors, quantity and the add-to-cart button for the current product.',
+		'textdomain'   => 'flexacommerce',
+		'usesContext'  => [
 			'postId',
 			'postType',
 			'queryId',
 		],
-		'attributes' => [
+		'attributes'   => [
 			'productId' => [
-				'type' => 'integer',
+				'type'    => 'integer',
 				'default' => 0,
 			],
 		],
-		'supports' => [
-			'html' => false,
+		'supports'     => [
+			'html'          => false,
 			'interactivity' => true,
 		],
 		'editorScript' => 'flexacommerce-blocks-editor',
-		'style' => 'flexacommerce-storefront',
-		'render' => 'file:./render.php',
+		'style'        => 'flexacommerce-storefront',
+		'render'       => 'file:./render.php',
 	],
-	'cart' => [
-		'apiVersion' => 3,
-		'name' => 'flexacommerce/cart',
-		'version' => '0.1.0',
-		'title' => 'Cart',
-		'category' => 'widgets',
-		'icon' => 'cart',
-		'description' => 'The shopper\'s cart with quantities and totals.',
-		'textdomain' => 'flexacommerce',
-		'attributes' => [],
-		'supports' => [
-			'html' => false,
-			'multiple' => false,
-			'align' => [
+	'cart'                => [
+		'apiVersion'   => 3,
+		'name'         => 'flexacommerce/cart',
+		'version'      => '0.1.0',
+		'title'        => 'Cart',
+		'category'     => 'widgets',
+		'icon'         => 'cart',
+		'description'  => 'The shopper\'s cart with quantities and totals.',
+		'textdomain'   => 'flexacommerce',
+		'attributes'   => [],
+		'supports'     => [
+			'html'          => false,
+			'multiple'      => false,
+			'align'         => [
 				'wide',
 				'full',
 			],
 			'interactivity' => true,
 		],
 		'editorScript' => 'flexacommerce-blocks-editor',
-		'style' => 'flexacommerce-storefront',
-		'render' => 'file:./render.php',
+		'style'        => 'flexacommerce-storefront',
+		'render'       => 'file:./render.php',
 	],
-	'mini-cart' => [
-		'apiVersion' => 3,
-		'name' => 'flexacommerce/mini-cart',
-		'version' => '0.1.0',
-		'title' => 'Mini cart',
-		'category' => 'widgets',
-		'icon' => 'cart',
-		'description' => 'A link to the cart with the number of items in it.',
-		'textdomain' => 'flexacommerce',
-		'attributes' => [],
-		'supports' => [
-			'html' => false,
+	'mini-cart'           => [
+		'apiVersion'   => 3,
+		'name'         => 'flexacommerce/mini-cart',
+		'version'      => '0.1.0',
+		'title'        => 'Mini cart',
+		'category'     => 'widgets',
+		'icon'         => 'cart',
+		'description'  => 'A link to the cart with the number of items in it.',
+		'textdomain'   => 'flexacommerce',
+		'attributes'   => [],
+		'supports'     => [
+			'html'          => false,
 			'interactivity' => true,
-			'typography' => [
+			'typography'    => [
 				'fontSize' => true,
 			],
 		],
 		'editorScript' => 'flexacommerce-blocks-editor',
-		'style' => 'flexacommerce-storefront',
-		'render' => 'file:./render.php',
+		'style'        => 'flexacommerce-storefront',
+		'render'       => 'file:./render.php',
 	],
-	'checkout' => [
-		'apiVersion' => 3,
-		'name' => 'flexacommerce/checkout',
-		'version' => '0.1.0',
-		'title' => 'Checkout',
-		'category' => 'widgets',
-		'icon' => 'money-alt',
-		'description' => 'The checkout form, and the order confirmation and payment pages after it.',
-		'textdomain' => 'flexacommerce',
-		'attributes' => [],
-		'supports' => [
-			'html' => false,
+	'checkout'            => [
+		'apiVersion'   => 3,
+		'name'         => 'flexacommerce/checkout',
+		'version'      => '0.1.0',
+		'title'        => 'Checkout',
+		'category'     => 'widgets',
+		'icon'         => 'money-alt',
+		'description'  => 'The checkout form, and the order confirmation and payment pages after it.',
+		'textdomain'   => 'flexacommerce',
+		'attributes'   => [],
+		'supports'     => [
+			'html'     => false,
 			'multiple' => false,
-			'align' => [
+			'align'    => [
 				'wide',
 				'full',
 			],
 		],
 		'editorScript' => 'flexacommerce-blocks-editor',
-		'style' => 'flexacommerce-storefront',
-		'render' => 'file:./render.php',
+		'style'        => 'flexacommerce-storefront',
+		'render'       => 'file:./render.php',
 	],
-	'account' => [
-		'apiVersion' => 3,
-		'name' => 'flexacommerce/account',
-		'version' => '0.1.0',
-		'title' => 'My account',
-		'category' => 'widgets',
-		'icon' => 'admin-users',
-		'description' => 'Sign-in form for guests; orders, addresses and account details for customers.',
-		'textdomain' => 'flexacommerce',
-		'attributes' => [],
-		'supports' => [
-			'html' => false,
+	'account'             => [
+		'apiVersion'   => 3,
+		'name'         => 'flexacommerce/account',
+		'version'      => '0.1.0',
+		'title'        => 'My account',
+		'category'     => 'widgets',
+		'icon'         => 'admin-users',
+		'description'  => 'Sign-in form for guests; orders, addresses and account details for customers.',
+		'textdomain'   => 'flexacommerce',
+		'attributes'   => [],
+		'supports'     => [
+			'html'     => false,
 			'multiple' => false,
-			'align' => [
+			'align'    => [
 				'wide',
 				'full',
 			],
 		],
 		'editorScript' => 'flexacommerce-blocks-editor',
-		'style' => 'flexacommerce-storefront',
-		'render' => 'file:./render.php',
+		'style'        => 'flexacommerce-storefront',
+		'render'       => 'file:./render.php',
 	],
-	'order-confirmation' => [
-		'apiVersion' => 3,
-		'name' => 'flexacommerce/order-confirmation',
-		'version' => '0.1.0',
-		'title' => 'Order confirmation',
-		'category' => 'widgets',
-		'icon' => 'yes-alt',
-		'description' => 'The order from the confirmation link: status, items, totals and addresses.',
-		'textdomain' => 'flexacommerce',
-		'attributes' => [],
-		'supports' => [
-			'html' => false,
+	'order-confirmation'  => [
+		'apiVersion'   => 3,
+		'name'         => 'flexacommerce/order-confirmation',
+		'version'      => '0.1.0',
+		'title'        => 'Order confirmation',
+		'category'     => 'widgets',
+		'icon'         => 'yes-alt',
+		'description'  => 'The order from the confirmation link: status, items, totals and addresses.',
+		'textdomain'   => 'flexacommerce',
+		'attributes'   => [],
+		'supports'     => [
+			'html'     => false,
 			'multiple' => false,
-			'align' => [
+			'align'    => [
 				'wide',
 				'full',
 			],
 		],
 		'editorScript' => 'flexacommerce-blocks-editor',
-		'style' => 'flexacommerce-storefront',
-		'render' => 'file:./render.php',
+		'style'        => 'flexacommerce-storefront',
+		'render'       => 'file:./render.php',
 	],
-	'product-gallery' => [
-		'apiVersion' => 3,
-		'name' => 'flexacommerce/product-gallery',
-		'version' => '0.1.0',
-		'title' => 'Product gallery',
-		'category' => 'widgets',
-		'icon' => 'format-gallery',
-		'description' => 'The product images: a large image and thumbnails that switch it.',
-		'textdomain' => 'flexacommerce',
-		'usesContext' => [
+	'product-gallery'     => [
+		'apiVersion'   => 3,
+		'name'         => 'flexacommerce/product-gallery',
+		'version'      => '0.1.0',
+		'title'        => 'Product gallery',
+		'category'     => 'widgets',
+		'icon'         => 'format-gallery',
+		'description'  => 'The product images: a large image and thumbnails that switch it.',
+		'textdomain'   => 'flexacommerce',
+		'usesContext'  => [
 			'postId',
 			'postType',
 		],
-		'attributes' => [
+		'attributes'   => [
 			'productId' => [
-				'type' => 'integer',
+				'type'    => 'integer',
 				'default' => 0,
 			],
 		],
-		'supports' => [
-			'html' => false,
+		'supports'     => [
+			'html'  => false,
 			'align' => [
 				'wide',
 				'full',
 			],
 		],
 		'editorScript' => 'flexacommerce-blocks-editor',
-		'style' => 'flexacommerce-storefront',
-		'render' => 'file:./render.php',
+		'style'        => 'flexacommerce-storefront',
+		'render'       => 'file:./render.php',
 	],
-	'product-sku' => [
-		'apiVersion' => 3,
-		'name' => 'flexacommerce/product-sku',
-		'version' => '0.1.0',
-		'title' => 'Product SKU',
-		'category' => 'widgets',
-		'icon' => 'tag',
-		'description' => 'The SKU of the current product, or of the chosen option.',
-		'textdomain' => 'flexacommerce',
-		'usesContext' => [
+	'product-sku'         => [
+		'apiVersion'   => 3,
+		'name'         => 'flexacommerce/product-sku',
+		'version'      => '0.1.0',
+		'title'        => 'Product SKU',
+		'category'     => 'widgets',
+		'icon'         => 'tag',
+		'description'  => 'The SKU of the current product, or of the chosen option.',
+		'textdomain'   => 'flexacommerce',
+		'usesContext'  => [
 			'postId',
 			'postType',
 		],
-		'attributes' => [
+		'attributes'   => [
 			'productId' => [
-				'type' => 'integer',
+				'type'    => 'integer',
 				'default' => 0,
 			],
 		],
-		'supports' => [
-			'html' => false,
-			'color' => [
-				'text' => true,
+		'supports'     => [
+			'html'       => false,
+			'color'      => [
+				'text'       => true,
 				'background' => false,
 			],
 			'typography' => [
@@ -241,84 +241,84 @@ return [
 			],
 		],
 		'editorScript' => 'flexacommerce-blocks-editor',
-		'style' => 'flexacommerce-storefront',
-		'render' => 'file:./render.php',
+		'style'        => 'flexacommerce-storefront',
+		'render'       => 'file:./render.php',
 	],
-	'product-stock' => [
-		'apiVersion' => 3,
-		'name' => 'flexacommerce/product-stock',
-		'version' => '0.1.0',
-		'title' => 'Product stock',
-		'category' => 'widgets',
-		'icon' => 'yes-alt',
-		'description' => 'Whether the current product is in stock, and how many are left.',
-		'textdomain' => 'flexacommerce',
-		'usesContext' => [
+	'product-stock'       => [
+		'apiVersion'   => 3,
+		'name'         => 'flexacommerce/product-stock',
+		'version'      => '0.1.0',
+		'title'        => 'Product stock',
+		'category'     => 'widgets',
+		'icon'         => 'yes-alt',
+		'description'  => 'Whether the current product is in stock, and how many are left.',
+		'textdomain'   => 'flexacommerce',
+		'usesContext'  => [
 			'postId',
 			'postType',
 		],
-		'attributes' => [
+		'attributes'   => [
 			'productId' => [
-				'type' => 'integer',
+				'type'    => 'integer',
 				'default' => 0,
 			],
 		],
-		'supports' => [
-			'html' => false,
+		'supports'     => [
+			'html'       => false,
 			'typography' => [
 				'fontSize' => true,
 			],
 		],
 		'editorScript' => 'flexacommerce-blocks-editor',
-		'style' => 'flexacommerce-storefront',
-		'render' => 'file:./render.php',
+		'style'        => 'flexacommerce-storefront',
+		'render'       => 'file:./render.php',
 	],
-	'product-attributes' => [
-		'apiVersion' => 3,
-		'name' => 'flexacommerce/product-attributes',
-		'version' => '0.1.0',
-		'title' => 'Product details',
-		'category' => 'widgets',
-		'icon' => 'editor-table',
-		'description' => 'Weight, dimensions and the visible attributes of the current product.',
-		'textdomain' => 'flexacommerce',
-		'usesContext' => [
+	'product-attributes'  => [
+		'apiVersion'   => 3,
+		'name'         => 'flexacommerce/product-attributes',
+		'version'      => '0.1.0',
+		'title'        => 'Product details',
+		'category'     => 'widgets',
+		'icon'         => 'editor-table',
+		'description'  => 'Weight, dimensions and the visible attributes of the current product.',
+		'textdomain'   => 'flexacommerce',
+		'usesContext'  => [
 			'postId',
 			'postType',
 		],
-		'attributes' => [
+		'attributes'   => [
 			'productId' => [
-				'type' => 'integer',
+				'type'    => 'integer',
 				'default' => 0,
 			],
 		],
-		'supports' => [
-			'html' => false,
-			'align' => true,
+		'supports'     => [
+			'html'       => false,
+			'align'      => true,
 			'typography' => [
 				'fontSize' => true,
 			],
 		],
 		'editorScript' => 'flexacommerce-blocks-editor',
-		'style' => 'flexacommerce-storefront',
-		'render' => 'file:./render.php',
+		'style'        => 'flexacommerce-storefront',
+		'render'       => 'file:./render.php',
 	],
-	'breadcrumbs' => [
-		'apiVersion' => 3,
-		'name' => 'flexacommerce/breadcrumbs',
-		'version' => '0.1.0',
-		'title' => 'Store breadcrumbs',
-		'category' => 'widgets',
-		'icon' => 'arrow-right-alt2',
-		'description' => 'The path from the home page to the current shop page.',
-		'textdomain' => 'flexacommerce',
-		'attributes' => [],
-		'supports' => [
-			'html' => false,
-			'align' => true,
-			'color' => [
-				'text' => true,
-				'link' => true,
+	'breadcrumbs'         => [
+		'apiVersion'   => 3,
+		'name'         => 'flexacommerce/breadcrumbs',
+		'version'      => '0.1.0',
+		'title'        => 'Store breadcrumbs',
+		'category'     => 'widgets',
+		'icon'         => 'arrow-right-alt2',
+		'description'  => 'The path from the home page to the current shop page.',
+		'textdomain'   => 'flexacommerce',
+		'attributes'   => [],
+		'supports'     => [
+			'html'       => false,
+			'align'      => true,
+			'color'      => [
+				'text'       => true,
+				'link'       => true,
 				'background' => false,
 			],
 			'typography' => [
@@ -326,123 +326,123 @@ return [
 			],
 		],
 		'editorScript' => 'flexacommerce-blocks-editor',
-		'style' => 'flexacommerce-storefront',
-		'render' => 'file:./render.php',
+		'style'        => 'flexacommerce-storefront',
+		'render'       => 'file:./render.php',
 	],
-	'catalog-sorting' => [
-		'apiVersion' => 3,
-		'name' => 'flexacommerce/catalog-sorting',
-		'version' => '0.1.0',
-		'title' => 'Product sorting',
-		'category' => 'widgets',
-		'icon' => 'sort',
-		'description' => 'A menu to sort the products of the shop page.',
-		'textdomain' => 'flexacommerce',
-		'attributes' => [],
-		'supports' => [
-			'html' => false,
+	'catalog-sorting'     => [
+		'apiVersion'   => 3,
+		'name'         => 'flexacommerce/catalog-sorting',
+		'version'      => '0.1.0',
+		'title'        => 'Product sorting',
+		'category'     => 'widgets',
+		'icon'         => 'sort',
+		'description'  => 'A menu to sort the products of the shop page.',
+		'textdomain'   => 'flexacommerce',
+		'attributes'   => [],
+		'supports'     => [
+			'html'  => false,
 			'align' => true,
 		],
 		'editorScript' => 'flexacommerce-blocks-editor',
-		'style' => 'flexacommerce-storefront',
-		'render' => 'file:./render.php',
+		'style'        => 'flexacommerce-storefront',
+		'render'       => 'file:./render.php',
 	],
-	'product-filters' => [
-		'apiVersion' => 3,
-		'name' => 'flexacommerce/product-filters',
-		'version' => '0.1.0',
-		'title' => 'Product filters',
-		'category' => 'widgets',
-		'icon' => 'filter',
-		'description' => 'Category, price, attribute and stock filters for the shop page.',
-		'textdomain' => 'flexacommerce',
-		'attributes' => [
+	'product-filters'     => [
+		'apiVersion'   => 3,
+		'name'         => 'flexacommerce/product-filters',
+		'version'      => '0.1.0',
+		'title'        => 'Product filters',
+		'category'     => 'widgets',
+		'icon'         => 'filter',
+		'description'  => 'Category, price, attribute and stock filters for the shop page.',
+		'textdomain'   => 'flexacommerce',
+		'attributes'   => [
 			'showCategories' => [
-				'type' => 'boolean',
+				'type'    => 'boolean',
 				'default' => true,
 			],
-			'showPrice' => [
-				'type' => 'boolean',
+			'showPrice'      => [
+				'type'    => 'boolean',
 				'default' => true,
 			],
-			'showStock' => [
-				'type' => 'boolean',
+			'showStock'      => [
+				'type'    => 'boolean',
 				'default' => true,
 			],
-			'showCounts' => [
-				'type' => 'boolean',
+			'showCounts'     => [
+				'type'    => 'boolean',
 				'default' => true,
 			],
 			'attributeSlugs' => [
-				'type' => 'array',
+				'type'    => 'array',
 				'default' => [],
-				'items' => [
+				'items'   => [
 					'type' => 'string',
 				],
 			],
 		],
-		'supports' => [
+		'supports'     => [
 			'html' => false,
 		],
 		'editorScript' => 'flexacommerce-blocks-editor',
-		'style' => 'flexacommerce-storefront',
-		'render' => 'file:./render.php',
+		'style'        => 'flexacommerce-storefront',
+		'render'       => 'file:./render.php',
 	],
-	'related-products' => [
-		'apiVersion' => 3,
-		'name' => 'flexacommerce/related-products',
-		'version' => '0.1.0',
-		'title' => 'Related products',
-		'category' => 'widgets',
-		'icon' => 'grid-view',
-		'description' => 'Products from the same categories or tags as the current product.',
-		'textdomain' => 'flexacommerce',
-		'usesContext' => [
+	'related-products'    => [
+		'apiVersion'   => 3,
+		'name'         => 'flexacommerce/related-products',
+		'version'      => '0.1.0',
+		'title'        => 'Related products',
+		'category'     => 'widgets',
+		'icon'         => 'grid-view',
+		'description'  => 'Products from the same categories or tags as the current product.',
+		'textdomain'   => 'flexacommerce',
+		'usesContext'  => [
 			'postId',
 			'postType',
 		],
-		'attributes' => [
+		'attributes'   => [
 			'count' => [
-				'type' => 'integer',
+				'type'    => 'integer',
 				'default' => 4,
 				'minimum' => 1,
 				'maximum' => 12,
 			],
 		],
-		'supports' => [
-			'html' => false,
+		'supports'     => [
+			'html'  => false,
 			'align' => [
 				'wide',
 				'full',
 			],
 		],
 		'editorScript' => 'flexacommerce-blocks-editor',
-		'style' => 'flexacommerce-storefront',
-		'render' => 'file:./render.php',
+		'style'        => 'flexacommerce-storefront',
+		'render'       => 'file:./render.php',
 	],
-	'discount-badge' => [
-		'apiVersion' => 3,
-		'name' => 'flexacommerce/discount-badge',
-		'version' => '0.1.0',
-		'title' => 'Discount badge',
-		'category' => 'widgets',
-		'icon' => 'tag',
-		'description' => 'How much the product is off its regular price, from a sale or a pricing rule.',
-		'textdomain' => 'flexacommerce',
-		'usesContext' => [
+	'discount-badge'      => [
+		'apiVersion'   => 3,
+		'name'         => 'flexacommerce/discount-badge',
+		'version'      => '0.1.0',
+		'title'        => 'Discount badge',
+		'category'     => 'widgets',
+		'icon'         => 'tag',
+		'description'  => 'How much the product is off its regular price, from a sale or a pricing rule.',
+		'textdomain'   => 'flexacommerce',
+		'usesContext'  => [
 			'postId',
 			'postType',
 		],
-		'attributes' => [
+		'attributes'   => [
 			'productId' => [
-				'type' => 'integer',
+				'type'    => 'integer',
 				'default' => 0,
 			],
 		],
-		'supports' => [
-			'html' => false,
-			'color' => [
-				'text' => true,
+		'supports'     => [
+			'html'       => false,
+			'color'      => [
+				'text'       => true,
 				'background' => true,
 			],
 			'typography' => [
@@ -450,93 +450,157 @@ return [
 			],
 		],
 		'editorScript' => 'flexacommerce-blocks-editor',
-		'style' => 'flexacommerce-storefront',
-		'render' => 'file:./render.php',
+		'style'        => 'flexacommerce-storefront',
+		'render'       => 'file:./render.php',
 	],
-	'discount-nudge' => [
-		'apiVersion' => 3,
-		'name' => 'flexacommerce/discount-nudge',
-		'version' => '0.1.0',
-		'title' => 'Discount progress',
-		'category' => 'widgets',
-		'icon' => 'chart-bar',
-		'description' => 'How much more the cart needs for the next automatic discount. Hidden while no discount is within reach.',
-		'textdomain' => 'flexacommerce',
-		'attributes' => [],
-		'supports' => [
-			'html' => false,
+	'discount-nudge'      => [
+		'apiVersion'   => 3,
+		'name'         => 'flexacommerce/discount-nudge',
+		'version'      => '0.1.0',
+		'title'        => 'Discount progress',
+		'category'     => 'widgets',
+		'icon'         => 'chart-bar',
+		'description'  => 'How much more the cart needs for the next automatic discount. Hidden while no discount is within reach.',
+		'textdomain'   => 'flexacommerce',
+		'attributes'   => [],
+		'supports'     => [
+			'html'          => false,
 			'interactivity' => true,
-			'typography' => [
+			'typography'    => [
 				'fontSize' => true,
 			],
 		],
 		'editorScript' => 'flexacommerce-blocks-editor',
-		'style' => 'flexacommerce-storefront',
-		'render' => 'file:./render.php',
+		'style'        => 'flexacommerce-storefront',
+		'render'       => 'file:./render.php',
 	],
-	'offer-countdown' => [
-		'apiVersion' => 3,
-		'name' => 'flexacommerce/offer-countdown',
-		'version' => '0.1.0',
-		'title' => 'Offer countdown',
-		'category' => 'widgets',
-		'icon' => 'clock',
-		'description' => 'The time left before a pricing rule ends, or before the current product\'s price goes up.',
-		'textdomain' => 'flexacommerce',
-		'usesContext' => [
+	'offer-countdown'     => [
+		'apiVersion'   => 3,
+		'name'         => 'flexacommerce/offer-countdown',
+		'version'      => '0.1.0',
+		'title'        => 'Offer countdown',
+		'category'     => 'widgets',
+		'icon'         => 'clock',
+		'description'  => 'The time left before a pricing rule ends, or before the current product\'s price goes up.',
+		'textdomain'   => 'flexacommerce',
+		'usesContext'  => [
 			'postId',
 			'postType',
 		],
-		'attributes' => [
+		'attributes'   => [
 			'productId' => [
-				'type' => 'integer',
+				'type'    => 'integer',
 				'default' => 0,
 			],
-			'ruleId' => [
-				'type' => 'integer',
+			'ruleId'    => [
+				'type'    => 'integer',
 				'default' => 0,
 			],
 		],
-		'supports' => [
-			'html' => false,
+		'supports'     => [
+			'html'          => false,
 			'interactivity' => true,
-			'typography' => [
+			'typography'    => [
 				'fontSize' => true,
 			],
 		],
 		'editorScript' => 'flexacommerce-blocks-editor',
-		'style' => 'flexacommerce-storefront',
-		'render' => 'file:./render.php',
+		'style'        => 'flexacommerce-storefront',
+		'render'       => 'file:./render.php',
 	],
-	'quantity-prices' => [
-		'apiVersion' => 3,
-		'name' => 'flexacommerce/quantity-prices',
-		'version' => '0.1.0',
-		'title' => 'Quantity prices',
-		'category' => 'widgets',
-		'icon' => 'editor-table',
-		'description' => 'The price at each quantity under a bulk pricing rule, with the time left when the rule ends soon.',
-		'textdomain' => 'flexacommerce',
-		'usesContext' => [
+	'quantity-prices'     => [
+		'apiVersion'   => 3,
+		'name'         => 'flexacommerce/quantity-prices',
+		'version'      => '0.1.0',
+		'title'        => 'Quantity prices',
+		'category'     => 'widgets',
+		'icon'         => 'editor-table',
+		'description'  => 'The price at each quantity under a bulk pricing rule, with the time left when the rule ends soon.',
+		'textdomain'   => 'flexacommerce',
+		'usesContext'  => [
 			'postId',
 			'postType',
 		],
-		'attributes' => [
+		'attributes'   => [
 			'productId' => [
-				'type' => 'integer',
+				'type'    => 'integer',
 				'default' => 0,
 			],
 		],
-		'supports' => [
-			'html' => false,
+		'supports'     => [
+			'html'          => false,
 			'interactivity' => true,
-			'align' => true,
+			'align'         => true,
+			'typography'    => [
+				'fontSize' => true,
+			],
+		],
+		'editorScript' => 'flexacommerce-blocks-editor',
+		'style'        => 'flexacommerce-storefront',
+		'render'       => 'file:./render.php',
+	],
+	'product-rating'      => [
+		'apiVersion'   => 3,
+		'name'         => 'flexacommerce/product-rating',
+		'version'      => '0.1.0',
+		'title'        => 'Product rating',
+		'category'     => 'widgets',
+		'icon'         => 'star-filled',
+		'description'  => 'The average star rating of the current product and its number of reviews. Empty for a product without reviews.',
+		'textdomain'   => 'flexacommerce',
+		'usesContext'  => [
+			'postId',
+			'postType',
+			'queryId',
+		],
+		'attributes'   => [
+			'productId' => [
+				'type'    => 'integer',
+				'default' => 0,
+			],
+		],
+		'supports'     => [
+			'html'       => false,
+			'color'      => [
+				'text'       => true,
+				'background' => false,
+			],
 			'typography' => [
 				'fontSize' => true,
 			],
 		],
 		'editorScript' => 'flexacommerce-blocks-editor',
-		'style' => 'flexacommerce-storefront',
-		'render' => 'file:./render.php',
+		'style'        => 'flexacommerce-storefront',
+		'render'       => 'file:./render.php',
+	],
+	'product-reviews'     => [
+		'apiVersion'   => 3,
+		'name'         => 'flexacommerce/product-reviews',
+		'version'      => '0.1.0',
+		'title'        => 'Product reviews',
+		'category'     => 'widgets',
+		'icon'         => 'testimonial',
+		'description'  => 'The rating summary, the reviews and the review form of the current product.',
+		'textdomain'   => 'flexacommerce',
+		'usesContext'  => [
+			'postId',
+			'postType',
+		],
+		'attributes'   => [
+			'productId' => [
+				'type'    => 'integer',
+				'default' => 0,
+			],
+		],
+		'supports'     => [
+			'html'  => false,
+			'align' => [
+				'wide',
+				'full',
+			],
+		],
+		'editorScript' => 'flexacommerce-blocks-editor',
+		'style'        => 'flexacommerce-storefront',
+		'render'       => 'file:./render.php',
 	],
 ];

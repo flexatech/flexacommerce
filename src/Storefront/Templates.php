@@ -22,6 +22,7 @@ final class Templates {
 			. '<!-- wp:column --><div class="wp-block-column"><!-- wp:flexacommerce/product-gallery /--></div><!-- /wp:column -->'
 			. '<!-- wp:column --><div class="wp-block-column">'
 			. '<!-- wp:post-title {"level":1} /-->'
+			. '<!-- wp:flexacommerce/product-rating /-->'
 			. '<!-- wp:flexacommerce/product-price /-->'
 			. '<!-- wp:post-excerpt /-->'
 			. '<!-- wp:flexacommerce/product-add-to-cart /-->'
@@ -31,6 +32,7 @@ final class Templates {
 			. '</div><!-- /wp:columns -->'
 			. '<!-- wp:post-content {"align":"wide","layout":{"type":"constrained"}} /-->'
 			. '<!-- wp:flexacommerce/product-attributes {"align":"wide"} /-->'
+			. '<!-- wp:flexacommerce/product-reviews {"align":"wide"} /-->'
 			. '<!-- wp:flexacommerce/related-products {"align":"wide"} /-->'
 		);
 	}
@@ -56,6 +58,7 @@ final class Templates {
 			. '<!-- wp:post-template {"layout":{"type":"grid","columnCount":4}} -->'
 			. '<!-- wp:post-featured-image {"isLink":true,"aspectRatio":"1"} /-->'
 			. '<!-- wp:post-title {"isLink":true,"level":2,"fontSize":"medium"} /-->'
+			. '<!-- wp:flexacommerce/product-rating /-->'
 			. '<!-- wp:flexacommerce/product-price /-->'
 			. '<!-- wp:flexacommerce/product-add-to-cart /-->'
 			. '<!-- /wp:post-template -->'

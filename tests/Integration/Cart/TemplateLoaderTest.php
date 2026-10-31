@@ -80,7 +80,7 @@ final class TemplateLoaderTest extends CartTestCase {
 				[
 					'file'   => 'flexacommerce/single-product.php',
 					'theme'  => '0.9.0',
-					'plugin' => '1.0.0',
+					'plugin' => '1.1.0',
 				],
 			],
 			TemplateLoader::outdated()

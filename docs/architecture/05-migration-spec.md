@@ -318,7 +318,7 @@ Slug collisions inside a target taxonomy are impossible for a fresh store; on re
 | variable: parent SKU, parent stock fields, weight/dimensions | base variant row (not purchasable) |
 | `WC_Product_Variation`: `get_attributes()` (empty value → `*`), status `publish`/`private` → `enabled`, prices, `get_manage_stock()` (`'parent'` → `stock_from_base = 1`), stock, image, description, menu_order | variation rows; sale end + 1 s (WooCommerce's end is inclusive), position after sorting by `menu_order` then id written as `menu_order` (doc 03 §3.9) |
 | weight/dimension units (`woocommerce_weight_unit`, `woocommerce_dimension_unit`) | converted to g / mm with string arithmetic, 3 decimals |
-| `get_reviews_allowed()`, reviews (comments) | comments stay attached to the **WooCommerce** post id (Q14), comment_status copied |
+| `get_reviews_allowed()`, reviews (comments) | comment_status copied; reviews move in the `reviews` stage (§5.11) |
 | unknown postmeta (not `_` WooCommerce-core keys listed in the adapter's allow list) | `_fxc_import` bucket |
 
 Derived after save: `_fxc_price_min/max`, `_fxc_stock_status`.
@@ -403,7 +403,7 @@ A second run replaces the zones and methods it created, in place; zones and meth
 
 ### 5.8 Coupons
 
-The `coupons` stage runs last, after orders. One `coupon` record per `shop_coupon` post (auto-drafts and trash are skipped) or `fxc_coupons` row. Amounts are decimals: a percentage as a number of percent (`12.5`), money in the store currency. FlexaCommerce keeps a percentage in hundredths and money in minor units; more decimals than that are rounded with the warning `coupon_rounded`. Products, variations and categories are references, and the coupon depends on them, so they are imported first.
+The `coupons` stage runs after orders; only `reviews` (§5.11) comes later. One `coupon` record per `shop_coupon` post (auto-drafts and trash are skipped) or `fxc_coupons` row. Amounts are decimals: a percentage as a number of percent (`12.5`), money in the store currency. FlexaCommerce keeps a percentage in hundredths and money in minor units; more decimals than that are rounded with the warning `coupon_rounded`. Products, variations and categories are references, and the coupon depends on them, so they are imported first.
 
 - Status: a published WooCommerce coupon is `active`; any other status is `disabled`. FXC→WC writes `publish` or `draft`.
 - Copied as they are: code, description, type (`percent`, `fixed_cart`, `fixed_product`), amount, expiry, minimum and maximum spend, usage limit and count, per-customer limit, item limit (`limit_usage_to_x_items`), individual use, exclude sale items, product and category rules (both lists), allowed emails. WooCommerce keeps codes in lower case.
@@ -443,6 +443,17 @@ The `checkout` stage runs after `options` and only from WooCommerce (ADR-036). I
 
 A second run replaces the sections again from the extension, so changes made in the builder to those sections since the first run are lost; an unchanged source is skipped. FXC→WC does not write the extension's options.
 
+### 5.11 Product reviews
+
+The `reviews` stage runs last, in both directions (ADR-056). Both stores keep reviews as comments on the product with `rating` and `verified` in comment meta, so one record shape serves both.
+
+- Records: one `review` per approved or held comment of type `review` or `comment` on a product. Spam and trash stay behind. The record holds the product and, for a reply, the review it answers (both references the record depends on), the customer (`wp:user:ID`), the author's name and email, the text, the rating (1 to 5, top-level only), the verified flag, whether it is approved, and the date.
+- Target: a comment on the imported product with the same date and author. A top-level review is type `review`; a reply is `comment` in WooCommerce and `review` in FlexaCommerce. A held review stays held. The customer is kept when the user exists (on another site, matched by email). The product's rating summary is rebuilt after each write.
+- A product that was not imported rejects the record (`missing_product`); a reply whose review was not imported is rejected too.
+- Settings: the settings stage maps `woocommerce_enable_reviews` (no = off) and `woocommerce_review_rating_verification_required` (yes = buyers) to the `reviews` setting, and back.
+
+A second run updates the comment it created, in place. Comments are written directly, past the comment form checks, and send no notification.
+
 ## 6. Conflict and validation policies
 
 | Situation | Default | Options |
@@ -469,7 +480,7 @@ Errors reject one entity, never the batch. A job ends `completed_with_warnings` 
 |---|---|
 | Grouped, external, and other product types; bundles; subscriptions | skipped, listed in report with ids and edit links |
 | Downloadable/virtual flags on simple products | imported as physical product, warning (A5) |
-| Product reviews | stay on the WooCommerce post (Q14) |
+| Product reviews | imported in the `reviews` stage (§5.11) |
 | Product add-on and SEO plugin meta | `_fxc_import` bucket on the product, round-tripped on FXC→WC; the official Product Add-ons data also becomes option sets (§5.9) |
 | Unknown order and item meta | `fxc_order_meta` (`wc:` prefix) and item `meta` JSON, round-tripped |
 | Payment gateway settings | not migrated in MVP (tax rates and classes are, since ADR-020; shipping zones are, see §5.7; coupons are, see §5.8) |

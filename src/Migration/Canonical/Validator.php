@@ -27,6 +27,7 @@ final class Validator {
 			Record::COUPON   => $this->coupon( $record->data ),
 			Record::OPTION_SET => $this->option_set( $record->data ),
 			Record::CHECKOUT_FIELDS => $this->checkout_fields( $record->data ),
+			Record::REVIEW   => $this->review( $record->data ),
 			Record::SETTINGS, Record::CUSTOMER => [],
 			default          => [ Problem::error( 'unknown_type', sprintf( 'Unknown record type "%s".', $record->type ) ) ],
 		};
@@ -101,6 +102,25 @@ final class Validator {
 			}
 		}
 		return [];
+	}
+
+	/**
+	 * @param array<string,mixed> $data
+	 * @return list<Problem>
+	 */
+	private function review( array $data ): array {
+		$problems = [];
+		if ( Ref::parse( is_string( $data['product'] ?? null ) ? $data['product'] : null ) === null ) {
+			$problems[] = Problem::error( 'missing_product', 'The review has no product.' );
+		}
+		$rating = $data['rating'] ?? null;
+		if ( $rating !== null && ( ! is_int( $rating ) || $rating < 1 || $rating > 5 ) ) {
+			$problems[] = Problem::error( 'invalid_rating', 'The review rating is not 1 to 5.' );
+		}
+		if ( ! Dates::is_valid( $data['created_at'] ?? null ) ) {
+			$problems[] = Problem::error( 'invalid_date', 'created_at is not an ISO date.' );
+		}
+		return $problems;
 	}
 
 	/**

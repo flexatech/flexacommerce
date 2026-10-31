@@ -48,6 +48,7 @@ export interface Settings {
     countdown_days: number;
     tier_table: boolean;
     tier_table_title: string;
+    reviews: "off" | "all" | "buyers";
 }
 
 export interface SettingsPayload {

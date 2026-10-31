@@ -22,6 +22,7 @@ final class FxcSource implements SourceAdapter {
 		private readonly FxcOrderReader $orders,
 		private readonly FxcShippingReader $shipping,
 		private readonly FxcCouponReader $coupons,
+		private readonly ReviewReader $reviews,
 	) {}
 
 	public function system(): string {
@@ -47,6 +48,7 @@ final class FxcSource implements SourceAdapter {
 			'customers'  => $this->store->customer( $id ),
 			'orders'     => $this->orders->order( $id ),
 			'coupons'    => $this->coupons->coupon( $id ),
+			'reviews'    => $this->reviews->review( $id ),
 			default      => null,
 		};
 	}

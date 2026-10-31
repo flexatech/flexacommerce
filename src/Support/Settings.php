@@ -73,6 +73,8 @@ final class Settings {
 		'countdown_days'           => [ 'int:0:365', 7 ],
 		'tier_table'               => [ 'bool', true ],
 		'tier_table_title'         => [ 'string', '' ],
+		// Who may review a product (ADR-056): nobody, anyone, or customers who bought it.
+		'reviews'                  => [ 'enum:off|all|buyers', 'all' ],
 		'tax_enabled'              => [ 'bool', false ],
 		'prices_include_tax'       => [ 'bool', false ],
 		'tax_based_on'             => [ 'enum:shipping|billing|base', 'shipping' ],

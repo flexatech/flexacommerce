@@ -4,7 +4,7 @@
     "name": "units"
   },
   "admin/features/checkout/CheckoutBuilderPage.tsx": {
-    "file": "assets/CheckoutBuilderPage-BgBCxHmi.js",
+    "file": "assets/CheckoutBuilderPage-BQB13qKA.js",
     "name": "CheckoutBuilderPage",
     "src": "admin/features/checkout/CheckoutBuilderPage.tsx",
     "isDynamicEntry": true,
@@ -14,7 +14,7 @@
     ]
   },
   "admin/main.tsx": {
-    "file": "assets/admin-CaglnBpd.js",
+    "file": "assets/admin-Id_onlhH.js",
     "name": "admin",
     "src": "admin/main.tsx",
     "isEntry": true,

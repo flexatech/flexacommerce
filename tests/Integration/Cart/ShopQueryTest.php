@@ -53,6 +53,8 @@ final class ShopQueryTest extends CartTestCase {
 			'dear'  => $this->simple( 9000 ),
 			'none'  => $this->product(),
 		];
+		// Other meta of an unpriced product must not decide where it sorts.
+		update_post_meta( $ids['none'], '_fxc_test_number', '99999' );
 
 		$this->go_to(
 			add_query_arg(
@@ -63,9 +65,7 @@ final class ShopQueryTest extends CartTestCase {
 				home_url( '/' )
 			)
 		);
-		$found = $this->found( $ids );
-		self::assertCount( 4, $found );
-		self::assertSame( [ $ids['cheap'], $ids['mid'], $ids['dear'] ], array_values( array_diff( $found, [ $ids['none'] ] ) ) );
+		self::assertSame( [ $ids['cheap'], $ids['mid'], $ids['dear'], $ids['none'] ], $this->found( $ids ) );
 
 		$this->go_to(
 			add_query_arg(
@@ -76,8 +76,7 @@ final class ShopQueryTest extends CartTestCase {
 				home_url( '/' )
 			)
 		);
-		$found = $this->found( $ids );
-		self::assertSame( [ $ids['dear'], $ids['mid'], $ids['cheap'] ], array_values( array_diff( $found, [ $ids['none'] ] ) ) );
+		self::assertSame( [ $ids['dear'], $ids['mid'], $ids['cheap'], $ids['none'] ], $this->found( $ids ) );
 
 		$this->go_to(
 			add_query_arg(

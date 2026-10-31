@@ -8,6 +8,7 @@ use Flexa\Commerce\Catalog\PostTypes;
 use Flexa\Commerce\Catalog\ProductRepository;
 use Flexa\Commerce\Concerns\HasInstance;
 use Flexa\Commerce\Plugin;
+use Flexa\Commerce\Reviews\Reviews;
 use Flexa\Commerce\Support\Settings;
 
 defined( 'ABSPATH' ) || exit;
@@ -18,7 +19,8 @@ defined( 'ABSPATH' ) || exit;
  * product search. Plugin::on_pre_get_posts() calls it only for the main
  * query of a shop archive, a product taxonomy or a search.
  *
- * Sorting reads `?orderby=` (a public query var, as in WooCommerce);
+ * Sorting reads `?orderby=` (a public query var, as in WooCommerce;
+ * `rating` reads the stored average, ADR-056);
  * filters read `?filter_cat=slug,slug`, `?filter_{attribute}=slug,slug`,
  * `?filter_stock_status=instock,onbackorder` and `?min_price=&max_price=`
  * (shown prices in major units, the names WooCommerce uses). Values of one
@@ -27,9 +29,12 @@ defined( 'ABSPATH' ) || exit;
 final class ShopQuery {
 	use HasInstance;
 
-	public const SORTS = [ 'menu_order', 'popularity', 'date', 'price', 'price-desc' ];
+	public const SORTS = [ 'menu_order', 'popularity', 'rating', 'date', 'price', 'price-desc' ];
 
 	public const CATEGORY_FILTER = 'filter_cat';
+
+	/** Query var of a meta sort: [ meta key, SQL cast, descending ]. */
+	private const ORDER_META = 'fxc_order_meta';
 
 	public const FILTER_PREFIX = 'filter_';
 
@@ -212,30 +217,10 @@ final class ShopQuery {
 			case 'price':
 			case 'price-desc':
 				$desc = $sort === 'price-desc';
-				$key  = $desc ? ProductRepository::META_PRICE_MAX : ProductRepository::META_PRICE_MIN;
-				$meta = $query->get( 'meta_query' );
-				$meta = is_array( $meta ) ? $meta : [];
-				// Products without a price stay in the list, last when ascending.
-				$meta['fxc_price'] = [
-					'relation'        => 'OR',
-					'fxc_price_value' => [
-						'key'     => $key,
-						'compare' => 'EXISTS',
-						'type'    => 'NUMERIC',
-					],
-					[
-						'key'     => $key,
-						'compare' => 'NOT EXISTS',
-					],
-				];
-				$query->set( 'meta_query', $meta ); // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- `_fxc_price_min/max` exist for sorting (doc 03 §8).
-				$query->set(
-					'orderby',
-					[
-						'fxc_price_value' => $desc ? 'DESC' : 'ASC',
-						'ID'              => 'DESC',
-					]
-				);
+				self::order_by_meta( $query, $desc ? ProductRepository::META_PRICE_MAX : ProductRepository::META_PRICE_MIN, 'SIGNED', $desc );
+				return;
+			case 'rating':
+				self::order_by_meta( $query, Reviews::META_AVERAGE, 'DECIMAL(3,2)', true );
 				return;
 			case 'popularity':
 				// Placeholder until sales counts are stored: newest first.
@@ -256,6 +241,37 @@ final class ShopQuery {
 					]
 				);
 		}
+	}
+
+	/**
+	 * Sorts by a number in product meta (`_fxc_price_min/max`, doc 03 §8;
+	 * `_fxc_rating`, ADR-056), keeping products without it, last. A meta
+	 * query cannot: with EXISTS OR NOT EXISTS it joins every meta row of a
+	 * product without the key and sorts it by whichever comes first.
+	 */
+	private static function order_by_meta( \WP_Query $query, string $key, string $cast, bool $desc ): void {
+		$query->set( self::ORDER_META, [ $key, $cast, $desc ] );
+		$query->set( 'orderby', [ 'ID' => 'DESC' ] );
+		if ( has_filter( 'posts_clauses', [ self::class, 'order_meta_clauses' ] ) === false ) {
+			add_filter( 'posts_clauses', [ self::class, 'order_meta_clauses' ], 10, 2 );
+		}
+	}
+
+	/**
+	 * @param array<string,string> $clauses
+	 * @return array<string,string>
+	 */
+	public static function order_meta_clauses( array $clauses, \WP_Query $query ): array {
+		global $wpdb;
+		$order = $query->get( self::ORDER_META );
+		if ( ! is_array( $order ) || count( $order ) !== 3 || ! in_array( $order[1], [ 'SIGNED', 'DECIMAL(3,2)' ], true ) ) {
+			return $clauses;
+		}
+		[ $key, $cast, $desc ] = $order;
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table names only.
+		$clauses['join']   .= (string) $wpdb->prepare( " LEFT JOIN {$wpdb->postmeta} AS fxc_sort ON ( fxc_sort.post_id = {$wpdb->posts}.ID AND fxc_sort.meta_key = %s )", (string) $key );
+		$clauses['orderby'] = 'fxc_sort.meta_value IS NULL, CAST( fxc_sort.meta_value AS ' . $cast . ' ) ' . ( $desc ? 'DESC' : 'ASC' ) . ( $clauses['orderby'] !== '' ? ', ' . $clauses['orderby'] : '' );
+		return $clauses;
 	}
 
 	/**

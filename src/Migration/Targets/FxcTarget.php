@@ -30,6 +30,7 @@ final class FxcTarget implements TargetAdapter {
 		private readonly FxcCouponWriter $coupons,
 		private readonly FxcOptionWriter $options,
 		private readonly FxcCheckoutWriter $checkout,
+		private readonly ReviewWriter $reviews,
 	) {}
 
 	public function system(): string {
@@ -50,6 +51,7 @@ final class FxcTarget implements TargetAdapter {
 				Record::COUPON    => $this->coupons->coupon( $record, $map ),
 				Record::OPTION_SET => $this->options->option_set( $record, $map, $job->id ),
 				Record::CHECKOUT_FIELDS => $this->checkout->checkout_fields( $record, $map ),
+				Record::REVIEW    => $this->reviews->review( $record, $map ),
 				default           => throw new Rejected( 'unsupported_entity', sprintf( 'FlexaCommerce cannot import "%s" records.', $record->type ) ),
 			}
 		);
@@ -80,6 +82,7 @@ final class FxcTarget implements TargetAdapter {
 				Record::ORDER => $this->orders->delete( $target_id ),
 				Record::COUPON => $this->coupons->delete( $target_id ),
 				Record::OPTION_SET => $this->options->delete( $target_id ),
+				Record::REVIEW => $this->reviews->delete( $target_id ),
 				Record::PRODUCT, Record::TERM, Record::ATTRIBUTE => $this->catalog->delete( $entity, $target_id ),
 				default => false,
 			}

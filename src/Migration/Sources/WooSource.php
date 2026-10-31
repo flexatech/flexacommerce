@@ -32,6 +32,7 @@ final class WooSource implements SourceAdapter {
 		private readonly WooCouponReader $coupons,
 		private readonly WooOptionReader $options,
 		private readonly WooCheckoutReader $checkout,
+		private readonly ReviewReader $reviews,
 	) {}
 
 	public static function available(): bool {
@@ -63,6 +64,7 @@ final class WooSource implements SourceAdapter {
 			'coupons'    => $this->coupons->coupon( $id ),
 			'options'    => $this->options->option_set( $id ),
 			'checkout'   => $this->checkout->checkout_fields(),
+			'reviews'    => $this->reviews->review( $id ),
 			default      => null,
 		};
 	}

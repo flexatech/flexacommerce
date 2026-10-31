@@ -14,6 +14,7 @@ import {
     Table,
     Tag,
     Timer,
+    Star,
     ZoomIn,
 } from "lucide-react";
 
@@ -46,6 +47,7 @@ const KEYS = [
     "countdown_days",
     "tier_table",
     "tier_table_title",
+    "reviews",
 ] as const;
 
 type Draft = Pick<Settings, (typeof KEYS)[number]>;
@@ -378,6 +380,33 @@ export function StorefrontPanel() {
                 <CardContent className="fxc:border-t fxc:pt-4">
                     <OffersPreview draft={draft} />
                 </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>{__("Reviews")}</CardTitle>
+                    <CardDescription>
+                        {__("Star ratings and reviews on product pages. Moderation and notifications follow Settings > Discussion; manage reviews under FlexaCommerce > Reviews.")}
+                    </CardDescription>
+                </CardHeader>
+                <SettingRow
+                    icon={Star}
+                    label={__("Who can review")}
+                    htmlFor="fxc-reviews"
+                    description={__("Customers who bought the product get a Verified buyer badge in every mode. With reviews off, the form goes away and approved reviews still show.")}
+                    control={
+                        <Select
+                            id="fxc-reviews"
+                            value={draft.reviews}
+                            onChange={(e) => set("reviews", e.target.value as Draft["reviews"])}
+                            options={[
+                                { value: "all", label: __("Anyone") },
+                                { value: "buyers", label: __("Customers who bought the product") },
+                                { value: "off", label: __("Nobody (reviews off)") },
+                            ]}
+                        />
+                    }
+                />
             </Card>
         </div>
     );

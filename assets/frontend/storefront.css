@@ -75,7 +75,7 @@
 .fxc-swatches--list .fxc-swatch:hover .fxc-swatch__face { box-shadow: 0 0 0 2px Canvas, 0 0 0 3px currentColor; }
 .fxc-swatches--list .fxc-swatch:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
 .fxc-swatches__more { font-size: .875em; color: inherit; }
-.fxc-swatch .screen-reader-text, .fxc-gallery__thumbs .screen-reader-text, .fxc-countdown .screen-reader-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+.fxc-swatch .screen-reader-text, .fxc-gallery__thumbs .screen-reader-text, .fxc-countdown .screen-reader-text, .fxc-rating-input .screen-reader-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
 .is-error, .fxc-notice--error { color: #b32d2e; }
 
 .fxc-stock--out, .fxc-stock--outofstock { font-weight: 600; }
@@ -338,3 +338,38 @@
 .fxc-express__message { color: #b32d2e; }
 .fxc-express__or { display: flex; align-items: center; gap: .75rem; margin: 1rem 0 0; opacity: .7; }
 .fxc-express__or::before, .fxc-express__or::after { content: ""; flex: 1; border-top: 1px solid currentColor; }
+
+/* Reviews (ADR-056). The stars are text glyphs; the filled part is clipped to --fxc-stars. */
+.fxc-stars { position: relative; display: inline-block; line-height: 1; letter-spacing: .1em; white-space: nowrap; }
+.fxc-stars::before { content: "\2605\2605\2605\2605\2605"; color: color-mix(in srgb, currentcolor 25%, transparent); }
+.fxc-stars::after { content: "\2605\2605\2605\2605\2605"; position: absolute; inset-block-start: 0; inset-inline-start: 0; width: var(--fxc-stars, 0%); overflow: hidden; color: var(--fxc-star, #b8860b); }
+.fxc-rating { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-block: .25rem .5rem; font-size: .875em; }
+.fxc-reviews { margin-block: 2rem; }
+.fxc-reviews__summary { display: flex; flex-wrap: wrap; gap: 1rem 2rem; align-items: center; margin-block-end: 1.5rem; }
+.fxc-reviews__average { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin: 0; }
+.fxc-reviews__score { font-size: 2em; font-weight: 600; line-height: 1; }
+.fxc-reviews__bars { display: grid; gap: .25rem; margin: 0; padding: 0; list-style: none; flex: 1 1 16rem; max-width: 24rem; }
+.fxc-reviews__bar { display: grid; grid-template-columns: 4.5rem 1fr 2.5rem; align-items: center; gap: .5rem; font-size: .875em; }
+.fxc-reviews__bar meter { width: 100%; }
+.fxc-reviews__bar-count { text-align: end; }
+.fxc-reviews__list, .fxc-review__replies { margin: 0; padding: 0; list-style: none; }
+.fxc-review { display: flex; gap: 1rem; padding-block: 1rem; border-block-start: 1px solid color-mix(in srgb, currentcolor 15%, transparent); }
+.fxc-review__avatar { border-radius: 50%; flex: none; }
+.fxc-review__body { flex: 1; min-width: 0; }
+.fxc-review__meta { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .5rem; margin: .25rem 0; font-size: .875em; }
+.fxc-review__verified { padding: .1em .5em; border: 1px solid currentcolor; border-radius: 999px; font-size: .75rem; }
+.fxc-review__pending { margin: .25rem 0; font-style: italic; }
+.fxc-review__text > :first-child { margin-block-start: 0; }
+.fxc-review__text > :last-child { margin-block-end: 0; }
+.fxc-review__replies { margin-block-start: .75rem; padding-inline-start: 1rem; border-inline-start: 2px solid color-mix(in srgb, currentcolor 15%, transparent); }
+.fxc-review--reply { display: block; padding-block: .5rem; border: 0; }
+.fxc-reviews__pages { display: flex; justify-content: space-between; gap: 1rem; margin-block: 1rem; }
+.fxc-reviews__older { margin-inline-start: auto; }
+.fxc-rating-input { margin: 0 0 1rem; padding: 0; border: 0; }
+.fxc-rating-input legend { padding: 0; margin-block-end: .25rem; }
+.fxc-rating-input__stars { display: inline-flex; flex-direction: row-reverse; justify-content: flex-end; }
+.fxc-rating-input input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
+.fxc-rating-input label { position: relative; padding: 0 .1em; font-size: 1.75em; line-height: 1; cursor: pointer; color: color-mix(in srgb, currentcolor 30%, transparent); }
+.fxc-rating-input label::before { content: "\2605"; }
+.fxc-rating-input input:checked ~ label, .fxc-rating-input label:hover, .fxc-rating-input label:hover ~ label { color: var(--fxc-star, #b8860b); }
+.fxc-rating-input input:focus-visible + label { outline: 2px solid currentcolor; outline-offset: 2px; border-radius: 2px; }

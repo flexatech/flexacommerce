@@ -20,6 +20,9 @@ final class Menu {
 
 	public const SLUG = 'flexacommerce';
 
+	/** Core's comments screen, filtered to product reviews (ADR-056). */
+	private const REVIEWS = 'edit-comments.php?comment_type=review';
+
 	/** Submenu order; core adds the product list itself (show_in_menu). */
 	private const ORDER = [
 		self::SLUG . '-orders',
@@ -29,6 +32,7 @@ final class Menu {
 		'edit-tags.php?taxonomy=' . PostTypes::TAG . '&post_type=' . PostTypes::PRODUCT,
 		self::SLUG . '-attributes',
 		self::SLUG . '-product-options',
+		self::REVIEWS,
 		self::SLUG . '-promotions',
 		self::SLUG . '-checkout',
 		self::SLUG . '-settings',
@@ -155,6 +159,13 @@ final class Menu {
 				[ $this, 'render_page' ]
 			)
 		);
+		add_submenu_page(
+			self::SLUG,
+			__( 'Reviews', 'flexacommerce' ),
+			__( 'Reviews', 'flexacommerce' ),
+			'moderate_comments',
+			self::REVIEWS
+		);
 		$this->add(
 			self::SLUG . '-settings',
 			(string) add_submenu_page(
@@ -202,13 +213,19 @@ final class Menu {
 		);
 	}
 
-	/** Keeps the menu open on product and term screens. */
+	/** Keeps the menu open on product, term and review screens. */
 	public function parent_file( string $parent_file ): string {
+		if ( $this->on_reviews() ) {
+			return self::SLUG;
+		}
 		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
 		return $screen !== null && $screen->post_type === PostTypes::PRODUCT ? self::SLUG : $parent_file;
 	}
 
 	public function submenu_file( ?string $submenu_file ): ?string {
+		if ( $this->on_reviews() ) {
+			return self::REVIEWS;
+		}
 		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
 		if ( $screen === null || $screen->post_type !== PostTypes::PRODUCT ) {
 			return $submenu_file;
@@ -217,6 +234,13 @@ final class Menu {
 			return 'edit-tags.php?taxonomy=' . $screen->taxonomy . '&post_type=' . PostTypes::PRODUCT;
 		}
 		return 'edit.php?post_type=' . PostTypes::PRODUCT;
+	}
+
+	/** The comments screen showing product reviews only. */
+	private function on_reviews(): bool {
+		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- a list filter, no state change.
+		return $screen !== null && $screen->base === 'edit-comments' && isset( $_GET['comment_type'] ) && sanitize_key( wp_unslash( $_GET['comment_type'] ) ) === 'review';
 	}
 
 	/** @return array<string,string> page slug => hook suffix */

@@ -29,6 +29,8 @@ final class WooStoreReader {
 			];
 		}
 		$location = (string) get_option( 'woocommerce_default_customer_address', 'base' );
+		// Who may review (ADR-056): off, anyone, or verified owners only.
+		$reviews = get_option( 'woocommerce_enable_reviews', 'yes' ) === 'no' ? 'off' : ( get_option( 'woocommerce_review_rating_verification_required' ) === 'yes' ? 'buyers' : 'all' );
 		return new Record(
 			Record::SETTINGS,
 			Ref::make( 'wc', Record::SETTINGS, 1 ),
@@ -47,6 +49,7 @@ final class WooStoreReader {
 				'price_display_suffix'  => (string) get_option( 'woocommerce_price_display_suffix', '' ),
 				'tax_total_display'     => (string) get_option( 'woocommerce_tax_total_display', 'itemized' ),
 				'tax_classes'           => $classes,
+				'reviews'               => $reviews,
 				'store'                 => [
 					'country'  => $country,
 					'state'    => $state,

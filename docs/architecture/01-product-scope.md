@@ -70,7 +70,7 @@ Legend: **MVP** = required for MVP. **FND** = architectural foundation in MVP, u
 | Product weight and dimensions | MVP | Needed by shipping rules and for WooCommerce round-trip. |
 | Grouped, external/affiliate, digital/downloadable, subscription, bundle products | OUT (core) / POST (extension) | Migration reports them as unsupported (doc 05 §7). |
 | Public product-type registration API | FND | Internal type registry exists in MVP; public contract is post-MVP (doc 04 §6). |
-| Reviews and ratings | POST | WordPress comments could back it later. |
+| Reviews and ratings | POST | Reviews are WordPress comments with a star rating, a verified-buyer badge, a setting for who may review and a rating sort (ADR-056). |
 | Product import/export CSV | POST | The migration subsystem's canonical format covers bulk transfer in MVP. |
 
 ### 4.2 Storefront

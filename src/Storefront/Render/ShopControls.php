@@ -8,6 +8,7 @@ use Flexa\Commerce\Catalog\AttributeRepository;
 use Flexa\Commerce\Catalog\PostTypes;
 use Flexa\Commerce\Catalog\Variant;
 use Flexa\Commerce\Plugin;
+use Flexa\Commerce\Reviews\Reviews;
 use Flexa\Commerce\Storefront\Assets;
 use Flexa\Commerce\Storefront\ShopFacets;
 use Flexa\Commerce\Storefront\ShopQuery;
@@ -33,10 +34,14 @@ final class ShopControls {
 				$labels  = [
 					'menu_order' => __( 'Default sorting', 'flexacommerce' ),
 					'popularity' => __( 'Sort by popularity', 'flexacommerce' ),
+					'rating'     => __( 'Sort by average rating', 'flexacommerce' ),
 					'date'       => __( 'Sort by latest', 'flexacommerce' ),
 					'price'      => __( 'Sort by price: low to high', 'flexacommerce' ),
 					'price-desc' => __( 'Sort by price: high to low', 'flexacommerce' ),
 				];
+				if ( Reviews::mode() === Reviews::OFF ) {
+					unset( $labels['rating'] );
+				}
 				$options = '';
 				foreach ( $labels as $value => $label ) {
 					$options .= sprintf( '<option value="%1$s"%2$s>%3$s</option>', esc_attr( $value ), selected( $current, $value, false ), esc_html( $label ) );

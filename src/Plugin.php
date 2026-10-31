@@ -97,6 +97,7 @@ final class Plugin {
 			Admin\Menu::instance()->register();
 			Admin\Enqueue::instance()->register();
 			Admin\ProductEditor::instance()->register();
+			Reviews\Reviews::instance()->register();
 			Privacy\Privacy::instance()->register();
 			add_action( 'admin_notices', [ Storefront\TemplateLoader::class, 'notice' ] );
 		} else {
@@ -104,6 +105,10 @@ final class Plugin {
 			add_filter( 'the_posts', [ $this, 'on_the_posts' ] );
 			add_action( 'pre_get_posts', [ $this, 'on_pre_get_posts' ] );
 			add_action( 'template_redirect', [ $this, 'on_template_redirect' ] );
+			// A posted comment form: the review hooks, for this request only (ADR-056).
+			if ( ( $GLOBALS['pagenow'] ?? '' ) === 'wp-comments-post.php' ) {
+				Reviews\Reviews::instance()->register();
+			}
 			// A settings key, so the check needs no query and loads no class (doc 10 F1).
 			if ( Support\Settings::bool( 'cutover_redirects' ) ) {
 				add_action( 'template_redirect', [ Migration\Redirects::class, 'handle' ], 1 );
@@ -117,6 +122,7 @@ final class Plugin {
 			Cli\DbCommand::register();
 			Cli\MigrateCommand::register();
 			Cli\PriceRuleCommand::register();
+			Reviews\Reviews::instance()->register();
 		}
 
 		add_action( 'plugins_loaded', [ $this, 'announce' ], 20 );
@@ -320,6 +326,7 @@ final class Plugin {
 	public function on_rest_api_init(): void {
 		Api\Router::instance()->register_routes();
 		$this->watch_settings();
+		Reviews\Reviews::instance()->register();
 		$route = isset( $GLOBALS['wp'] ) && $GLOBALS['wp'] instanceof \WP ? (string) ( $GLOBALS['wp']->query_vars['rest_route'] ?? '' ) : '';
 		if ( str_starts_with( $route, '/' . FLEXACOMMERCE_REST_NAMESPACE . '/' ) ) {
 			return;

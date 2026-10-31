@@ -24,6 +24,7 @@ final class Record {
 	public const ORDER      = 'order';
 	public const COUPON     = 'coupon';
 	public const OPTION_SET = 'option_set';
+	public const REVIEW     = 'review';
 
 	public const CHECKOUT_FIELDS = 'checkout_fields';
 

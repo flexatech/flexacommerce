@@ -6,7 +6,7 @@
  * Every piece comes from Storefront::part(), which renders the block of
  * the same name for the current product.
  *
- * @version 1.0.0
+ * @version 1.1.0
  */
 
 use Flexa\Commerce\Catalog\PostTypes;
@@ -33,6 +33,7 @@ while ( have_posts() ) :
 			</div>
 			<div class="fxc-product__summary">
 				<?php the_title( '<h1 class="fxc-product__title entry-title">', '</h1>' ); ?>
+				<?php echo $fxc->part( 'product-rating' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped markup. ?>
 				<?php echo $fxc->part( 'product-price' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped markup. ?>
 				<?php if ( has_excerpt() ) : ?>
 					<div class="fxc-product__excerpt"><?php the_excerpt(); ?></div>
@@ -46,6 +47,7 @@ while ( have_posts() ) :
 			<?php the_content(); ?>
 		</div>
 		<?php echo $fxc->part( 'product-attributes' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped markup. ?>
+		<?php echo $fxc->part( 'product-reviews' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped markup. ?>
 		<?php echo $fxc->part( 'related-products' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped markup. ?>
 	</article>
 <?php endwhile; ?>

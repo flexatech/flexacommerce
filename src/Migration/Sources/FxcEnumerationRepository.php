@@ -67,6 +67,7 @@ final class FxcEnumerationRepository {
 				$limit
 			),
 			'coupons'    => $this->wpdb->prepare( 'SELECT id FROM %i WHERE id > %d AND id <= %d ORDER BY id LIMIT %d', Schema::table( 'coupons' ), $after, $upper, $limit ),
+			'reviews'    => $this->wpdb->prepare( "SELECT c.comment_ID FROM %i AS c INNER JOIN %i AS p ON p.ID = c.comment_post_ID WHERE p.post_type = %s AND c.comment_approved IN ('0', '1') AND c.comment_type IN ('review', 'comment') AND c.comment_ID > %d AND c.comment_ID <= %d ORDER BY c.comment_ID LIMIT %d", $this->wpdb->comments, $this->wpdb->posts, PostTypes::PRODUCT, $after, $upper, $limit ),
 			default      => null,
 		};
 		if ( $sql === null ) {
@@ -90,6 +91,7 @@ final class FxcEnumerationRepository {
 			'customers'            => $this->wpdb->prepare( 'SELECT MAX(ID) FROM %i', $this->wpdb->users ),
 			'orders'               => $this->wpdb->prepare( 'SELECT MAX(id) FROM %i', Schema::table( 'orders' ) ),
 			'coupons'              => $this->wpdb->prepare( 'SELECT MAX(id) FROM %i', Schema::table( 'coupons' ) ),
+			'reviews'              => $this->wpdb->prepare( 'SELECT MAX(comment_ID) FROM %i', $this->wpdb->comments ),
 			default                => null,
 		};
 		return $sql === null ? 0 : (int) $this->wpdb->get_var( $sql );

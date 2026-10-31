@@ -57,6 +57,7 @@ final class WooEnumerationRepository {
 			'orders'     => $this->orders_sql( $after, $upper, $limit, $range ),
 			'coupons'    => $this->wpdb->prepare( "SELECT ID FROM %i WHERE post_type = 'shop_coupon' AND post_status NOT IN ('auto-draft', 'trash') AND ID > %d AND ID <= %d ORDER BY ID LIMIT %d", $this->wpdb->posts, $after, $upper, $limit ),
 			'options'    => $this->options_sql( $after, $upper, $limit ),
+			'reviews'    => $this->wpdb->prepare( "SELECT c.comment_ID FROM %i AS c INNER JOIN %i AS p ON p.ID = c.comment_post_ID WHERE p.post_type = 'product' AND c.comment_approved IN ('0', '1') AND c.comment_type IN ('review', 'comment') AND c.comment_ID > %d AND c.comment_ID <= %d ORDER BY c.comment_ID LIMIT %d", $this->wpdb->comments, $this->wpdb->posts, $after, $upper, $limit ),
 			default      => null,
 		};
 		if ( $sql === null ) {
@@ -88,6 +89,7 @@ final class WooEnumerationRepository {
 				: $this->wpdb->prepare( "SELECT MAX(ID) FROM %i WHERE post_type = 'shop_order'", $this->wpdb->posts ),
 			'coupons'    => $this->wpdb->prepare( "SELECT MAX(ID) FROM %i WHERE post_type = 'shop_coupon'", $this->wpdb->posts ),
 			'options'    => $this->wpdb->prepare( "SELECT MAX(ID) FROM %i WHERE post_type IN ('product', 'global_product_addon')", $this->wpdb->posts ),
+			'reviews'    => $this->wpdb->prepare( 'SELECT MAX(comment_ID) FROM %i', $this->wpdb->comments ),
 			default      => null,
 		};
 		return $sql === null ? 0 : (int) $this->wpdb->get_var( $sql );

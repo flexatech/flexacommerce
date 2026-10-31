@@ -58,6 +58,10 @@ final class WooStoreWriter {
 				update_option( 'woocommerce_default_customer_address', 'base' );
 			}
 		}
+		if ( in_array( $data['reviews'] ?? null, [ 'off', 'all', 'buyers' ], true ) ) {
+			update_option( 'woocommerce_enable_reviews', $data['reviews'] === 'off' ? 'no' : 'yes' );
+			update_option( 'woocommerce_review_rating_verification_required', $data['reviews'] === 'buyers' ? 'yes' : 'no' );
+		}
 		$store = is_array( $data['store'] ?? null ) ? $data['store'] : [];
 		if ( isset( $store['country'] ) ) {
 			$country = strtoupper( (string) $store['country'] );

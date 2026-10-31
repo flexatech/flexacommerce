@@ -240,6 +240,8 @@
 		'flexacommerce/discount-badge',
 		'flexacommerce/offer-countdown',
 		'flexacommerce/discount-nudge',
+		'flexacommerce/product-rating',
+		'flexacommerce/product-reviews',
 	].forEach( ( name ) => {
 		registerBlockType( name, {
 			edit: ( props ) => el( Edit, Object.assign( { name }, props ) ),
@@ -276,6 +278,7 @@
 				[
 					[ 'core/post-featured-image', { isLink: true, aspectRatio: '1' } ],
 					[ 'core/post-title', { isLink: true, level: 3, fontSize: 'medium' } ],
+					[ 'flexacommerce/product-rating' ],
 					[ 'flexacommerce/product-price' ],
 					[ 'flexacommerce/product-add-to-cart' ],
 				],

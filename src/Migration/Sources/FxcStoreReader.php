@@ -18,7 +18,7 @@ defined( 'ABSPATH' ) || exit;
 /** Store settings, tax rates and customer addresses from FlexaCommerce, in the shapes WooStoreReader emits. */
 final class FxcStoreReader {
 	/** Settings copied as they are; the same keys WooStoreReader reads. */
-	private const SETTINGS = [ 'currency', 'weight_unit', 'dimension_unit', 'tax_enabled', 'prices_include_tax', 'tax_based_on', 'tax_default_location', 'shipping_tax_class', 'tax_round_at_subtotal', 'tax_display_shop', 'tax_display_cart', 'price_display_suffix', 'tax_total_display' ];
+	private const SETTINGS = [ 'currency', 'weight_unit', 'dimension_unit', 'tax_enabled', 'prices_include_tax', 'tax_based_on', 'tax_default_location', 'shipping_tax_class', 'tax_round_at_subtotal', 'tax_display_shop', 'tax_display_cart', 'price_display_suffix', 'tax_total_display', 'reviews' ];
 
 	public function __construct(
 		private readonly TaxRateRepository $rates,

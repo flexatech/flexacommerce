@@ -11,6 +11,7 @@ use Flexa\Commerce\Catalog\Product;
 use Flexa\Commerce\Concerns\HasInstance;
 use Flexa\Commerce\Options\ProductOptions;
 use Flexa\Commerce\Plugin;
+use Flexa\Commerce\Reviews\Reviews;
 use Flexa\Commerce\Storefront\Render\AddToCartForm;
 use Flexa\Commerce\Storefront\Render\BadgeOverlay;
 use Flexa\Commerce\Storefront\Render\Breadcrumbs;
@@ -20,6 +21,7 @@ use Flexa\Commerce\Storefront\Render\MiniCart;
 use Flexa\Commerce\Storefront\Render\PricingBlocks;
 use Flexa\Commerce\Storefront\Render\ProductDetails;
 use Flexa\Commerce\Storefront\Render\ProductPrice;
+use Flexa\Commerce\Storefront\Render\ProductReviews;
 use Flexa\Commerce\Storefront\Render\RelatedProducts;
 use Flexa\Commerce\Storefront\Render\ShopControls;
 
@@ -54,6 +56,8 @@ final class Storefront {
 		'discount-badge',
 		'offer-countdown',
 		'discount-nudge',
+		'product-rating',
+		'product-reviews',
 	];
 
 	/** The pricing shortcodes and the blocks they show (ADR-050). */
@@ -85,6 +89,8 @@ final class Storefront {
 	private ?BadgeOverlay $badges = null;
 
 	private ?PricingBlocks $pricing = null;
+
+	private ?ProductReviews $reviews = null;
 
 	public function register_blocks(): void {
 		if ( $this->blocks ) {
@@ -256,6 +262,10 @@ final class Storefront {
 				return $this->pricing()->discount_badge( $product, $user );
 			case 'offer-countdown':
 				return $this->pricing()->countdown( 0, $product, $user );
+			case 'product-rating':
+				return $this->reviews()->rating( $product, ! self::in_list( $attributes, $block ) );
+			case 'product-reviews':
+				return $this->reviews()->html( $product );
 		}
 		return $this->form()->html( $product, self::in_list( $attributes, $block ) ? AddToCartForm::LOOP : AddToCartForm::SINGLE, $user );
 	}
@@ -455,12 +465,21 @@ final class Storefront {
 		return $this->pricing ??= new PricingBlocks( $cart->pricing(), $cart->cart(), $cart->presenter() );
 	}
 
+	private function reviews(): ProductReviews {
+		if ( $this->reviews === null ) {
+			// The form asks comments_open(), which the review hooks answer.
+			Reviews::instance()->register();
+			$this->reviews = new ProductReviews( Reviews::instance() );
+		}
+		return $this->reviews;
+	}
+
 	private function badges(): BadgeOverlay {
 		return $this->badges ??= new BadgeOverlay( new BadgeMatcher( Plugin::instance()->badges() ) );
 	}
 
-	/** Price and the list add-to-cart button. */
+	/** Stars, price and the list add-to-cart button. */
 	private function card( Product $product ): string {
-		return $this->price()->html( $product, get_current_user_id() ) . $this->form()->html( $product, AddToCartForm::LOOP, get_current_user_id() );
+		return $this->reviews()->rating( $product, false ) . $this->price()->html( $product, get_current_user_id() ) . $this->form()->html( $product, AddToCartForm::LOOP, get_current_user_id() );
 	}
 }

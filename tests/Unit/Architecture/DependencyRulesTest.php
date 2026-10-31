@@ -43,6 +43,7 @@ final class DependencyRulesTest extends TestCase {
 		'Coupons'   => [ 'Cart', 'Catalog', 'Pricing', 'Support', 'Database' ],
 		'Options'   => [ 'Catalog', 'Inventory', 'Support' ],
 		'Customers' => [ 'Support' ],
+		'Reviews'   => [ 'Catalog', 'Support', 'Database' ],
 		'Checkout'  => [ 'Cart', 'Coupons', 'Pricing', 'Inventory', 'Shipping', 'Tax', 'Orders', 'Payments', 'Customers', 'Support', 'Database' ],
 	];
 
