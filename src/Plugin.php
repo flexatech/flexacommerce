@@ -58,6 +58,8 @@ final class Plugin {
 
 	private ?Downloads\DownloadService $downloads = null;
 
+	private ?Invoices\InvoiceService $invoices = null;
+
 	private bool $blocks = false;
 
 	public function boot(): void {
@@ -96,6 +98,7 @@ final class Plugin {
 			add_action( 'init', [ $this, 'register_blocks' ] );
 			add_action( 'admin_post_' . Storefront\FormHandler::ACTION, [ Storefront\FormHandler::class, 'handle' ] );
 			add_action( 'admin_post_nopriv_' . Storefront\FormHandler::ACTION, [ Storefront\FormHandler::class, 'handle' ] );
+			add_action( 'admin_post_' . Admin\InvoicePdf::ACTION, [ Admin\InvoicePdf::class, 'handle' ] );
 			$this->watch_settings();
 			Admin\Menu::instance()->register();
 			Admin\Enqueue::instance()->register();
@@ -116,6 +119,10 @@ final class Plugin {
 			if ( isset( $_GET['fxc_download'] ) ) {
 				add_action( 'init', [ $this, 'on_download' ], 20 );
 			}
+			// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- routing only; the order key is checked by the handler (ADR-060).
+			if ( isset( $_GET['fxc_invoice'] ) ) {
+				add_action( 'init', [ $this, 'on_invoice' ], 20 );
+			}
 			// A posted comment form: the review hooks, for this request only (ADR-056).
 			if ( ( $GLOBALS['pagenow'] ?? '' ) === 'wp-comments-post.php' ) {
 				Reviews\Reviews::instance()->register();
@@ -134,6 +141,7 @@ final class Plugin {
 			Cli\MigrateCommand::register();
 			Cli\PriceRuleCommand::register();
 			Cli\ProductCsvCommand::register();
+			Cli\InvoiceCommand::register();
 			Reviews\Reviews::instance()->register();
 		}
 
@@ -291,7 +299,38 @@ final class Plugin {
 
 	/** @internal Order emails, their settings and templates. */
 	public function notifications(): Notifications\NotificationServices {
-		return $this->notifications ??= new Notifications\NotificationServices( $this->services(), $this->orders(), fn (): Checkout\CheckoutServices => $this->checkout(), fn ( int $order_id ): array => $this->downloads()->links( $order_id ) );
+		if ( $this->notifications === null ) {
+			$this->notifications = new Notifications\NotificationServices( $this->services(), $this->orders(), fn (): Checkout\CheckoutServices => $this->checkout(), fn ( int $order_id ): array => $this->downloads()->links( $order_id ) );
+			add_filter( 'flexacommerce.email.attachments', [ $this, 'on_email_attachments' ], 10, 3 );
+			add_action( 'flexacommerce.email.sent', [ $this, 'on_email_sent' ] );
+		}
+		return $this->notifications;
+	}
+
+	/** @internal PDF invoices and packing slips (ADR-060). */
+	public function invoices(): Invoices\InvoiceService {
+		return $this->invoices ??= new Invoices\InvoiceService(
+			new Invoices\InvoiceRepository( $this->services()->wpdb() ),
+			$this->orders()->orders(),
+			$this->services()->sequence(),
+			$this->services()->clock(),
+			$this->services()->money()
+		);
+	}
+
+	/**
+	 * @internal The invoice on the emails chosen in the invoice settings.
+	 *
+	 * @param mixed $attachments
+	 * @return mixed
+	 */
+	public function on_email_attachments( mixed $attachments, string $email_id, ?int $order_id ): mixed {
+		return $this->invoices()->attach( $attachments, $email_id, $order_id );
+	}
+
+	/** @internal Removes the invoice files written for an email. */
+	public function on_email_sent(): void {
+		$this->invoices?->cleanup();
 	}
 
 	/** @internal Zones, shipping methods and rates. */
@@ -516,6 +555,11 @@ final class Plugin {
 	/** @internal A download link (ADR-058). */
 	public function on_download(): void {
 		Storefront\DownloadHandler::instance()->handle();
+	}
+
+	/** @internal A customer's invoice link (ADR-060). */
+	public function on_invoice(): void {
+		Storefront\InvoiceHandler::instance()->handle();
 	}
 
 	public function on_logout(): void {

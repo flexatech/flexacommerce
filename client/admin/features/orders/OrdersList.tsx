@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, Search } from "lucide-react";
+import { AlertTriangle, FileText, Package, Search } from "lucide-react";
 
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
@@ -8,6 +8,7 @@ import { Input } from "@/shared/components/ui/input";
 import { __, sprintf } from "@/shared/lib/i18n";
 import { useDebounced } from "@/shared/lib/useDebounced";
 import { PageTitle } from "../../components/PageTitle";
+import { invoicePdfUrl } from "../invoices/useInvoices";
 import { Tabs } from "../../components/Tabs";
 import { formatDate, orderMoney, PAYMENT_LABEL, STATUS_LABEL, STATUS_TONE, STATUSES } from "./format";
 import { orderUrl } from "./navigation";
@@ -27,6 +28,10 @@ export function OrdersList({ params, onParams, onOpen }: Props) {
     const debounced = useDebounced(search);
     const list = useOrderList(params);
     const counts = useOrderCounts();
+    const [selected, setSelected] = useState<number[]>([]);
+
+    // A new page or filter starts with nothing selected.
+    useEffect(() => setSelected([]), [params]);
 
     useEffect(() => {
         if (debounced !== params.search) {
@@ -56,6 +61,9 @@ export function OrdersList({ params, onParams, onOpen }: Props) {
     }
 
     const pages = list.data?.pages ?? 1;
+    const ids = list.data?.items.map((order) => order.id) ?? [];
+    const allSelected = ids.length > 0 && ids.every((id) => selected.includes(id));
+    const toggle = (id: number, on: boolean) => setSelected(on ? [...selected, id] : selected.filter((s) => s !== id));
 
     return (
         <div className="fxc:space-y-4">
@@ -84,6 +92,27 @@ export function OrdersList({ params, onParams, onOpen }: Props) {
                 </div>
             )}
 
+            {selected.length > 0 && (
+                <div className="fxc:bg-muted fxc:flex fxc:flex-wrap fxc:items-center fxc:gap-3 fxc:rounded-lg fxc:px-4 fxc:py-2 fxc:text-sm" role="region" aria-label={__("Selected orders")}>
+                    <span className="fxc:font-medium">{sprintf(__("%d selected"), selected.length)}</span>
+                    <Button asChild variant="outline" size="sm">
+                        <a href={invoicePdfUrl(selected, "invoice")} target="_blank" rel="noopener noreferrer">
+                            <FileText aria-hidden className="fxc:size-4" />
+                            {__("Invoices (PDF)")}
+                        </a>
+                    </Button>
+                    <Button asChild variant="outline" size="sm">
+                        <a href={invoicePdfUrl(selected, "packing_slip")} target="_blank" rel="noopener noreferrer">
+                            <Package aria-hidden className="fxc:size-4" />
+                            {__("Packing slips (PDF)")}
+                        </a>
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => setSelected([])}>
+                        {__("Clear selection")}
+                    </Button>
+                </div>
+            )}
+
             <Card className="fxc:overflow-x-auto">
                 {list.isPending ? (
                     <p className="fxc:text-muted-foreground fxc:px-5 fxc:py-4">{__("Loading…")}</p>
@@ -97,7 +126,16 @@ export function OrdersList({ params, onParams, onOpen }: Props) {
                     <table className="fxc:w-full fxc:text-sm">
                         <thead>
                             <tr className="fxc:text-muted-foreground fxc:border-b fxc:text-left fxc:text-xs">
-                                <th className="fxc:px-5 fxc:py-2 fxc:font-medium">{__("Order")}</th>
+                                <th className="fxc:w-8 fxc:py-2 fxc:pl-5">
+                                    <input
+                                        type="checkbox"
+                                        className="flexacommerce-check"
+                                        aria-label={__("Select all orders on this page")}
+                                        checked={allSelected}
+                                        onChange={(e) => setSelected(e.target.checked ? ids : [])}
+                                    />
+                                </th>
+                                <th className="fxc:px-3 fxc:py-2 fxc:font-medium">{__("Order")}</th>
                                 <th className="fxc:px-3 fxc:py-2 fxc:font-medium">{__("Date")}</th>
                                 <th className="fxc:px-3 fxc:py-2 fxc:font-medium">{__("Customer")}</th>
                                 <th className="fxc:px-3 fxc:py-2 fxc:font-medium">{__("Status")}</th>
@@ -108,7 +146,16 @@ export function OrdersList({ params, onParams, onOpen }: Props) {
                         <tbody>
                             {list.data.items.map((order) => (
                                 <tr key={order.id} className="fxc:hover:bg-muted/50 fxc:border-b fxc:last:border-b-0">
-                                    <td className="fxc:px-5 fxc:py-3">
+                                    <td className="fxc:w-8 fxc:py-3 fxc:pl-5">
+                                        <input
+                                            type="checkbox"
+                                            className="flexacommerce-check"
+                                            aria-label={sprintf(__("Select order %s"), order.number)}
+                                            checked={selected.includes(order.id)}
+                                            onChange={(e) => toggle(order.id, e.target.checked)}
+                                        />
+                                    </td>
+                                    <td className="fxc:px-3 fxc:py-3">
                                         <a
                                             href={orderUrl(order.id)}
                                             onClick={(e) => {

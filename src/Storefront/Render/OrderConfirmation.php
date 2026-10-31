@@ -59,6 +59,7 @@ final class OrderConfirmation {
 			$html .= '<section class="fxc-order__instructions"><h2>' . esc_html__( 'How to pay', 'flexacommerce' ) . '</h2>' . wpautop( esc_html( $instructions ) ) . '</section>';
 		}
 
+		$html .= self::invoice( $order );
 		$html .= self::downloads( $order );
 		$html .= $this->items( $order );
 		$html .= self::fields( $order );
@@ -133,6 +134,16 @@ final class OrderConfirmation {
 			$html .= '<tr><th scope="row">' . esc_html( $label ) . '</th><td>' . esc_html( is_string( $amount ) ? $amount : $this->money( $order, $amount ) ) . '</td></tr>';
 		}
 		return $html . '</tfoot></table>';
+	}
+
+	/** The customer's invoice link when the invoice settings allow it (ADR-060). */
+	public static function invoice( Order $order ): string {
+		$invoices = Plugin::instance()->invoices();
+		if ( ! $invoices->customer_can( $order ) ) {
+			return '';
+		}
+		return '<p class="fxc-order__invoice"><a href="' . esc_url( $invoices->customer_url( $order ) ) . '" target="_blank" rel="noopener">'
+			. esc_html__( 'Download invoice (PDF)', 'flexacommerce' ) . '</a></p>';
 	}
 
 	/**

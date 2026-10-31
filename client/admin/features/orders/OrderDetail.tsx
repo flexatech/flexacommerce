@@ -12,6 +12,7 @@ import { Textarea } from "@/shared/components/ui/textarea";
 import { __, sprintf } from "@/shared/lib/i18n";
 import { PageTitle } from "../../components/PageTitle";
 import { DownloadsCard } from "./DownloadsCard";
+import { InvoiceCard } from "./InvoiceCard";
 import { formatDate, orderMoney, PAYMENT_LABEL, STATUS_LABEL, STATUS_TONE } from "./format";
 import { orderUrl } from "./navigation";
 import { PaymentDialog } from "./PaymentDialog";
@@ -85,6 +86,7 @@ export function OrderDetailView({ id, onBack }: { id: number; onBack: () => void
                 </div>
                 <div className="fxc:space-y-6">
                     <ActionsCard order={order} />
+                    <InvoiceCard order={order} />
                     <CustomerCard order={order} />
                 </div>
             </div>

@@ -3,7 +3,8 @@
     --brand-50: oklch(0.97 0.02 250);
     --brand-100: oklch(0.93 0.05 250);
     --brand-500: oklch(0.65 0.18 250);
-    --brand-600: oklch(0.58 0.2 250);
+    /* 0.55 rather than the palette 0.58: 4.7:1 against white, for text and white-on-blue buttons (WCAG AA). */
+    --brand-600: oklch(0.55 0.2 250);
     --brand-700: oklch(0.5 0.2 250);
 
     --background: oklch(1 0 0);

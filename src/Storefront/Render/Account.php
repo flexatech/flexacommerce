@@ -224,6 +224,7 @@ final class Account {
 			$html .= '</ol></section>';
 		}
 
+		$html .= OrderConfirmation::invoice( $order );
 		$html .= OrderConfirmation::downloads( $order );
 		$html .= ( new OrderConfirmation( $this->checkout ) )->items( $order );
 		$html .= OrderConfirmation::fields( $order );

@@ -88,6 +88,13 @@ Order key (32 random bytes) + `hash_equals()`, `Cache-Control: private, no-store
 - Import never writes custom fields starting with `_fxc`, `_wp_`, `_edit_` or `_thumbnail_id`, and saves through `ProductService::save()`, so the editor's validation applies. Mapping keys from the browser are checked with `CsvColumns::is_key()`.
 - Image URLs from another site are fetched with `download_url()` (which uses `wp_safe_remote_get()`, so private and local addresses are refused) and stored with `media_handle_sideload()`, which applies WordPress's file type checks. A check run downloads nothing.
 
+### 2.7.3 PDF invoices (ADR-060)
+
+- `?fxc_invoice=<id>&key=<key>` needs the order key or the signed-in owner (`OrderAccess::can_view`), and the invoice setting must allow it: "When the order is paid" (paid, processing, completed or refunded and not free), "After you make the invoice" or "Never". An anonymized order never serves one. Every refusal is the same 404, so the response does not tell whether the order exists. Staff who may view orders always get it.
+- The admin PDF (`admin-post.php?action=fxc_invoice`) checks a `wp_rest` nonce and the view orders capability; the order routes need view orders to read and edit orders to assign a number, the settings routes the manage capability. A logo must be an image attachment.
+- PDF responses send `nocache_headers()`, `X-Content-Type-Options: nosniff` and `X-Robots-Tag: noindex, nofollow`, with an inline `Content-Disposition` and a file name from `sanitize_file_name()`.
+- Email attachments are written to a random folder under `get_temp_dir()` and deleted with the folder after `wp_mail()`, sent or not.
+
 ### 2.8 Privacy
 
 - Exporters and erasers for orders (by billing email and user), addresses, sessions, saved user addresses, and download permissions (by email; erasing deletes them, so the links stop working).

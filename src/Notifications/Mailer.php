@@ -125,17 +125,20 @@ final class Mailer {
 
 	/** @param Outgoing $outgoing */
 	private function deliver( array $outgoing ): bool {
-		$id         = $outgoing['email'];
-		$recipients = $outgoing['recipients'];
-		$error      = '';
-		$listen     = static function ( \WP_Error $e ) use ( &$error ): void {
+		$id          = $outgoing['email'];
+		$recipients  = $outgoing['recipients'];
+		$error       = '';
+		$listen      = static function ( \WP_Error $e ) use ( &$error ): void {
 			$error = $e->get_error_message();
 		};
+		$files       = apply_filters( 'flexacommerce.email.attachments', [], $id, $outgoing['order_id'] );
+		$attachments = array_values( array_filter( is_array( $files ) ? $files : [], static fn ( mixed $path ): bool => is_string( $path ) && is_file( $path ) ) );
 		add_action( 'wp_mail_failed', $listen );
 		try {
-			$sent = wp_mail( $recipients, $outgoing['subject'], $outgoing['html'], [ 'Content-Type: text/html; charset=UTF-8' ] );
+			$sent = wp_mail( $recipients, $outgoing['subject'], $outgoing['html'], [ 'Content-Type: text/html; charset=UTF-8' ], $attachments );
 		} finally {
 			remove_action( 'wp_mail_failed', $listen );
+			do_action( 'flexacommerce.email.sent', $id, $outgoing['order_id'], $sent ?? false );
 		}
 
 		if ( ! $sent ) {

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Flexa\Commerce\Notifications;
 
+use Flexa\Commerce\Invoices\InvoiceSettings;
+
 defined( 'ABSPATH' ) || exit;
 
 /**
@@ -27,8 +29,9 @@ final class EmailSettings {
 	 * @param list<string> $ids
 	 */
 	public function prime( array $ids ): void {
-		if ( count( $ids ) > 1 ) {
-			wp_prime_option_caches( array_map( static fn ( string $id ): string => self::PREFIX . $id, $ids ) );
+		if ( $ids !== [] ) {
+			// The invoice settings too: they say whether an email carries the invoice (ADR-060).
+			wp_prime_option_caches( [ ...array_map( static fn ( string $id ): string => self::PREFIX . $id, $ids ), InvoiceSettings::OPTION ] );
 		}
 	}
 

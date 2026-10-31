@@ -33,6 +33,8 @@ By default, deleting the plugin leaves every table, option and setting in place,
 
 The admin screens are a React app. Its readable source ships with the plugin in the `client/` folder; the compiled files are in `assets/dist/`.
 
+PDF invoices use the Noto Sans fonts in `assets/fonts/`, under the SIL Open Font License 1.1 (`assets/fonts/OFL.txt`).
+
 == Installation ==
 
 1. Upload the `flexacommerce` folder to `/wp-content/plugins/`, or install the zip from Plugins > Add New.

@@ -66,7 +66,7 @@ Status: **Approved 2026-10-24**. All table names below are shown without `{$wpdb
 
 ### 2.7 Order numbering
 
-- `fxc_sequences` row `order_number`. Allocation: `UPDATE fxc_sequences SET value = LAST_INSERT_ID(value + 1) WHERE name = 'order_number'` then `SELECT LAST_INSERT_ID()`, executed in autocommit **before** the checkout transaction. This keeps the sequence row lock out of the long checkout transaction. A rolled-back checkout leaves a gap. Numbers are unique and increasing, not gapless (stated in docs; legal invoice numbering is a separate post-MVP feature).
+- `fxc_sequences` row `order_number`. Allocation: `UPDATE fxc_sequences SET value = LAST_INSERT_ID(value + 1) WHERE name = 'order_number'` then `SELECT LAST_INSERT_ID()`, executed in autocommit **before** the checkout transaction. This keeps the sequence row lock out of the long checkout transaction. A rolled-back checkout leaves a gap. Numbers are unique and increasing, not gapless (stated in docs). Invoice numbers are separate: see §4.6 and ADR-060.
 - Display: `settings.order_number_prefix` + number (default prefix empty). Stored formatted in `orders.order_number` (`UNIQUE`).
 - Migration keeps source numbers (`WC_Order::get_order_number()`, which respects sequential-number plugins). After import, the sequence is raised to `max(numeric imported) + 1`. If an imported number already exists, the import uses `settings.migration_number_prefix` (default `WC-`) and logs a warning.
 
@@ -437,6 +437,15 @@ CREATE TABLE fxc_order_meta (
 ```
 
 Justification: extensions need a supported place for order data (tracking numbers, gateway-specific references) that can be looked up (`find order by tracking number`). WooCommerce HPOS has the same `wc_orders_meta` shape, which simplifies round-trip migration of unknown keys. Values are strings or JSON (never PHP serialized). Keys starting with `_fxc_` are reserved.
+
+Reserved keys in use:
+
+| Key | Value |
+|---|---|
+| `_fxc_invoice_number` | The formatted invoice number, set once when the order's first invoice is made (ADR-060). |
+| `_fxc_invoice_date` | The invoice date, UTC `Y-m-d H:i:s`. |
+
+Invoice numbers come from `fxc_sequences` rows `invoice_number`, or `invoice_number_YYYY` (site year) with the yearly reset. A number is taken only when an invoice is saved, under a `GET_LOCK` per order, so an order never gets two; a database error between taking and saving the number is the only way to leave a gap. "Next number" in the settings raises the counter and never lowers it.
 
 ### 4.7 `fxc_transactions`
 

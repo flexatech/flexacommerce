@@ -1,43 +1,43 @@
 {
-  "_units-CKPyreFs.js": {
-    "file": "assets/units-CKPyreFs.js",
+  "_units-yrz8mPxV.js": {
+    "file": "assets/units-yrz8mPxV.js",
     "name": "units"
   },
   "admin/features/checkout/CheckoutBuilderPage.tsx": {
-    "file": "assets/CheckoutBuilderPage-DLiU-alx.js",
+    "file": "assets/CheckoutBuilderPage-D4CgVhNE.js",
     "name": "CheckoutBuilderPage",
     "src": "admin/features/checkout/CheckoutBuilderPage.tsx",
     "isDynamicEntry": true,
     "imports": [
-      "_units-CKPyreFs.js",
+      "_units-yrz8mPxV.js",
       "admin/main.tsx"
     ]
   },
   "admin/main.tsx": {
-    "file": "assets/admin-LcaYDb-q.js",
+    "file": "assets/admin-BZ5o34FC.js",
     "name": "admin",
     "src": "admin/main.tsx",
     "isEntry": true,
     "imports": [
-      "_units-CKPyreFs.js"
+      "_units-yrz8mPxV.js"
     ],
     "dynamicImports": [
       "admin/features/checkout/CheckoutBuilderPage.tsx"
     ],
     "css": [
-      "assets/admin-qO0qbnSQ.css"
+      "assets/admin-BfoDusFO.css"
     ]
   },
   "admin/product-editor.tsx": {
-    "file": "assets/product-editor-BOvSvfm5.js",
+    "file": "assets/product-editor-CgwK-Ghk.js",
     "name": "product-editor",
     "src": "admin/product-editor.tsx",
     "isEntry": true,
     "imports": [
-      "_units-CKPyreFs.js"
+      "_units-yrz8mPxV.js"
     ],
     "css": [
-      "assets/product-editor-DtJNbRYd.css"
+      "assets/product-editor-CSmpMueq.css"
     ]
   }
 }

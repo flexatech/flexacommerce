@@ -280,6 +280,7 @@
 .fxc-order__overview li { display: flex; flex-direction: column; }
 .fxc-order__overview span { font-size: .875em; }
 .fxc-order__instructions { margin-block-end: 1.5rem; }
+.fxc-order__invoice { margin: 0 0 1.5rem; }
 .fxc-order__addresses { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 1.5rem; }
 .fxc-order__address address { font-style: normal; }
 .fxc-order__fields dt { font-weight: 600; }

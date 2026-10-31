@@ -25,6 +25,7 @@ import { SettingRow } from "../../components/SettingRow";
 import { Tabs } from "../../components/Tabs";
 import { useUrlTab } from "../../components/useUrlTab";
 import { EmailsPanel } from "../emails/EmailsPanel";
+import { InvoicesPanel } from "../invoices/InvoicesPanel";
 import { PaymentsPanel } from "../payments/PaymentsPanel";
 import { ShippingPanel } from "../shipping/ShippingPanel";
 import { TaxPanel } from "../taxes/TaxPanel";
@@ -49,7 +50,7 @@ function toInt(value: string): number {
     return Number.isFinite(n) ? n : 0;
 }
 
-const TABS = ["general", "storefront", "payments", "shipping", "tax", "emails"] as const;
+const TABS = ["general", "storefront", "payments", "shipping", "tax", "emails", "invoices"] as const;
 type Tab = (typeof TABS)[number];
 
 export function SettingsPage() {
@@ -69,6 +70,7 @@ export function SettingsPage() {
                         { value: "shipping", label: __("Shipping") },
                         { value: "tax", label: __("Tax") },
                         { value: "emails", label: __("Emails") },
+                        { value: "invoices", label: __("Invoices") },
                     ]}
                 />
             </div>
@@ -82,6 +84,8 @@ export function SettingsPage() {
                 <TaxPanel />
             ) : tab === "emails" ? (
                 <EmailsPanel />
+            ) : tab === "invoices" ? (
+                <InvoicesPanel />
             ) : (
                 <GeneralSettings />
             )}
