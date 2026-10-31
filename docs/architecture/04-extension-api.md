@@ -159,6 +159,7 @@ interface ShippingMethod {
 | `flexacommerce.order.paid` | `OrderView $order, TransactionView $txn` | `payment_status` becomes `paid` |
 | `flexacommerce.order.refunded` | `OrderView $order, TransactionView $refund` | refund succeeded |
 | `flexacommerce.order.needs_attention` | `OrderView $order, string $reason` | flag set |
+| `flexacommerce.order.edited` | `OrderView $order, OrderView $before` | the admin changed an unpaid order's lines or any order's addresses (ADR-061) |
 | `flexacommerce.order.note_added` | `OrderView $order, int $history_id, bool $customer_visible` | |
 | `flexacommerce.stock.changed` | `int $variant_id, int $old, int $new, string $reason` | any stock mutation |
 | `flexacommerce.stock.low` / `.out` | `int $variant_id, int $qty` | threshold crossed |

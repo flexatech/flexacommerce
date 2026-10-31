@@ -495,7 +495,7 @@ final class OrdersEndpoint extends Endpoint {
 	}
 
 	/** @return array<string,mixed> */
-	private function detail( Order $order ): array {
+	public function detail( Order $order ): array {
 		$payments = Plugin::instance()->payments();
 		$gateway  = $order->payment_method !== '' ? $payments->gateways()->get( $order->payment_method ) : null;
 		$pages    = Plugin::instance()->checkout()->pages();
@@ -531,6 +531,7 @@ final class OrdersEndpoint extends Endpoint {
 				'title'   => $order->payment_method_title,
 				'refunds' => $gateway !== null && $gateway->supports( 'refunds' ),
 			],
+			'editable'       => $order->is_editable(),
 			'can'            => [
 				'edit'   => Capabilities::can_edit_orders(),
 				'refund' => Capabilities::can_refund_orders(),

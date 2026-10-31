@@ -119,6 +119,8 @@ export interface OrderDetail extends OrderSummary {
     items: OrderItem[];
     transitions: OrderStatus[];
     gateway: { id: string; title: string; refunds: boolean };
+    /** Unpaid and pending, on hold or failed: lines and prices can change (ADR-061). */
+    editable: boolean;
     can: { edit: boolean; refund: boolean };
     links: { view: string; pay: string };
     transactions: OrderTransaction[];

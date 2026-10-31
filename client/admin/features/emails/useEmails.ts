@@ -13,6 +13,8 @@ export interface OrderEmail extends EmailValues {
     id: string;
     title: string;
     to_customer: boolean;
+    /** Sent by hand from the order screen; no switch. */
+    manual: boolean;
 }
 
 export interface EmailsResponse {

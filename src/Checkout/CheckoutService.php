@@ -892,8 +892,14 @@ final class CheckoutService {
 		return $out;
 	}
 
-	/** @param array<string,string> $meta */
-	private function new_order( CheckoutRequest $request, Quote $quote, AddressView $billing, ?AddressView $shipping, array $meta, ?PaymentGateway $gateway ): NewOrder {
+	/**
+	 * The order lines of a quote: products, one line per coupon, fees,
+	 * shipping and taxes, with the discount and fee totals. Checkout and the
+	 * admin order editor (ADR-061) build orders from the same lines.
+	 *
+	 * @return array{items:list<NewOrderItem>,discount:int,fees:int}
+	 */
+	public function order_items( Quote $quote ): array {
 		$items = [];
 		foreach ( $quote->state->items as $item ) {
 			if ( $item->unit === null ) {
@@ -924,10 +930,13 @@ final class CheckoutService {
 				$off,
 				$item->fee,
 				$item->option_stock,
+				// The raw choices, so the admin can edit the order later (ADR-061).
 				array_filter(
 					[
 						'virtual'      => $item->variant?->virtual === true,
 						'downloadable' => $item->variant?->sells_files() === true,
+						'selection'    => $item->line->attributes,
+						'options'      => $item->line->options,
 					]
 				)
 			);
@@ -959,6 +968,24 @@ final class CheckoutService {
 				]
 			);
 		}
+		return [
+			'items'    => $items,
+			'discount' => $discount,
+			'fees'     => $fees,
+		];
+	}
+
+	/** The note to put on an order when a tax add-on failed and the rate table was used. */
+	public static function tax_attention( Quote $quote ): ?string {
+		return $quote->tax_failure !== null
+			/* translators: %s: class name of the tax add-on */
+			? sprintf( __( 'Tax add-on %s failed at checkout; tax was calculated from the store rate table. Check the tax on this order.', 'flexacommerce' ), $quote->tax_failure )
+			: null;
+	}
+
+	/** @param array<string,string> $meta */
+	private function new_order( CheckoutRequest $request, Quote $quote, AddressView $billing, ?AddressView $shipping, array $meta, ?PaymentGateway $gateway ): NewOrder {
+		[ 'items' => $items, 'discount' => $discount, 'fees' => $fees ] = $this->order_items( $quote );
 		$currency = $quote->total->currency;
 		$title    = $gateway !== null ? $this->payments->gateways()->title( $gateway ) : '';
 		$wallet   = $request->gateway_input['express'] ?? '';
@@ -990,10 +1017,7 @@ final class CheckoutService {
 			tax_total: $quote->tax->amount,
 			meta: $quote->taxes?->exempt === true ? $meta + [ '_fxc_tax_exempt' => '1' ] : $meta,
 			prices_include_tax: $quote->prices_include_tax,
-			attention: $quote->tax_failure !== null
-				/* translators: %s: class name of the tax add-on */
-				? sprintf( __( 'Tax add-on %s failed at checkout; tax was calculated from the store rate table. Check the tax on this order.', 'flexacommerce' ), $quote->tax_failure )
-				: null,
+			attention: self::tax_attention( $quote ),
 		);
 	}
 

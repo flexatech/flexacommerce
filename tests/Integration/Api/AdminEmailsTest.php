@@ -19,7 +19,9 @@ final class AdminEmailsTest extends \WP_UnitTestCase {
 		self::assertSame( 200, $response->get_status() );
 		$data   = $response->get_data();
 		$emails = array_column( $data['emails'], null, 'id' );
-		self::assertCount( 9, $emails );
+		self::assertCount( 10, $emails );
+		self::assertTrue( $emails['customer_invoice']['manual'] );
+		self::assertFalse( $emails['new_order']['manual'] );
 		self::assertFalse( $emails['new_order']['to_customer'] );
 		self::assertTrue( $emails['customer_completed_order']['to_customer'] );
 		self::assertSame(
@@ -29,7 +31,7 @@ final class AdminEmailsTest extends \WP_UnitTestCase {
 				'subject'    => '',
 				'heading'    => '',
 			],
-			array_diff_key( $emails['new_order'], array_flip( [ 'id', 'title', 'to_customer' ] ) )
+			array_diff_key( $emails['new_order'], array_flip( [ 'id', 'title', 'to_customer', 'manual' ] ) )
 		);
 		self::assertContains( '{order_number}', $data['placeholders'] );
 	}

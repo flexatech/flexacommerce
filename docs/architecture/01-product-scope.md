@@ -112,6 +112,7 @@ Legend: **MVP** = required for MVP. **FND** = architectural foundation in MVP, u
 | Online gateway (e.g. Stripe) | POST | Stripe built into the plugin (ADR-052, Q4 changed), PayPal too (ADR-054). Others through the contract. |
 | Checkout validation | MVP | Required fields per country, email, phone, stock, shipping availability, gateway availability. |
 | Order creation | MVP | Atomic: one DB transaction for stock, order, items, addresses, history. |
+| Orders created and edited by the admin | POST | The admin builds an order for a customer with the storefront's prices, rules, coupons, shipping and tax, edits an unpaid order (stock and coupon uses are given back and taken again), changes the addresses of any order, and emails the order details with a link to pay (ADR-061). |
 | Order status transitions | MVP | State machine (doc 02 §7.6). |
 | Stock deduction and restoration | MVP | At order placement, idempotent per line (doc 02 §7.4). |
 | Email notifications | MVP | 8 emails (5 to customers, 4 to the admin, the cancellation email goes to both), `wp_mail`, overridable templates (doc 02 §7.9). |

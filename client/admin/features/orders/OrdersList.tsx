@@ -11,7 +11,7 @@ import { PageTitle } from "../../components/PageTitle";
 import { invoicePdfUrl } from "../invoices/useInvoices";
 import { Tabs } from "../../components/Tabs";
 import { formatDate, orderMoney, PAYMENT_LABEL, STATUS_LABEL, STATUS_TONE, STATUSES } from "./format";
-import { orderUrl } from "./navigation";
+import { NEW_ORDER, orderUrl } from "./navigation";
 import type { OrderListParams, OrderStatus } from "./types";
 import { useOrderCounts, useOrderList } from "./useOrders";
 
@@ -67,7 +67,24 @@ export function OrdersList({ params, onParams, onOpen }: Props) {
 
     return (
         <div className="fxc:space-y-4">
-            <PageTitle title={__("Orders")} description={__("Orders placed in your store, newest first.")} />
+            <PageTitle
+                title={__("Orders")}
+                description={__("Orders placed in your store, newest first.")}
+                actions={
+                    <Button asChild>
+                        <a
+                            href={orderUrl(NEW_ORDER)}
+                            className="fxc:no-underline"
+                            onClick={(e) => {
+                                e.preventDefault();
+                                onOpen(NEW_ORDER);
+                            }}
+                        >
+                            {__("Create order")}
+                        </a>
+                    </Button>
+                }
+            />
 
             <div className="fxc:flex fxc:flex-wrap fxc:items-end fxc:justify-between fxc:gap-3">
                 <Tabs value={filter} onChange={setFilter} items={tabs} />

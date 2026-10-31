@@ -101,17 +101,25 @@ function EmailCard({ email, adminEmail, open, onToggle }: CardProps) {
                         {email.to_customer ? __("To the customer") : email.recipients !== "" ? email.recipients : adminEmail}
                     </div>
                 </div>
-                <Badge variant={email.enabled ? "success" : "muted"}>{email.enabled ? __("Enabled") : __("Off")}</Badge>
+                {email.manual ? (
+                    <Badge variant="muted">{__("Sent by hand")}</Badge>
+                ) : (
+                    <Badge variant={email.enabled ? "success" : "muted"}>{email.enabled ? __("Enabled") : __("Off")}</Badge>
+                )}
                 <ChevronDown aria-hidden className={cn("fxc:text-muted-foreground fxc:size-4 fxc:transition-transform", open && "fxc:rotate-180")} />
             </button>
             {open && (
                 <div className="fxc:space-y-4 fxc:border-t fxc:px-5 fxc:py-4">
-                    <div className="fxc:flex fxc:items-start fxc:justify-between fxc:gap-4">
-                        <label htmlFor={field("enabled")} className="fxc:text-foreground fxc:block fxc:text-sm fxc:font-medium">
-                            {__("Send this email")}
-                        </label>
-                        <Switch id={field("enabled")} checked={draft.enabled} onCheckedChange={(v) => set("enabled", v)} />
-                    </div>
+                    {email.manual ? (
+                        <p className="fxc:text-muted-foreground fxc:text-sm">{__("Sent from an order's screen with “Send order details”.")}</p>
+                    ) : (
+                        <div className="fxc:flex fxc:items-start fxc:justify-between fxc:gap-4">
+                            <label htmlFor={field("enabled")} className="fxc:text-foreground fxc:block fxc:text-sm fxc:font-medium">
+                                {__("Send this email")}
+                            </label>
+                            <Switch id={field("enabled")} checked={draft.enabled} onCheckedChange={(v) => set("enabled", v)} />
+                        </div>
+                    )}
                     {!email.to_customer && (
                         <div className="fxc:space-y-1.5">
                             <label htmlFor={field("recipients")} className="fxc:text-foreground fxc:block fxc:text-sm fxc:font-medium">

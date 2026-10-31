@@ -9,6 +9,7 @@ use Flexa\Commerce\Contracts\Exceptions\InvalidOrderRequest;
 use Flexa\Commerce\Contracts\Exceptions\InvalidRefund;
 use Flexa\Commerce\Contracts\Exceptions\InvalidTransition;
 use Flexa\Commerce\Contracts\Exceptions\OrderNotFound;
+use Flexa\Commerce\Contracts\Orders\AddressView;
 use Flexa\Commerce\Contracts\Orders\OrderView;
 use Flexa\Commerce\Contracts\Payments\TransactionView;
 use Flexa\Commerce\Database\AfterCommit;
@@ -498,6 +499,95 @@ final class OrderService {
 				);
 				/* translators: %s: payment method title. */
 				$this->history->add( $order_id, 'payment', sprintf( __( 'Payment method changed to %s.', 'flexacommerce' ), $title ), $now, $ctx->actor_type, $ctx->actor_id );
+				return $this->orders->find( $order_id ) ?? $order;
+			}
+		);
+	}
+
+	/**
+	 * Change the lines, totals, customer and addresses of an unpaid order
+	 * (ADR-061), all or nothing. The order's stock and coupon uses are given
+	 * back first, so `$build` prices it as if they were free; then the new
+	 * lines take stock again when the status holds it.
+	 *
+	 * @param \Closure(Order):NewOrder $build the new contents (status, number and token are not used); it may write more in the transaction, such as the coupon uses
+	 * @throws InvalidOrderRequest the order cannot be edited
+	 * @throws InsufficientStock
+	 */
+	public function edit( int $order_id, \Closure $build, TransitionContext $ctx ): Order {
+		$this->views = [];
+		return $this->transaction->run(
+			function () use ( $order_id, $build, $ctx ): Order {
+				$order = $this->lock( $order_id );
+				if ( ! $order->is_editable() ) {
+					throw new InvalidOrderRequest( __( 'Only unpaid orders that are pending, on hold or failed can be edited.', 'flexacommerce' ), 'order' );
+				}
+				if ( S::holds_stock( $order->status ) ) {
+					$this->release( $order, $ctx );
+				}
+				if ( $this->release_coupons !== null && $order->items_of_type( OrderItem::DISCOUNT ) !== [] ) {
+					( $this->release_coupons )( $order->id );
+				}
+				$new = $build( $order );
+				$new->assert_totals();
+				$now = $this->clock->db_now();
+				$this->orders->replace_contents( $order_id, $new, $now );
+				$edited = $this->lock( $order_id );
+				if ( S::holds_stock( $edited->status ) ) {
+					$this->deduct( $edited, $ctx );
+				}
+				$this->history->add( $order_id, 'system', $ctx->message !== '' ? $ctx->message : __( 'Order edited.', 'flexacommerce' ), $now, $ctx->actor_type, $ctx->actor_id );
+				if ( $new->attention !== null ) {
+					$this->flag( $edited, $new->attention, $ctx );
+				}
+				$before = $order->view();
+				$this->emit(
+					$order_id,
+					static function ( OrderView $view ) use ( $before ): void {
+						do_action( 'flexacommerce.order.edited', $view, $before );
+					}
+				);
+				return $this->orders->find( $order_id ) ?? $edited;
+			}
+		);
+	}
+
+	/**
+	 * New billing and shipping addresses for an order in any status
+	 * (ADR-061): a typo fixed after payment changes no line or total. The
+	 * billing email becomes the order's email when given.
+	 *
+	 * @throws InvalidOrderRequest the order's personal data was erased
+	 */
+	public function update_addresses( int $order_id, AddressView $billing, ?AddressView $shipping, TransitionContext $ctx ): Order {
+		$this->views = [];
+		return $this->transaction->run(
+			function () use ( $order_id, $billing, $shipping, $ctx ): Order {
+				$order = $this->lock( $order_id );
+				if ( $order->anonymized_at !== null ) {
+					throw new InvalidOrderRequest( __( 'The personal data of this order was erased.', 'flexacommerce' ), 'order' );
+				}
+				$now = $this->clock->db_now();
+				$this->orders->save_addresses( $order_id, $shipping !== null ? [ $billing, $shipping ] : [ $billing ] );
+				if ( $shipping === null ) {
+					$this->orders->delete_address( $order_id, 'shipping' );
+				}
+				$this->orders->update(
+					$order_id,
+					[
+						'customer_email' => $billing->email !== '' ? $billing->email : $order->customer_email,
+						'customer_name'  => $billing->name(),
+						'updated_at'     => $now,
+					]
+				);
+				$this->history->add( $order_id, 'system', $ctx->message !== '' ? $ctx->message : __( 'Addresses changed.', 'flexacommerce' ), $now, $ctx->actor_type, $ctx->actor_id );
+				$before = $order->view();
+				$this->emit(
+					$order_id,
+					static function ( OrderView $view ) use ( $before ): void {
+						do_action( 'flexacommerce.order.edited', $view, $before );
+					}
+				);
 				return $this->orders->find( $order_id ) ?? $order;
 			}
 		);

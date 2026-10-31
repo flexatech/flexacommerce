@@ -63,24 +63,40 @@ final class Notifier {
 		}
 	}
 
+	/**
+	 * Sends one email for an order now, whatever its enabled switch says:
+	 * the admin asked for it by name (ADR-061). False when it did not go out.
+	 */
+	public function send_now( string $id, OrderView $view ): bool {
+		foreach ( ( $this->emails )() as $email ) {
+			if ( $email->id() === $id ) {
+				$sent = $this->send( $email, Emails\CustomerInvoice::MANUAL, [ $view ], true );
+				$this->data->forget( $view->id );
+				return $sent;
+			}
+		}
+		return false;
+	}
+
 	public static function suspended(): bool {
 		return (bool) apply_filters( 'flexacommerce.emails.suspended', false );
 	}
 
 	/** @param list<mixed> $args */
-	private function send( Email $email, string $hook, array $args ): void {
+	private function send( Email $email, string $hook, array $args, bool $forced = false ): bool {
 		$view     = $args[0] ?? null;
 		$locale   = $email->to_customer() && $view instanceof OrderView ? $this->data->locale( $view->id ) : '';
 		$switched = $locale !== '' && $locale !== determine_locale() && switch_to_locale( $locale );
 		try {
 			$message = $email->render( $hook, $args );
 			if ( $message === null ) {
-				return;
+				return false;
 			}
 			$settings = $this->settings->get( $email->id() );
-			if ( $settings['enabled'] ) {
-				$this->mailer->send( $email, $message, $settings );
+			if ( ! $forced && ! $settings['enabled'] ) {
+				return false;
 			}
+			return $this->mailer->send( $email, $message, $settings );
 		} catch ( \Throwable $e ) {
 			$this->log->error(
 				'Email {email} failed on {hook}: {message}',
@@ -92,6 +108,7 @@ final class Notifier {
 					'exception' => $e,
 				]
 			);
+			return false;
 		} finally {
 			if ( $switched ) {
 				restore_previous_locale();

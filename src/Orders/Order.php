@@ -134,6 +134,17 @@ final class Order {
 		return array_sum( array_map( static fn ( OrderItem $i ): int => $i->quantity, $this->items_of_type( OrderItem::PRODUCT ) ) );
 	}
 
+	/**
+	 * Whether the admin may change the lines (ADR-061): an order nobody has
+	 * paid toward yet, in a status before payment, with its data still there.
+	 */
+	public function is_editable(): bool {
+		return in_array( $this->status, [ OrderStatus::PENDING, OrderStatus::ON_HOLD, OrderStatus::FAILED ], true )
+			&& $this->amount_paid === 0
+			&& $this->amount_refunded === 0
+			&& $this->anonymized_at === null;
+	}
+
 	public function is_paid(): bool {
 		return $this->amount_paid >= $this->total && ( $this->amount_paid > 0 || $this->total === 0 );
 	}

@@ -116,6 +116,19 @@ final class CartService {
 	}
 
 	/**
+	 * A line for an order the admin makes or edits (ADR-061): the same
+	 * checks as adding to a cart, with options, but no stock check; stock
+	 * is taken when the order is saved.
+	 *
+	 * @param array<string,string>   $attributes
+	 * @param array<array-key,mixed> $options
+	 * @throws \Flexa\Commerce\Contracts\CommerceException the product cannot be ordered so
+	 */
+	public function admin_line( int $product_id, int $variant_id, int $quantity, array $attributes = [], array $options = [] ): CartLine {
+		return $this->prepare( $product_id, $variant_id, $quantity, $attributes, $options )[2];
+	}
+
+	/**
 	 * What every price rule did to each line of a priced cart and what
 	 * every fee rule did to the cart (ADR-046), with the same facts and
 	 * counts resolve() used.

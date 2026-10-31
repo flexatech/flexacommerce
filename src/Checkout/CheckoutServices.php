@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Flexa\Commerce\Checkout;
 
 use Flexa\Commerce\Cart\CartServices;
+use Flexa\Commerce\Catalog\VariantRepository;
 use Flexa\Commerce\Orders\OrderServices;
 use Flexa\Commerce\Payments\PaymentServices;
 use Flexa\Commerce\Shipping\ShippingServices;
@@ -19,6 +20,7 @@ final class CheckoutServices {
 	private ?CheckoutPages $pages     = null;
 	private ?CartTaxes $cart_taxes    = null;
 	private ?Simulator $simulator     = null;
+	private ?AdminCheckout $admin     = null;
 
 	public function __construct(
 		private readonly Services $services,
@@ -64,5 +66,20 @@ final class CheckoutServices {
 
 	public function simulator(): Simulator {
 		return $this->simulator ??= new Simulator( $this->cart->cart(), $this->service(), $this->cart->presenter(), $this->coupons );
+	}
+
+	/** Orders the admin makes or edits (ADR-061). */
+	public function admin(): AdminCheckout {
+		return $this->admin ??= new AdminCheckout(
+			$this->cart->cart(),
+			$this->service(),
+			$this->cart->presenter(),
+			$this->orders->service(),
+			$this->payments->service(),
+			$this->services->transaction(),
+			$this->services->money(),
+			new VariantRepository( $this->services->wpdb(), $this->services->clock() ),
+			$this->coupons,
+		);
 	}
 }

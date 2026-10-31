@@ -322,7 +322,7 @@ CREATE TABLE fxc_orders (
 Notes:
 - `total = subtotal − discount_total + shipping_total + fee_total + tax_total`. Asserted on every insert (`OrderTotalsMismatch`) except migration, where the source total wins and a mismatch is logged.
 - `customer_name` and `customer_email` are denormalized from the billing address for the admin list and search.
-- `created_via`: `checkout`, `admin`, `migration`, `rest`.
+- `created_via`: `checkout`, `admin`, `migration`, `rest`. Pending `admin` orders are never cancelled by the pending timeout (ADR-061).
 - `deleted_at`: trash. Trashed orders are excluded by default from lists and reports. Permanent deletion removes the order and all children in one transaction.
 - `customer_ip`: stored only when the setting `store_customer_ip` is on (default on, can be disabled for privacy), cleared on anonymization.
 - Lifecycle: created by `OrderService::create()` or migration import; mutated only by `OrderService` / `PaymentService` via `OrderRepository`.
@@ -361,6 +361,7 @@ CREATE TABLE fxc_order_items (
 
 - `type`: `product`, `shipping`, `fee`, `discount`, `tax`. Only `product` lines touch stock. `tax` lines are summary lines, one per rate (rate label in `name`, rate code in `code`, items tax + shipping tax in `total`, `meta` = `{rate_id, rate, compound, items_tax, shipping_tax}`), written by the tax engine (doc 02 §7.12.10) and by migration.
 - Product, shipping and fee lines keep the per-rate split of their `tax_total` in `meta.taxes` (`{"<rate_id>": amount}`). Invariant: `orders.tax_total = Σ tax lines.total = Σ other lines.tax_total`.
+- Product lines keep the raw choices the order was priced with: `meta.selection` (attribute key => value key) and `meta.options` (option key => value or list of choice ids), so the admin order editor can price the line again (ADR-061). Lines from before ADR-061 have neither.
 - Product lines with product options that track stock keep them in `meta.option_stock` (`{"<set>-<field>-<choice>": "Finish: Gold"}`) and the units taken from `fxc_option_stock` in `meta.option_held` (ADR-040).
 - `code`: shipping rate id (`flat_rate:3`), fee code, coupon code, tax rate code.
 - `discount` lines (doc 02 §7.13.5): one per applied coupon, `name` and `code` = the code as saved, `quantity` 1, `total` = the coupon's net share of the order discount, `meta` = `{coupon_id, type, amount, discount_tax}`. They are a record: the amount is already in the product lines' `discount_total`. Invariant: `orders.discount_total = Σ product lines.discount_total = Σ discount lines.total`.

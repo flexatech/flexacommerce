@@ -15,12 +15,14 @@ import { DownloadsCard } from "./DownloadsCard";
 import { InvoiceCard } from "./InvoiceCard";
 import { formatDate, orderMoney, PAYMENT_LABEL, STATUS_LABEL, STATUS_TONE } from "./format";
 import { orderUrl } from "./navigation";
+import { AddressesDialog } from "./AddressesDialog";
 import { PaymentDialog } from "./PaymentDialog";
 import { RefundDialog } from "./RefundDialog";
 import type { OrderAddress, OrderDetail, OrderHistoryEntry, OrderStatus } from "./types";
+import { useSendDetails } from "./useOrderEditor";
 import { useAddNote, useClearAttention, useOrder, useTransition } from "./useOrders";
 
-export function OrderDetailView({ id, onBack }: { id: number; onBack: () => void }) {
+export function OrderDetailView({ id, onBack, onEdit }: { id: number; onBack: () => void; onEdit: () => void }) {
     const query = useOrder(id);
 
     const back = (
@@ -64,6 +66,11 @@ export function OrderDetailView({ id, onBack }: { id: number; onBack: () => void
                 actions={
                     <>
                         <Badge variant={STATUS_TONE[order.status]}>{STATUS_LABEL[order.status]}</Badge>
+                        {order.editable && order.can.edit && (
+                            <Button variant="outline" size="sm" onClick={onEdit}>
+                                {__("Edit order")}
+                            </Button>
+                        )}
                         <a
                             href={order.links.view}
                             target="_blank"
@@ -317,6 +324,7 @@ function ActionsCard({ order }: { order: OrderDetail }) {
     const [notify, setNotify] = useState(false);
     const [paymentOpen, setPaymentOpen] = useState(false);
     const [refundOpen, setRefundOpen] = useState(false);
+    const sendDetails = useSendDetails(order.id);
 
     useEffect(() => {
         setTarget("");
@@ -339,6 +347,7 @@ function ActionsCard({ order }: { order: OrderDetail }) {
 
     const canPay = order.can.edit && order.balance_due > 0 && order.status !== "cancelled" && order.status !== "refunded";
     const canRefund = order.can.refund && order.refundable > 0;
+    const canSend = order.can.edit && !order.anonymized && order.billing !== null && (order.billing.email ?? "") !== "";
 
     return (
         <Card>
@@ -412,7 +421,7 @@ function ActionsCard({ order }: { order: OrderDetail }) {
                     )}
                 </div>
             )}
-            {(canPay || canRefund || order.links.pay !== "") && (
+            {(canPay || canRefund || order.links.pay !== "" || canSend) && (
                 <div className="fxc:flex fxc:flex-col fxc:gap-2 fxc:border-b fxc:last:border-b-0 fxc:px-5 fxc:py-4">
                     {canPay && (
                         <Button variant="outline" onClick={() => setPaymentOpen(true)}>
@@ -435,6 +444,20 @@ function ActionsCard({ order }: { order: OrderDetail }) {
                             }
                         >
                             {__("Copy payment link")}
+                        </Button>
+                    )}
+                    {canSend && (
+                        <Button
+                            variant="ghost"
+                            disabled={sendDetails.isPending}
+                            onClick={() =>
+                                sendDetails.mutate(undefined, {
+                                    onSuccess: () => showToast.success(__("Order details sent to the customer.")),
+                                    onError: (e) => showToast.error(e.message),
+                                })
+                            }
+                        >
+                            {sendDetails.isPending ? __("Sending…") : __("Send order details")}
                         </Button>
                     )}
                 </div>
@@ -469,10 +492,17 @@ function AddressBlock({ title, address }: { title: string; address: OrderAddress
 }
 
 function CustomerCard({ order }: { order: OrderDetail }) {
+    const [open, setOpen] = useState(false);
+    const canEdit = order.can.edit && !order.anonymized;
     return (
         <Card>
-            <CardHeader>
+            <CardHeader className="fxc:flex fxc:flex-row fxc:items-center fxc:justify-between">
                 <CardTitle>{__("Customer")}</CardTitle>
+                {canEdit && (
+                    <Button variant="link" size="sm" onClick={() => setOpen(true)}>
+                        {__("Edit addresses")}
+                    </Button>
+                )}
             </CardHeader>
             <div className="fxc:border-b fxc:last:border-b-0 fxc:px-5 fxc:py-4 fxc:text-sm">
                 <div className="fxc:font-medium">{order.customer.name || __("Guest")}</div>
@@ -505,6 +535,7 @@ function CustomerCard({ order }: { order: OrderDetail }) {
                     </dl>
                 </div>
             )}
+            {canEdit && <AddressesDialog order={order} open={open} onOpenChange={setOpen} />}
         </Card>
     );
 }

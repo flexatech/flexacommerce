@@ -52,17 +52,19 @@ final class OrderRepository {
 	}
 
 	/**
-	 * Pending orders past the expiry, imported ones excluded (doc 05 §5.6).
+	 * Pending orders past the expiry. Imported ones (doc 05 §5.6) and ones
+	 * the admin made (ADR-061) wait for the admin instead.
 	 *
 	 * @return list<Order> without items
 	 */
 	public function stale_pending( string $older_than, int $limit ): array {
 		$rows = $this->wpdb->get_results(
 			$this->wpdb->prepare(
-				'SELECT * FROM %i o WHERE status = %s AND created_at < %s AND deleted_at IS NULL AND NOT EXISTS ( SELECT 1 FROM %i m WHERE m.order_id = o.id AND m.meta_key = %s ) ORDER BY created_at, id LIMIT %d',
+				'SELECT * FROM %i o WHERE status = %s AND created_at < %s AND deleted_at IS NULL AND created_via <> %s AND NOT EXISTS ( SELECT 1 FROM %i m WHERE m.order_id = o.id AND m.meta_key = %s ) ORDER BY created_at, id LIMIT %d',
 				Schema::table( 'orders' ),
 				OrderStatus::PENDING,
 				$older_than,
+				'admin',
 				Schema::table( 'order_meta' ),
 				'_fxc_import_job',
 				$limit
@@ -171,6 +173,53 @@ final class OrderRepository {
 		$this->save_addresses( $order_id, array_values( array_filter( [ $order->billing, $order->shipping ] ) ) );
 		$this->insert_meta( $order_id, $order->meta );
 		return $order_id;
+	}
+
+	/**
+	 * An edited order (ADR-061): its lines, totals, customer and addresses
+	 * replaced by the new ones. Status, number, key, payments and history
+	 * stay. Runs inside the caller's transaction.
+	 */
+	public function replace_contents( int $order_id, NewOrder $order, string $now ): void {
+		if ( $this->wpdb->query( $this->wpdb->prepare( 'DELETE FROM %i WHERE order_id = %d', Schema::table( 'order_items' ), $order_id ) ) === false ) {
+			throw QueryFailed::from_wpdb( $this->wpdb );
+		}
+		$this->insert_items( $order_id, $order->items );
+		$this->update(
+			$order_id,
+			[
+				'payment_status'       => OrderStatus::payment_status( $order->total, 0, 0 ),
+				'subtotal'             => $order->subtotal,
+				'discount_total'       => $order->discount_total,
+				'shipping_total'       => $order->shipping_total,
+				'fee_total'            => $order->fee_total,
+				'tax_total'            => $order->tax_total,
+				'total'                => $order->total,
+				'customer_id'          => $order->customer_id,
+				'customer_email'       => $order->customer_email,
+				'customer_name'        => $order->customer_name(),
+				'customer_note'        => $order->customer_note,
+				'payment_method'       => $order->payment_method,
+				'payment_method_title' => $order->payment_method_title,
+				'prices_include_tax'   => $order->prices_include_tax ? 1 : 0,
+				'updated_at'           => $now,
+			]
+		);
+		$this->save_addresses( $order_id, array_values( array_filter( [ $order->billing, $order->shipping ] ) ) );
+		if ( $order->shipping === null ) {
+			$this->delete_address( $order_id, 'shipping' );
+		}
+		if ( isset( $order->meta['_fxc_tax_exempt'] ) ) {
+			$this->set_meta( $order_id, '_fxc_tax_exempt', $order->meta['_fxc_tax_exempt'] );
+		} else {
+			$this->delete_meta( $order_id, '_fxc_tax_exempt' );
+		}
+	}
+
+	public function delete_address( int $order_id, string $type ): void {
+		if ( $this->wpdb->query( $this->wpdb->prepare( 'DELETE FROM %i WHERE order_id = %d AND type = %s', Schema::table( 'order_addresses' ), $order_id, $type ) ) === false ) {
+			throw QueryFailed::from_wpdb( $this->wpdb );
+		}
 	}
 
 	/** @param array<string,string> $meta */

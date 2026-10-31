@@ -123,6 +123,7 @@ final class EmailsEndpoint extends Endpoint {
 			'id'          => $email->id(),
 			'title'       => $email->title(),
 			'to_customer' => $email->to_customer(),
+			'manual'      => $email->trigger_hooks() === [],
 		] + Plugin::instance()->notifications()->settings()->get( $email->id() );
 	}
 

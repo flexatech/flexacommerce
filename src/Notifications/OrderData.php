@@ -12,6 +12,7 @@ use Flexa\Commerce\Contracts\Orders\OrderView;
 use Flexa\Commerce\Orders\Order;
 use Flexa\Commerce\Orders\OrderFields;
 use Flexa\Commerce\Orders\OrderRepository;
+use Flexa\Commerce\Orders\OrderStatus;
 use Flexa\Commerce\Support\Countries;
 
 defined( 'ABSPATH' ) || exit;
@@ -98,6 +99,12 @@ final class OrderData {
 	public function customer_url( OrderView $view ): string {
 		$order = $this->order( $view->id );
 		return $order !== null ? ( $this->checkout )()->pages()->confirmation_url( $order ) : '';
+	}
+
+	/** Where the customer pays an order with a balance due (ADR-061); '' when nothing is due. */
+	public function pay_url( OrderView $view ): string {
+		$order = $this->order( $view->id );
+		return $order !== null && $order->status === OrderStatus::PENDING && $order->balance_due() > 0 ? ( $this->checkout )()->pages()->pay_url( $order ) : '';
 	}
 
 	public function admin_url( OrderView $view ): string {
