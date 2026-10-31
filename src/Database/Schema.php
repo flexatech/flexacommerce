@@ -17,7 +17,7 @@ defined( 'ABSPATH' ) || exit;
  */
 // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- schema DDL on plugin-owned tables, no user input.
 final class Schema {
-	public const DB_VERSION        = '10';
+	public const DB_VERSION        = '11';
 	public const DB_VERSION_OPTION = 'flexacommerce_db_version';
 	public const OPTION_PREFIX     = 'flexacommerce_';
 
@@ -250,12 +250,43 @@ final class Schema {
 				data longtext NOT NULL,
 				version int(10) unsigned NOT NULL DEFAULT 1,
 				expires_at datetime NOT NULL,
+				email varchar(190) NOT NULL DEFAULT '',
+				recovery_checked datetime NULL,
 				created_at datetime NOT NULL,
 				updated_at datetime NOT NULL,
 				PRIMARY KEY  (id),
 				UNIQUE KEY token_hash (token_hash),
 				UNIQUE KEY user_id (user_id),
-				KEY expires_at (expires_at)
+				KEY expires_at (expires_at),
+				KEY updated_at (updated_at)
+			) {$charset};",
+			'recoveries'         => "CREATE TABLE {$p}recoveries (
+				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+				session_id bigint(20) unsigned NULL,
+				user_id bigint(20) unsigned NULL,
+				email varchar(190) NOT NULL DEFAULT '',
+				cart longtext NOT NULL,
+				total bigint(20) NOT NULL DEFAULT 0,
+				currency char(3) NOT NULL DEFAULT '',
+				item_count int(10) unsigned NOT NULL DEFAULT 0,
+				status varchar(10) NOT NULL DEFAULT 'open',
+				token char(32) NOT NULL,
+				reminder tinyint(3) unsigned NOT NULL DEFAULT 0,
+				emails_sent tinyint(3) unsigned NOT NULL DEFAULT 0,
+				next_send_at datetime NULL,
+				last_activity_at datetime NOT NULL,
+				clicked_at datetime NULL,
+				coupon_code varchar(100) NOT NULL DEFAULT '',
+				order_id bigint(20) unsigned NULL,
+				recovered_at datetime NULL,
+				unsubscribed_at datetime NULL,
+				created_at datetime NOT NULL,
+				updated_at datetime NOT NULL,
+				PRIMARY KEY  (id),
+				KEY session_id (session_id),
+				KEY email (email),
+				KEY status_created (status,created_at),
+				KEY next_send_at (next_send_at)
 			) {$charset};",
 			'sequences'          => "CREATE TABLE {$p}sequences (
 				name varchar(32) NOT NULL,

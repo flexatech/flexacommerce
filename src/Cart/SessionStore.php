@@ -132,12 +132,34 @@ final class SessionStore {
 			$token_hash = $absorbed->token_hash;
 			$this->repository->set_token_hash( $session->id, $token_hash );
 		}
-		$stored = new Session( $session->id, $token_hash ?? $session->token_hash, $session->user_id, $data, $session->version + 1, $expires, $session->created_at, $now );
+		$stored = new Session( $session->id, $token_hash ?? $session->token_hash, $session->user_id, $data, $session->version + 1, $expires, $session->created_at, $now, $session->email );
 		$token  = $this->tokens->get();
 		if ( $token !== null && self::hash( $token ) === $stored->token_hash ) {
 			$this->tokens->set( $token, $this->clock_ts( $expires ) );
 		}
 		return $this->remember( $user_id, $stored );
+	}
+
+	/**
+	 * Keep the shopper's address on their session row for cart reminders
+	 * (ADR-063). False when there is no row yet.
+	 */
+	public function set_email( int $user_id, string $email ): bool {
+		$session = $this->load( $user_id )['session'];
+		if ( $session === null ) {
+			return false;
+		}
+		if ( $session->email !== $email ) {
+			$now = $this->clock->db_now();
+			$this->repository->set_email( $session->id, $email, $now );
+			$this->remember( $user_id, new Session( $session->id, $session->token_hash, $session->user_id, $session->data, $session->version, $session->expires_at, $session->created_at, $now, $email ) );
+		}
+		return true;
+	}
+
+	/** The visitor's session row, null before the first cart write. */
+	public function current( int $user_id ): ?Session {
+		return $this->load( $user_id )['session'];
 	}
 
 	/** The mini-cart count, kept as long as the session. */

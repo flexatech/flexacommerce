@@ -18,6 +18,7 @@ final class Session {
 		public readonly string $expires_at,
 		public readonly string $created_at = '',
 		public readonly string $updated_at = '',
+		public readonly string $email = '',
 	) {}
 
 	/** @param array<string,mixed> $row */
@@ -40,6 +41,7 @@ final class Session {
 			expires_at: (string) $row['expires_at'],
 			created_at: (string) ( $row['created_at'] ?? '' ),
 			updated_at: (string) ( $row['updated_at'] ?? '' ),
+			email: (string) ( $row['email'] ?? '' ),
 		);
 	}
 
@@ -49,6 +51,6 @@ final class Session {
 
 	/** @param array<string,mixed> $data */
 	public function with_data( array $data, ?string $expires_at = null, ?int $user_id = null ): self {
-		return new self( $this->id, $this->token_hash, $user_id ?? $this->user_id, $data, $this->version + 1, $expires_at ?? $this->expires_at, $this->created_at, $this->updated_at );
+		return new self( $this->id, $this->token_hash, $user_id ?? $this->user_id, $data, $this->version + 1, $expires_at ?? $this->expires_at, $this->created_at, $this->updated_at, $this->email );
 	}
 }

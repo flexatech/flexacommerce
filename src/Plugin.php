@@ -60,6 +60,8 @@ final class Plugin {
 
 	private ?Invoices\InvoiceService $invoices = null;
 
+	private ?Recovery\RecoveryService $recovery = null;
+
 	private bool $blocks = false;
 
 	public function boot(): void {
@@ -122,6 +124,10 @@ final class Plugin {
 			// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- routing only; the order key is checked by the handler (ADR-060).
 			if ( isset( $_GET['fxc_invoice'] ) ) {
 				add_action( 'init', [ $this, 'on_invoice' ], 20 );
+			}
+			// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- routing only; the handler checks the key and the stop form's nonce (ADR-063).
+			if ( isset( $_GET['fxc_recover'] ) || isset( $_GET['fxc_recover_stop'] ) ) {
+				add_action( 'init', [ $this, 'on_recover' ], 20 );
 			}
 			// A posted comment form: the review hooks, for this request only (ADR-056).
 			if ( ( $GLOBALS['pagenow'] ?? '' ) === 'wp-comments-post.php' ) {
@@ -315,6 +321,21 @@ final class Plugin {
 			$this->services()->sequence(),
 			$this->services()->clock(),
 			$this->services()->money()
+		);
+	}
+
+	/** @internal Abandoned cart recovery (ADR-063). */
+	public function recovery(): Recovery\RecoveryService {
+		return $this->recovery ??= new Recovery\RecoveryService(
+			new Recovery\RecoveryRepository( $this->services()->wpdb() ),
+			$this->cart()->session_rows(),
+			$this->cart()->sessions(),
+			fn (): Cart\CartService => $this->cart()->cart(),
+			fn (): Coupons\CouponEditor => $this->coupons()->editor(),
+			$this->notifications()->mailer(),
+			$this->notifications()->templates(),
+			$this->services()->clock(),
+			$this->services()->logger( 'recovery' )
 		);
 	}
 
@@ -560,6 +581,11 @@ final class Plugin {
 	/** @internal A customer's invoice link (ADR-060). */
 	public function on_invoice(): void {
 		Storefront\InvoiceHandler::instance()->handle();
+	}
+
+	/** @internal A cart reminder link (ADR-063). */
+	public function on_recover(): void {
+		Storefront\RecoveryHandler::instance()->handle();
 	}
 
 	public function on_logout(): void {

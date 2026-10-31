@@ -46,6 +46,8 @@ final class DependencyRulesTest extends TestCase {
 		'Options'   => [ 'Catalog', 'Inventory', 'Support' ],
 		'Customers' => [ 'Support' ],
 		'Reviews'   => [ 'Catalog', 'Support', 'Database' ],
+		// Reminders copy carts, make coupons, look for the order and send the email (ADR-063).
+		'Recovery'  => [ 'Cart', 'Coupons', 'Orders', 'Notifications', 'Support', 'Database' ],
 		// The admin order editor reads variants (Catalog) and posted options (Options), ADR-061.
 		'Checkout'  => [ 'Cart', 'Catalog', 'Coupons', 'Options', 'Pricing', 'Inventory', 'Shipping', 'Tax', 'Orders', 'Payments', 'Customers', 'Support', 'Database' ],
 	];

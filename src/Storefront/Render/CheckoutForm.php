@@ -9,6 +9,8 @@ use Flexa\Commerce\Checkout\CartFacts;
 use Flexa\Commerce\Checkout\CheckoutLayout;
 use Flexa\Commerce\Checkout\FieldSchema;
 use Flexa\Commerce\Coupons\Coupon;
+use Flexa\Commerce\Plugin;
+use Flexa\Commerce\Recovery\RecoverySettings;
 use Flexa\Commerce\Storefront\Assets;
 use Flexa\Commerce\Storefront\CheckoutPage;
 use Flexa\Commerce\Storefront\FormHandler;
@@ -24,6 +26,8 @@ defined( 'ABSPATH' ) || exit;
  */
 final class CheckoutForm {
 	private const COUPON_FORM = 'fxc-checkout-coupon';
+
+	private ?bool $recovery = null;
 
 	/**
 	 * @param array<string,mixed>  $state  CheckoutService::form_state()
@@ -235,7 +239,15 @@ final class CheckoutForm {
 		$values  = is_array( $posted[ $type ] ?? null ) ? $posted[ $type ] : $this->defaults( $state, $type );
 		$country = $this->country( $type, $state, $posted );
 		$fields  = FieldSchema::for_address( $type, $country, self::facts( $state ) )->to_array();
-		$html    = '<fieldset class="fxc-checkout__address" data-fxc-address="' . esc_attr( $type ) . '"><legend>' . esc_html( $legend ) . '</legend>';
+		if ( $type === 'billing' && $this->recovery() ) {
+			foreach ( $fields as $i => $field ) {
+				if ( $field['id'] === 'email' ) {
+					$note                 = __( 'If you leave without ordering, we may email you a reminder about your cart.', 'flexacommerce' );
+					$fields[ $i ]['help'] = trim( (string) ( $field['help'] ?? '' ) . ' ' . $note );
+				}
+			}
+		}
+		$html = '<fieldset class="fxc-checkout__address" data-fxc-address="' . esc_attr( $type ) . '"><legend>' . esc_html( $legend ) . '</legend>';
 		// The shipping address is hidden by CSS until its checkbox is ticked, and a
 		// hidden required control would block the submit; the server checks it.
 		$html .= self::fields( $type, $fields, $values, is_array( $state['countries'] ?? null ) ? $state['countries'] : [], $errors, $type !== 'shipping', $country );
@@ -726,8 +738,17 @@ final class CheckoutForm {
 			$values['email']      = $user->user_email;
 			$values['first_name'] = $user->first_name;
 			$values['last_name']  = $user->last_name;
+		} elseif ( $type === 'billing' ) {
+			// Typed earlier or kept by a cart reminder link (ADR-063).
+			$session         = Plugin::instance()->cart()->sessions()->current( 0 );
+			$values['email'] = $session !== null ? $session->email : '';
 		}
 		return $values;
+	}
+
+	/** A guest's address is sent as it is typed, for cart reminders (ADR-063). */
+	private function recovery(): bool {
+		return $this->recovery ??= ! is_user_logged_in() && RecoverySettings::captures_guests();
 	}
 
 	/**
@@ -738,6 +759,7 @@ final class CheckoutForm {
 	 */
 	private function config( array $state ): array {
 		return [
+			'recovery'  => $this->recovery(),
 			'countries' => $state['countries'] ?? [],
 			'states'    => $state['states'] ?? [],
 			'i18n'      => [

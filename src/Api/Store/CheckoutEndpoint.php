@@ -19,9 +19,9 @@ use Flexa\Commerce\Support\ClientIp;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * `store/checkout`, `store/checkout/shipping` and `store/orders/{id}/pay`
- * (doc 04 §2). The form state and every quote are computed on the server;
- * the body only names choices.
+ * `store/checkout`, `store/checkout/shipping`, `store/checkout/email` and
+ * `store/orders/{id}/pay` (doc 04 §2). The form state and every quote are
+ * computed on the server; the body only names choices.
  */
 final class CheckoutEndpoint extends StoreEndpoint {
 	public function register_routes(): void {
@@ -82,6 +82,24 @@ final class CheckoutEndpoint extends StoreEndpoint {
 
 		register_rest_route(
 			self::NAMESPACE,
+			'/store/checkout/email',
+			[
+				[
+					'methods'             => WP_REST_Server::CREATABLE,
+					'callback'            => [ $this, 'email' ],
+					'permission_callback' => [ $this, 'write_permission' ],
+					'args'                => [
+						'email' => [
+							'type'     => 'string',
+							'required' => true,
+						],
+					],
+				],
+			]
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
 			'/store/orders/(?P<id>\d+)/pay',
 			[
 				[
@@ -130,6 +148,20 @@ final class CheckoutEndpoint extends StoreEndpoint {
 		$rate_id     = sanitize_text_field( (string) $request->get_param( 'rate_id' ) );
 		$method      = sanitize_key( (string) $request->get_param( 'payment_method' ) );
 		return $this->run( static fn ( CheckoutService $checkout ): array => $checkout->update_shipping( get_current_user_id(), $destination, $rate_id, $method ) );
+	}
+
+	/**
+	 * The address a guest typed, kept on the cart session so a left cart can
+	 * get a reminder (ADR-063). Answers `saved: false` when reminders are off.
+	 *
+	 * @param WP_REST_Request<array<string,mixed>> $request
+	 */
+	public function email( WP_REST_Request $request ): WP_REST_Response|WP_Error {
+		$email = sanitize_email( (string) $request->get_param( 'email' ) );
+		if ( $email === '' || ! is_email( $email ) ) {
+			return new WP_Error( 'flexacommerce_invalid_email', __( 'Enter a valid email address.', 'flexacommerce' ), [ 'status' => 400 ] );
+		}
+		return self::respond( [ 'saved' => Plugin::instance()->recovery()->capture( get_current_user_id(), $email ) ] );
 	}
 
 	/** @param WP_REST_Request<array<string,mixed>> $request */

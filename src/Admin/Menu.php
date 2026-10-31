@@ -30,6 +30,7 @@ final class Menu {
 	private const ORDER = [
 		self::SLUG . '-orders',
 		self::SLUG . '-customers',
+		self::SLUG . '-recovery',
 		'edit.php?post_type=' . PostTypes::PRODUCT,
 		'edit-tags.php?taxonomy=' . PostTypes::CATEGORY . '&post_type=' . PostTypes::PRODUCT,
 		'edit-tags.php?taxonomy=' . PostTypes::TAG . '&post_type=' . PostTypes::PRODUCT,
@@ -104,6 +105,17 @@ final class Menu {
 				__( 'Customers', 'flexacommerce' ),
 				Capabilities::VIEW_ORDERS,
 				self::SLUG . '-customers',
+				[ $this, 'render_page' ]
+			)
+		);
+		$this->add(
+			self::SLUG . '-recovery',
+			(string) add_submenu_page(
+				self::SLUG,
+				__( 'Abandoned carts', 'flexacommerce' ),
+				__( 'Abandoned carts', 'flexacommerce' ),
+				Capabilities::VIEW_ORDERS,
+				self::SLUG . '-recovery',
 				[ $this, 'render_page' ]
 			)
 		);

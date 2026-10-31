@@ -503,6 +503,28 @@ final class CartService {
 		);
 	}
 
+	/**
+	 * Bring back a cart the shopper left (ADR-063): its lines that are not in
+	 * the cart now, and its coupons. A line already there keeps its quantity.
+	 *
+	 * @throws InvalidCartRequest
+	 */
+	public function restore( int $user_id, Cart $saved ): CartState {
+		return $this->mutate(
+			$user_id,
+			static function ( Cart $cart ) use ( $saved ): Cart {
+				foreach ( $saved->lines as $line ) {
+					if ( $cart->line( $line->key ) === null && count( $cart->lines ) < Cart::MAX_LINES ) {
+						$cart = $cart->with_added( $line );
+					}
+				}
+				$codes = array_values( array_unique( [ ...$cart->coupons, ...$saved->coupons ] ) );
+				return $codes !== $cart->coupons ? $cart->with_coupons( array_slice( $codes, 0, CouponService::MAX_CODES ) ) : $cart;
+			},
+			false
+		);
+	}
+
 	/** What shipping methods price: the sellable lines of a resolved cart. */
 	public function package( CartState $state, Destination $destination ): ShippingPackage {
 		$lines = [];

@@ -9,6 +9,7 @@ use Flexa\Commerce\Cart\MemoryTokenStore;
 use Flexa\Commerce\Cart\SessionNonce;
 use Flexa\Commerce\Plugin;
 use Flexa\Commerce\Payments\GatewaySettings;
+use Flexa\Commerce\Recovery\RecoverySettings;
 use Flexa\Commerce\Tests\Integration\Orders\OrderTestCase;
 
 /**
@@ -215,6 +216,30 @@ final class StoreApiTest extends OrderTestCase {
 	}
 
 	/** A new request: fresh services, the browser's cookie carried over. */
+	public function test_the_checkout_email_is_kept_for_cart_reminders(): void {
+		$id = $this->simple( 1500 );
+		$this->dispatch(
+			'POST',
+			'/store/cart/items',
+			[
+				'product_id' => $id,
+				'quantity'   => 1,
+			]
+		);
+		$this->next_request();
+		self::assertFalse( $this->dispatch( 'POST', '/store/checkout/email', [ 'email' => 'ada@example.com' ] )->get_data()['saved'], 'Reminders are off.' );
+
+		update_option( RecoverySettings::OPTION, [ 'enabled' => true ], false );
+		( new \ReflectionProperty( Plugin::class, 'recovery' ) )->setValue( Plugin::instance(), null );
+		$this->next_request();
+		self::assertSame( 400, $this->dispatch( 'POST', '/store/checkout/email', [ 'email' => 'not-an-email' ] )->get_status() );
+		$this->next_request();
+		self::assertTrue( $this->dispatch( 'POST', '/store/checkout/email', [ 'email' => 'ada@example.com' ] )->get_data()['saved'] );
+		self::assertSame( 'ada@example.com', Plugin::instance()->cart()->sessions()->current( 0 )?->email );
+		delete_option( RecoverySettings::OPTION );
+		( new \ReflectionProperty( Plugin::class, 'recovery' ) )->setValue( Plugin::instance(), null );
+	}
+
 	private function next_request(): void {
 		$this->swap_cart( new CartServices( Plugin::instance()->services(), Plugin::instance()->catalog(), $this->cookie ) );
 	}

@@ -47,6 +47,10 @@ final class Privacy {
 			'exporter_friendly_name' => __( 'FlexaCommerce downloads', 'flexacommerce' ),
 			'callback'               => [ $this, 'export_downloads' ],
 		];
+		$exporters['flexacommerce-reminders'] = [
+			'exporter_friendly_name' => __( 'FlexaCommerce cart reminders', 'flexacommerce' ),
+			'callback'               => [ $this, 'export_reminders' ],
+		];
 		return $exporters;
 	}
 
@@ -70,6 +74,10 @@ final class Privacy {
 		$erasers['flexacommerce-downloads'] = [
 			'eraser_friendly_name' => __( 'FlexaCommerce downloads', 'flexacommerce' ),
 			'callback'             => [ $this, 'erase_downloads' ],
+		];
+		$erasers['flexacommerce-reminders'] = [
+			'eraser_friendly_name' => __( 'FlexaCommerce cart reminders', 'flexacommerce' ),
+			'callback'             => [ $this, 'erase_reminders' ],
 		];
 		return $erasers;
 	}
@@ -129,6 +137,69 @@ final class Privacy {
 		];
 	}
 
+	/**
+	 * Left carts kept for reminders, and a request to stop them (ADR-063).
+	 *
+	 * @return array{data:list<array<string,mixed>>,done:bool}
+	 */
+	public function export_reminders( string $email, int $page = 1 ): array {
+		unset( $page );
+		$data = [];
+		foreach ( Plugin::instance()->recovery()->repository()->for_email( $email ) as $row ) {
+			$items = [];
+			foreach ( $row->cart['items'] as $item ) {
+				$items[] = sprintf( '%s × %d', $item['name'], $item['quantity'] );
+			}
+			$fields = [
+				[
+					'name'  => __( 'Cart items', 'flexacommerce' ),
+					'value' => implode( ', ', $items ),
+				],
+				[
+					'name'  => __( 'Left on', 'flexacommerce' ),
+					'value' => $row->last_activity_at !== '' ? get_date_from_gmt( $row->last_activity_at ) : '',
+				],
+				[
+					'name'  => __( 'Reminders sent', 'flexacommerce' ),
+					'value' => (string) $row->emails_sent,
+				],
+			];
+			if ( $row->unsubscribed_at !== null ) {
+				$fields[] = [
+					'name'  => __( 'Reminders stopped on', 'flexacommerce' ),
+					'value' => get_date_from_gmt( $row->unsubscribed_at ),
+				];
+			}
+			$data[] = [
+				'group_id'    => 'flexacommerce-reminders',
+				'group_label' => __( 'Cart reminders', 'flexacommerce' ),
+				'item_id'     => 'fxc-recovery-' . $row->id,
+				'data'        => $fields,
+			];
+		}
+		return [
+			'data' => $data,
+			'done' => true,
+		];
+	}
+
+	/**
+	 * Drops the left carts of an address and the address on guest carts.
+	 *
+	 * @return array{items_removed:bool,items_retained:bool,messages:list<string>,done:bool}
+	 */
+	public function erase_reminders( string $email, int $page = 1 ): array {
+		unset( $page );
+		$plugin  = Plugin::instance();
+		$removed = $plugin->recovery()->repository()->erase_email( $email ) + $plugin->cart()->session_rows()->clear_email( $email );
+		return [
+			'items_removed'  => $removed > 0,
+			'items_retained' => false,
+			'messages'       => [],
+			'done'           => true,
+		];
+	}
+
 	/** @return array{data:list<array<string,mixed>>,done:bool} */
 	public function export_orders( string $email, int $page = 1 ): array {
 		return $this->data()->export_orders( $email, $page );
@@ -182,6 +253,7 @@ final class Privacy {
 			. '<h2>' . esc_html__( 'What we collect when you place an order', 'flexacommerce' ) . '</h2>'
 			. '<p>' . esc_html( $collect ) . '</p>'
 			. '<p>' . esc_html( $cart ) . '</p>'
+			. '<p>' . esc_html__( 'If you are signed in, or typed your email at checkout, and leave items in your cart without ordering, we may email you up to three reminders about it. Each email has a link to stop them. We keep the record of a left cart for up to 90 days.', 'flexacommerce' ) . '</p>'
 			. '<h2>' . esc_html__( 'How long we keep it', 'flexacommerce' ) . '</h2>'
 			. '<p>' . esc_html__( 'We keep order records for as long as tax and accounting rules require. If you ask us to erase your data, we remove your name, addresses, email, phone, IP address and order notes from your orders and keep the amounts and products for our accounts. Orders that are still being processed are erased once they are completed or cancelled.', 'flexacommerce' ) . '</p>'
 			. '<h2>' . esc_html__( 'Who we share it with', 'flexacommerce' ) . '</h2>'

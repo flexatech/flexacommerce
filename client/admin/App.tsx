@@ -12,6 +12,7 @@ import { OptionSetsPage } from "./features/options/OptionSetsPage";
 import { OrdersPage } from "./features/orders/OrdersPage";
 import { ProductCsvPage } from "./features/productcsv/ProductCsvPage";
 import { PromotionsPage } from "./features/promotions/PromotionsPage";
+import { RecoveryPage } from "./features/recovery/RecoveryPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
 import { StatusPage } from "./features/status/StatusPage";
 
@@ -28,6 +29,8 @@ export function App({ page }: { page: AdminPage }) {
                     <OrdersPage />
                 ) : page === "flexacommerce-customers" ? (
                     <CustomersPage />
+                ) : page === "flexacommerce-recovery" ? (
+                    <RecoveryPage />
                 ) : page === "flexacommerce-promotions" ? (
                     <PromotionsPage />
                 ) : page === "flexacommerce-checkout" ? (

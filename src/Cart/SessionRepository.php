@@ -113,6 +113,58 @@ final class SessionRepository {
 		);
 	}
 
+	/**
+	 * The address a guest typed at checkout, kept for cart reminders
+	 * (ADR-063). It counts as cart activity, so the cart is looked at again.
+	 */
+	public function set_email( int $id, string $email, string $now ): void {
+		$this->wpdb->query(
+			$this->wpdb->prepare( 'UPDATE %i SET email = %s, updated_at = %s WHERE id = %d', Schema::table( 'sessions' ), $email, $now, $id )
+		);
+	}
+
+	/** Forgets an address typed at checkout on every cart that holds it (privacy eraser). */
+	public function clear_email( string $email ): int {
+		return (int) $this->wpdb->query(
+			$this->wpdb->prepare( "UPDATE %i SET email = '' WHERE email = %s", Schema::table( 'sessions' ), $email )
+		);
+	}
+
+	/**
+	 * Carts of known shoppers that went quiet between `$from` and `$until`
+	 * and changed since recovery last looked at them (ADR-063).
+	 *
+	 * @return list<Session>
+	 */
+	public function idle( string $from, string $until, int $limit ): array {
+		$rows = $this->wpdb->get_results(
+			$this->wpdb->prepare(
+				"SELECT * FROM %i WHERE updated_at >= %s AND updated_at <= %s AND (email <> '' OR user_id IS NOT NULL) AND (recovery_checked IS NULL OR recovery_checked < updated_at) ORDER BY updated_at LIMIT %d",
+				Schema::table( 'sessions' ),
+				$from,
+				$until,
+				$limit
+			),
+			ARRAY_A
+		);
+		return array_map( static fn ( array $row ): Session => Session::from_row( $row ), is_array( $rows ) ? $rows : [] );
+	}
+
+	/** Recovery has handled the row as it was at `$updated_at`. */
+	public function mark_checked( int $id, string $updated_at ): void {
+		$this->wpdb->query(
+			$this->wpdb->prepare( 'UPDATE %i SET recovery_checked = %s WHERE id = %d', Schema::table( 'sessions' ), $updated_at, $id )
+		);
+	}
+
+	public function find( int $id ): ?Session {
+		$row = $this->wpdb->get_row(
+			$this->wpdb->prepare( 'SELECT * FROM %i WHERE id = %d', Schema::table( 'sessions' ), $id ),
+			ARRAY_A
+		);
+		return is_array( $row ) ? Session::from_row( $row ) : null;
+	}
+
 	/** Bounded purge for the daily cron (doc 02 §5). */
 	public function purge_expired( string $now, int $limit = 1000 ): int {
 		$deleted = $this->wpdb->query(

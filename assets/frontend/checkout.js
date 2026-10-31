@@ -3,8 +3,8 @@
  * it posts to the checkout page. When it loads, address and rate changes
  * requote over `store/checkout/shipping`, and the submit goes to
  * `store/checkout` with errors shown next to their fields. A coupon code
- * is applied over `store/cart/coupons`. Hand-written,
- * no build step.
+ * is applied over `store/cart/coupons`. When cart reminders are on, a
+ * guest's email goes to `store/checkout/email`. Hand-written, no build step.
  */
 const source = document.getElementById(
 	'wp-script-module-data-@flexacommerce/checkout'
@@ -437,6 +437,19 @@ function setup( root ) {
 		}
 	}
 	const requoteSoon = debounce( requote, 350 );
+
+	// A guest's address goes on the cart session for cart reminders (ADR-063).
+	let captured = '';
+	function captureEmail( input ) {
+		const email = input.value.trim();
+		if ( email === captured || ! input.checkValidity() || ! email.includes( '@' ) ) {
+			return;
+		}
+		captured = email;
+		request( 'checkout/email', { email } ).catch( () => {
+			captured = '';
+		} );
+	}
 
 	// Server-rendered errors from a failed post go too, with the
 	// descriptions that point at them.
@@ -892,6 +905,9 @@ function setup( root ) {
 		if ( key === 'country' ) {
 			syncState( type );
 			syncCountries();
+		}
+		if ( config.recovery && type === 'billing' && key === 'email' ) {
+			captureEmail( target );
 		}
 		if (
 			type === activeType() &&

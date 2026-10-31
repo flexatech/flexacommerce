@@ -15,6 +15,7 @@ Status: **Approved 2026-10-24**. All table names below are shown without `{$wpdb
 | Payments and refunds | `fxc_transactions` | One row per money movement attempt. |
 | Webhook dedupe | `fxc_webhook_events` | DB-level replay protection. |
 | Cart sessions | `fxc_sessions` | Server-side, lazily created (ADR-008). |
+| Left carts | `fxc_recoveries` | One row per cart a known shopper left, with the reminder progress and the outcome (§4.17, ADR-063). |
 | Order number allocation | `fxc_sequences` | Atomic counter. |
 | Download permissions | `fxc_downloads` | One row per order line and file with a token and counters that change on every download (§4.16, ADR-058). |
 | Option choice stock | `fxc_option_stock` | Counts change on every order, so they need atomic updates outside the autoloaded option sets (§4.15, ADR-040). |
@@ -22,7 +23,7 @@ Status: **Approved 2026-10-24**. All table names below are shown without `{$wpdb
 | Plugin log | `fxc_logs` | Filterable by channel and level, pruned by cron (§4.12). |
 | Migration | `fxc_id_map`, `fxc_migration_jobs`, `fxc_migration_log` | Idempotency and resumability (doc 05). |
 | Customers | `wp_users` + user options `fxc_billing`, `fxc_shipping` (JSON, site-prefixed meta keys) | No separate customer table (§7). |
-| Settings | `wp_options`: `flexacommerce_settings` (autoload), `flexacommerce_badges` (autoload, ordered list of up to 50 badges, ADR-023, each with `customers` and `roles`, ADR-049), `flexacommerce_price_rules` (autoload, ordered list of up to 100 rules, ADR-024, type `adjust`, `bulk`, `graduated` (ADR-042) or `fee` (ADR-043, with `cap`), each with its `conditions`, ADR-041), `flexacommerce_product_options` (autoload, ordered list of up to 200 option sets, ADR-025, ADR-029), `flexacommerce_shipping_zones`, `flexacommerce_gateway_{id}`, `flexacommerce_email_{id}` (no autoload) | Small configuration data. |
+| Settings | `wp_options`: `flexacommerce_settings` (autoload), `flexacommerce_badges` (autoload, ordered list of up to 50 badges, ADR-023, each with `customers` and `roles`, ADR-049), `flexacommerce_price_rules` (autoload, ordered list of up to 100 rules, ADR-024, type `adjust`, `bulk`, `graduated` (ADR-042) or `fee` (ADR-043, with `cap`), each with its `conditions`, ADR-041), `flexacommerce_product_options` (autoload, ordered list of up to 200 option sets, ADR-025, ADR-029), `flexacommerce_shipping_zones`, `flexacommerce_gateway_{id}`, `flexacommerce_email_{id}`, `flexacommerce_recovery` (ADR-063) (no autoload) | Small configuration data. |
 | Media | Media Library attachments | Product meta and variants store attachment IDs only. |
 
 ## 2. Cross-cutting rules
@@ -521,14 +522,19 @@ CREATE TABLE fxc_sessions (
   data longtext NOT NULL,
   version int(10) unsigned NOT NULL DEFAULT 1,
   expires_at datetime NOT NULL,
+  email varchar(190) NOT NULL DEFAULT '',
+  recovery_checked datetime NULL,
   created_at datetime NOT NULL,
   updated_at datetime NOT NULL,
   PRIMARY KEY  (id),
   UNIQUE KEY token_hash (token_hash),
   UNIQUE KEY user_id (user_id),
-  KEY expires_at (expires_at)
+  KEY expires_at (expires_at),
+  KEY updated_at (updated_at)
 ) {charset_collate};
 ```
+
+`email`, `recovery_checked` and `KEY updated_at` were added in `DB_VERSION` 11 (ADR-063). `email` is the address a guest typed at checkout while reminders follow guests; saving it counts as cart activity. `recovery_checked` is the `updated_at` the recovery cron last handled, so a cart is looked at again only after it changes.
 
 `data` JSON: `{ "v":1, "lines":[{ "key":"<sha1 of variant+attributes>", "variant_id":0, "qty":1, "attributes":{}, "added_at":"" }], "shipping_rate":"", "payment_method":"", "destination":{country,state,postcode,city}, "checkout_token":"", "notices":[] }`. No prices and no personal data besides the shipping destination needed for rate and tax quotes (the city matters for city tax rates). Checkout form drafts stay in the browser (`sessionStorage`). Purge: daily cron deletes `expires_at < now` in batches of 1,000.
 
@@ -808,6 +814,45 @@ CREATE TABLE fxc_downloads (
 - **Writes.** `DownloadService` grants rows when an order reaches processing or completed, with `INSERT IGNORE` on `item_file`, so granting twice adds nothing. `downloads_remaining` is the variant's limit times the quantity (NULL = no limit), `access_expires` the paid date plus `expiry_days` (NULL = never). A download runs `download_count = download_count + 1` and, when there is a limit, `downloads_remaining = downloads_remaining - 1 WHERE downloads_remaining > 0`, so two requests cannot both use the last one. A product save adds rows for new files and deletes the rows of removed files (`variant_file`). The admin order screen edits the limit and the expiry and deletes rows.
 - **Reads.** A download finds its row by `token`. The order confirmation, the emails and the order screen read by `order_id`, the account page by `customer_id`, the privacy exporter and eraser by `email`. Uninstall drops the table. Orders are only trashed, so rows stay; removing imported data (doc 05 §9.3) deletes the rows of the removed orders.
 
+### 4.17 `fxc_recoveries`
+
+Added with abandoned cart recovery (ADR-063), `DB_VERSION` 11.
+
+```sql
+CREATE TABLE fxc_recoveries (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  session_id bigint(20) unsigned NULL,
+  user_id bigint(20) unsigned NULL,
+  email varchar(190) NOT NULL DEFAULT '',
+  cart longtext NOT NULL,
+  total bigint(20) NOT NULL DEFAULT 0,
+  currency char(3) NOT NULL DEFAULT '',
+  item_count int(10) unsigned NOT NULL DEFAULT 0,
+  status varchar(10) NOT NULL DEFAULT 'open',
+  token char(32) NOT NULL,
+  reminder tinyint(3) unsigned NOT NULL DEFAULT 0,
+  emails_sent tinyint(3) unsigned NOT NULL DEFAULT 0,
+  next_send_at datetime NULL,
+  last_activity_at datetime NOT NULL,
+  clicked_at datetime NULL,
+  coupon_code varchar(100) NOT NULL DEFAULT '',
+  order_id bigint(20) unsigned NULL,
+  recovered_at datetime NULL,
+  unsubscribed_at datetime NULL,
+  created_at datetime NOT NULL,
+  updated_at datetime NOT NULL,
+  PRIMARY KEY  (id),
+  KEY session_id (session_id),
+  KEY email (email),
+  KEY status_created (status,created_at),
+  KEY next_send_at (next_send_at)
+) {charset_collate};
+```
+
+- **Columns.** `cart` is JSON `{lines, coupons, items: [{name, quantity, total, image}]}`: the stored cart to restore and what the email lists, priced when the cron last looked. `status` is `open`, `recovered` or `lost`. `reminder` is the next reminder to send (0 to 2), 3 when all had their turn. `token` is the secret half of the links `<id>.<token>`. `coupon_code` is the last code a reminder made.
+- **Writes.** The cron inserts a row for a quiet cart with no open row for its session or email, and refreshes the open row when the cart changed. A send moves `reminder` and `next_send_at` and counts `emails_sent`; the link sets `clicked_at`; an order sets `recovered`, `order_id` and `recovered_at`. The stop link sets `unsubscribed_at` on every row of the email, and the cron writes nothing new for such an address. The daily cron marks rows quiet for 7 days `lost` and deletes settled rows older than 90 days, except unsubscribed ones, which keep the address quiet.
+- **Reads.** Due reminders by `next_send_at`; the cron's lookup by `session_id`, then `email`; the admin list by status, newest activity first, joined to `fxc_orders` for the order number; the 30 day numbers by `status_created`; privacy by `email`. Uninstall drops the table.
+
 ## 5. Query patterns and indexes
 
 | Query | Index used |
@@ -824,6 +869,7 @@ CREATE TABLE fxc_downloads (
 | Webhook dedupe | `gateway_event` |
 | Transaction by gateway reference | `gateway_reference` |
 | Session lookup | `token_hash`, `user_id` |
+| Quiet carts for recovery | `fxc_sessions.updated_at` range; due reminders `fxc_recoveries.next_send_at` (ADR-063) |
 | Download link | `fxc_downloads.token`; an order's links `order_id`, a customer's `customer_id`, privacy `email`, a product edit `variant_file` |
 | Tax rate match for one address | `class_country_state`, then `rate_type` for the join; `type_code` and `type_range` for rates found by postcode (§4.13) |
 | Shop sort by price | `wp_postmeta` `meta_key/meta_value` on `_fxc_price_min` (core index on `meta_key`). See revisit condition below. |
