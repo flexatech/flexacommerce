@@ -33,8 +33,8 @@ test( 'filters narrow the shop to a category', async ( { page }, info ) => {
 	await expect( form ).toBeVisible();
 	await expectAccessible( page, info, 'filters' );
 
-	await form.locator( `input[name="filter_cat[]"][value="${ store.category.slug }"]` ).check();
-	await form.getByRole( 'button', { name: 'Apply filters' } ).click();
+	// A ticked box applies at once (ADR-055); the button is for visitors without scripts.
+	await form.locator( `input[name="filter_cat[]"][value="${ store.category.slug }"]` ).click();
 	await expect( page ).toHaveURL( new RegExp( `filter_cat.*${ store.category.slug }` ) );
 	const classes = await items( page ).evaluateAll( ( nodes ) => nodes.map( ( node ) => node.className ) );
 	expect( classes.length ).toBeGreaterThan( 0 );
