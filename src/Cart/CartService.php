@@ -440,7 +440,7 @@ final class CartService {
 	public function package( CartState $state, Destination $destination ): ShippingPackage {
 		$lines = [];
 		foreach ( $state->items as $item ) {
-			if ( $item->total === null ) {
+			if ( $item->total === null || $item->variant?->virtual === true ) {
 				continue;
 			}
 			$lines[] = new PackageLine( $item->line->variant_id, $item->line->quantity, $item->weight_g(), $item->dimensions_mm(), $item->total );

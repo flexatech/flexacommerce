@@ -127,6 +127,7 @@ final class AccountPage {
 		$content = match ( $endpoint ) {
 			'orders' => $view->orders( $user, max( 1, absint( $value ) ) ),
 			'view-order' => $view->order( $this->order( absint( $value ), $user ) ),
+			'downloads' => $view->downloads( $user ),
 			'edit-address' => $view->addresses( $user, $value, $this->posted, $this->errors ),
 			'edit-account' => $view->details( $user, $this->posted, $this->errors ),
 			default => $view->dashboard( $user ),

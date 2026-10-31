@@ -1,5 +1,5 @@
 import type { KeyboardEvent } from "react";
-import { Boxes, Images, Layers, Package, Tag, Truck } from "lucide-react";
+import { Boxes, Download, Images, Layers, Package, Tag, Truck } from "lucide-react";
 
 import { showToast } from "@/shared/components/showToast";
 import { Button } from "@/shared/components/ui/button";
@@ -7,6 +7,7 @@ import { Select } from "@/shared/components/ui/select";
 import { cn } from "@/shared/lib/cn";
 import { __, _n, sprintf } from "@/shared/lib/i18n";
 import { AttributesPanel } from "./AttributesPanel";
+import { DownloadFields } from "./DownloadFields";
 import type { Draft } from "./draft";
 import { Field, InvalidFields, Toggle } from "./fields";
 import { GalleryPanel } from "./GalleryPanel";
@@ -42,16 +43,20 @@ export function ProductDataPanel({ editor }: { editor: ProductDraftState }) {
     const setBase = (patch: Partial<VariantRow>) => setDraft({ ...draft, base: { ...draft.base, ...patch } });
     const axes = (saved ?? draft).attributes.filter((a) => a.variation);
 
+    const isVariable = draft.type === "variable";
+    // A variable product sets these on each variation; the shipping tab then holds the defaults.
+    const noShipping = !isVariable && draft.base.virtual;
+    const sellsFiles = !isVariable && draft.base.downloadable;
     const tabs: { id: Tab; label: string; icon: typeof Tag; hidden?: boolean }[] = [
         { id: "general", label: __("General"), icon: Tag },
         { id: "inventory", label: __("Inventory"), icon: Boxes },
-        { id: "shipping", label: __("Shipping"), icon: Truck },
+        { id: "shipping", label: __("Shipping"), icon: Truck, hidden: noShipping },
+        { id: "downloads", label: __("Downloads"), icon: Download, hidden: !sellsFiles },
         { id: "gallery", label: __("Gallery"), icon: Images },
         { id: "attributes", label: __("Attributes"), icon: Package },
-        { id: "variations", label: __("Variations"), icon: Layers, hidden: draft.type !== "variable" },
+        { id: "variations", label: __("Variations"), icon: Layers, hidden: !isVariable },
     ];
-    const visibleTab = tab === "variations" && draft.type !== "variable" ? "general" : tab;
-    const isVariable = draft.type === "variable";
+    const visibleTab = tabs.some((t) => t.id === tab && !t.hidden) ? tab : "general";
 
     // Enter inside the metabox would submit the post form and reload the editor.
     const swallowEnter = (event: KeyboardEvent) => {
@@ -87,8 +92,14 @@ export function ProductDataPanel({ editor }: { editor: ProductDraftState }) {
                             />
                         )}
                     </Field>
-                    <div className="fxc:pb-2">
+                    <div className="fxc:flex fxc:flex-wrap fxc:gap-4 fxc:pb-2">
                         <Toggle checked={draft.featured} onChange={(featured) => set({ featured })} label={__("Featured")} />
+                        {!isVariable && (
+                            <>
+                                <Toggle checked={draft.base.virtual} onChange={(virtual) => setBase({ virtual })} label={__("Virtual")} />
+                                <Toggle checked={draft.base.downloadable} onChange={(downloadable) => setBase({ downloadable })} label={__("Downloadable")} />
+                            </>
+                        )}
                     </div>
                     <div className="fxc:ml-auto fxc:flex fxc:items-center fxc:gap-3 fxc:pb-0.5">
                         {saving && <span className="fxc:text-muted-foreground fxc:text-xs">{__("Saving…")}</span>}
@@ -156,6 +167,7 @@ export function ProductDataPanel({ editor }: { editor: ProductDraftState }) {
                             </>
                         )}
                         {visibleTab === "shipping" && <ShippingFields row={draft.base} onChange={setBase} errors={errors} path="base" />}
+                        {visibleTab === "downloads" && <DownloadFields row={draft.base} onChange={setBase} errors={errors} path="base" />}
                         {visibleTab === "gallery" && (
                             <GalleryPanel gallery={draft.gallery} video={draft.video} errors={errors} onGallery={(gallery) => set({ gallery })} onVideo={(video) => set({ video })} />
                         )}

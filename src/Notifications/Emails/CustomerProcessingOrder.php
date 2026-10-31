@@ -36,7 +36,8 @@ final class CustomerProcessingOrder extends OrderEmail {
 			return $view !== null && $view->status === S::PROCESSING ? $view : null;
 		}
 		[ $view, , $to ] = self::status_args( $args );
-		return $to === S::PROCESSING ? $view : null;
+		// An order of downloads only moves on to completed in the same write (ADR-058); that email covers it.
+		return $to === S::PROCESSING && $view?->status === S::PROCESSING ? $view : null;
 	}
 
 	protected function subject( OrderView $order ): string {

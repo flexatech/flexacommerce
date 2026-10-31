@@ -19,7 +19,7 @@ defined( 'ABSPATH' ) || exit;
 /** Settings, tax rates and customer addresses into FlexaCommerce (doc 05 §5.3). */
 final class FxcStoreWriter {
 	/** Canonical settings copied as they are. */
-	private const SETTINGS = [ 'currency', 'weight_unit', 'dimension_unit', 'tax_enabled', 'prices_include_tax', 'tax_based_on', 'tax_default_location', 'shipping_tax_class', 'tax_round_at_subtotal', 'tax_display_shop', 'tax_display_cart', 'price_display_suffix', 'tax_total_display', 'reviews', 'tax_classes' ];
+	private const SETTINGS = [ 'currency', 'weight_unit', 'dimension_unit', 'tax_enabled', 'prices_include_tax', 'tax_based_on', 'tax_default_location', 'shipping_tax_class', 'tax_round_at_subtotal', 'tax_display_shop', 'tax_display_cart', 'price_display_suffix', 'tax_total_display', 'reviews', 'download_method', 'tax_classes' ];
 
 	public function __construct(
 		private readonly TaxRateRepository $rates,

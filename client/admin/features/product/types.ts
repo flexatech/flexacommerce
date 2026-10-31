@@ -45,6 +45,27 @@ export interface VariantRow {
     /** Only the base row's value is used; WooCommerce reads it from the parent too. */
     tax_status: TaxStatus;
     description: string | null;
+    /** Nothing to ship: no shipping address or rate at checkout. */
+    virtual: boolean;
+    /** Sells the files in `downloads` once the order is paid (ADR-058). */
+    downloadable: boolean;
+    downloads: Downloads;
+}
+
+export interface DownloadFile {
+    /** Stable id the order permissions point at; empty for a new file. */
+    id: string;
+    name: string;
+    /** A URL or an absolute path on the server. */
+    file: string;
+}
+
+export interface Downloads {
+    files: DownloadFile[];
+    /** Downloads per bought unit; null for no limit. */
+    limit: number | null;
+    /** Days after payment; null for no expiry. */
+    expiry_days: number | null;
 }
 
 export interface AttributeOption {

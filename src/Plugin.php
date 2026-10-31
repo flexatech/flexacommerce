@@ -56,6 +56,8 @@ final class Plugin {
 
 	private ?Extensions $extensions = null;
 
+	private ?Downloads\DownloadService $downloads = null;
+
 	private bool $blocks = false;
 
 	public function boot(): void {
@@ -101,11 +103,19 @@ final class Plugin {
 			Reviews\Reviews::instance()->register();
 			Privacy\Privacy::instance()->register();
 			add_action( 'admin_notices', [ Storefront\TemplateLoader::class, 'notice' ] );
+			// phpcs:ignore WordPress.Security.NonceVerification.Missing -- routing only; the media upload checks its own nonce.
+			if ( isset( $_POST['fxc_download'] ) ) {
+				add_filter( 'upload_dir', [ Storefront\DownloadHandler::class, 'upload_dir' ] );
+			}
 		} else {
 			add_filter( 'pre_render_block', [ $this, 'on_pre_render_block' ], 10, 3 );
 			add_filter( 'the_posts', [ $this, 'on_the_posts' ] );
 			add_action( 'pre_get_posts', [ $this, 'on_pre_get_posts' ] );
 			add_action( 'template_redirect', [ $this, 'on_template_redirect' ] );
+			// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- routing only; the token is checked by the handler. The literal keeps the class unloaded elsewhere (P1).
+			if ( isset( $_GET['fxc_download'] ) ) {
+				add_action( 'init', [ $this, 'on_download' ], 20 );
+			}
 			// A posted comment form: the review hooks, for this request only (ADR-056).
 			if ( ( $GLOBALS['pagenow'] ?? '' ) === 'wp-comments-post.php' ) {
 				Reviews\Reviews::instance()->register();
@@ -158,7 +168,37 @@ final class Plugin {
 
 	/** @internal */
 	public function catalog(): CatalogServices {
-		return $this->catalog ??= new CatalogServices( $this->services() );
+		if ( $this->catalog === null ) {
+			$this->catalog = new CatalogServices( $this->services() );
+			// Product saves go through the catalog, so a changed file list reaches the orders (ADR-058).
+			add_action( 'flexacommerce.product.saved', [ $this, 'on_product_data_saved' ], 10, 2 );
+		}
+		return $this->catalog;
+	}
+
+	/** @internal Download permissions and links (ADR-058). */
+	public function downloads(): Downloads\DownloadService {
+		return $this->downloads ??= new Downloads\DownloadService(
+			new Downloads\PermissionRepository( $this->services()->wpdb() ),
+			$this->catalog()->variants(),
+			$this->orders()->orders(),
+			$this->services()->clock()
+		);
+	}
+
+	/** @internal */
+	public function on_product_data_saved( int $product_id, Catalog\Product $before ): void {
+		$this->downloads()->sync_product( $product_id, $before );
+	}
+
+	/**
+	 * @internal Paid orders get their download permissions before the
+	 * emails (priority 20) list the links.
+	 */
+	public function on_order_downloads( Contracts\Orders\OrderView $view ): void {
+		if ( in_array( $view->status, Downloads\PermissionRepository::OPEN, true ) ) {
+			$this->downloads()->grant_for_view( $view );
+		}
 	}
 
 	/** @internal Pricing, stock, sessions and the cart. */
@@ -241,6 +281,8 @@ final class Plugin {
 				},
 				$this->option_stock()
 			);
+			add_action( 'flexacommerce.order.created', [ $this, 'on_order_downloads' ], 5 );
+			add_action( 'flexacommerce.order.status_changed', [ $this, 'on_order_downloads' ], 5 );
 			$this->notifications()->notifier()->bind();
 		}
 		return $this->orders;
@@ -248,7 +290,7 @@ final class Plugin {
 
 	/** @internal Order emails, their settings and templates. */
 	public function notifications(): Notifications\NotificationServices {
-		return $this->notifications ??= new Notifications\NotificationServices( $this->services(), $this->orders(), fn (): Checkout\CheckoutServices => $this->checkout() );
+		return $this->notifications ??= new Notifications\NotificationServices( $this->services(), $this->orders(), fn (): Checkout\CheckoutServices => $this->checkout(), fn ( int $order_id ): array => $this->downloads()->links( $order_id ) );
 	}
 
 	/** @internal Zones, shipping methods and rates. */
@@ -470,6 +512,11 @@ final class Plugin {
 	}
 
 	/** The count cookie belongs to the user's cart; a guest starts at zero. */
+	/** @internal A download link (ADR-058). */
+	public function on_download(): void {
+		Storefront\DownloadHandler::instance()->handle();
+	}
+
 	public function on_logout(): void {
 		( new Cart\CookieTokenStore() )->clear();
 	}

@@ -6,8 +6,10 @@ interface Attachment {
 }
 
 interface MediaFrame {
-    on(event: "select", callback: () => void): void;
+    on(event: "select" | "ready", callback: () => void): void;
     open(): void;
+    /** Set once the frame is ready; its params go with every upload. */
+    uploader?: { options: { uploader: { params: Record<string, unknown> } } };
     state(): { get(key: "selection"): { first(): Attachment | undefined; toArray(): Attachment[] } };
 }
 
@@ -85,6 +87,38 @@ export function pickVideo(title: string, onPick: (video: PickedVideo) => void): 
         const attachment = frame.state().get("selection").first();
         if (attachment) {
             onPick({ id: attachment.id, url: String(attachment.get("url") ?? ""), filename: String(attachment.get("filename") ?? "") });
+        }
+    });
+    frame.open();
+}
+
+export interface PickedFile {
+    url: string;
+    filename: string;
+    title: string;
+}
+
+/**
+ * Opens the media library for a file to sell. Uploads from this frame carry
+ * `fxc_download`, so the server puts them in the protected downloads folder
+ * (ADR-058).
+ */
+export function pickFile(title: string, onPick: (file: PickedFile) => void): void {
+    const media = window.wp?.media;
+    if (!media) {
+        return;
+    }
+    const frame = media({ title, multiple: false, button: { text: __("Use this file") } });
+    frame.on("ready", () => {
+        const options = frame.uploader?.options.uploader;
+        if (options) {
+            options.params = { ...options.params, fxc_download: "1" };
+        }
+    });
+    frame.on("select", () => {
+        const attachment = frame.state().get("selection").first();
+        if (attachment) {
+            onPick({ url: String(attachment.get("url") ?? ""), filename: String(attachment.get("filename") ?? ""), title: String(attachment.get("title") ?? "") });
         }
     });
     frame.open();

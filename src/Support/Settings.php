@@ -75,6 +75,8 @@ final class Settings {
 		'tier_table_title'         => [ 'string', '' ],
 		// Who may review a product (ADR-056): nobody, anyone, or customers who bought it.
 		'reviews'                  => [ 'enum:off|all|buyers', 'all' ],
+		// How download links send a file (ADR-058): through PHP, handed to the web server, or a redirect.
+		'download_method'          => [ 'enum:force|xsendfile|redirect', 'force' ],
 		'tax_enabled'              => [ 'bool', false ],
 		'prices_include_tax'       => [ 'bool', false ],
 		'tax_based_on'             => [ 'enum:shipping|billing|base', 'shipping' ],

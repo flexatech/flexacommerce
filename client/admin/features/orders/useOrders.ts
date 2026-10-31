@@ -83,3 +83,20 @@ export function useRefund(id: number) {
 export function useClearAttention(id: number) {
     return useOrderAction(id, () => api.delete<OrderDetail>(`admin/orders/${id}/attention`));
 }
+
+export function useGrantDownloads(id: number) {
+    return useOrderAction(id, () => api.post<OrderDetail>(`admin/orders/${id}/downloads`));
+}
+
+export function useUpdateDownload(id: number) {
+    return useOrderAction(id, (vars: { permission: number; downloads_remaining: number | null; access_expires: string | null }) =>
+        api.patch<OrderDetail>(`admin/orders/${id}/downloads/${vars.permission}`, {
+            downloads_remaining: vars.downloads_remaining,
+            access_expires: vars.access_expires,
+        }),
+    );
+}
+
+export function useRevokeDownload(id: number) {
+    return useOrderAction(id, (permission: number) => api.delete<OrderDetail>(`admin/orders/${id}/downloads/${permission}`));
+}

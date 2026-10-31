@@ -33,7 +33,7 @@ final class NewOrder extends OrderEmail {
 	protected function applies( string $hook, array $args ): ?OrderView {
 		if ( $hook === self::CREATED ) {
 			$view = self::view( $args );
-			return $view !== null && in_array( $view->status, [ S::PROCESSING, S::ON_HOLD ], true ) ? $view : null;
+			return $view !== null && in_array( $view->status, [ S::PROCESSING, S::ON_HOLD, S::COMPLETED ], true ) ? $view : null;
 		}
 		[ $view, $from, $to, $actor ] = self::status_args( $args );
 		if ( $from !== S::PENDING ) {

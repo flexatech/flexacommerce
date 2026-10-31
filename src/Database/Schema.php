@@ -17,7 +17,7 @@ defined( 'ABSPATH' ) || exit;
  */
 // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- schema DDL on plugin-owned tables, no user input.
 final class Schema {
-	public const DB_VERSION        = '9';
+	public const DB_VERSION        = '10';
 	public const DB_VERSION_OPTION = 'flexacommerce_db_version';
 	public const OPTION_PREFIX     = 'flexacommerce_';
 
@@ -79,6 +79,9 @@ final class Schema {
 				tax_status varchar(10) NOT NULL DEFAULT 'taxable',
 				tax_class varchar(50) NOT NULL DEFAULT '',
 				description text NULL,
+				is_virtual tinyint(1) NOT NULL DEFAULT 0,
+				is_downloadable tinyint(1) NOT NULL DEFAULT 0,
+				downloads longtext NULL,
 				meta longtext NULL,
 				created_at datetime NOT NULL,
 				updated_at datetime NOT NULL,
@@ -386,6 +389,29 @@ final class Schema {
 				choice_id int(10) unsigned NOT NULL,
 				quantity int(11) NOT NULL DEFAULT 0,
 				PRIMARY KEY  (set_id,field_id,choice_id)
+			) {$charset};",
+			'downloads'          => "CREATE TABLE {$p}downloads (
+				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+				order_id bigint(20) unsigned NOT NULL,
+				order_item_id bigint(20) unsigned NOT NULL,
+				product_id bigint(20) unsigned NOT NULL,
+				variant_id bigint(20) unsigned NOT NULL,
+				file_id varchar(64) NOT NULL,
+				customer_id bigint(20) unsigned NULL,
+				email varchar(190) NOT NULL DEFAULT '',
+				token char(32) NOT NULL,
+				downloads_remaining int(11) NULL,
+				access_expires datetime NULL,
+				download_count int(11) unsigned NOT NULL DEFAULT 0,
+				granted_at datetime NOT NULL,
+				last_download_at datetime NULL,
+				PRIMARY KEY  (id),
+				UNIQUE KEY item_file (order_item_id,file_id),
+				UNIQUE KEY token (token),
+				KEY order_id (order_id),
+				KEY customer_id (customer_id),
+				KEY email (email),
+				KEY variant_file (variant_id,file_id)
 			) {$charset};",
 			'logs'               => "CREATE TABLE {$p}logs (
 				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,

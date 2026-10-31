@@ -62,6 +62,9 @@ final class WooStoreWriter {
 			update_option( 'woocommerce_enable_reviews', $data['reviews'] === 'off' ? 'no' : 'yes' );
 			update_option( 'woocommerce_review_rating_verification_required', $data['reviews'] === 'buyers' ? 'yes' : 'no' );
 		}
+		if ( in_array( $data['download_method'] ?? null, [ 'force', 'xsendfile', 'redirect' ], true ) ) {
+			update_option( 'woocommerce_file_download_method', $data['download_method'] );
+		}
 		$store = is_array( $data['store'] ?? null ) ? $data['store'] : [];
 		if ( isset( $store['country'] ) ) {
 			$country = strtoupper( (string) $store['country'] );

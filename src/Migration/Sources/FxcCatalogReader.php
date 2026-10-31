@@ -165,8 +165,8 @@ final class FxcCatalogReader {
 				'menu_order'     => (int) $post->menu_order,
 				'visibility'     => $product->visibility,
 				'featured'       => $product->featured,
-				'virtual'        => false,
-				'downloadable'   => false,
+				'virtual'        => $product->base->virtual,
+				'downloadable'   => $product->base->downloadable,
 				'image'          => $image > 0 ? Ref::make( 'wp', 'attachment', $image ) : null,
 				'gallery'        => array_map( static fn ( int $attachment ): string => Ref::make( 'wp', 'attachment', $attachment ), $product->gallery_ids ),
 				'video'          => $product->video === null ? null : [
@@ -273,6 +273,9 @@ final class FxcCatalogReader {
 			'tax_status'          => $row->tax_status,
 			'image'               => $row->image_id !== null && $row->image_id > 0 ? Ref::make( 'wp', 'attachment', $row->image_id ) : null,
 			'description'         => $base ? null : (string) $row->description,
+			'virtual'             => $row->virtual,
+			'downloadable'        => $row->downloadable,
+			'downloads'           => $row->downloads->to_array(),
 		];
 	}
 

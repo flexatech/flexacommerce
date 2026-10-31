@@ -73,9 +73,17 @@ WordPress nonces are tied to the user id and session token. For logged-out visit
 
 Order key (32 random bytes) + `hash_equals()`, `Cache-Control: private, no-store`, `Referrer-Policy: no-referrer` on key-accessed pages. Order ids are never accepted alone on public routes. Failed key attempts are rate limited (§2.9).
 
+### 2.7.1 Download links (ADR-058)
+
+- The 32-character random token in `?fxc_download=` is the credential; it works without signing in so email links work, and `flexacommerce.downloads.require_login` can require the buyer's account. Tokens are unique per order line and file and are never derived from ids.
+- Links work only while the order is processing or completed, within the limit and before the expiry. Responses send `nocache_headers()` and `X-Robots-Tag: noindex, nofollow`.
+- Local files must sit under the uploads folder (filter `flexacommerce.downloads.allowed_paths`) with a file type WordPress allows, so a product cannot serve `wp-config.php` or a file outside the site.
+- Uploads from the product editor go to `uploads/flexacommerce_uploads`, which has an `.htaccess` that denies every request and an empty `index.html`. On nginx, which ignores `.htaccess`, the store needs an equivalent `deny` rule. A redirect cannot reach that folder, so its files are streamed instead.
+- The admin order screen copies a link instead of opening it, so a merchant checking a link does not use the customer's downloads.
+
 ### 2.8 Privacy
 
-- Exporters and erasers for orders (by billing email and user), addresses, sessions, saved user addresses.
+- Exporters and erasers for orders (by billing email and user), addresses, sessions, saved user addresses, and download permissions (by email; erasing deletes them, so the links stop working).
 - Erasure anonymizes (`anonymized_at`), keeps amounts for accounting, blanks IP, names, emails, phones, addresses, customer-visible note text.
 - Logs never contain full addresses, emails (hashed with a site salt for correlation), card data, or secrets. The logger has a redaction pass for keys matching sensitive patterns.
 - Retention settings: webhook events 90 days, sessions on expiry, logs 30 days, optional order anonymization after N months.

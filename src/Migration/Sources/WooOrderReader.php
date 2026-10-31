@@ -106,6 +106,12 @@ final class WooOrderReader {
 		);
 
 		$customer = $order->get_customer_id( 'edit' );
+		$lines    = [];
+		foreach ( $order->get_items( 'line_item' ) as $item ) {
+			if ( $item instanceof \WC_Order_Item_Product ) {
+				$lines[ $item->get_variation_id( 'edit' ) > 0 ? $item->get_variation_id( 'edit' ) : $item->get_product_id( 'edit' ) ] ??= Ref::make( 'wc', 'order_item', $item->get_id() );
+			}
+		}
 		return new Record(
 			Record::ORDER,
 			Ref::make( 'wc', Record::ORDER, $id ),
@@ -142,10 +148,40 @@ final class WooOrderReader {
 				'items'                => $items,
 				'transactions'         => $transactions,
 				'history'              => $history,
+				'downloads'            => self::downloads( $id, $lines ),
 				'extra'                => WooCatalogReader::extra( WooCatalogReader::meta_of( $order ), self::MAPPED_META ),
 			],
 			array_values( array_unique( $depends ) )
 		);
+	}
+
+	/**
+	 * Download permissions (ADR-058). WooCommerce keys them by product or
+	 * variation, so each lands on the first line that ordered it.
+	 *
+	 * @param array<int,string> $lines product or variation id => order item ref
+	 * @return list<array{item:string,file:string,email:string,remaining:?int,expires_at:?string,count:int,granted_at:?string}>
+	 */
+	private static function downloads( int $order_id, array $lines ): array {
+		$out = [];
+		foreach ( ( new \WC_Customer_Download_Data_Store() )->get_downloads( [ 'order_id' => $order_id ] ) as $download ) {
+			if ( ! $download instanceof \WC_Customer_Download || ! isset( $lines[ $download->get_product_id() ] ) ) {
+				continue;
+			}
+			$remaining = $download->get_downloads_remaining();
+			$expires   = $download->get_access_expires();
+			$granted   = $download->get_access_granted();
+			$out[]     = [
+				'item'       => $lines[ $download->get_product_id() ],
+				'file'       => (string) $download->get_download_id(),
+				'email'      => (string) $download->get_user_email(),
+				'remaining'  => $remaining === '' ? null : max( 0, (int) $remaining ),
+				'expires_at' => Dates::from_wc( $expires instanceof \DateTimeInterface ? $expires : null ),
+				'count'      => (int) $download->get_download_count(),
+				'granted_at' => Dates::from_wc( $granted instanceof \DateTimeInterface ? $granted : null ),
+			];
+		}
+		return $out;
 	}
 
 	/** @return array<string,mixed>|null */
@@ -175,6 +211,8 @@ final class WooOrderReader {
 				'tax_class'     => $item->get_tax_class( 'edit' ),
 				'reduced_stock' => $stock_reduced ? (int) $item->get_meta( '_reduced_stock', true, 'edit' ) : 0,
 				'restocked'     => (int) $item->get_meta( '_restock_refunded_items', true, 'edit' ),
+				'virtual'       => $product instanceof \WC_Product && $product->get_virtual( 'edit' ),
+				'downloadable'  => $product instanceof \WC_Product && $product->is_downloadable(),
 				'extra'         => WooCatalogReader::extra( $meta, self::MAPPED_ITEM_META ),
 			];
 		}

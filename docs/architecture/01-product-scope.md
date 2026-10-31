@@ -68,7 +68,8 @@ Legend: **MVP** = required for MVP. **FND** = architectural foundation in MVP, u
 | Product visibility and status | MVP | WordPress post statuses (publish, draft, pending, private, future) plus catalog visibility (visible / search only / catalog only / hidden). |
 | Product deletion with order history preserved | MVP | Orders hold snapshots. Deleting a product never deletes or alters order lines. |
 | Product weight and dimensions | MVP | Needed by shipping rules and for WooCommerce round-trip. |
-| Grouped, external/affiliate, digital/downloadable, subscription, bundle products | OUT (core) / POST (extension) | Migration reports them as unsupported (doc 05 §7). |
+| Virtual and downloadable products | POST | Per variant flags and files, download limit per unit, expiry from payment, token links in emails and on the account page (ADR-058). |
+| Grouped, external/affiliate, subscription, bundle products | OUT (core) / POST (extension) | Migration reports them as unsupported (doc 05 §7). |
 | Public product-type registration API | FND | Internal type registry exists in MVP; public contract is post-MVP (doc 04 §6). |
 | Reviews and ratings | POST | Reviews are WordPress comments with a star rating, a verified-buyer badge, a setting for who may review and a rating sort (ADR-056). |
 | Product import/export CSV | POST | The migration subsystem's canonical format covers bulk transfer in MVP. |
@@ -176,7 +177,7 @@ Legend: **MVP** = required for MVP. **FND** = architectural foundation in MVP, u
 - A2. Primary distribution is WordPress.org (free plugin). Paid add-ons are separate plugins (Guideline 5).
 - A3. Migration happens on one site where both plugins are active.
 - A4. One store currency, set before the first order.
-- A5. Stores sell physical goods only. Quantities are whole numbers.
+- A5. Stores sell physical goods, and since ADR-058 virtual and downloadable products too. Quantities are whole numbers.
 - A6. The team has PHP, WordPress block and MySQL experience. No dedicated frontend framework is required.
 
 ## 8. Non-goals
@@ -184,7 +185,7 @@ Legend: **MVP** = required for MVP. **FND** = architectural foundation in MVP, u
 - Feature parity with WooCommerce or compatibility with WooCommerce extensions.
 - Running WooCommerce extensions on top of FlexaCommerce, or emulating WooCommerce hooks.
 - A page builder, a proprietary theme, a headless commerce API.
-- Marketplace / multi-vendor, POS, subscriptions, bookings, digital downloads.
+- Marketplace / multi-vendor, POS, subscriptions, bookings, licence keys and streamed media (plain file downloads are in, ADR-058).
 - Continuous synchronization between two stores.
 
 ## 9. MVP definition

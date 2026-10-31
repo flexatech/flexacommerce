@@ -6,6 +6,7 @@ namespace Flexa\Commerce\Migration\Targets;
 
 use Flexa\Commerce\Catalog\AttributeRepository;
 use Flexa\Commerce\Catalog\Combination;
+use Flexa\Commerce\Catalog\Downloads;
 use Flexa\Commerce\Catalog\PostTypes;
 use Flexa\Commerce\Catalog\ProductInput;
 use Flexa\Commerce\Catalog\ProductService;
@@ -171,12 +172,6 @@ final class FxcCatalogWriter {
 		}
 		$action = $target > 0 ? WriteResult::UPDATED : WriteResult::CREATED;
 
-		foreach ( [ 'virtual', 'downloadable' ] as $flag ) {
-			if ( ! empty( $data[ $flag ] ) ) {
-				$problems[] = Problem::warning( 'unsupported_' . $flag, sprintf( 'The product is %s; FlexaCommerce imports it as a physical product.', $flag ) );
-			}
-		}
-
 		$target = $this->save_post( $target, $data, $map, $problems );
 		$this->save_terms( $target, $data, $map, $problems );
 
@@ -207,7 +202,14 @@ final class FxcCatalogWriter {
 
 		[ $raw, $axes ] = $this->attributes_of( $data, $map, $problems );
 		$kind           = ( $data['kind'] ?? 'simple' ) === 'variable' ? 'variable' : 'simple';
-		$base           = $this->fields( is_array( $data['base'] ?? null ) ? $data['base'] : [], 'base', $map, $problems );
+		$base_row       = ( is_array( $data['base'] ?? null ) ? $data['base'] : [] ) + array_intersect_key(
+			$data,
+			[
+				'virtual'      => 0,
+				'downloadable' => 0,
+			]
+		);
+		$base           = $this->fields( $base_row, 'base', $map, $problems );
 		unset( $base['stock_from_base'] );
 
 		try {
@@ -553,7 +555,7 @@ final class FxcCatalogWriter {
 		$fields['sale_from'] = $from;
 		$fields['sale_to']   = $to;
 
-		foreach ( [ 'enabled', 'manage_stock', 'stock_from_base', 'tax_class', 'description' ] as $key ) {
+		foreach ( [ 'enabled', 'manage_stock', 'stock_from_base', 'tax_class', 'description', 'virtual', 'downloadable' ] as $key ) {
 			if ( array_key_exists( $key, $row ) ) {
 				$fields[ $key ] = $row[ $key ];
 			}
@@ -596,12 +598,41 @@ final class FxcCatalogWriter {
 		if ( array_key_exists( 'image', $row ) ) {
 			$fields['image_id'] = $this->attachment( $row['image'], $map, $problems );
 		}
+		if ( is_array( $row['downloads'] ?? null ) ) {
+			$fields['downloads'] = self::downloads( $row['downloads'], $path, $problems );
+		}
 
 		try {
 			return ProductInput::fields( $fields, $path );
 		} catch ( InvalidProduct $e ) {
 			throw new Rejected( 'invalid_product', $e->getMessage(), [ 'field' => $e->field ] );
 		}
+	}
+
+	/**
+	 * Files that cannot be sold from this site are dropped with a warning,
+	 * so the product still imports (ADR-058).
+	 *
+	 * @param array<array-key,mixed> $downloads
+	 * @param list<Problem>          $problems
+	 * @return array<string,mixed>
+	 */
+	private static function downloads( array $downloads, string $path, array &$problems ): array {
+		$files = [];
+		foreach ( is_array( $downloads['files'] ?? null ) ? $downloads['files'] : [] as $file ) {
+			$reference = is_array( $file ) && is_string( $file['file'] ?? null ) ? $file['file'] : '';
+			$problem   = $reference !== '' ? Downloads::problem( $reference ) : __( 'Choose a file or enter its URL.', 'flexacommerce' );
+			if ( $problem !== null ) {
+				$problems[] = Problem::warning( 'download_dropped', sprintf( 'The downloadable file "%1$s" was dropped: %2$s', $reference, $problem ), [ 'field' => $path . '.downloads' ] );
+				continue;
+			}
+			$files[] = $file;
+		}
+		return [
+			'files'       => array_slice( $files, 0, Downloads::MAX_FILES ),
+			'limit'       => is_int( $downloads['limit'] ?? null ) ? $downloads['limit'] : null,
+			'expiry_days' => is_int( $downloads['expiry_days'] ?? null ) ? $downloads['expiry_days'] : null,
+		];
 	}
 
 	/**

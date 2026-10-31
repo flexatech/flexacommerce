@@ -103,7 +103,7 @@ final class CheckoutService {
 	 * @throws \Flexa\Commerce\Contracts\Exceptions\TaxUnavailable a tax add-on failed and allows no fallback
 	 */
 	public function quote( CartState $state, Destination $destination, string $rate_id, ?AddressView $billing = null, int $user_id = 0 ): Quote {
-		$needs   = ! $state->cart->is_empty() && $this->shipping->is_configured();
+		$needs   = $state->needs_shipping() && $this->shipping->is_configured();
 		$package = $this->cart->package( $state, $destination );
 		$rates   = $needs ? $this->shipping->rates( $package ) : [];
 		$rate    = null;
@@ -923,7 +923,13 @@ final class CheckoutService {
 				$taxed?->by_rate() ?? [],
 				$off,
 				$item->fee,
-				$item->option_stock
+				$item->option_stock,
+				array_filter(
+					[
+						'virtual'      => $item->variant?->virtual === true,
+						'downloadable' => $item->variant?->sells_files() === true,
+					]
+				)
 			);
 		}
 		$discount = 0;

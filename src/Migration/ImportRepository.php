@@ -20,7 +20,7 @@ final class ImportRepository {
 	private const JSON_FLAGS = JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR;
 
 	/** Child tables keyed by order_id, cleared before an update writes them again. */
-	private const CHILDREN = [ 'order_items', 'order_addresses', 'order_history', 'order_meta', 'transactions' ];
+	private const CHILDREN = [ 'order_items', 'order_addresses', 'order_history', 'order_meta', 'transactions', 'downloads' ];
 
 	private const ITEM_COLUMNS = [
 		'type'              => '%s',

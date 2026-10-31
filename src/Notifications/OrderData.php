@@ -25,12 +25,35 @@ final class OrderData {
 	/** @var array<int,?Order> */
 	private array $orders = [];
 
-	/** @param \Closure():CheckoutServices $checkout */
+	/**
+	 * @param \Closure():CheckoutServices $checkout
+	 * @param ?\Closure(int):list<array{name:string,product:string,url:string,remaining:?int,expires:?string}> $downloads
+	 */
 	public function __construct(
 		private readonly OrderRepository $repository,
 		private readonly MoneyFactory $money,
 		private readonly \Closure $checkout,
+		private readonly ?\Closure $downloads = null,
 	) {}
+
+	/**
+	 * The download links of a paid order (ADR-058); none for orders
+	 * without a downloadable line, which skip the query.
+	 *
+	 * @return list<array{name:string,product:string,url:string,remaining:?int,expires:?string}>
+	 */
+	public function downloads( OrderView $view ): array {
+		$order = $this->order( $view->id );
+		if ( $order === null || $this->downloads === null ) {
+			return [];
+		}
+		foreach ( $order->items_of_type( 'product' ) as $item ) {
+			if ( ! empty( $item->meta['downloadable'] ) ) {
+				return ( $this->downloads )( $view->id );
+			}
+		}
+		return [];
+	}
 
 	public function money( Money $money ): string {
 		return $this->money->format( $money );

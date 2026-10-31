@@ -152,6 +152,7 @@ final class WooOrderWriter {
 			$order->save();
 		}
 		$this->history( $order_id, is_array( $data['history'] ?? null ) ? $data['history'] : [] );
+		$this->downloads( $order, is_array( $data['downloads'] ?? null ) ? $data['downloads'] : [], $sources );
 		if ( ! empty( $data['trashed'] ) ) {
 			$order->delete( false );
 		}
@@ -406,6 +407,55 @@ final class WooOrderWriter {
 			if ( $id > 0 && ! empty( $entry['customer_visible'] ) ) {
 				add_comment_meta( (int) $id, 'is_customer_note', 1 );
 			}
+		}
+	}
+
+	/**
+	 * Download permissions with their counts (ADR-058). WooCommerce may have
+	 * granted fresh ones when the status was set; those are replaced, and the
+	 * order is marked as granted so it does not grant again.
+	 *
+	 * @param array<array-key,mixed>        $downloads
+	 * @param array<string,\WC_Order_Item> $sources source item ref => written item
+	 */
+	private function downloads( \WC_Order $order, array $downloads, array $sources ): void {
+		( new \WC_Customer_Download_Data_Store() )->delete_by_order_id( $order->get_id() );
+		$skipped = 0;
+		foreach ( $downloads as $entry ) {
+			$item = is_array( $entry ) ? ( $sources[ (string) ( $entry['item'] ?? '' ) ] ?? null ) : null;
+			if ( ! is_array( $entry ) || ! $item instanceof \WC_Order_Item_Product || ! is_string( $entry['file'] ?? null ) ) {
+				++$skipped;
+				continue;
+			}
+			$product = $item->get_variation_id() > 0 ? $item->get_variation_id() : $item->get_product_id();
+			if ( $product <= 0 ) {
+				++$skipped;
+				continue;
+			}
+			$granted  = Dates::to_timestamp( is_string( $entry['granted_at'] ?? null ) ? $entry['granted_at'] : null );
+			$download = new \WC_Customer_Download();
+			$download->set_props(
+				[
+					'download_id'         => $entry['file'],
+					'product_id'          => $product,
+					'order_id'            => $order->get_id(),
+					'order_key'           => $order->get_order_key(),
+					'user_id'             => $order->get_customer_id(),
+					'user_email'          => is_string( $entry['email'] ?? null ) && $entry['email'] !== '' ? $entry['email'] : $order->get_billing_email(),
+					'downloads_remaining' => is_int( $entry['remaining'] ?? null ) ? (string) max( 0, $entry['remaining'] ) : '',
+					'download_count'      => max( 0, (int) ( $entry['count'] ?? 0 ) ),
+					'access_granted'      => $granted ?? time(),
+					'access_expires'      => Dates::to_timestamp( is_string( $entry['expires_at'] ?? null ) ? $entry['expires_at'] : null ),
+				]
+			);
+			$download->save();
+		}
+		if ( $skipped > 0 ) {
+			$this->problems[] = Problem::warning( 'download_skipped', sprintf( '%d download permissions point at a product that was not imported; they were skipped.', $skipped ) );
+		}
+		$store_order = $order->get_data_store();
+		if ( method_exists( $store_order, 'set_download_permissions_granted' ) ) {
+			$store_order->set_download_permissions_granted( $order, true );
 		}
 	}
 

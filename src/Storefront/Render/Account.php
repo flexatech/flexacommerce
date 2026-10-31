@@ -91,6 +91,7 @@ final class Account {
 		$links  = [
 			''             => __( 'Dashboard', 'flexacommerce' ),
 			'orders'       => __( 'Orders', 'flexacommerce' ),
+			'downloads'    => __( 'Downloads', 'flexacommerce' ),
 			'edit-address' => __( 'Addresses', 'flexacommerce' ),
 			'edit-account' => __( 'Account details', 'flexacommerce' ),
 		];
@@ -184,6 +185,15 @@ final class Account {
 		return $html;
 	}
 
+	/** The files of the customer's paid orders (ADR-058). */
+	public function downloads( int $user_id ): string {
+		$links = Plugin::instance()->downloads()->for_customer( $user_id );
+		if ( $links === [] ) {
+			return '<p class="fxc-notice">' . esc_html__( 'No downloads yet.', 'flexacommerce' ) . '</p>';
+		}
+		return OrderConfirmation::download_table( $links );
+	}
+
 	/** One order of this customer; null when it is not theirs, so both look the same. */
 	public function order( ?Order $order ): string {
 		if ( $order === null ) {
@@ -214,6 +224,7 @@ final class Account {
 			$html .= '</ol></section>';
 		}
 
+		$html .= OrderConfirmation::downloads( $order );
 		$html .= ( new OrderConfirmation( $this->checkout ) )->items( $order );
 		$html .= OrderConfirmation::fields( $order );
 		if ( $order->customer_note !== '' ) {

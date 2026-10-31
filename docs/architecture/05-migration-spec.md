@@ -318,6 +318,7 @@ Slug collisions inside a target taxonomy are impossible for a fresh store; on re
 | variable: parent SKU, parent stock fields, weight/dimensions | base variant row (not purchasable) |
 | `WC_Product_Variation`: `get_attributes()` (empty value → `*`), status `publish`/`private` → `enabled`, prices, `get_manage_stock()` (`'parent'` → `stock_from_base = 1`), stock, image, description, menu_order | variation rows; sale end + 1 s (WooCommerce's end is inclusive), position after sorting by `menu_order` then id written as `menu_order` (doc 03 §3.9) |
 | weight/dimension units (`woocommerce_weight_unit`, `woocommerce_dimension_unit`) | converted to g / mm with string arithmetic, 3 decimals |
+| `get_virtual()`, `get_downloadable()`, `get_downloads()` (id, name, file), `get_download_limit()`, `get_download_expiry()` (0 or `-1` → null, no limit) | `is_virtual`, `is_downloadable`, `downloads` JSON on the variant row, file ids kept (ADR-058). A file outside the allowed folders or with a disallowed type is dropped with `download_dropped`. |
 | `get_reviews_allowed()`, reviews (comments) | comment_status copied; reviews move in the `reviews` stage (§5.11) |
 | unknown postmeta (not `_` WooCommerce-core keys listed in the adapter's allow list) | `_fxc_import` bucket |
 
@@ -352,6 +353,7 @@ Same site, so customers are already WordPress users. The stage maps WooCommerce 
 | `get_refunds()` | `refund` transactions (`method = import`, `succeeded`), `refund_lines` from refund items, amounts, reason, date; `amount_refunded`, `payment_status` derived |
 | order notes (`wc_get_order_notes()`) | `fxc_order_history` rows, `type = note`, `customer_visible` from `is_customer_note`, `actor_type = migration`, original date and author name in `context` |
 | (always) | one history row `type = import` naming the job |
+| `woocommerce_downloadable_product_permissions` rows | `fxc_downloads` rows (ADR-058): same file id, `downloads_remaining`, `access_expires`, `download_count`, email and customer; a new token. Line meta gets `virtual` and `downloadable`. A row for a product that was not imported is skipped with `download_skipped`. Orders are not granted again. |
 | unknown order meta | `fxc_order_meta`, key prefixed `wc:` (e.g. `wc:_billing_vat_number`), restored without the prefix on FXC→WC |
 
 ### 5.5 Preflight checks
@@ -479,7 +481,7 @@ Errors reject one entity, never the batch. A job ends `completed_with_warnings` 
 | Data | Handling |
 |---|---|
 | Grouped, external, and other product types; bundles; subscriptions | skipped, listed in report with ids and edit links |
-| Downloadable/virtual flags on simple products | imported as physical product, warning (A5) |
+| Downloadable/virtual flags, files, limit and expiry | imported on the variant (§5.2), permissions with the order (§5.4), ADR-058 |
 | Product reviews | imported in the `reviews` stage (§5.11) |
 | Product add-on and SEO plugin meta | `_fxc_import` bucket on the product, round-tripped on FXC→WC; the official Product Add-ons data also becomes option sets (§5.9) |
 | Unknown order and item meta | `fxc_order_meta` (`wc:` prefix) and item `meta` JSON, round-tripped |
@@ -563,6 +565,7 @@ Rollback before step 5: nothing changed for WooCommerce. After step 5: reactivat
 - Orders: `new WC_Order()`, set every field and the final status, `set_order_stock_reduced()`, then `save()` (F5). Items via `WC_Order_Item_*` with `_reduced_stock` meta. Refunds with `wc_create_refund( refund_payment false, restock_items false )` (F9), after which the final status is re-asserted with `set_status()` + `save()` inside ImportGuard if a refund action changed it. Notes with `add_order_note()` and their dates corrected with `wp_update_comment()`.
 - Order numbers: WooCommerce core shows the order id. The FlexaCommerce number is stored in `_order_number` meta (the convention used by common sequential-number plugins) and `_fxc_order_number`. [Assumption: acceptable; see Q12.]
 - `order_key` preserved (`set_order_key()`), so customer links keep working.
+- Downloads: flags and files through `set_virtual()`, `set_downloadable()`, `set_downloads()` (a file WooCommerce refuses, for example outside its approved directories, drops the files with `download_dropped`), limit and expiry. Permissions become `WC_Customer_Download` rows with their counts, and the order is marked as granted so WooCommerce does not grant again.
 - Customers: `fxc_billing` / `fxc_shipping` → WooCommerce user meta, only for keys that are empty in WooCommerce unless `source_wins`.
 
 ## 11. Test plan (summary; details in doc 06 §5)

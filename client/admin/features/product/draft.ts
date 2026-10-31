@@ -25,6 +25,9 @@ const ROW_FIELDS = [
     "width",
     "height",
     "image_id",
+    "virtual",
+    "downloadable",
+    "downloads",
 ] as const satisfies readonly (keyof VariantRow)[];
 
 function rowFields(row: VariantRow): Record<string, unknown> {
@@ -115,6 +118,9 @@ export function newVariation(base: VariantRow, axes: ProductAttribute[]): Varian
         height: null,
         image_id: null,
         description: null,
+        virtual: base.virtual,
+        downloadable: base.downloadable,
+        downloads: { files: [], limit: base.downloads.limit, expiry_days: base.downloads.expiry_days },
     };
 }
 

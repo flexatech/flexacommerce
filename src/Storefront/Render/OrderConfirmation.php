@@ -59,6 +59,7 @@ final class OrderConfirmation {
 			$html .= '<section class="fxc-order__instructions"><h2>' . esc_html__( 'How to pay', 'flexacommerce' ) . '</h2>' . wpautop( esc_html( $instructions ) ) . '</section>';
 		}
 
+		$html .= self::downloads( $order );
 		$html .= $this->items( $order );
 		$html .= self::fields( $order );
 
@@ -132,6 +133,43 @@ final class OrderConfirmation {
 			$html .= '<tr><th scope="row">' . esc_html( $label ) . '</th><td>' . esc_html( is_string( $amount ) ? $amount : $this->money( $order, $amount ) ) . '</td></tr>';
 		}
 		return $html . '</tfoot></table>';
+	}
+
+	/**
+	 * The download links of a paid order (ADR-058). Orders without a
+	 * downloadable line skip the query.
+	 */
+	public static function downloads( Order $order ): string {
+		$has = false;
+		foreach ( $order->items_of_type( OrderItem::PRODUCT ) as $item ) {
+			$has = $has || ! empty( $item->meta['downloadable'] );
+		}
+		if ( ! $has || ! in_array( $order->status, [ OrderStatus::PROCESSING, OrderStatus::COMPLETED ], true ) ) {
+			return '';
+		}
+		$links = Plugin::instance()->downloads()->links( $order->id );
+		return $links === [] ? '' : '<section class="fxc-order__downloads"><h2>' . esc_html__( 'Downloads', 'flexacommerce' ) . '</h2>' . self::download_table( $links ) . '</section>';
+	}
+
+	/** @param list<array{name:string,product:string,url:string,remaining:?int,expires:?string}> $links */
+	public static function download_table( array $links ): string {
+		$html = '<table class="fxc-downloads"><thead><tr>'
+			. '<th scope="col">' . esc_html__( 'Product', 'flexacommerce' ) . '</th>'
+			. '<th scope="col">' . esc_html__( 'Downloads left', 'flexacommerce' ) . '</th>'
+			. '<th scope="col">' . esc_html__( 'Expires', 'flexacommerce' ) . '</th>'
+			. '<th scope="col">' . esc_html__( 'File', 'flexacommerce' ) . '</th>'
+			. '</tr></thead><tbody>';
+		foreach ( $links as $link ) {
+			$html .= sprintf(
+				'<tr><th scope="row">%1$s</th><td>%2$s</td><td>%3$s</td><td><a href="%4$s" rel="nofollow">%5$s</a></td></tr>',
+				esc_html( $link['product'] ),
+				esc_html( $link['remaining'] === null ? __( 'Unlimited', 'flexacommerce' ) : number_format_i18n( $link['remaining'] ) ),
+				esc_html( $link['expires'] === null ? __( 'Never', 'flexacommerce' ) : mysql2date( (string) get_option( 'date_format' ), get_date_from_gmt( $link['expires'] ) ) ),
+				esc_url( $link['url'] ),
+				esc_html( $link['name'] )
+			);
+		}
+		return $html . '</tbody></table>';
 	}
 
 	/** The answers to the merchant's own checkout fields (ADR-031). */

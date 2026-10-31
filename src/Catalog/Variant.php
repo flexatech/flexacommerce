@@ -53,6 +53,9 @@ final class Variant {
 		public readonly string $tax_class = '',
 		public readonly string $tax_status = self::TAXABLE,
 		public readonly ?string $description = null,
+		public readonly bool $virtual = false,
+		public readonly bool $downloadable = false,
+		public readonly Downloads $downloads = new Downloads(),
 		public readonly array $meta = [],
 		public readonly string $created_at = '',
 		public readonly string $updated_at = '',
@@ -90,6 +93,9 @@ final class Variant {
 			tax_class: (string) ( $row['tax_class'] ?? '' ),
 			tax_status: in_array( $row['tax_status'] ?? null, self::TAX_STATUSES, true ) ? (string) $row['tax_status'] : self::TAXABLE,
 			description: self::nullable_string( $row['description'] ?? null ),
+			virtual: (bool) (int) ( $row['is_virtual'] ?? 0 ),
+			downloadable: (bool) (int) ( $row['is_downloadable'] ?? 0 ),
+			downloads: Downloads::from_json( $row['downloads'] ?? null ),
 			meta: self::decode_meta( $row['meta'] ?? null ),
 			created_at: (string) ( $row['created_at'] ?? '' ),
 			updated_at: (string) ( $row['updated_at'] ?? '' ),
@@ -128,6 +134,9 @@ final class Variant {
 			'tax_class'           => $this->tax_class,
 			'tax_status'          => $this->tax_status,
 			'description'         => $this->description,
+			'is_virtual'          => $this->virtual ? 1 : 0,
+			'is_downloadable'     => $this->downloadable ? 1 : 0,
+			'downloads'           => $this->downloads->to_json(),
 			'meta'                => $this->meta === [] ? null : json_encode( $this->meta, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR ), // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- THROW_ON_ERROR, wp_json_encode() swallows failures.
 		];
 	}
@@ -218,7 +227,15 @@ final class Variant {
 			'tax_class'           => $this->tax_class,
 			'tax_status'          => $this->tax_status,
 			'description'         => $this->description,
+			'virtual'             => $this->virtual,
+			'downloadable'        => $this->downloadable,
+			'downloads'           => $this->downloads->to_array(),
 		];
+	}
+
+	/** Bought by download: it has files to send once the order is paid. */
+	public function sells_files(): bool {
+		return $this->downloadable && ! $this->downloads->is_empty();
 	}
 
 	private static function nullable_int( mixed $value ): ?int {

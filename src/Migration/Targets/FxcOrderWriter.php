@@ -8,6 +8,7 @@ use Flexa\Commerce\Catalog\ProductService;
 use Flexa\Commerce\Contracts\Exceptions\ProductNotFound;
 use Flexa\Commerce\Contracts\Money;
 use Flexa\Commerce\Database\Sequence;
+use Flexa\Commerce\Downloads\PermissionRepository;
 use Flexa\Commerce\Migration\Canonical\Dates;
 use Flexa\Commerce\Migration\Canonical\Decimal;
 use Flexa\Commerce\Migration\Canonical\Problem;
@@ -60,6 +61,7 @@ final class FxcOrderWriter {
 		private readonly ProductService $products,
 		private readonly Sequence $sequence,
 		private readonly Clock $clock,
+		private readonly PermissionRepository $permissions,
 	) {}
 
 	public function order( Record $record, Mapping $map, Job $job ): WriteResult {
@@ -83,6 +85,8 @@ final class FxcOrderWriter {
 		[ $items, $sources ] = $this->items( is_array( $data['items'] ?? null ) ? $data['items'] : [], (bool) ( $data['prices_include_tax'] ?? false ), $map );
 		$transactions        = is_array( $data['transactions'] ?? null ) ? array_values( array_filter( $data['transactions'], 'is_array' ) ) : [];
 		$this->apply_refunds( $items, $sources, $transactions );
+		$downloads = is_array( $data['downloads'] ?? null ) ? array_values( array_filter( $data['downloads'], 'is_array' ) ) : [];
+		$this->flag_files( $items, $sources, is_array( $data['items'] ?? null ) ? $data['items'] : [], $downloads );
 
 		$paid     = 0;
 		$refunded = 0;
@@ -148,6 +152,7 @@ final class FxcOrderWriter {
 		$this->write_transactions( $order_id, $map->system() . ':' . $record->source_id(), $transactions, $sources, $ids, $created );
 		$this->write_history( $order_id, $data, $job, $custom, $status, $created );
 		$this->repository->insert_meta( $order_id, $this->meta( $data, $record, $job ) );
+		$this->write_downloads( $order_id, $downloads, $items, $sources, $ids, $customer, (string) $row['customer_email'], $created );
 
 		$numeric = preg_match( '/^\d{1,18}$/', $number ) === 1 ? (int) $number : 0;
 		if ( $numeric > 0 ) {
@@ -436,6 +441,81 @@ final class FxcOrderWriter {
 				}
 				unset( $item );
 			}
+		}
+	}
+
+	/**
+	 * Marks lines that need no shipping or sell files, the item meta the
+	 * storefront reads before it looks for download links (ADR-058).
+	 *
+	 * @param list<array<string,mixed>> $items
+	 * @param list<string>              $sources
+	 * @param array<array-key,mixed>    $lines
+	 * @param list<array<mixed>>        $downloads
+	 */
+	private function flag_files( array &$items, array $sources, array $lines, array $downloads ): void {
+		$flags = [];
+		foreach ( $lines as $line ) {
+			if ( is_array( $line ) && is_string( $line['id'] ?? null ) ) {
+				$flags[ $line['id'] ] = [
+					'virtual'      => ! empty( $line['virtual'] ),
+					'downloadable' => ! empty( $line['downloadable'] ),
+				];
+			}
+		}
+		foreach ( $downloads as $download ) {
+			$flags[ (string) ( $download['item'] ?? '' ) ]['downloadable'] = true;
+		}
+		foreach ( $items as $i => &$item ) {
+			if ( $item['type'] !== OrderItem::PRODUCT || ! is_array( $item['meta'] ) ) {
+				continue;
+			}
+			$item['meta'] += array_filter( $flags[ $sources[ $i ] ?? '' ] ?? [] );
+		}
+		unset( $item );
+	}
+
+	/**
+	 * Download permissions with their counts and expiry. A line that was not
+	 * imported cannot hold one, so its permissions are reported and skipped.
+	 *
+	 * @param list<array<mixed>>        $downloads
+	 * @param list<array<string,mixed>> $items
+	 * @param list<string>              $sources
+	 * @param list<int>                 $ids
+	 */
+	private function write_downloads( int $order_id, array $downloads, array $items, array $sources, array $ids, int $customer, string $email, string $created ): void {
+		$rows    = [];
+		$skipped = 0;
+		$index   = array_flip( $sources );
+		foreach ( $downloads as $download ) {
+			$i    = $index[ (string) ( $download['item'] ?? '' ) ] ?? null;
+			$file = is_string( $download['file'] ?? null ) ? substr( $download['file'], 0, 64 ) : '';
+			if ( $i === null || $file === '' || ! isset( $ids[ $i ] ) || (int) $items[ $i ]['product_id'] <= 0 ) {
+				++$skipped;
+				continue;
+			}
+			$remaining = $download['remaining'] ?? null;
+			$address   = is_string( $download['email'] ?? null ) && is_email( $download['email'] ) ? $download['email'] : $email;
+			$rows[]    = [
+				'order_id'            => $order_id,
+				'order_item_id'       => $ids[ $i ],
+				'product_id'          => (int) $items[ $i ]['product_id'],
+				'variant_id'          => (int) $items[ $i ]['variant_id'],
+				'file_id'             => $file,
+				'customer_id'         => $customer > 0 ? $customer : null,
+				'email'               => substr( $address, 0, 190 ),
+				'downloads_remaining' => is_int( $remaining ) ? max( 0, $remaining ) : null,
+				'access_expires'      => Dates::to_db( is_string( $download['expires_at'] ?? null ) ? $download['expires_at'] : null ),
+				'download_count'      => max( 0, (int) ( $download['count'] ?? 0 ) ),
+				'granted_at'          => Dates::to_db( is_string( $download['granted_at'] ?? null ) ? $download['granted_at'] : null ) ?? $created,
+			];
+		}
+		if ( $skipped > 0 ) {
+			$this->problems[] = Problem::warning( 'download_skipped', sprintf( '%d download permissions point at a product that was not imported; they were skipped.', $skipped ) );
+		}
+		if ( $rows !== [] ) {
+			$this->permissions->grant( $rows );
 		}
 	}
 

@@ -90,6 +90,16 @@ final class CartState {
 		return array_values( $ids );
 	}
 
+	/** True when a line has something to ship; virtual products have nothing (ADR-058). */
+	public function needs_shipping(): bool {
+		foreach ( $this->items as $item ) {
+			if ( $item->variant !== null && ! $item->variant->virtual ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	public function item_count(): int {
 		return $this->cart->item_count();
 	}

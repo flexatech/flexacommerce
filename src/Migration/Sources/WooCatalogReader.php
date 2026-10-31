@@ -45,6 +45,9 @@ final class WooCatalogReader {
 		'_tax_class',
 		'_virtual',
 		'_downloadable',
+		'_downloadable_files',
+		'_download_limit',
+		'_download_expiry',
 		'_variation_description',
 		'_wc_average_rating',
 		'_wc_rating_count',
@@ -391,6 +394,32 @@ final class WooCatalogReader {
 			'tax_status'          => $product->get_tax_status( 'edit' ),
 			'image'               => $image > 0 ? Ref::make( 'wp', 'attachment', $image ) : null,
 			'description'         => $variation ? $product->get_description( 'edit' ) : null,
+			'virtual'             => $product->get_virtual( 'edit' ),
+			'downloadable'        => $product->get_downloadable( 'edit' ),
+			'downloads'           => self::downloads( $product ),
+		];
+	}
+
+	/**
+	 * The files a product sells (ADR-058); WooCommerce uses -1 for no limit.
+	 *
+	 * @return array{files:list<array{id:string,name:string,file:string}>,limit:?int,expiry_days:?int}
+	 */
+	private static function downloads( \WC_Product $product ): array {
+		$files = [];
+		foreach ( $product->get_downloads( 'edit' ) as $id => $download ) {
+			$files[] = [
+				'id'   => (string) $id,
+				'name' => (string) $download->get_name(),
+				'file' => (string) $download->get_file(),
+			];
+		}
+		$limit  = (int) $product->get_download_limit( 'edit' );
+		$expiry = (int) $product->get_download_expiry( 'edit' );
+		return [
+			'files'       => $files,
+			'limit'       => $limit > 0 ? $limit : null,
+			'expiry_days' => $expiry > 0 ? $expiry : null,
 		];
 	}
 

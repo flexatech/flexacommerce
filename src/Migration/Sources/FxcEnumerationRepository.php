@@ -120,7 +120,7 @@ final class FxcEnumerationRepository {
 	/**
 	 * An order with its children, as stored.
 	 *
-	 * @return array{order:array<string,mixed>,items:list<array<string,mixed>>,addresses:list<array<string,mixed>>,history:list<array<string,mixed>>,meta:list<array<string,mixed>>,transactions:list<array<string,mixed>>}|null
+	 * @return array{order:array<string,mixed>,items:list<array<string,mixed>>,addresses:list<array<string,mixed>>,history:list<array<string,mixed>>,meta:list<array<string,mixed>>,transactions:list<array<string,mixed>>,downloads:list<array<string,mixed>>}|null
 	 */
 	public function order( int $order_id ): ?array {
 		$order = $this->wpdb->get_row( $this->wpdb->prepare( 'SELECT * FROM %i WHERE id = %d', Schema::table( 'orders' ), $order_id ), ARRAY_A );
@@ -135,6 +135,7 @@ final class FxcEnumerationRepository {
 			'history'      => $rows( $this->wpdb->prepare( 'SELECT * FROM %i WHERE order_id = %d ORDER BY created_at, id', Schema::table( 'order_history' ), $order_id ) ),
 			'meta'         => $rows( $this->wpdb->prepare( 'SELECT meta_key, meta_value FROM %i WHERE order_id = %d ORDER BY id', Schema::table( 'order_meta' ), $order_id ) ),
 			'transactions' => $rows( $this->wpdb->prepare( 'SELECT * FROM %i WHERE order_id = %d ORDER BY id', Schema::table( 'transactions' ), $order_id ) ),
+			'downloads'    => $rows( $this->wpdb->prepare( 'SELECT * FROM %i WHERE order_id = %d ORDER BY order_item_id, id', Schema::table( 'downloads' ), $order_id ) ),
 		];
 	}
 

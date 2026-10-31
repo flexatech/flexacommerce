@@ -7,7 +7,7 @@ import { attributesSignature, toPayload, type Draft } from "./draft";
 import type { FieldErrors } from "./RowFields";
 import { useGenerateVariants, useProduct, useSaveProduct } from "./useProduct";
 
-export type Tab = "general" | "inventory" | "shipping" | "gallery" | "attributes" | "variations";
+export type Tab = "general" | "inventory" | "shipping" | "downloads" | "gallery" | "attributes" | "variations";
 
 function errorsFrom(error: unknown): FieldErrors {
     if (error instanceof ApiError && typeof error.data.field === "string" && error.data.field !== "") {
@@ -29,6 +29,9 @@ function tabFor(field: string): Tab | null {
     }
     if (/^base\.(sku|manage_stock|stock_|backorders|low_stock)/.test(field)) {
         return "inventory";
+    }
+    if (field.startsWith("base.downloads")) {
+        return "downloads";
     }
     if (/^base\.(weight|length|width|height)/.test(field)) {
         return "shipping";

@@ -50,6 +50,26 @@ export interface OrderItem {
     refunded_total: number;
     restocked_qty: number;
     stock_managed: boolean;
+    /** The line sold files when it was ordered. */
+    downloadable: boolean;
+}
+
+/** One file one line may download (ADR-058); null limits mean no limit. */
+export interface OrderDownload {
+    id: number;
+    order_item_id: number;
+    product_id: number;
+    variant_id: number;
+    file_id: string;
+    /** Empty when the file was removed from the product. */
+    file_name: string;
+    product_name: string;
+    url: string;
+    downloads_remaining: number | null;
+    access_expires: string | null;
+    download_count: number;
+    granted_at: string | null;
+    last_download_at: string | null;
 }
 
 export interface OrderTransaction {
@@ -103,6 +123,7 @@ export interface OrderDetail extends OrderSummary {
     links: { view: string; pay: string };
     transactions: OrderTransaction[];
     history: OrderHistoryEntry[];
+    downloads: OrderDownload[];
 }
 
 export interface OrderCounts {

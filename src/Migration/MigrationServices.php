@@ -9,6 +9,7 @@ use Flexa\Commerce\Catalog\PostTypes;
 use Flexa\Commerce\Coupons\CouponEditor;
 use Flexa\Commerce\Coupons\CouponRepository;
 use Flexa\Commerce\Customers\CustomerProfile;
+use Flexa\Commerce\Downloads\PermissionRepository;
 use Flexa\Commerce\Migration\Canonical\Validator;
 use Flexa\Commerce\Migration\Sources\FxcCatalogReader;
 use Flexa\Commerce\Migration\Sources\FxcCouponReader;
@@ -225,7 +226,7 @@ final class MigrationServices {
 			$this->services->transaction(),
 			new FxcStoreWriter( $this->tax->repository(), new CustomerProfile() ),
 			new FxcCatalogWriter( $this->catalog->attributes(), $this->catalog->product_service(), $this->catalog->variants() ),
-			new FxcOrderWriter( $this->imports(), $this->catalog->product_service(), $this->services->sequence(), $this->services->clock() ),
+			new FxcOrderWriter( $this->imports(), $this->catalog->product_service(), $this->services->sequence(), $this->services->clock(), new PermissionRepository( $this->services->wpdb() ) ),
 			$this->imports(),
 			new FxcShippingWriter( $this->shipping->service() ),
 			new FxcCouponWriter( $this->coupons(), new CouponEditor( $this->coupons(), $this->services->clock() ) ),

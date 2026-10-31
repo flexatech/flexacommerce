@@ -7,6 +7,8 @@ namespace Flexa\Commerce\Api\Admin;
 use Flexa\Commerce\Api\Endpoint;
 use Flexa\Commerce\Contracts\CommerceException;
 use Flexa\Commerce\Contracts\Orders\AddressView;
+use Flexa\Commerce\Downloads\DownloadService;
+use Flexa\Commerce\Downloads\Permission;
 use Flexa\Commerce\Orders\Order;
 use Flexa\Commerce\Orders\OrderFields;
 use Flexa\Commerce\Orders\OrderItem;
@@ -206,6 +208,55 @@ final class OrdersEndpoint extends Endpoint {
 
 		register_rest_route(
 			self::NAMESPACE,
+			'/admin/orders/(?P<id>\d+)/downloads',
+			[
+				[
+					'methods'             => WP_REST_Server::CREATABLE,
+					'callback'            => [ $this, 'grant_downloads' ],
+					'permission_callback' => [ $this, 'edit_orders_permission' ],
+					'args'                => $id,
+				],
+			]
+		);
+
+		$permission = $id + [
+			'permission' => [
+				'type'     => 'integer',
+				'minimum'  => 1,
+				'required' => true,
+			],
+		];
+		register_rest_route(
+			self::NAMESPACE,
+			'/admin/orders/(?P<id>\d+)/downloads/(?P<permission>\d+)',
+			[
+				[
+					'methods'             => WP_REST_Server::EDITABLE,
+					'callback'            => [ $this, 'update_download' ],
+					'permission_callback' => [ $this, 'edit_orders_permission' ],
+					'args'                => $permission + [
+						'downloads_remaining' => [
+							'type'    => [ 'integer', 'null' ],
+							'minimum' => 0,
+							'maximum' => 1000000,
+						],
+						'access_expires'      => [
+							'type'    => [ 'string', 'null' ],
+							'pattern' => '^\d{4}-\d{2}-\d{2}$',
+						],
+					],
+				],
+				[
+					'methods'             => WP_REST_Server::DELETABLE,
+					'callback'            => [ $this, 'revoke_download' ],
+					'permission_callback' => [ $this, 'edit_orders_permission' ],
+					'args'                => $permission,
+				],
+			]
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
 			'/admin/orders/(?P<id>\d+)/attention',
 			[
 				[
@@ -327,6 +378,81 @@ final class OrdersEndpoint extends Endpoint {
 		);
 	}
 
+	/**
+	 * Grants the files the order's lines sell now, for example after a file
+	 * was added to the product. Permissions that exist keep their counts.
+	 *
+	 * @param WP_REST_Request<array<string,mixed>> $request
+	 */
+	public function grant_downloads( WP_REST_Request $request ): WP_REST_Response|WP_Error {
+		return $this->run(
+			$request,
+			static function ( int $id ): int {
+				Plugin::instance()->downloads()->grant_for_order( $id );
+				return $id;
+			},
+			201
+		);
+	}
+
+	/**
+	 * Sets the downloads left and the last day of access; null is no limit.
+	 * The expiry is a date and access ends at the end of that day (UTC).
+	 *
+	 * @param WP_REST_Request<array<string,mixed>> $request
+	 */
+	public function update_download( WP_REST_Request $request ): WP_REST_Response|WP_Error {
+		$permission = self::permission( $request );
+		if ( $permission instanceof WP_Error ) {
+			return $permission;
+		}
+		// A field left out keeps its value; null removes the limit.
+		$remaining = $request->has_param( 'downloads_remaining' ) ? $request->get_param( 'downloads_remaining' ) : $permission->downloads_remaining;
+		$expires   = $request->has_param( 'access_expires' ) ? $request->get_param( 'access_expires' ) : $permission->access_expires;
+		if ( is_string( $expires ) && strlen( $expires ) === 10 ) {
+			$expires .= ' 23:59:59';
+		}
+		return $this->run(
+			$request,
+			static function ( int $id ) use ( $permission, $remaining, $expires ): int {
+				Plugin::instance()->downloads()->permissions()->update_limits(
+					$permission->id,
+					is_numeric( $remaining ) ? (int) $remaining : null,
+					is_string( $expires ) && $expires !== '' ? $expires : null
+				);
+				return $id;
+			}
+		);
+	}
+
+	/** @param WP_REST_Request<array<string,mixed>> $request */
+	public function revoke_download( WP_REST_Request $request ): WP_REST_Response|WP_Error {
+		$permission = self::permission( $request );
+		if ( $permission instanceof WP_Error ) {
+			return $permission;
+		}
+		return $this->run(
+			$request,
+			static function ( int $id ) use ( $permission ): int {
+				Plugin::instance()->downloads()->permissions()->delete( $permission->id );
+				return $id;
+			}
+		);
+	}
+
+	/**
+	 * The permission in the route, when it belongs to the order in the route.
+	 *
+	 * @param WP_REST_Request<array<string,mixed>> $request
+	 */
+	private static function permission( WP_REST_Request $request ): Permission|WP_Error {
+		$permission = Plugin::instance()->downloads()->permissions()->find( (int) $request->get_param( 'permission' ) );
+		if ( $permission === null || $permission->order_id !== (int) $request->get_param( 'id' ) ) {
+			return new WP_Error( 'fxc_download_not_found', __( 'This download permission does not exist on this order.', 'flexacommerce' ), [ 'status' => 404 ] );
+		}
+		return $permission;
+	}
+
 	/** @return array<string,mixed> one row of the list; items are not loaded */
 	public function summary( Order $order ): array {
 		return [
@@ -415,7 +541,35 @@ final class OrdersEndpoint extends Endpoint {
 			],
 			'transactions'   => array_map( [ self::class, 'transaction' ], $payments->transactions()->for_order( $order->id ) ),
 			'history'        => self::history( $order->id ),
+			'downloads'      => self::downloads( $order ),
 		];
+	}
+
+	/**
+	 * Every download permission of the order, with the file and product
+	 * names; a file removed from the product shows with an empty name.
+	 *
+	 * @return list<array<string,mixed>>
+	 */
+	private static function downloads( Order $order ): array {
+		$downloads = Plugin::instance()->downloads();
+		$names     = [];
+		foreach ( $order->items as $item ) {
+			$names[ $item->id ] = $item->name;
+		}
+		$out = [];
+		foreach ( $downloads->permissions()->for_order( $order->id ) as $permission ) {
+			$file  = $downloads->file( $permission );
+			$out[] = [
+				'file_name'        => $file['name'] ?? '',
+				'product_name'     => $names[ $permission->order_item_id ] ?? '',
+				'url'              => $file !== null ? DownloadService::url( $permission ) : '',
+				'access_expires'   => self::date( $permission->access_expires ),
+				'granted_at'       => self::date( $permission->granted_at ),
+				'last_download_at' => self::date( $permission->last_download_at ),
+			] + $permission->to_array();
+		}
+		return $out;
 	}
 
 	/** @return array<string,mixed> */
@@ -438,6 +592,7 @@ final class OrdersEndpoint extends Endpoint {
 			'refunded_total' => $item->refunded_total,
 			'restocked_qty'  => $item->restocked_qty,
 			'stock_managed'  => $item->stock_id() > 0,
+			'downloadable'   => ! empty( $item->meta['downloadable'] ),
 		];
 	}
 

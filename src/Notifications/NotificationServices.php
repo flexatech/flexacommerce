@@ -22,11 +22,15 @@ final class NotificationServices {
 	/** @var list<Email>|null */
 	private ?array $emails = null;
 
-	/** @param \Closure():CheckoutServices $checkout */
+	/**
+	 * @param \Closure():CheckoutServices $checkout
+	 * @param ?\Closure(int):list<array{name:string,product:string,url:string,remaining:?int,expires:?string}> $downloads the download links of an order (ADR-058)
+	 */
 	public function __construct(
 		private readonly Services $services,
 		private readonly OrderServices $orders,
 		private readonly \Closure $checkout,
+		private readonly ?\Closure $downloads = null,
 	) {}
 
 	public function notifier(): Notifier {
@@ -95,6 +99,6 @@ final class NotificationServices {
 	}
 
 	public function data(): OrderData {
-		return $this->data ??= new OrderData( $this->orders->orders(), $this->services->money(), $this->checkout );
+		return $this->data ??= new OrderData( $this->orders->orders(), $this->services->money(), $this->checkout, $this->downloads );
 	}
 }

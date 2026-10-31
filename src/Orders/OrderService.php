@@ -115,6 +115,10 @@ final class OrderService {
 							do_action( 'flexacommerce.order.created', $view );
 						}
 					);
+					// The new lines tell without reading the order back whether it holds only downloads.
+					if ( $status === S::PROCESSING && self::only_downloads( array_column( array_filter( $new->items, static fn ( NewOrderItem $i ): bool => $i->type === OrderItem::PRODUCT ), 'meta' ) ) ) {
+						$this->complete_if_nothing_to_ship( $this->lock( $order_id ), $ctx );
+					}
 				}
 				$order = $this->orders->find( $order_id ) ?? throw new OrderNotFound( 'The new order could not be read back.' );
 				// Nothing else writes the new order before the commit, so the created action uses this read.
@@ -226,6 +230,7 @@ final class OrderService {
 					} elseif ( in_array( $order->status, [ S::PENDING, S::ON_HOLD, S::FAILED ], true ) ) {
 						try {
 							$this->apply_transition( $order, S::PROCESSING, $ctx->with_message( '' ) );
+							$this->complete_if_nothing_to_ship( $this->lock( $order_id ), $ctx );
 						} catch ( InsufficientStock $e ) {
 							// On hold without its stock: the admin restocks or refunds.
 							$this->apply_transition( $order, S::ON_HOLD, $ctx->with_message( __( 'Payment received but the stock is gone; the order holds no stock.', 'flexacommerce' ) ), false, false );
@@ -521,6 +526,42 @@ final class OrderService {
 			}
 		}
 		return $cancelled;
+	}
+
+	/**
+	 * A paid order of downloads only has nothing left to do, so it moves on
+	 * to completed (ADR-058). `flexacommerce.order.needs_processing` can keep
+	 * it at processing.
+	 */
+	private function complete_if_nothing_to_ship( Order $order, TransitionContext $ctx ): void {
+		if ( ! self::only_downloads( array_map( static fn ( OrderItem $i ): array => $i->meta, $order->items_of_type( OrderItem::PRODUCT ) ) ) ) {
+			return;
+		}
+		/**
+		 * Whether an order of downloads only stays processing instead of
+		 * completing when it is paid (ADR-058).
+		 *
+		 * @param bool      $needs false
+		 * @param OrderView $view
+		 */
+		if ( (bool) apply_filters( 'flexacommerce.order.needs_processing', false, $order->view() ) ) {
+			return;
+		}
+		$this->apply_transition( $order, S::COMPLETED, $ctx->with_message( __( 'Order completed: it only holds downloads.', 'flexacommerce' ) ) );
+	}
+
+	/**
+	 * True when every product line is virtual and sells files (ADR-058).
+	 *
+	 * @param array<array-key,array<string,mixed>> $metas product line meta
+	 */
+	private static function only_downloads( array $metas ): bool {
+		foreach ( $metas as $meta ) {
+			if ( empty( $meta['virtual'] ) || empty( $meta['downloadable'] ) ) {
+				return false;
+			}
+		}
+		return $metas !== [];
 	}
 
 	private function lock( int $order_id ): Order {

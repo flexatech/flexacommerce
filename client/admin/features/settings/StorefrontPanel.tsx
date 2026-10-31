@@ -5,6 +5,7 @@ import {
     CalendarClock,
     Circle,
     Crop,
+    Download,
     Expand,
     Heading,
     LayoutGrid,
@@ -48,6 +49,7 @@ const KEYS = [
     "tier_table",
     "tier_table_title",
     "reviews",
+    "download_method",
 ] as const;
 
 type Draft = Pick<Settings, (typeof KEYS)[number]>;
@@ -403,6 +405,31 @@ export function StorefrontPanel() {
                                 { value: "all", label: __("Anyone") },
                                 { value: "buyers", label: __("Customers who bought the product") },
                                 { value: "off", label: __("Nobody (reviews off)") },
+                            ]}
+                        />
+                    }
+                />
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>{__("Downloads")}</CardTitle>
+                    <CardDescription>{__("How customers get the files of downloadable products. Links appear on the order page, in My account and in the order emails.")}</CardDescription>
+                </CardHeader>
+                <SettingRow
+                    icon={Download}
+                    label={__("File delivery")}
+                    htmlFor="fxc-download-method"
+                    description={__("Sending the file through PHP works everywhere. The server option hands large files to nginx, LiteSpeed or Apache with mod_xsendfile. A redirect shows the file address, so it is never used for files in the protected uploads folder.")}
+                    control={
+                        <Select
+                            id="fxc-download-method"
+                            value={draft.download_method}
+                            onChange={(e) => set("download_method", e.target.value as Draft["download_method"])}
+                            options={[
+                                { value: "force", label: __("Send the file (recommended)") },
+                                { value: "xsendfile", label: __("Let the web server send it") },
+                                { value: "redirect", label: __("Redirect to the file") },
                             ]}
                         />
                     }

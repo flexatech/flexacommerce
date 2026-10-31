@@ -10,6 +10,7 @@ import { __, _n, sprintf } from "@/shared/lib/i18n";
 import { formatMoney } from "@/shared/lib/units";
 import { canPickImage, pickImage } from "../../components/pickImage";
 import { combinationLabel, newVariation } from "./draft";
+import { DownloadFields } from "./DownloadFields";
 import { Field, IntInput, MoneyInput, Toggle } from "./fields";
 import { InventoryFields, PricingFields, ShippingFields, TaxFields, type FieldErrors } from "./RowFields";
 import type { ProductAttribute, VariantRow } from "./types";
@@ -285,12 +286,15 @@ function VariationEditor({
 
             <div className="fxc:flex fxc:flex-wrap fxc:items-center fxc:gap-6">
                 <Toggle checked={row.enabled} onChange={(enabled) => onChange({ enabled })} label={__("Enabled")} help={__("Disabled variations cannot be bought.")} />
+                <Toggle checked={row.virtual} onChange={(virtual) => onChange({ virtual })} label={__("Virtual")} help={__("Nothing to ship.")} />
+                <Toggle checked={row.downloadable} onChange={(downloadable) => onChange({ downloadable })} label={__("Downloadable")} help={__("Sells files.")} />
                 <ImagePicker imageId={row.image_id} onChange={(image_id) => onChange({ image_id })} />
             </div>
 
             <PricingFields row={row} onChange={onChange} errors={errors} path={path} />
             <InventoryFields row={row} onChange={onChange} errors={errors} path={path} baseManagesStock={baseManagesStock} />
-            <ShippingFields row={row} onChange={onChange} errors={errors} path={path} />
+            {!row.virtual && <ShippingFields row={row} onChange={onChange} errors={errors} path={path} />}
+            {row.downloadable && <DownloadFields row={row} onChange={onChange} errors={errors} path={path} />}
             <TaxFields row={row} onChange={onChange} errors={errors} path={path} />
 
             <Field label={__("Description")}>

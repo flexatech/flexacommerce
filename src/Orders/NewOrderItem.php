@@ -48,10 +48,11 @@ final class NewOrderItem {
 	 * @param list<array{label:string,value:string}> $attributes
 	 * @param array<string,int>                      $taxes        rate key => tax on the line
 	 * @param array<string,string>                   $option_stock option choices that track stock, key => name (ADR-040)
+	 * @param array<string,mixed>                    $extra        more item meta, such as the `virtual` and `downloadable` flags (ADR-058)
 	 */
-	public static function product( int $product_id, int $variant_id, int $stock_id, string $name, ?string $sku, array $attributes, int $quantity, int $unit_price, ?int $net = null, array $taxes = [], int $discount = 0, int $fee = 0, array $option_stock = [] ): self {
+	public static function product( int $product_id, int $variant_id, int $stock_id, string $name, ?string $sku, array $attributes, int $quantity, int $unit_price, ?int $net = null, array $taxes = [], int $discount = 0, int $fee = 0, array $option_stock = [], array $extra = [] ): self {
 		$subtotal = $net ?? $unit_price * $quantity + $fee;
-		$meta     = self::taxes_meta( $taxes ) + ( $fee > 0 ? [ 'fee' => $fee ] : [] ) + ( $option_stock !== [] ? [ 'option_stock' => $option_stock ] : [] );
+		$meta     = self::taxes_meta( $taxes ) + ( $fee > 0 ? [ 'fee' => $fee ] : [] ) + ( $option_stock !== [] ? [ 'option_stock' => $option_stock ] : [] ) + $extra;
 		return new self( OrderItem::PRODUCT, $name, $quantity, $unit_price, $subtotal, $subtotal - $discount, $product_id, $variant_id, $stock_id, '', $sku, $attributes, $discount, array_sum( $taxes ), $meta );
 	}
 

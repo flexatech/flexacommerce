@@ -43,6 +43,10 @@ final class Privacy {
 			'exporter_friendly_name' => __( 'FlexaCommerce saved addresses', 'flexacommerce' ),
 			'callback'               => [ $this, 'export_addresses' ],
 		];
+		$exporters['flexacommerce-downloads'] = [
+			'exporter_friendly_name' => __( 'FlexaCommerce downloads', 'flexacommerce' ),
+			'callback'               => [ $this, 'export_downloads' ],
+		];
 		return $exporters;
 	}
 
@@ -63,7 +67,66 @@ final class Privacy {
 			'eraser_friendly_name' => __( 'FlexaCommerce saved addresses', 'flexacommerce' ),
 			'callback'             => [ $this, 'erase_addresses' ],
 		];
+		$erasers['flexacommerce-downloads'] = [
+			'eraser_friendly_name' => __( 'FlexaCommerce downloads', 'flexacommerce' ),
+			'callback'             => [ $this, 'erase_downloads' ],
+		];
 		return $erasers;
+	}
+
+	/**
+	 * Download permissions with the counts and dates (ADR-058), 100 a page.
+	 *
+	 * @return array{data:list<array<string,mixed>>,done:bool}
+	 */
+	public function export_downloads( string $email, int $page = 1 ): array {
+		$rows = Plugin::instance()->downloads()->permissions()->for_email( $email, 100, ( max( 1, $page ) - 1 ) * 100 );
+		$data = [];
+		foreach ( $rows as $permission ) {
+			$data[] = [
+				'group_id'    => 'flexacommerce-downloads',
+				'group_label' => __( 'Downloads', 'flexacommerce' ),
+				'item_id'     => 'fxc-download-' . $permission->id,
+				'data'        => [
+					[
+						'name'  => __( 'Order', 'flexacommerce' ),
+						'value' => (string) $permission->order_id,
+					],
+					[
+						'name'  => __( 'Product', 'flexacommerce' ),
+						'value' => get_the_title( $permission->product_id ),
+					],
+					[
+						'name'  => __( 'Times downloaded', 'flexacommerce' ),
+						'value' => (string) $permission->download_count,
+					],
+					[
+						'name'  => __( 'Last downloaded', 'flexacommerce' ),
+						'value' => (string) $permission->last_download_at,
+					],
+				],
+			];
+		}
+		return [
+			'data' => $data,
+			'done' => count( $rows ) < 100,
+		];
+	}
+
+	/**
+	 * Removes the download permissions of an email address, so its links stop working.
+	 *
+	 * @return array{items_removed:bool,items_retained:bool,messages:list<string>,done:bool}
+	 */
+	public function erase_downloads( string $email, int $page = 1 ): array {
+		unset( $page );
+		$removed = Plugin::instance()->downloads()->permissions()->delete_for_email( $email );
+		return [
+			'items_removed'  => $removed > 0,
+			'items_retained' => false,
+			'messages'       => $removed > 0 ? [ __( 'Download access removed.', 'flexacommerce' ) ] : [],
+			'done'           => true,
+		];
 	}
 
 	/** @return array{data:list<array<string,mixed>>,done:bool} */

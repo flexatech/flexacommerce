@@ -21,6 +21,7 @@ $fxc_url   = $args['to_customer'] ? $args['data']->customer_url( $fxc_order ) : 
 	?>
 </p>
 <?php
+echo $args['templates']->render( 'parts/downloads', $args ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped template.
 echo $args['templates']->render( 'parts/order-details', $args ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped template.
 echo $args['templates']->render( 'parts/addresses', $args ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped template.
 if ( $fxc_url !== '' ) :

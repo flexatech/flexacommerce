@@ -136,7 +136,7 @@ final class ProductInput {
 	 */
 	public static function fields( array $data, string $path ): array {
 		$out = [];
-		foreach ( [ 'enabled', 'manage_stock', 'stock_from_base' ] as $key ) {
+		foreach ( [ 'enabled', 'manage_stock', 'stock_from_base', 'virtual', 'downloadable' ] as $key ) {
 			if ( array_key_exists( $key, $data ) ) {
 				$out[ $key ] = self::to_bool( $data[ $key ] );
 			}
@@ -179,6 +179,9 @@ final class ProductInput {
 		}
 		if ( array_key_exists( 'tax_status', $data ) ) {
 			$out['tax_status'] = self::one_of( $data['tax_status'], Variant::TAX_STATUSES, $path . '.tax_status' );
+		}
+		if ( array_key_exists( 'downloads', $data ) ) {
+			$out['downloads'] = Downloads::parse( $data['downloads'], $path . '.downloads' );
 		}
 		if ( array_key_exists( 'description', $data ) ) {
 			$text               = is_scalar( $data['description'] ) ? trim( wp_kses_post( (string) $data['description'] ) ) : '';

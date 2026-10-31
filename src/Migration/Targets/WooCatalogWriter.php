@@ -357,7 +357,46 @@ final class WooCatalogWriter {
 		if ( in_array( $row['tax_status'] ?? null, [ 'taxable', 'shipping', 'none' ], true ) ) {
 			$product->set_tax_status( (string) $row['tax_status'] );
 		}
+		foreach ( [ 'virtual', 'downloadable' ] as $flag ) {
+			if ( array_key_exists( $flag, $row ) ) {
+				$product->{'set_' . $flag}( (bool) $row[ $flag ] );
+			}
+		}
+		if ( is_array( $row['downloads'] ?? null ) ) {
+			self::apply_downloads( $product, $row['downloads'], $problems );
+		}
 		$this->set_sku( $product, is_string( $row['sku'] ?? null ) ? trim( $row['sku'] ) : '', $job, $problems );
+	}
+
+	/**
+	 * Downloadable files, limit and expiry (ADR-058). WooCommerce refuses files
+	 * outside its approved download directories; those are dropped with a warning.
+	 *
+	 * @param array<array-key,mixed> $downloads
+	 * @param list<Problem>          $problems
+	 */
+	private static function apply_downloads( \WC_Product $product, array $downloads, array &$problems ): void {
+		$files = [];
+		foreach ( is_array( $downloads['files'] ?? null ) ? $downloads['files'] : [] as $file ) {
+			if ( ! is_array( $file ) || ! is_string( $file['file'] ?? null ) || $file['file'] === '' ) {
+				continue;
+			}
+			$files[] = [
+				'download_id' => is_string( $file['id'] ?? null ) ? $file['id'] : '',
+				'name'        => is_string( $file['name'] ?? null ) ? $file['name'] : '',
+				'file'        => $file['file'],
+			];
+		}
+		try {
+			$product->set_downloads( $files );
+		} catch ( \WC_Data_Exception $e ) {
+			$problems[] = Problem::warning( 'download_dropped', sprintf( 'The downloadable files were dropped: %s', $e->getMessage() ) );
+			$product->set_downloads( [] );
+		}
+		$limit  = $downloads['limit'] ?? null;
+		$expiry = $downloads['expiry_days'] ?? null;
+		$product->set_download_limit( is_int( $limit ) && $limit > 0 ? $limit : -1 );
+		$product->set_download_expiry( is_int( $expiry ) && $expiry > 0 ? $expiry : -1 );
 	}
 
 	/**

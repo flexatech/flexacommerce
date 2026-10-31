@@ -144,6 +144,18 @@ final class FxcOrderReader {
 				'items'                => $items,
 				'transactions'         => $transactions,
 				'history'              => $history,
+				'downloads'            => array_map(
+					static fn ( array $row ): array => [
+						'item'       => Ref::make( 'fxc', 'order_item', (int) $row['order_item_id'] ),
+						'file'       => (string) $row['file_id'],
+						'email'      => (string) $row['email'],
+						'remaining'  => $row['downloads_remaining'] === null ? null : (int) $row['downloads_remaining'],
+						'expires_at' => Dates::from_db( is_string( $row['access_expires'] ) ? $row['access_expires'] : null ),
+						'count'      => (int) $row['download_count'],
+						'granted_at' => Dates::from_db( (string) $row['granted_at'] ),
+					],
+					$rows['downloads']
+				),
 				'extra'                => self::extra( $meta ),
 			],
 			array_values( array_unique( $depends ) )
@@ -194,6 +206,8 @@ final class FxcOrderReader {
 					'tax_class'     => is_string( $meta['tax_class'] ?? null ) ? $meta['tax_class'] : '',
 					'reduced_stock' => (int) $row['stock_reduced_qty'],
 					'restocked'     => (int) $row['restocked_qty'],
+					'virtual'       => ! empty( $meta['virtual'] ),
+					'downloadable'  => ! empty( $meta['downloadable'] ),
 					'extra'         => $extra,
 				];
 			case OrderItem::SHIPPING:

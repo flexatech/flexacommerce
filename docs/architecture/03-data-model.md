@@ -16,6 +16,7 @@ Status: **Approved 2026-10-24**. All table names below are shown without `{$wpdb
 | Webhook dedupe | `fxc_webhook_events` | DB-level replay protection. |
 | Cart sessions | `fxc_sessions` | Server-side, lazily created (ADR-008). |
 | Order number allocation | `fxc_sequences` | Atomic counter. |
+| Download permissions | `fxc_downloads` | One row per order line and file with a token and counters that change on every download (§4.16, ADR-058). |
 | Option choice stock | `fxc_option_stock` | Counts change on every order, so they need atomic updates outside the autoloaded option sets (§4.15, ADR-040). |
 | Tax rates | `fxc_tax_rates`, `fxc_tax_rate_locations` | Indexed matching by country, state, ZIP and city; the same shape as WooCommerce's tables (§4.13). |
 | Plugin log | `fxc_logs` | Filterable by channel and level, pruned by cron (§4.12). |
@@ -241,6 +242,9 @@ CREATE TABLE fxc_variants (
   tax_status varchar(10) NOT NULL DEFAULT 'taxable',
   tax_class varchar(50) NOT NULL DEFAULT '',
   description text NULL,
+  is_virtual tinyint(1) NOT NULL DEFAULT 0,
+  is_downloadable tinyint(1) NOT NULL DEFAULT 0,
+  downloads longtext NULL,
   meta longtext NULL,
   created_at datetime NOT NULL,
   updated_at datetime NOT NULL,
@@ -259,6 +263,8 @@ CREATE TABLE fxc_variants (
 | `stock_quantity` | NULL when `manage_stock = 0`. |
 | `tax_status` | `taxable` \| `shipping` \| `none`. Read from the base row only (doc 02 §7.12.2). Added in `DB_VERSION` 2. |
 | `tax_class` | Class slug, `''` = Standard. On variation rows `parent` takes the base row's class; the `DB_VERSION` 2 upgrade step sets every variation row to `parent` (no store had taxes before). |
+| `is_virtual`, `is_downloadable` | Nothing to ship; sells files. Added in `DB_VERSION` 10 (ADR-058). |
+| `downloads` | JSON `{files: [{id, name, file}], limit, expiry_days}`, up to 50 files. A file id never changes once saved, because `fxc_downloads.file_id` points at it. NULL when the variant sells no files. |
 | `meta` | JSON, extension and import data for this variant. Not queryable. |
 
 Relationships: `product_id` → `wp_posts.ID` (`fxc_product`). Lifecycle: created/updated by `ProductService`, deleted with the product (`before_delete_post`). Trashing a product keeps variants (restorable) but makes them unpurchasable because the post is not published.
@@ -756,6 +762,39 @@ CREATE TABLE fxc_option_stock (
 - **Writes.** The Product options screen sets `quantity` (only when the merchant changed it, see ADR-040) and deletes the rows of a choice that stops tracking stock or of a deleted set. Orders take with `UPDATE … SET quantity = quantity - n WHERE … AND quantity >= n` after a locking read, in the order's transaction, and put back on cancel and on refund with restock. The order item records what it holds in `meta.option_stock` (key => name) and `meta.option_held`.
 - **Reads.** The cart and the product form read the rows of the choices they need in one query by primary key. Rows change at checkout, so they are not in the object cache. Uninstall drops the table.
 
+### 4.16 `fxc_downloads`
+
+Added with downloadable products (ADR-058), `DB_VERSION` 10.
+
+```sql
+CREATE TABLE fxc_downloads (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  order_id bigint(20) unsigned NOT NULL,
+  order_item_id bigint(20) unsigned NOT NULL,
+  product_id bigint(20) unsigned NOT NULL,
+  variant_id bigint(20) unsigned NOT NULL,
+  file_id varchar(64) NOT NULL,
+  customer_id bigint(20) unsigned NULL,
+  email varchar(190) NOT NULL DEFAULT '',
+  token char(32) NOT NULL,
+  downloads_remaining int(11) NULL,
+  access_expires datetime NULL,
+  download_count int(11) unsigned NOT NULL DEFAULT 0,
+  granted_at datetime NOT NULL,
+  last_download_at datetime NULL,
+  PRIMARY KEY  (id),
+  UNIQUE KEY item_file (order_item_id,file_id),
+  UNIQUE KEY token (token),
+  KEY order_id (order_id),
+  KEY customer_id (customer_id),
+  KEY email (email),
+  KEY variant_file (variant_id,file_id)
+) {charset_collate};
+```
+
+- **Writes.** `DownloadService` grants rows when an order reaches processing or completed, with `INSERT IGNORE` on `item_file`, so granting twice adds nothing. `downloads_remaining` is the variant's limit times the quantity (NULL = no limit), `access_expires` the paid date plus `expiry_days` (NULL = never). A download runs `download_count = download_count + 1` and, when there is a limit, `downloads_remaining = downloads_remaining - 1 WHERE downloads_remaining > 0`, so two requests cannot both use the last one. A product save adds rows for new files and deletes the rows of removed files (`variant_file`). The admin order screen edits the limit and the expiry and deletes rows.
+- **Reads.** A download finds its row by `token`. The order confirmation, the emails and the order screen read by `order_id`, the account page by `customer_id`, the privacy exporter and eraser by `email`. Uninstall drops the table. Orders are only trashed, so rows stay; removing imported data (doc 05 §9.3) deletes the rows of the removed orders.
+
 ## 5. Query patterns and indexes
 
 | Query | Index used |
@@ -772,6 +811,7 @@ CREATE TABLE fxc_option_stock (
 | Webhook dedupe | `gateway_event` |
 | Transaction by gateway reference | `gateway_reference` |
 | Session lookup | `token_hash`, `user_id` |
+| Download link | `fxc_downloads.token`; an order's links `order_id`, a customer's `customer_id`, privacy `email`, a product edit `variant_file` |
 | Tax rate match for one address | `class_country_state`, then `rate_type` for the join; `type_code` and `type_range` for rates found by postcode (§4.13) |
 | Shop sort by price | `wp_postmeta` `meta_key/meta_value` on `_fxc_price_min` (core index on `meta_key`). See revisit condition below. |
 

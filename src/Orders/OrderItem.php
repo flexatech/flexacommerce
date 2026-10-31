@@ -183,6 +183,7 @@ final class OrderItem {
 			total: new Money( $this->total, $currency ),
 			refunded_qty: $this->refunded_qty,
 			refunded_total: new Money( $this->refunded_total, $currency ),
+			downloadable: ! empty( $this->meta['downloadable'] ),
 		);
 	}
 }

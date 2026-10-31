@@ -50,6 +50,7 @@ final class WooStoreReader {
 				'tax_total_display'     => (string) get_option( 'woocommerce_tax_total_display', 'itemized' ),
 				'tax_classes'           => $classes,
 				'reviews'               => $reviews,
+				'download_method'       => (string) get_option( 'woocommerce_file_download_method', 'force' ),
 				'store'                 => [
 					'country'  => $country,
 					'state'    => $state,
