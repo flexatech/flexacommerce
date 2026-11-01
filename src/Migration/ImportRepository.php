@@ -20,7 +20,7 @@ final class ImportRepository {
 	private const JSON_FLAGS = JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR;
 
 	/** Child tables keyed by order_id, cleared before an update writes them again. */
-	private const CHILDREN = [ 'order_items', 'order_addresses', 'order_history', 'order_meta', 'transactions', 'downloads' ];
+	private const CHILDREN = [ 'order_items', 'order_addresses', 'order_history', 'order_meta', 'transactions', 'downloads', 'shipments' ];
 
 	private const ITEM_COLUMNS = [
 		'type'              => '%s',
@@ -247,6 +247,19 @@ final class ImportRepository {
 		$sql = 'INSERT INTO %i (order_id, meta_key, meta_value) VALUES ' . implode( ', ', $values );
 		if ( $this->wpdb->query( $this->wpdb->prepare( $sql, ...$args ) ) === false ) {
 			throw QueryFailed::from_wpdb( $this->wpdb );
+		}
+	}
+
+	/**
+	 * The packages of an imported order (ADR-067); imports hold no items, so each is the whole order.
+	 *
+	 * @param list<array{carrier:string,carrier_name:string,tracking_number:string,tracking_url:string,shipped_at:string}> $rows
+	 */
+	public function insert_shipments( int $order_id, array $rows, string $created ): void {
+		foreach ( $rows as $row ) {
+			if ( $this->wpdb->insert( Schema::table( 'shipments' ), [ 'order_id' => $order_id ] + $row + [ 'created_at' => $created ] ) === false ) {
+				throw QueryFailed::from_wpdb( $this->wpdb );
+			}
 		}
 	}
 

@@ -230,6 +230,7 @@ final class Account {
 
 		$html .= OrderConfirmation::invoice( $order );
 		$html .= OrderConfirmation::downloads( $order );
+		$html .= OrderConfirmation::shipments( $order );
 		$html .= ( new OrderConfirmation( $this->checkout ) )->items( $order );
 		$html .= OrderConfirmation::fields( $order );
 		if ( $order->customer_note !== '' ) {

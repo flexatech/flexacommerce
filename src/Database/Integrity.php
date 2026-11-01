@@ -60,6 +60,10 @@ final class Integrity {
 				'label' => __( 'Transactions without an order', 'flexacommerce' ),
 				'count' => $orders( 'transactions' ),
 			],
+			'shipments_without_order'    => [
+				'label' => __( 'Shipments without an order', 'flexacommerce' ),
+				'count' => $orders( 'shipments' ),
+			],
 		];
 	}
 }

@@ -157,6 +157,7 @@ final class Plugin {
 			Cli\PriceRuleCommand::register();
 			Cli\ProductCsvCommand::register();
 			Cli\InvoiceCommand::register();
+			Cli\ShipmentCommand::register();
 			Reviews\Reviews::instance()->register();
 		}
 

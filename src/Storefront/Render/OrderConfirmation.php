@@ -6,6 +6,7 @@ namespace Flexa\Commerce\Storefront\Render;
 
 use Flexa\Commerce\Checkout\CheckoutService;
 use Flexa\Commerce\Contracts\Orders\AddressView;
+use Flexa\Commerce\Notifications\OrderData;
 use Flexa\Commerce\Orders\Order;
 use Flexa\Commerce\Orders\OrderFields;
 use Flexa\Commerce\Orders\OrderItem;
@@ -61,6 +62,7 @@ final class OrderConfirmation {
 
 		$html .= self::invoice( $order );
 		$html .= self::downloads( $order );
+		$html .= self::shipments( $order );
 		$html .= $this->items( $order );
 		$html .= self::fields( $order );
 
@@ -177,6 +179,49 @@ final class OrderConfirmation {
 		}
 		$links = Plugin::instance()->downloads()->links( $order->id );
 		return $links === [] ? '' : '<section class="fxc-order__downloads"><h2>' . esc_html__( 'Downloads', 'flexacommerce' ) . '</h2>' . self::download_table( $links ) . '</section>';
+	}
+
+	/**
+	 * The packages of the order with their tracking links (ADR-067). An
+	 * order that was never paid has none, so it skips the query.
+	 */
+	public static function shipments( Order $order ): string {
+		if ( in_array( $order->status, [ OrderStatus::PENDING, OrderStatus::FAILED ], true ) ) {
+			return '';
+		}
+		$list = Plugin::instance()->orders()->shipments()->for_order( $order->id );
+		if ( $list === [] ) {
+			return '';
+		}
+		$html = '<section class="fxc-order__shipments"><h2>' . esc_html__( 'Tracking', 'flexacommerce' ) . '</h2><table class="fxc-shipments"><thead><tr>'
+			. '<th scope="col">' . esc_html__( 'Shipped', 'flexacommerce' ) . '</th>'
+			. '<th scope="col">' . esc_html__( 'Carrier', 'flexacommerce' ) . '</th>'
+			. '<th scope="col">' . esc_html__( 'Tracking number', 'flexacommerce' ) . '</th>'
+			. '</tr></thead><tbody>';
+		foreach ( $list as $shipment ) {
+			$row    = OrderData::shipment_row( $order, $shipment );
+			$number = esc_html( $row['number'] );
+			if ( $row['number'] !== '' && $row['url'] !== '' ) {
+				$number = sprintf(
+					'<a href="%1$s" target="_blank" rel="noopener noreferrer">%2$s<span class="screen-reader-text"> %3$s</span></a>',
+					esc_url( $row['url'] ),
+					$number,
+					esc_html__( '(opens in a new tab)', 'flexacommerce' )
+				);
+			}
+			$items = '';
+			foreach ( $row['items'] as $item ) {
+				$items .= '<li>' . esc_html( $item['name'] . ' × ' . $item['quantity'] ) . '</li>';
+			}
+			$html .= sprintf(
+				'<tr><td>%1$s</td><td>%2$s%3$s</td><td>%4$s</td></tr>',
+				esc_html( $row['date'] ),
+				esc_html( $row['carrier'] ),
+				$items !== '' ? '<ul class="fxc-shipments__items">' . $items . '</ul>' : '',
+				$number
+			);
+		}
+		return $html . '</tbody></table></section>';
 	}
 
 	/** @param list<array{name:string,product:string,url:string,remaining:?int,expires:?string}> $links */

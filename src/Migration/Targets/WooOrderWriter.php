@@ -27,6 +27,17 @@ final class WooOrderWriter {
 	public const NUMBER_META = '_fxc_order_number';
 	/** The key sequential-number plugins read (doc 05 §10). */
 	public const PLUGIN_NUMBER_META = '_order_number';
+	/** Built-in carrier keys => the Shipment Tracking provider slugs (ADR-067). */
+	private const PROVIDERS = [
+		'ups'            => 'ups',
+		'usps'           => 'usps',
+		'fedex'          => 'fedex',
+		'dhl'            => 'dhl-express',
+		'dhl_ecommerce'  => 'dhl-ecommerce',
+		'canada_post'    => 'canada-post',
+		'royal_mail'     => 'royal-mail',
+		'australia_post' => 'australia-post',
+	];
 
 	/** @var list<Problem> */
 	private array $problems = [];
@@ -153,6 +164,7 @@ final class WooOrderWriter {
 		}
 		$this->history( $order_id, is_array( $data['history'] ?? null ) ? $data['history'] : [] );
 		$this->downloads( $order, is_array( $data['downloads'] ?? null ) ? $data['downloads'] : [], $sources );
+		self::shipments( $order, is_array( $data['shipments'] ?? null ) ? $data['shipments'] : [] );
 		if ( ! empty( $data['trashed'] ) ) {
 			$order->delete( false );
 		}
@@ -408,6 +420,45 @@ final class WooOrderWriter {
 				add_comment_meta( (int) $id, 'is_customer_note', 1 );
 			}
 		}
+	}
+
+	/**
+	 * Tracking numbers (ADR-067), kept the way the Shipment Tracking
+	 * extension stores them so it shows them once it is active. A built-in
+	 * carrier goes by the extension's provider slug; any other carrier as a
+	 * custom provider with its link.
+	 *
+	 * @param array<array-key,mixed> $shipments
+	 */
+	private static function shipments( \WC_Order $order, array $shipments ): void {
+		$items = [];
+		foreach ( $shipments as $entry ) {
+			if ( ! is_array( $entry ) ) {
+				continue;
+			}
+			$key    = is_string( $entry['carrier'] ?? null ) ? $entry['carrier'] : '';
+			$number = is_string( $entry['number'] ?? null ) ? $entry['number'] : '';
+			$slug   = self::PROVIDERS[ $key ] ?? '';
+			$name   = is_string( $entry['carrier_name'] ?? null ) ? $entry['carrier_name'] : '';
+			$url    = is_string( $entry['url'] ?? null ) ? $entry['url'] : '';
+			$date   = Dates::to_timestamp( is_string( $entry['shipped_at'] ?? null ) ? $entry['shipped_at'] : null );
+			if ( $number === '' && $name === '' && $slug === '' ) {
+				continue;
+			}
+			$items[] = [
+				'tracking_provider'        => $slug,
+				'custom_tracking_provider' => $slug === '' ? ( $name !== '' ? $name : $key ) : '',
+				'custom_tracking_link'     => $slug === '' ? $url : '',
+				'tracking_number'          => $number,
+				'date_shipped'             => (string) ( $date ?? time() ),
+				'tracking_id'              => md5( $key . '|' . $name . '|' . $number . '|' . ( $date ?? 0 ) ),
+			];
+		}
+		$order->delete_meta_data( '_wc_shipment_tracking_items' );
+		if ( $items !== [] ) {
+			$order->update_meta_data( '_wc_shipment_tracking_items', $items );
+		}
+		$order->save_meta_data();
 	}
 
 	/**

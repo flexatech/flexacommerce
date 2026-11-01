@@ -356,6 +356,7 @@ Same site, so customers are already WordPress users. The stage maps WooCommerce 
 | order notes (`wc_get_order_notes()`) | `fxc_order_history` rows, `type = note`, `customer_visible` from `is_customer_note`, `actor_type = migration`, original date and author name in `context` |
 | (always) | one history row `type = import` naming the job |
 | `woocommerce_downloadable_product_permissions` rows | `fxc_downloads` rows (ADR-058): same file id, `downloads_remaining`, `access_expires`, `download_count`, email and customer; a new token. Line meta gets `virtual` and `downloadable`. A row for a product that was not imported is skipped with `download_skipped`. Orders are not granted again. |
+| `_wc_shipment_tracking_items` order meta (the Shipment Tracking extension and the plugins that write the same meta) | `fxc_shipments` rows (ADR-067): `tracking_provider` slugs `ups`, `usps`, `fedex`, `dhl`, `dhl-express`, `dhl-us`, `dhl-ecommerce`, `canada-post`, `royal-mail`, `australia-post` become the built-in carriers and get their link; a `custom_tracking_provider` keeps its name and `custom_tracking_link`; any other slug keeps its name with no link. `date_shipped` → `shipped_at`; every shipment covers the whole order. FXC→WC writes the meta back in the same shape (custom provider for carriers outside that list). |
 | unknown order meta | `fxc_order_meta`, key prefixed `wc:` (e.g. `wc:_billing_vat_number`), restored without the prefix on FXC→WC |
 
 ### 5.5 Preflight checks

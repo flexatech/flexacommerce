@@ -13,6 +13,8 @@ use Flexa\Commerce\Orders\Order;
 use Flexa\Commerce\Orders\OrderFields;
 use Flexa\Commerce\Orders\OrderRepository;
 use Flexa\Commerce\Orders\OrderStatus;
+use Flexa\Commerce\Orders\Shipment;
+use Flexa\Commerce\Orders\ShipmentRepository;
 use Flexa\Commerce\Support\Countries;
 
 defined( 'ABSPATH' ) || exit;
@@ -35,7 +37,53 @@ final class OrderData {
 		private readonly MoneyFactory $money,
 		private readonly \Closure $checkout,
 		private readonly ?\Closure $downloads = null,
+		private readonly ?ShipmentRepository $shipments = null,
 	) {}
+
+	/**
+	 * The packages of the order with their tracking (ADR-067), or just
+	 * the one an email is about. Items are listed only for a package that
+	 * holds part of the order.
+	 *
+	 * @return list<array{date:string,carrier:string,number:string,url:string,items:list<array{name:string,quantity:int}>}>
+	 */
+	public function shipments( OrderView $view, ?Shipment $only = null ): array {
+		$order = $this->order( $view->id );
+		if ( $order === null || $this->shipments === null ) {
+			return [];
+		}
+		$list = $only !== null ? [ $only ] : $this->shipments->for_order( $view->id );
+		$out  = [];
+		foreach ( $list as $shipment ) {
+			$out[] = self::shipment_row( $order, $shipment );
+		}
+		return $out;
+	}
+
+	/**
+	 * One package as the templates and the order pages print it.
+	 *
+	 * @return array{date:string,carrier:string,number:string,url:string,items:list<array{name:string,quantity:int}>}
+	 */
+	public static function shipment_row( Order $order, Shipment $shipment ): array {
+		$items = [];
+		foreach ( $shipment->items ?? [] as $item_id => $qty ) {
+			$item = $order->item( (int) $item_id );
+			if ( $item !== null ) {
+				$items[] = [
+					'name'     => $item->name,
+					'quantity' => (int) $qty,
+				];
+			}
+		}
+		return [
+			'date'    => mysql2date( (string) get_option( 'date_format' ), get_date_from_gmt( $shipment->shipped_at ) ),
+			'carrier' => $shipment->carrier_name,
+			'number'  => $shipment->tracking_number,
+			'url'     => $shipment->tracking_url,
+			'items'   => $items,
+		];
+	}
 
 	/**
 	 * The download links of a paid order (ADR-058); none for orders

@@ -17,10 +17,24 @@ defined( 'ABSPATH' ) || exit;
  */
 final class WooOrderReader {
 	/** Order meta covered by the mapping. */
-	private const MAPPED_META = [ '_wp_trash_meta_status', '_wp_trash_meta_time', '_wp_trash_meta_comments_status', '_wp_desired_post_slug', '_edit_lock', '_edit_last', '_fxc_source_id', '_fxc_order_number', '_order_number', '_fxc_import_job' ];
+	private const MAPPED_META = [ '_wp_trash_meta_status', '_wp_trash_meta_time', '_wp_trash_meta_comments_status', '_wp_desired_post_slug', '_edit_lock', '_edit_last', '_fxc_source_id', '_fxc_order_number', '_order_number', '_fxc_import_job', '_wc_shipment_tracking_items' ];
 
 	/** Item meta covered by the mapping. */
 	private const MAPPED_ITEM_META = [ '_reduced_stock', '_restock_refunded_items', '_refunded_item_id', '_fxc_source_id' ];
+
+	/** Shipment Tracking carrier slugs => the built-in carrier keys (ADR-067). */
+	private const CARRIERS = [
+		'ups'            => 'ups',
+		'usps'           => 'usps',
+		'fedex'          => 'fedex',
+		'dhl'            => 'dhl',
+		'dhl-express'    => 'dhl',
+		'dhl-us'         => 'dhl_ecommerce',
+		'dhl-ecommerce'  => 'dhl_ecommerce',
+		'canada-post'    => 'canada_post',
+		'royal-mail'     => 'royal_mail',
+		'australia-post' => 'australia_post',
+	];
 
 	private const PAID_STATUSES = [ 'processing', 'completed', 'refunded' ];
 
@@ -149,10 +163,40 @@ final class WooOrderReader {
 				'transactions'         => $transactions,
 				'history'              => $history,
 				'downloads'            => self::downloads( $id, $lines ),
+				'shipments'            => self::shipments( $order->get_meta( '_wc_shipment_tracking_items', true, 'edit' ) ),
 				'extra'                => WooCatalogReader::extra( WooCatalogReader::meta_of( $order ), self::MAPPED_META ),
 			],
 			array_values( array_unique( $depends ) )
 		);
+	}
+
+	/**
+	 * The tracking the Shipment Tracking extension (and the plugins that
+	 * share its meta) kept on the order (ADR-067). Its carrier slugs that
+	 * match a built-in carrier keep the link pattern; any other carrier
+	 * comes over by name with its own link.
+	 *
+	 * @return list<array{carrier:string,carrier_name:string,number:string,url:string,shipped_at:?string}>
+	 */
+	public static function shipments( mixed $items ): array {
+		$out = [];
+		foreach ( is_array( $items ) ? $items : [] as $item ) {
+			if ( ! is_array( $item ) ) {
+				continue;
+			}
+			$provider = is_string( $item['tracking_provider'] ?? null ) ? $item['tracking_provider'] : '';
+			$custom   = is_string( $item['custom_tracking_provider'] ?? null ) ? trim( $item['custom_tracking_provider'] ) : '';
+			$key      = self::CARRIERS[ str_replace( [ ' ', '_' ], '-', strtolower( trim( $provider ) ) ) ] ?? '';
+			$date     = $item['date_shipped'] ?? null;
+			$out[]    = [
+				'carrier'      => $custom === '' ? $key : '',
+				'carrier_name' => $custom !== '' ? $custom : ( $key === '' ? $provider : '' ),
+				'number'       => is_scalar( $item['tracking_number'] ?? null ) ? (string) $item['tracking_number'] : '',
+				'url'          => $custom !== '' && is_string( $item['custom_tracking_link'] ?? null ) ? $item['custom_tracking_link'] : '',
+				'shipped_at'   => is_numeric( $date ) && (int) $date > 0 ? Dates::from_timestamp( (int) $date ) : null,
+			];
+		}
+		return $out;
 	}
 
 	/**

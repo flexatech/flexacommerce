@@ -12,7 +12,7 @@ defined( 'ABSPATH' ) || exit;
 /** Storage for fxc_order_history: append-only. */
 // phpcs:disable WordPress.DB.DirectDatabaseQuery -- plugin table, all values prepared, append-only log.
 final class HistoryRepository {
-	public const TYPES = [ 'status', 'note', 'payment', 'refund', 'stock', 'email', 'system', 'import' ];
+	public const TYPES = [ 'status', 'note', 'payment', 'refund', 'stock', 'email', 'system', 'import', 'shipment' ];
 
 	private const JSON_FLAGS = JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR;
 

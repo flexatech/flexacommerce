@@ -17,7 +17,7 @@ defined( 'ABSPATH' ) || exit;
  */
 // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- schema DDL on plugin-owned tables, no user input.
 final class Schema {
-	public const DB_VERSION        = '13';
+	public const DB_VERSION        = '14';
 	public const DB_VERSION_OPTION = 'flexacommerce_db_version';
 	public const OPTION_PREFIX     = 'flexacommerce_';
 
@@ -325,6 +325,20 @@ final class Schema {
 				created_at datetime NOT NULL,
 				PRIMARY KEY  (wishlist_id,product_id),
 				KEY product_id (product_id)
+			) {$charset};",
+			'shipments'          => "CREATE TABLE {$p}shipments (
+				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+				order_id bigint(20) unsigned NOT NULL,
+				carrier varchar(40) NOT NULL DEFAULT '',
+				carrier_name varchar(100) NOT NULL,
+				tracking_number varchar(100) NOT NULL DEFAULT '',
+				tracking_url varchar(500) NOT NULL DEFAULT '',
+				items longtext NULL,
+				shipped_at datetime NOT NULL,
+				created_at datetime NOT NULL,
+				PRIMARY KEY  (id),
+				KEY order_id (order_id),
+				KEY tracking_number (tracking_number)
 			) {$charset};",
 			'sequences'          => "CREATE TABLE {$p}sequences (
 				name varchar(32) NOT NULL,

@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace Flexa\Commerce\Orders;
 
+use Flexa\Commerce\Database\Schema;
+
 defined( 'ABSPATH' ) || exit;
 
 /**
  * Admin list filters. Every filter maps to an indexed column; `search`
- * matches the order number prefix or the exact customer email.
+ * matches the order number prefix, the exact customer email or the exact
+ * tracking number of a package (ADR-067).
  */
 final class OrderQuery {
 	public const ORDER_BY = [ 'created_at', 'total', 'id' ];
@@ -68,8 +71,11 @@ final class OrderQuery {
 				$args[] = strtolower( $this->search );
 			} else {
 				global $wpdb;
-				$sql[]  = 'order_number LIKE %s';
+				// A derived table, so MariaDB does not turn the IN into a semijoin over every order.
+				$sql[]  = '( order_number LIKE %s OR id IN ( SELECT order_id FROM ( SELECT order_id FROM %i WHERE tracking_number = %s ) AS shipped ) )';
 				$args[] = $wpdb->esc_like( ltrim( $this->search, '#' ) ) . '%';
+				$args[] = Schema::table( 'shipments' );
+				$args[] = (string) preg_replace( '/\s+/', '', $this->search );
 			}
 		}
 		return [ implode( ' AND ', $sql ), $args ];

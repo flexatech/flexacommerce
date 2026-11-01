@@ -13,6 +13,7 @@ import { __, sprintf } from "@/shared/lib/i18n";
 import { PageTitle } from "../../components/PageTitle";
 import { DownloadsCard } from "./DownloadsCard";
 import { InvoiceCard } from "./InvoiceCard";
+import { ShipmentsCard } from "./ShipmentsCard";
 import { formatDate, orderMoney, PAYMENT_LABEL, STATUS_LABEL, STATUS_TONE } from "./format";
 import { orderUrl } from "./navigation";
 import { AddressesDialog } from "./AddressesDialog";
@@ -88,6 +89,7 @@ export function OrderDetailView({ id, onBack, onEdit }: { id: number; onBack: ()
                 <div className="fxc:space-y-6 fxc:lg:col-span-2">
                     <ItemsCard order={order} />
                     {order.transactions.length > 0 && <TransactionsCard order={order} />}
+                    <ShipmentsCard order={order} />
                     <DownloadsCard order={order} />
                     <HistoryCard order={order} />
                 </div>

@@ -18,6 +18,7 @@ use Flexa\Commerce\Migration\Canonical\Rejected;
 use Flexa\Commerce\Migration\ImportRepository;
 use Flexa\Commerce\Migration\Job;
 use Flexa\Commerce\Migration\Mapping;
+use Flexa\Commerce\Orders\Carriers;
 use Flexa\Commerce\Orders\OrderItem;
 use Flexa\Commerce\Orders\OrderStatus;
 use Flexa\Commerce\Payments\Transaction;
@@ -153,6 +154,7 @@ final class FxcOrderWriter {
 		$this->write_history( $order_id, $data, $job, $custom, $status, $created );
 		$this->repository->insert_meta( $order_id, $this->meta( $data, $record, $job ) );
 		$this->write_downloads( $order_id, $downloads, $items, $sources, $ids, $customer, (string) $row['customer_email'], $created );
+		$this->repository->insert_shipments( $order_id, self::shipments( is_array( $data['shipments'] ?? null ) ? $data['shipments'] : [], $created ), $created );
 
 		$numeric = preg_match( '/^\d{1,18}$/', $number ) === 1 ? (int) $number : 0;
 		if ( $numeric > 0 ) {
@@ -473,6 +475,39 @@ final class FxcOrderWriter {
 			$item['meta'] += array_filter( $flags[ $sources[ $i ] ?? '' ] ?? [] );
 		}
 		unset( $item );
+	}
+
+	/**
+	 * The tracking of the order's packages (ADR-067). A known carrier key
+	 * gets its link from the carrier list; another carrier keeps its name
+	 * and link. An entry without a carrier name or number is dropped.
+	 *
+	 * @param array<array-key,mixed> $shipments
+	 * @return list<array{carrier:string,carrier_name:string,tracking_number:string,tracking_url:string,shipped_at:string}>
+	 */
+	private static function shipments( array $shipments, string $created ): array {
+		$out = [];
+		foreach ( $shipments as $entry ) {
+			if ( ! is_array( $entry ) ) {
+				continue;
+			}
+			$number = substr( (string) preg_replace( '/\s+/', '', is_string( $entry['number'] ?? null ) ? $entry['number'] : '' ), 0, 100 );
+			$key    = is_string( $entry['carrier'] ?? null ) ? sanitize_key( $entry['carrier'] ) : '';
+			$known  = Carriers::get( $key );
+			$name   = $known['name'] ?? mb_substr( trim( is_string( $entry['carrier_name'] ?? null ) ? $entry['carrier_name'] : '' ), 0, 100 );
+			if ( $name === '' && $number === '' ) {
+				continue;
+			}
+			$url   = $known !== null ? Carriers::url( $key, $number ) : esc_url_raw( is_string( $entry['url'] ?? null ) ? $entry['url'] : '', [ 'http', 'https' ] );
+			$out[] = [
+				'carrier'         => $known !== null ? $key : '',
+				'carrier_name'    => $name !== '' ? $name : __( 'Carrier', 'flexacommerce' ),
+				'tracking_number' => $number,
+				'tracking_url'    => strlen( $url ) <= 500 ? $url : '',
+				'shipped_at'      => Dates::to_db( is_string( $entry['shipped_at'] ?? null ) ? $entry['shipped_at'] : null ) ?? $created,
+			];
+		}
+		return $out;
 	}
 
 	/**

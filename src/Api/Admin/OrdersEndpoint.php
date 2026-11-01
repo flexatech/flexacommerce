@@ -9,6 +9,7 @@ use Flexa\Commerce\Contracts\CommerceException;
 use Flexa\Commerce\Contracts\Orders\AddressView;
 use Flexa\Commerce\Downloads\DownloadService;
 use Flexa\Commerce\Downloads\Permission;
+use Flexa\Commerce\Orders\Carriers;
 use Flexa\Commerce\Orders\Order;
 use Flexa\Commerce\Orders\OrderFields;
 use Flexa\Commerce\Orders\OrderItem;
@@ -257,6 +258,91 @@ final class OrdersEndpoint extends Endpoint {
 
 		register_rest_route(
 			self::NAMESPACE,
+			'/admin/orders/(?P<id>\d+)/shipments',
+			[
+				[
+					'methods'             => WP_REST_Server::CREATABLE,
+					'callback'            => [ $this, 'ship' ],
+					'permission_callback' => [ $this, 'edit_orders_permission' ],
+					'args'                => $id + [
+						'carrier'         => [
+							'type'    => 'string',
+							'default' => '',
+						],
+						'carrier_name'    => [
+							'type'      => 'string',
+							'default'   => '',
+							'maxLength' => 100,
+						],
+						'tracking_number' => [
+							'type'      => 'string',
+							'default'   => '',
+							'maxLength' => 100,
+						],
+						'tracking_url'    => [
+							'type'      => 'string',
+							'default'   => '',
+							'maxLength' => 500,
+						],
+						'items'           => [
+							'type'                 => [ 'object', 'null' ],
+							'default'              => null,
+							'additionalProperties' => [
+								'type'    => 'integer',
+								'minimum' => 0,
+							],
+						],
+						'shipped_at'      => [
+							'type'    => 'string',
+							'default' => '',
+							'pattern' => '^(\d{4}-\d{2}-\d{2})?$',
+						],
+						'complete'        => [
+							'type'    => 'boolean',
+							'default' => false,
+						],
+						'notify'          => [
+							'type'    => 'boolean',
+							'default' => true,
+						],
+					],
+				],
+			]
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/admin/orders/(?P<id>\d+)/shipments/(?P<shipment>\d+)',
+			[
+				[
+					'methods'             => WP_REST_Server::DELETABLE,
+					'callback'            => [ $this, 'unship' ],
+					'permission_callback' => [ $this, 'edit_orders_permission' ],
+					'args'                => $id + [
+						'shipment' => [
+							'type'     => 'integer',
+							'minimum'  => 1,
+							'required' => true,
+						],
+					],
+				],
+			]
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/admin/shipment-carriers',
+			[
+				[
+					'methods'             => WP_REST_Server::READABLE,
+					'callback'            => [ $this, 'carriers' ],
+					'permission_callback' => [ $this, 'edit_orders_permission' ],
+				],
+			]
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
 			'/admin/orders/(?P<id>\d+)/attention',
 			[
 				[
@@ -441,6 +527,79 @@ final class OrdersEndpoint extends Endpoint {
 	}
 
 	/**
+	 * Records a package with its tracking (ADR-067); `complete` also
+	 * completes a processing order and `notify` emails the customer.
+	 *
+	 * @param WP_REST_Request<array<string,mixed>> $request
+	 */
+	public function ship( WP_REST_Request $request ): WP_REST_Response|WP_Error {
+		$items = $request->get_param( 'items' );
+		if ( is_array( $items ) ) {
+			$lines = [];
+			foreach ( $items as $item_id => $qty ) {
+				$lines[ (int) $item_id ] = (int) $qty;
+			}
+			$items = $lines;
+		} else {
+			$items = null;
+		}
+		return $this->run(
+			$request,
+			static function ( int $id ) use ( $request, $items ): int {
+				Plugin::instance()->orders()->shipment_service()->add(
+					$id,
+					(string) $request->get_param( 'carrier' ),
+					(string) $request->get_param( 'carrier_name' ),
+					(string) $request->get_param( 'tracking_number' ),
+					(string) $request->get_param( 'tracking_url' ),
+					$items,
+					(string) $request->get_param( 'shipped_at' ),
+					(bool) $request->get_param( 'complete' ),
+					(bool) $request->get_param( 'notify' ),
+					TransitionContext::admin()
+				);
+				return $id;
+			},
+			201
+		);
+	}
+
+	/** @param WP_REST_Request<array<string,mixed>> $request */
+	public function unship( WP_REST_Request $request ): WP_REST_Response|WP_Error {
+		$shipment = (int) $request->get_param( 'shipment' );
+		return $this->run(
+			$request,
+			static function ( int $id ) use ( $shipment ): int {
+				Plugin::instance()->orders()->shipment_service()->delete( $id, $shipment, TransitionContext::admin() );
+				return $id;
+			}
+		);
+	}
+
+	/**
+	 * The carriers of the tracking form, and the one used last so the form
+	 * starts on it.
+	 *
+	 * @param WP_REST_Request<array<string,mixed>> $request
+	 */
+	public function carriers( WP_REST_Request $request ): WP_REST_Response {
+		unset( $request );
+		$out = [];
+		foreach ( Carriers::all() as $key => $carrier ) {
+			$out[] = [
+				'key'  => $key,
+				'name' => $carrier['name'],
+			];
+		}
+		return new WP_REST_Response(
+			[
+				'carriers' => $out,
+				'last'     => Plugin::instance()->orders()->shipments()->last_carrier(),
+			]
+		);
+	}
+
+	/**
 	 * The permission in the route, when it belongs to the order in the route.
 	 *
 	 * @param WP_REST_Request<array<string,mixed>> $request
@@ -543,6 +702,7 @@ final class OrdersEndpoint extends Endpoint {
 			'transactions'   => array_map( [ self::class, 'transaction' ], $payments->transactions()->for_order( $order->id ) ),
 			'history'        => self::history( $order->id ),
 			'downloads'      => self::downloads( $order ),
+			'shipments'      => self::shipments( $order ),
 		];
 	}
 
@@ -569,6 +729,19 @@ final class OrdersEndpoint extends Endpoint {
 				'granted_at'       => self::date( $permission->granted_at ),
 				'last_download_at' => self::date( $permission->last_download_at ),
 			] + $permission->to_array();
+		}
+		return $out;
+	}
+
+	/** @return list<array<string,mixed>> oldest first */
+	private static function shipments( Order $order ): array {
+		$out = [];
+		foreach ( Plugin::instance()->orders()->shipments()->for_order( $order->id ) as $shipment ) {
+			$out[] = [
+				'items'      => $shipment->items === null ? null : (object) $shipment->items,
+				'shipped_at' => self::date( $shipment->shipped_at ),
+				'created_at' => self::date( $shipment->created_at ),
+			] + $shipment->to_array();
 		}
 		return $out;
 	}

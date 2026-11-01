@@ -1,7 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/shared/lib/api";
-import type { OrderCounts, OrderDetail, OrderListParams, OrderStatus, OrderSummary, RefundLineInput } from "./types";
+import type { OrderCounts, OrderDetail, OrderListParams, OrderStatus, OrderSummary, RefundLineInput, ShipmentCarriers, ShipmentInput } from "./types";
 
 export const ORDERS_PER_PAGE = 20;
 
@@ -101,4 +101,21 @@ export function useUpdateDownload(id: number) {
 
 export function useRevokeDownload(id: number) {
     return useOrderAction(id, (permission: number) => api.delete<OrderDetail>(`admin/orders/${id}/downloads/${permission}`));
+}
+
+export function useShipmentCarriers(enabled: boolean) {
+    return useQuery({
+        queryKey: ["shipment-carriers"],
+        queryFn: () => api.get<ShipmentCarriers>("admin/shipment-carriers"),
+        enabled,
+        staleTime: 5 * 60_000,
+    });
+}
+
+export function useAddShipment(id: number) {
+    return useOrderAction(id, (vars: ShipmentInput) => api.post<OrderDetail>(`admin/orders/${id}/shipments`, { ...vars }));
+}
+
+export function useDeleteShipment(id: number) {
+    return useOrderAction(id, (shipment: number) => api.delete<OrderDetail>(`admin/orders/${id}/shipments/${shipment}`));
 }

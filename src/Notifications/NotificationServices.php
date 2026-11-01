@@ -72,6 +72,7 @@ final class NotificationServices {
 			new Emails\CustomerOnHoldOrder( $templates, $data ),
 			new Emails\CustomerProcessingOrder( $templates, $data ),
 			new Emails\CustomerCompletedOrder( $templates, $data ),
+			new Emails\CustomerShippedOrder( $templates, $data ),
 			new Emails\CancelledOrder( $templates, $data ),
 			new Emails\CustomerCancelledOrder( $templates, $data ),
 			new Emails\CustomerRefundedOrder( $templates, $data ),
@@ -100,6 +101,6 @@ final class NotificationServices {
 	}
 
 	public function data(): OrderData {
-		return $this->data ??= new OrderData( $this->orders->orders(), $this->services->money(), $this->checkout, $this->downloads );
+		return $this->data ??= new OrderData( $this->orders->orders(), $this->services->money(), $this->checkout, $this->downloads, $this->orders->shipments() );
 	}
 }

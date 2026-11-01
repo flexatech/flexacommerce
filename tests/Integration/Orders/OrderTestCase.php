@@ -21,7 +21,7 @@ use Flexa\Commerce\Tests\Integration\Cart\CartTestCase;
  * test like sessions do and are deleted in tear_down.
  */
 abstract class OrderTestCase extends CartTestCase {
-	private const TABLES = [ 'order_history', 'order_meta', 'order_addresses', 'order_items', 'transactions', 'webhook_events', 'orders' ];
+	private const TABLES = [ 'order_history', 'order_meta', 'order_addresses', 'order_items', 'transactions', 'webhook_events', 'shipments', 'orders' ];
 
 	public function tear_down(): void {
 		global $wpdb;

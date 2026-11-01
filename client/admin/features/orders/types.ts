@@ -72,6 +72,36 @@ export interface OrderDownload {
     last_download_at: string | null;
 }
 
+/** One package with its tracking (ADR-067); items null is the whole order. */
+export interface OrderShipment {
+    id: number;
+    order_id: number;
+    /** A built-in carrier key, or empty for one typed in. */
+    carrier: string;
+    carrier_name: string;
+    tracking_number: string;
+    tracking_url: string;
+    items: Record<string, number> | null;
+    shipped_at: string | null;
+    created_at: string | null;
+}
+
+export interface ShipmentCarriers {
+    carriers: { key: string; name: string }[];
+    last: { carrier: string; carrier_name: string } | null;
+}
+
+export interface ShipmentInput {
+    carrier: string;
+    carrier_name: string;
+    tracking_number: string;
+    tracking_url: string;
+    items: Record<string, number> | null;
+    shipped_at: string;
+    complete: boolean;
+    notify: boolean;
+}
+
 export interface OrderTransaction {
     id: number;
     type: "payment" | "refund" | string;
@@ -126,6 +156,7 @@ export interface OrderDetail extends OrderSummary {
     transactions: OrderTransaction[];
     history: OrderHistoryEntry[];
     downloads: OrderDownload[];
+    shipments: OrderShipment[];
 }
 
 export interface OrderCounts {

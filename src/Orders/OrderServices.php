@@ -17,6 +17,8 @@ final class OrderServices {
 	private ?OrderService $service         = null;
 	private ?OrderReaderService $reader    = null;
 	private ?CustomerRepository $customers = null;
+	private ?ShipmentRepository $shipments = null;
+	private ?ShipmentService $shipping     = null;
 
 	public function __construct(
 		private readonly Services $services,
@@ -53,5 +55,21 @@ final class OrderServices {
 
 	public function reader(): OrderReaderService {
 		return $this->reader ??= new OrderReaderService( $this->orders() );
+	}
+
+	public function shipments(): ShipmentRepository {
+		return $this->shipments ??= new ShipmentRepository( $this->services->wpdb() );
+	}
+
+	public function shipment_service(): ShipmentService {
+		return $this->shipping ??= new ShipmentService(
+			$this->shipments(),
+			$this->orders(),
+			$this->history(),
+			$this->service(),
+			$this->services->transaction(),
+			$this->services->after_commit(),
+			$this->services->clock(),
+		);
 	}
 }

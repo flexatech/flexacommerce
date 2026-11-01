@@ -1,43 +1,43 @@
 {
-  "_SearchBox-D-1RHZO_.js": {
-    "file": "assets/SearchBox-D-1RHZO_.js",
+  "_SearchBox-SdHm6v2h.js": {
+    "file": "assets/SearchBox-SdHm6v2h.js",
     "name": "SearchBox"
   },
   "admin/features/checkout/CheckoutBuilderPage.tsx": {
-    "file": "assets/CheckoutBuilderPage-CkuzUcXt.js",
+    "file": "assets/CheckoutBuilderPage-D19JaZMF.js",
     "name": "CheckoutBuilderPage",
     "src": "admin/features/checkout/CheckoutBuilderPage.tsx",
     "isDynamicEntry": true,
     "imports": [
-      "_SearchBox-D-1RHZO_.js",
+      "_SearchBox-SdHm6v2h.js",
       "admin/main.tsx"
     ]
   },
   "admin/main.tsx": {
-    "file": "assets/admin-DhPNOH8N.js",
+    "file": "assets/admin-QIt-mX-Y.js",
     "name": "admin",
     "src": "admin/main.tsx",
     "isEntry": true,
     "imports": [
-      "_SearchBox-D-1RHZO_.js"
+      "_SearchBox-SdHm6v2h.js"
     ],
     "dynamicImports": [
       "admin/features/checkout/CheckoutBuilderPage.tsx"
     ],
     "css": [
-      "assets/admin-kdaJY9MC.css"
+      "assets/admin-YLVtw3K-.css"
     ]
   },
   "admin/product-editor.tsx": {
-    "file": "assets/product-editor-h_QbZthA.js",
+    "file": "assets/product-editor-CT59oT9y.js",
     "name": "product-editor",
     "src": "admin/product-editor.tsx",
     "isEntry": true,
     "imports": [
-      "_SearchBox-D-1RHZO_.js"
+      "_SearchBox-SdHm6v2h.js"
     ],
     "css": [
-      "assets/product-editor-DEEFKR4U.css"
+      "assets/product-editor-C8Q-A3G7.css"
     ]
   }
 }

@@ -108,6 +108,7 @@ Legend: **MVP** = required for MVP. **FND** = architectural foundation in MVP, u
 | Shipping zones (country, state, postcode pattern) | MVP | |
 | Flat rate, free shipping (with optional minimum or coupon), local pickup | MVP | Coupon requirement added with free-shipping coupons |
 | Live carrier rates | POST | Through the shipping method contract. |
+| Shipment tracking | POST (built 2026-11-01, ADR-067) | The order screen records each package: carrier (UPS, USPS, FedEx, DHL, Canada Post, Royal Mail, Australia Post, or any other by name and link), tracking number, day it left and, when not the whole order, which products. One click can also complete the order and email the customer a "Your order is on its way" message with the tracking link. The customer sees the tracking on the order page and in the account. WP-CLI and the migration from the Shipment Tracking extension use the same data. |
 | Cash on delivery | MVP | |
 | Manual bank transfer | MVP | |
 | Payment gateway extension contract | MVP | Must be stable at 1.0 so online gateways can ship without core changes (Stripe and PayPal are built in, ADR-052 and ADR-054; others as add-ons). |

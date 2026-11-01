@@ -29,8 +29,9 @@ final class CustomerCompletedOrder extends OrderEmail {
 
 	protected function applies( string $hook, array $args ): ?OrderView {
 		unset( $hook );
-		[ $view, , $to ] = self::status_args( $args );
-		return $to === S::COMPLETED ? $view : null;
+		[ $view, , $to, , $context ] = self::status_args( $args );
+		// Completed by adding tracking: the shipped email tells the customer (ADR-067).
+		return $to === S::COMPLETED && ! isset( $context['shipment'] ) ? $view : null;
 	}
 
 	protected function subject( OrderView $order ): string {

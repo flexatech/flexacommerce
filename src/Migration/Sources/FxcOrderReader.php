@@ -156,6 +156,16 @@ final class FxcOrderReader {
 					],
 					$rows['downloads']
 				),
+				'shipments'            => array_map(
+					static fn ( array $row ): array => [
+						'carrier'      => (string) $row['carrier'],
+						'carrier_name' => (string) $row['carrier_name'],
+						'number'       => (string) $row['tracking_number'],
+						'url'          => (string) $row['tracking_url'],
+						'shipped_at'   => Dates::from_db( (string) $row['shipped_at'] ),
+					],
+					$rows['shipments']
+				),
 				'extra'                => self::extra( $meta ),
 			],
 			array_values( array_unique( $depends ) )

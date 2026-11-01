@@ -18,6 +18,7 @@ Status: **Approved 2026-10-24**. All table names below are shown without `{$wpdb
 | Left carts | `fxc_recoveries` | One row per cart a known shopper left, with the reminder progress and the outcome (§4.17, ADR-063). |
 | Back-in-stock signups | `fxc_stock_alerts` | One row per address, product and variant waiting for stock, with a due flag the cron reads (§4.18, ADR-065). |
 | Wishlists | `fxc_wishlists`, `fxc_wishlist_items` | One list per customer or guest token, with a share key, and one row per saved product (§4.19, ADR-066). |
+| Shipments | `fxc_shipments` | One row per package of an order with its carrier, tracking number and link, and the lines it holds (§4.20, ADR-067). |
 | Order number allocation | `fxc_sequences` | Atomic counter. |
 | Download permissions | `fxc_downloads` | One row per order line and file with a token and counters that change on every download (§4.16, ADR-058). |
 | Option choice stock | `fxc_option_stock` | Counts change on every order, so they need atomic updates outside the autoloaded option sets (§4.15, ADR-040). |
@@ -917,6 +918,31 @@ CREATE TABLE fxc_wishlist_items (
 - **Writes.** Saving the first product creates the list; a save is `INSERT IGNORE` and touches `updated_at`, as does a removal. On sign-in a guest list either gets the `user_id` (and loses its hash) or its rows are copied into the customer's list with `INSERT IGNORE ... SELECT`, up to 200 rows, and the guest list is deleted. The daily cron deletes guest lists with `updated_at` older than 90 days, lists whose user is gone, rows without a list and rows of deleted products. The privacy eraser deletes the customer's list.
 - **Reads.** The visitor's list by `user_id` or `token_hash`, the shared one by `share_key`; the products by the primary key prefix, sorted by `created_at` (at most 200 rows); the purge of deleted products by `product_id`. Uninstall drops both tables.
 
+### 4.20 `fxc_shipments`
+
+Added with shipment tracking (ADR-067), `DB_VERSION` 14.
+
+```sql
+CREATE TABLE fxc_shipments (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  order_id bigint(20) unsigned NOT NULL,
+  carrier varchar(40) NOT NULL DEFAULT '',
+  carrier_name varchar(100) NOT NULL,
+  tracking_number varchar(100) NOT NULL DEFAULT '',
+  tracking_url varchar(500) NOT NULL DEFAULT '',
+  items longtext NULL,
+  shipped_at datetime NOT NULL,
+  created_at datetime NOT NULL,
+  PRIMARY KEY  (id),
+  KEY order_id (order_id),
+  KEY tracking_number (tracking_number)
+) {charset_collate};
+```
+
+- **Columns.** `carrier` is the key of a known carrier (`ups`, `dhl`, or one added by the filter) and empty for a carrier typed by hand; `carrier_name` is always set, so a shipment still reads right after a filter drops its carrier. `tracking_url` is the link worked out when the row was written. `items` is JSON `{order item id: quantity}`, or NULL for the whole order. `shipped_at` is UTC.
+- **Writes.** `ShipmentService` inserts a row inside the order's transaction, with the order row locked, and deletes one when the admin removes it. Migration writes rows with the order. Rows are never updated: a wrong one is removed and added again.
+- **Reads.** An order's shipments by `order_id`, oldest first; the admin search by `tracking_number` (exact, in a derived table for the MariaDB semijoin issue of ADR-055); the last carrier used by the primary key. The integrity check counts rows whose order is gone. Uninstall drops the table.
+
 ## 5. Query patterns and indexes
 
 | Query | Index used |
@@ -936,6 +962,7 @@ CREATE TABLE fxc_wishlist_items (
 | Quiet carts for recovery | `fxc_sessions.updated_at` range; due reminders `fxc_recoveries.next_send_at` (ADR-063) |
 | Due stock alerts | `fxc_stock_alerts.status_due`; a product's rows and the waiting count per product `product_status`; stop link and privacy `email` (ADR-065) |
 | Wishlist | `fxc_wishlists.user_id`, `token_hash`, `share_key`; the products `fxc_wishlist_items` primary key; guest purge `updated_at` (ADR-066) |
+| Shipments | `fxc_shipments.order_id`; the admin search by tracking number `tracking_number` (ADR-067) |
 | Download link | `fxc_downloads.token`; an order's links `order_id`, a customer's `customer_id`, privacy `email`, a product edit `variant_file` |
 | Tax rate match for one address | `class_country_state`, then `rate_type` for the join; `type_code` and `type_range` for rates found by postcode (§4.13) |
 | Shop sort by price | `wp_postmeta` `meta_key/meta_value` on `_fxc_price_min` (core index on `meta_key`). See revisit condition below. |
