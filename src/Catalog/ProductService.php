@@ -110,7 +110,17 @@ final class ProductService {
 							'stock_status' => Variant::INSTOCK,
 							'virtual'      => true,
 							'downloadable' => false,
+							'gift_card'    => false,
 							'downloads'    => new Downloads(),
+						]
+					);
+				}
+				if ( $base->gift_card ) {
+					// A gift card is a code by email: nothing ships, and tax is due when it is spent (ADR-069).
+					$base = $base->with(
+						[
+							'virtual'    => true,
+							'tax_status' => 'none',
 						]
 					);
 				}
@@ -119,6 +129,13 @@ final class ProductService {
 				$variations = [];
 				if ( ProductTypes::has_variations( $type ) ) {
 					$variations = $this->plan_variations( $before, $attributes, $input->variations );
+					// Variations follow the product: a card of every amount issues codes.
+					$gift       = $base->gift_card ? [
+						'gift_card'  => true,
+						'virtual'    => true,
+						'tax_status' => 'none',
+					] : [ 'gift_card' => false ];
+					$variations = array_map( static fn ( Variant $v ): Variant => $v->with( $gift ), $variations );
 				}
 
 				$this->check_skus( $before->id, [ $base, ...$variations ] );

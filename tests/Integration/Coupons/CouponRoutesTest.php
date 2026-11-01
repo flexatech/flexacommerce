@@ -110,7 +110,7 @@ final class CouponRoutesTest extends CouponTestCase {
 		$_GET[ FormHandler::RESULT ] = 'coupon_applied';
 		$html                        = do_shortcode( '[flexacommerce_checkout]' );
 		$_GET                        = [];
-		self::assertStringContainsString( '<details class="fxc-checkout__coupons" data-fxc-coupons open><summary>Have a coupon code?</summary>', $html, 'open with the result after a post' );
+		self::assertStringContainsString( '<details class="fxc-checkout__coupons" data-fxc-coupons open><summary>Have a coupon or gift card?</summary>', $html, 'open with the result after a post' );
 		self::assertStringContainsString( '<p class="fxc-notice" role="status">Coupon applied.</p>', $html );
 		self::assertStringContainsString( '<input id="fxc-checkout-coupon-code" type="text" name="coupon_code" form="fxc-checkout-coupon"', $html, 'the code joins the coupon form, not the order' );
 		self::assertStringContainsString( 'Coupon: TEN <button type="submit" class="fxc-checkout__remove-coupon" form="fxc-checkout-coupon" name="remove_coupon" value="ten" aria-label="Remove coupon ten">&times;</button>', $html );
@@ -118,7 +118,7 @@ final class CouponRoutesTest extends CouponTestCase {
 		self::assertMatchesRegularExpression( '#</form><form id="fxc-checkout-coupon" method="post" action="[^"]+admin-post\.php" hidden data-fxc-coupon-form><input type="hidden" name="action" value="flexacommerce_cart"><input type="hidden" name="fxc_op" value="coupon">#', $html, 'after the order form, since forms do not nest' );
 
 		self::assertSame( 'coupon_removed', $this->form( [ 'remove_coupon' => 'ten' ] ) );
-		self::assertStringNotContainsString( 'open><summary>Have a coupon code?', do_shortcode( '[flexacommerce_checkout]' ), 'closed on a plain visit' );
+		self::assertStringNotContainsString( 'open><summary>Have a coupon or gift card?', do_shortcode( '[flexacommerce_checkout]' ), 'closed on a plain visit' );
 
 		CheckoutLayout::save( [ 'page' => [ 'coupons' => 'hide' ] + CheckoutLayout::default()->to_array()['page'] ] );
 		$html = do_shortcode( '[flexacommerce_checkout]' );

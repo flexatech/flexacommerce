@@ -71,7 +71,11 @@ final class PaymentService {
 		return $gateway instanceof OfflineGateway ? $gateway->order_status() : OrderStatus::PENDING;
 	}
 
-	/** Pending payment row for a new order. Call inside the checkout transaction. */
+	/**
+	 * Pending payment row for what the order still owes, so a gift card
+	 * already paid at submit is left out (ADR-069). Call inside the checkout
+	 * transaction.
+	 */
 	public function create_payment( Order $order, PaymentGateway $gateway ): Transaction {
 		$id = $this->transactions->insert(
 			$order->id,
@@ -79,7 +83,7 @@ final class PaymentService {
 			Transaction::PENDING,
 			Transaction::GATEWAY,
 			$gateway->id(),
-			$order->total,
+			$order->balance_due(),
 			$order->currency,
 			self::key(),
 			$this->clock->db_now()
@@ -245,14 +249,18 @@ final class PaymentService {
 	}
 
 	/**
-	 * Refund (doc 02 §7.10). Through the gateway: a pending refund row is
-	 * committed first, then the gateway is called outside any database
-	 * transaction. Manual: recorded as succeeded at once.
+	 * Refund (doc 02 §7.10). Through the gateway: the pending refund rows are
+	 * committed first, then each gateway is called outside any database
+	 * transaction. A refund larger than one payment is split over the
+	 * payments, newest first, so an order paid partly by gift card gets the
+	 * card payment back last (ADR-069). Manual: recorded as succeeded at once.
+	 * Returns the first refund row.
 	 *
 	 * @param list<RefundLine> $lines
+	 * @param int|null         $payment_id refund only this payment
 	 * @throws InvalidRefund
 	 */
-	public function refund( int $order_id, int $amount, array $lines, string $reason, bool $via_gateway, TransitionContext $ctx ): Transaction {
+	public function refund( int $order_id, int $amount, array $lines, string $reason, bool $via_gateway, TransitionContext $ctx, ?int $payment_id = null ): Transaction {
 		$reason = sanitize_text_field( $reason );
 
 		if ( ! $via_gateway ) {
@@ -269,18 +277,30 @@ final class PaymentService {
 			);
 		}
 
-		[ $refund, $payment, $gateway ] = $this->db->run(
-			function () use ( $order_id, $amount, $lines, $reason ): array {
+		$chunks = $this->db->run(
+			function () use ( $order_id, $amount, $lines, $reason, $payment_id ): array {
 				$order = $this->orders->get( $order_id );
 				$this->assert_refundable( $order, $amount, $lines );
-				$payment         = $this->refundable_payment( $order, $amount );
-				$gateway         = $this->gateway_or_fail( $payment->gateway );
-				[ $rows, $meta ] = self::refund_rows( $order, $lines, $reason );
-				$id              = $this->transactions->insert( $order->id, Transaction::REFUND, Transaction::PENDING, Transaction::GATEWAY, $payment->gateway, $amount, $order->currency, self::key(), $this->clock->db_now(), $payment->id, null, $rows, $meta );
-				return [ $this->must_find( $id ), $payment, $gateway ];
+				$out = [];
+				foreach ( $this->refund_plan( $order, $amount, $payment_id ) as $i => [ $payment, $share ] ) {
+					$gateway         = $this->gateway_or_fail( $payment->gateway );
+					[ $rows, $meta ] = self::refund_rows( $order, $i === 0 ? $lines : [], $reason );
+					$id              = $this->transactions->insert( $order->id, Transaction::REFUND, Transaction::PENDING, Transaction::GATEWAY, $payment->gateway, $share, $order->currency, self::key(), $this->clock->db_now(), $payment->id, null, $rows, $meta );
+					$out[]           = [ $this->must_find( $id ), $payment, $gateway ];
+				}
+				return $out;
 			}
 		);
 
+		$first = null;
+		foreach ( $chunks as [ $refund, $payment, $gateway ] ) {
+			$done  = $this->send_refund( $order_id, $refund, $payment, $gateway, $reason, $ctx );
+			$first = $first ?? $done;
+		}
+		return $first ?? throw new InvalidRefund( __( 'No payment on this order can be refunded through its payment method. Record a manual refund instead.', 'flexacommerce' ) );
+	}
+
+	private function send_refund( int $order_id, Transaction $refund, Transaction $payment, PaymentGateway $gateway, string $reason, TransitionContext $ctx ): Transaction {
 		try {
 			$result = $gateway->refund( new RefundRequest( $refund->id, (string) $payment->gateway_reference, $refund->money(), $reason, $refund->idempotency_key ) );
 		} catch ( \Throwable $e ) {
@@ -451,24 +471,59 @@ final class PaymentService {
 		}
 	}
 
-	/** The succeeded gateway payment a refund goes back to. */
-	private function refundable_payment( Order $order, int $amount ): Transaction {
-		foreach ( $this->transactions->for_order( $order->id ) as $txn ) {
+	/**
+	 * The succeeded gateway payments a refund goes back to and the share of
+	 * each, newest payment first. A payment keeps what its earlier refunds
+	 * have not taken; one that cannot refund part of itself is used only for
+	 * its whole amount.
+	 *
+	 * @return list<array{0:Transaction,1:int}>
+	 */
+	private function refund_plan( Order $order, int $amount, ?int $payment_id ): array {
+		$all      = $this->transactions->for_order( $order->id );
+		$refunded = [];
+		foreach ( $all as $txn ) {
+			if ( $txn->type === Transaction::REFUND && $txn->parent_id !== null && ! in_array( $txn->status, [ Transaction::FAILED, Transaction::CANCELLED ], true ) ) {
+				$refunded[ $txn->parent_id ] = ( $refunded[ $txn->parent_id ] ?? 0 ) + $txn->amount;
+			}
+		}
+		$plan    = [];
+		$left    = $amount;
+		$partial = false;
+		foreach ( array_reverse( $all ) as $txn ) {
+			if ( $left <= 0 ) {
+				break;
+			}
 			if ( $txn->type !== Transaction::PAYMENT || $txn->status !== Transaction::SUCCEEDED || ! in_array( $txn->method, [ Transaction::GATEWAY, Transaction::IMPORT ], true ) ) {
+				continue;
+			}
+			if ( $payment_id !== null && $txn->id !== $payment_id ) {
 				continue;
 			}
 			$gateway = $this->gateways->get( $txn->gateway );
 			if ( $gateway === null || ! $gateway->supports( 'refunds' ) || $txn->gateway_reference === null ) {
 				continue;
 			}
-			if ( $amount < $txn->amount && ! $gateway->supports( 'partial_refunds' ) ) {
-				throw new InvalidRefund( __( 'This payment method can only refund the full amount.', 'flexacommerce' ) );
+			$room = $txn->amount - ( $refunded[ $txn->id ] ?? 0 );
+			if ( $room <= 0 ) {
+				continue;
 			}
-			if ( $amount <= $txn->amount ) {
-				return $txn;
+			$share = min( $room, $left );
+			if ( $share < $txn->amount && ! $gateway->supports( 'partial_refunds' ) ) {
+				$partial = true;
+				continue;
 			}
+			$plan[] = [ $txn, $share ];
+			$left  -= $share;
 		}
-		throw new InvalidRefund( __( 'No payment on this order can be refunded through its payment method. Record a manual refund instead.', 'flexacommerce' ) );
+		if ( $left > 0 ) {
+			throw new InvalidRefund(
+				$partial
+					? __( 'This payment method can only refund the full amount.', 'flexacommerce' )
+					: __( 'No payment on this order can be refunded through its payment method. Record a manual refund instead.', 'flexacommerce' )
+			);
+		}
+		return $plan;
 	}
 
 	/**

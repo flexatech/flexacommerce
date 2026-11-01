@@ -66,6 +66,8 @@ final class Plugin {
 
 	private ?Wishlist\WishlistService $wishlist = null;
 
+	private ?GiftCards\GiftCardService $gift_cards = null;
+
 	private bool $blocks = false;
 
 	public function boot(): void {
@@ -225,6 +227,34 @@ final class Plugin {
 		if ( in_array( $view->status, Downloads\PermissionRepository::OPEN, true ) ) {
 			$this->downloads()->grant_for_view( $view );
 		}
+		if ( in_array( $view->status, [ Orders\OrderStatus::CANCELLED, Orders\OrderStatus::REFUNDED ], true ) || ( in_array( $view->status, Downloads\PermissionRepository::OPEN, true ) && self::sells_gift_cards( $view ) ) ) {
+			$this->gift_cards()->on_order( $view );
+		}
+	}
+
+	private static function sells_gift_cards( Contracts\Orders\OrderView $view ): bool {
+		foreach ( $view->items as $item ) {
+			if ( $item->gift_card ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** @internal Gift cards (ADR-069). */
+	public function gift_cards(): GiftCards\GiftCardService {
+		return $this->gift_cards ??= new GiftCards\GiftCardService(
+			new GiftCards\GiftCardRepository( $this->services()->wpdb() ),
+			$this->orders()->service(),
+			$this->payments()->transactions(),
+			fn (): Payments\PaymentService => $this->payments()->service(),
+			$this->services()->transaction(),
+			$this->notifications()->mailer(),
+			$this->notifications()->templates(),
+			$this->services()->money(),
+			$this->services()->clock(),
+			$this->services()->logger( 'gift-cards' )
+		);
 	}
 
 	/** @internal Pricing, stock, sessions and the cart. */
@@ -239,6 +269,7 @@ final class Plugin {
 			product_options: fn (): Options\ProductOptions => $this->product_options(),
 			history: fn (): Contracts\Orders\CustomerHistory => $this->customer_history(),
 			restocked: fn ( int $variant_id ) => $this->on_restocked( $variant_id ),
+			gift_cards: fn ( string $code ): ?string => $this->gift_card_code( $code ),
 		);
 	}
 
@@ -290,7 +321,55 @@ final class Plugin {
 	 * @return array<string,mixed>
 	 */
 	private function cart_totals( array $data, Cart\CartState $state ): array {
-		return Support\Settings::bool( 'tax_enabled' ) ? $this->checkout()->cart_taxes()->extend( $data, $state, get_current_user_id() ) : $data;
+		$data = Support\Settings::bool( 'tax_enabled' ) ? $this->checkout()->cart_taxes()->extend( $data, $state, get_current_user_id() ) : $data;
+		if ( $state->cart->gift_cards !== [] ) {
+			$total              = (int) ( $data['totals']['total']['amount'] ?? $state->subtotal->amount );
+			$money              = $this->services()->money();
+			$data['gift_cards'] = array_map(
+				static fn ( array $row ): array => [
+					'code'    => $row['code'],
+					'label'   => $row['label'],
+					'amount'  => [
+						'amount'    => $row['amount'],
+						'formatted' => $money->format( $money->from_minor( $row['amount'], $state->subtotal->currency ) ),
+					],
+					'balance' => [
+						'amount'    => $row['balance'],
+						'formatted' => $money->format( $money->from_minor( $row['balance'], $state->subtotal->currency ) ),
+					],
+					'message' => $row['message'],
+				],
+				$this->gift_cards()->rows( $state->cart->gift_cards, $total, $state->subtotal->currency )
+			);
+		}
+		return $data;
+	}
+
+	/**
+	 * A code box entry that names a gift card (ADR-069): its normalized code,
+	 * or null to try it as a coupon. Codes that cannot be card codes are
+	 * never looked up, and an address that guesses wrong codes is limited.
+	 *
+	 * @throws Contracts\Exceptions\InvalidCartRequest|Contracts\Exceptions\RateLimited
+	 */
+	private function gift_card_code( string $code ): ?string {
+		$code = GiftCards\GiftCard::normalize( $code );
+		if ( ! GiftCards\GiftCard::looks_like( $code ) ) {
+			return null;
+		}
+		$limiter = $this->services()->limiter();
+		$ip      = Support\ClientIp::get();
+		$limiter->check( 'gift_card_ip', $ip );
+		$card = ( new GiftCards\GiftCardRepository( $this->services()->wpdb() ) )->find_by_code( $code );
+		if ( $card === null ) {
+			$limiter->count( 'gift_card_ip', $ip );
+			return null;
+		}
+		$problem = $card->problem( $this->services()->clock()->db_now(), Support\Settings::string( 'currency' ) );
+		if ( $problem !== null ) {
+			throw new Contracts\Exceptions\InvalidCartRequest( $problem, 'code', 'gift_card_invalid' );
+		}
+		return $code;
 	}
 
 	/**
@@ -400,12 +479,16 @@ final class Plugin {
 
 	/** @internal Gateways, transactions, webhooks and refunds. */
 	public function payments(): Payments\PaymentServices {
-		return $this->payments ??= new Payments\PaymentServices( $this->services(), fn (): Orders\OrderService => $this->orders()->service() );
+		if ( $this->payments === null ) {
+			$this->payments = new Payments\PaymentServices( $this->services(), fn (): Orders\OrderService => $this->orders()->service() );
+			$this->payments->gateways()->internal( GiftCards\GiftCardService::GATEWAY, fn (): GiftCards\GiftCardGateway => new GiftCards\GiftCardGateway( fn (): GiftCards\GiftCardService => $this->gift_cards() ) );
+		}
+		return $this->payments;
 	}
 
 	/** @internal Checkout, order confirmation and order-pay. */
 	public function checkout(): Checkout\CheckoutServices {
-		return $this->checkout ??= new Checkout\CheckoutServices( $this->services(), $this->cart(), $this->shipping(), $this->orders(), $this->payments(), $this->tax(), fn (): Coupons\CouponService => $this->coupons()->service() );
+		return $this->checkout ??= new Checkout\CheckoutServices( $this->services(), $this->cart(), $this->shipping(), $this->orders(), $this->payments(), $this->tax(), fn (): Coupons\CouponService => $this->coupons()->service(), fn (): GiftCards\GiftCardService => $this->gift_cards() );
 	}
 
 	public function tax(): Tax\TaxServices {

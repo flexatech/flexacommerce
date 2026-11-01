@@ -47,6 +47,7 @@ final class CartService {
 	 * @param ?\Closure():CouponService  $coupons built only when a cart holds a code
 	 * @param ?\Closure():ProductOptions $options built only when the store has option sets
 	 * @param ?\Closure():CustomerHistory $history built only when a condition reads past orders
+	 * @param ?\Closure(string):?string   $gift_cards the normalized gift card code a code box entry names, else null; throws InvalidCartRequest for a card that cannot pay (ADR-069)
 	 */
 	public function __construct(
 		private readonly SessionStore $sessions,
@@ -58,7 +59,11 @@ final class CartService {
 		private readonly ?\Closure $coupons = null,
 		private readonly ?\Closure $options = null,
 		private readonly ?\Closure $history = null,
+		private readonly ?\Closure $gift_cards = null,
 	) {}
+
+	/** Gift card codes a cart holds at most. */
+	public const MAX_GIFT_CARDS = 5;
 
 	/**
 	 * The cart without a session lookup when no cookie is present (P11).
@@ -188,10 +193,11 @@ final class CartService {
 	/**
 	 * @param array<string,string>   $attributes selection, attribute key => value key
 	 * @param array<array-key,mixed> $options    product option values as posted, key => value (ADR-025)
+	 * @param array<array-key,mixed> $gift       gift card recipient as posted, see CartLine::GIFT_KEYS (ADR-069)
 	 * @throws InvalidCartRequest|NotPurchasable|InsufficientStock|RateLimited
 	 */
-	public function add( int $user_id, int $product_id, int $variant_id, int $quantity, array $attributes = [], array $options = [] ): CartState {
-		[ $product, $variant, $line, $max ] = $this->prepare( $product_id, $variant_id, $quantity, $attributes, $options );
+	public function add( int $user_id, int $product_id, int $variant_id, int $quantity, array $attributes = [], array $options = [], array $gift = [] ): CartState {
+		[ $product, $variant, $line, $max ] = $this->prepare( $product_id, $variant_id, $quantity, $attributes, $options, $gift );
 
 		return $this->mutate(
 			$user_id,
@@ -276,10 +282,11 @@ final class CartService {
 	 *
 	 * @param array<string,string>   $attributes
 	 * @param array<array-key,mixed> $options
+	 * @param array<array-key,mixed> $gift
 	 * @throws InvalidCartRequest|NotPurchasable|InsufficientStock
 	 */
-	public function single( int $user_id, int $product_id, int $variant_id, int $quantity, array $attributes = [], array $options = [] ): Cart {
-		[ $product, $variant, $line ] = $this->prepare( $product_id, $variant_id, $quantity, $attributes, $options );
+	public function single( int $user_id, int $product_id, int $variant_id, int $quantity, array $attributes = [], array $options = [], array $gift = [] ): Cart {
+		[ $product, $variant, $line ] = $this->prepare( $product_id, $variant_id, $quantity, $attributes, $options, $gift );
 		$cart                         = new Cart();
 		$this->assert_stock( $cart, $product, $variant, $line->quantity );
 		$this->assert_option_stock( $cart, $line->options, $line->quantity, $line->quantity, $line->key, $variant->id );
@@ -294,10 +301,11 @@ final class CartService {
 	 *
 	 * @param array<string,string>   $attributes
 	 * @param array<array-key,mixed> $options
+	 * @param array<array-key,mixed> $gift
 	 * @throws InvalidCartRequest|NotPurchasable|InsufficientStock|RateLimited
 	 */
-	public function replace( int $user_id, string $key, int $product_id, int $variant_id, int $quantity, array $attributes = [], array $options = [] ): CartState {
-		[ $product, $variant, $line, $max ] = $this->prepare( $product_id, $variant_id, $quantity, $attributes, $options );
+	public function replace( int $user_id, string $key, int $product_id, int $variant_id, int $quantity, array $attributes = [], array $options = [], array $gift = [] ): CartState {
+		[ $product, $variant, $line, $max ] = $this->prepare( $product_id, $variant_id, $quantity, $attributes, $options, $gift );
 
 		return $this->mutate(
 			$user_id,
@@ -319,7 +327,7 @@ final class CartService {
 				$this->assert_option_stock( $rest, $line->options, ( $other->quantity ?? 0 ) + $line->quantity, $line->quantity, $line->key, $variant->id );
 				$this->validate_add( $rest, $product, $variant, $line->quantity, $user_id );
 				// The line was added then; changing it does not make it new.
-				$kept = new CartLine( $line->key, $line->product_id, $line->variant_id, $line->quantity, $line->attributes, $line->labels, $old->added_at, $line->options );
+				$kept = new CartLine( $line->key, $line->product_id, $line->variant_id, $line->quantity, $line->attributes, $line->labels, $old->added_at, $line->options, $line->gift );
 				return $cart->with_replaced( $key, $kept );
 			}
 		);
@@ -330,10 +338,11 @@ final class CartService {
 	 *
 	 * @param array<string,string>   $attributes
 	 * @param array<array-key,mixed> $options
+	 * @param array<array-key,mixed> $gift
 	 * @return array{0:Product,1:Variant,2:CartLine,3:int}
 	 * @throws InvalidCartRequest|NotPurchasable
 	 */
-	private function prepare( int $product_id, int $variant_id, int $quantity, array $attributes, array $options ): array {
+	private function prepare( int $product_id, int $variant_id, int $quantity, array $attributes, array $options, array $gift = [] ): array {
 		$product = $this->products->find( $product_id );
 		if ( $product === null ) {
 			throw new NotPurchasable( $variant_id, __( 'This product does not exist.', 'flexacommerce' ) );
@@ -355,15 +364,17 @@ final class CartService {
 		if ( $this->options !== null && ProductOptions::in_use() ) {
 			$chosen = ( $this->options )()->accept( $product, $options );
 		}
+		$gift = $product->is_gift_card() ? $this->gift( $gift ) : [];
 		$line = new CartLine(
-			key: CartLine::key_for( $variant->id, $selection, $chosen['values'] ),
+			key: CartLine::key_for( $variant->id, $selection, $chosen['values'], $gift ),
 			product_id: $product->id,
 			variant_id: $variant->id,
 			quantity: $quantity,
 			attributes: $selection,
-			labels: [ ...$this->labels( $product, $selection ), ...$chosen['labels'] ],
+			labels: [ ...$this->labels( $product, $selection ), ...$chosen['labels'], ...self::gift_labels( $gift ) ],
 			added_at: $this->clock->db_now(),
 			options: $chosen['values'],
+			gift: $gift,
 		);
 		return [ $product, $variant, $line, $max ];
 	}
@@ -429,6 +440,10 @@ final class CartService {
 	 * @throws InvalidCartRequest|RateLimited
 	 */
 	public function apply_coupon( int $user_id, string $code ): CartState {
+		$card = $this->gift_cards !== null ? ( $this->gift_cards )( $code ) : null;
+		if ( $card !== null ) {
+			return $this->apply_gift_card( $user_id, $card );
+		}
 		$service = $this->coupons();
 		return $this->mutate(
 			$user_id,
@@ -442,8 +457,67 @@ final class CartService {
 		);
 	}
 
+	/**
+	 * A gift card code from the code box (ADR-069). The card pays at
+	 * checkout, after shipping and taxes; the cart only keeps the code.
+	 *
+	 * @throws InvalidCartRequest|RateLimited
+	 */
+	private function apply_gift_card( int $user_id, string $code ): CartState {
+		return $this->mutate(
+			$user_id,
+			static function ( Cart $cart ) use ( $code ): Cart {
+				if ( $cart->is_empty() ) {
+					throw new InvalidCartRequest( __( 'Add a product to your cart before you apply a gift card.', 'flexacommerce' ), 'code', 'gift_card_invalid' );
+				}
+				if ( in_array( $code, $cart->gift_cards, true ) ) {
+					throw new InvalidCartRequest( __( 'This gift card is already in your cart.', 'flexacommerce' ), 'code', 'gift_card_invalid' );
+				}
+				if ( count( $cart->gift_cards ) >= self::MAX_GIFT_CARDS ) {
+					throw new InvalidCartRequest(
+						/* translators: %d: maximum number of gift cards. */
+						sprintf( __( 'You can use at most %d gift cards in one order.', 'flexacommerce' ), self::MAX_GIFT_CARDS ),
+						'code',
+						'gift_card_invalid'
+					);
+				}
+				return $cart->with_gift_cards( [ ...$cart->gift_cards, $code ] );
+			}
+		);
+	}
+
+	/**
+	 * The recipient fields of a gift card product as posted (ADR-069),
+	 * sanitized; prepare() checks them.
+	 *
+	 * @param array<mixed> $raw
+	 * @return array<string,string>
+	 */
+	public static function posted_gift( array $raw ): array {
+		$out = [];
+		foreach ( CartLine::GIFT_KEYS as $key ) {
+			$value = $raw[ $key ] ?? '';
+			if ( is_scalar( $value ) ) {
+				$out[ $key ] = $key === 'message' ? sanitize_textarea_field( (string) $value ) : sanitize_text_field( (string) $value );
+			}
+		}
+		return $out;
+	}
+
+	/** Gift card codes are kept in capitals without spaces or dashes. */
+	public static function gift_card_code( string $code ): string {
+		return strtoupper( (string) preg_replace( '/[\s\-]+/', '', $code ) );
+	}
+
 	/** @throws InvalidCartRequest|RateLimited */
 	public function remove_coupon( int $user_id, string $code ): CartState {
+		$card = self::gift_card_code( $code );
+		if ( in_array( $card, $this->saved( $user_id )->gift_cards, true ) ) {
+			return $this->mutate(
+				$user_id,
+				static fn ( Cart $cart ): Cart => $cart->with_gift_cards( array_values( array_diff( $cart->gift_cards, [ $card ] ) ) )
+			);
+		}
 		$code = Coupon::normalize( $code );
 		return $this->mutate(
 			$user_id,
@@ -601,6 +675,9 @@ final class CartService {
 		}
 		if ( $guest->coupons !== [] ) {
 			$cart = $cart->with_coupons( array_slice( array_values( array_unique( [ ...$user_cart->coupons, ...$guest->coupons ] ) ), 0, CouponService::MAX_CODES ) );
+		}
+		if ( $guest->gift_cards !== [] ) {
+			$cart = $cart->with_gift_cards( array_slice( array_values( array_unique( [ ...$user_cart->gift_cards, ...$guest->gift_cards ] ) ), 0, self::MAX_GIFT_CARDS ) );
 		}
 		foreach ( $cart->lines as $line ) {
 			$product = $this->products->find( $line->product_id );
@@ -933,6 +1010,68 @@ final class CartService {
 		if ( $result instanceof ValidationResult && ! $result->is_valid() ) {
 			throw new InvalidCartRequest( $result->first_message(), 'product_id', 'rejected' );
 		}
+	}
+
+	/**
+	 * Who a gift card goes to, checked (ADR-069). Every part is optional:
+	 * with no address the card is emailed to the buyer.
+	 *
+	 * @param array<array-key,mixed> $raw
+	 * @return array<string,string>
+	 * @throws InvalidCartRequest
+	 */
+	private function gift( array $raw ): array {
+		$text = static fn ( string $key, int $max ): string => is_string( $raw[ $key ] ?? null ) ? mb_substr( trim( sanitize_text_field( $raw[ $key ] ) ), 0, $max ) : '';
+		$gift = [
+			'to'      => is_string( $raw['to'] ?? null ) ? strtolower( trim( sanitize_email( $raw['to'] ) ) ) : '',
+			'name'    => $text( 'name', 200 ),
+			'from'    => $text( 'from', 200 ),
+			'message' => is_string( $raw['message'] ?? null ) ? mb_substr( trim( sanitize_textarea_field( $raw['message'] ) ), 0, 1000 ) : '',
+			'date'    => $text( 'date', 10 ),
+		];
+		if ( is_string( $raw['to'] ?? null ) && trim( $raw['to'] ) !== '' && ! is_email( $gift['to'] ) ) {
+			throw new InvalidCartRequest( __( 'Enter a valid email address for the gift card recipient.', 'flexacommerce' ), 'gift_card_to' );
+		}
+		if ( $gift['date'] !== '' ) {
+			$day   = \DateTimeImmutable::createFromFormat( '!Y-m-d', $gift['date'], wp_timezone() );
+			$today = $this->clock->now()->setTimezone( wp_timezone() )->setTime( 0, 0 );
+			if ( $day === false || $day->format( 'Y-m-d' ) !== $gift['date'] || $day < $today || $day > $today->modify( '+1 year' ) ) {
+				throw new InvalidCartRequest( __( 'Choose a delivery date between today and one year from now.', 'flexacommerce' ), 'gift_card_date' );
+			}
+			if ( $day->format( 'Y-m-d' ) === $today->format( 'Y-m-d' ) ) {
+				$gift['date'] = '';
+			}
+		}
+		return array_filter( $gift, static fn ( string $v ): bool => $v !== '' );
+	}
+
+	/**
+	 * @param array<string,string> $gift
+	 * @return list<array{name:string,value:string}>
+	 */
+	private static function gift_labels( array $gift ): array {
+		$names  = [
+			'to'      => __( 'To', 'flexacommerce' ),
+			'name'    => __( 'Recipient', 'flexacommerce' ),
+			'from'    => __( 'From', 'flexacommerce' ),
+			'message' => __( 'Message', 'flexacommerce' ),
+			'date'    => __( 'Delivery date', 'flexacommerce' ),
+		];
+		$labels = [];
+		foreach ( $names as $key => $name ) {
+			if ( isset( $gift[ $key ] ) ) {
+				$labels[] = [
+					'name'  => $name,
+					'value' => $key === 'date' ? self::day_label( $gift[ $key ] ) : $gift[ $key ],
+				];
+			}
+		}
+		return $labels;
+	}
+
+	private static function day_label( string $date ): string {
+		$day = \DateTimeImmutable::createFromFormat( '!Y-m-d', $date, wp_timezone() );
+		return $day !== false ? (string) wp_date( (string) get_option( 'date_format' ), $day->getTimestamp() ) : $date;
 	}
 
 	/**

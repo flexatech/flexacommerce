@@ -25,6 +25,12 @@
 .fxc-option__required { color: #b32d2e; }
 .fxc-options__total { margin: 0; font-weight: 600; }
 .fxc-add-to-cart__quantity { width: 4.5rem; padding: .5rem; }
+/* Gift card recipient fields (ADR-069). */
+.fxc-gift-card { flex-basis: 100%; display: grid; gap: .75rem; margin: 0; padding: 0; border: 0; min-width: 0; }
+.fxc-gift-card legend { padding: 0; margin-bottom: .25rem; font-weight: 600; }
+.fxc-gift-card__help { margin: 0; font-size: .875em; }
+.fxc-gift-card__field { display: grid; gap: .25rem; margin: 0; }
+.fxc-gift-card__field input, .fxc-gift-card__field textarea { width: 100%; max-width: 28rem; padding: .5rem; box-sizing: border-box; font: inherit; }
 .fxc-stock-alert { display: grid; gap: .5rem; margin-block: .75rem 1rem; }
 .fxc-stock-alert--inline { flex-basis: 100%; margin: 0; }
 .fxc-stock-alert[hidden] { display: none; }
@@ -271,6 +277,7 @@
 .fxc-checkout__coupon-field label { flex-basis: 100%; }
 .fxc-checkout__coupon-field input { flex: 1 1 5rem; min-width: 0; }
 .fxc-checkout__coupon-message .fxc-notice { margin: .5rem 0 0; }
+.fxc-checkout__gift-card-message { display: block; font-weight: normal; font-size: .875em; }
 .fxc-checkout__remove-coupon { padding: 0 .3em; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
 .fxc-checkout__step[hidden], .fxc-checkout__next[hidden], .fxc-checkout__recap[hidden], .fxc-checkout__steps[hidden] { display: none; }
 .fxc-checkout__steps ol { list-style: none; counter-reset: fxc-step; display: flex; flex-wrap: wrap; gap: .5rem 1.5rem; margin: 0 0 1.5rem; padding: 0; }

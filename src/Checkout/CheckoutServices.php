@@ -30,6 +30,7 @@ final class CheckoutServices {
 		private readonly PaymentServices $payments,
 		private ?TaxServices $tax = null,
 		private readonly ?\Closure $coupons = null,
+		private readonly ?\Closure $gift_cards = null,
 	) {}
 
 	public function pages(): CheckoutPages {
@@ -61,6 +62,7 @@ final class CheckoutServices {
 			$this->cart_taxes(),
 			null,
 			$this->coupons,
+			$this->gift_cards,
 		);
 	}
 

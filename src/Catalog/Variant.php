@@ -56,6 +56,7 @@ final class Variant {
 		public readonly ?string $description = null,
 		public readonly bool $virtual = false,
 		public readonly bool $downloadable = false,
+		public readonly bool $gift_card = false,
 		public readonly Downloads $downloads = new Downloads(),
 		public readonly array $meta = [],
 		public readonly string $created_at = '',
@@ -97,6 +98,7 @@ final class Variant {
 			description: self::nullable_string( $row['description'] ?? null ),
 			virtual: (bool) (int) ( $row['is_virtual'] ?? 0 ),
 			downloadable: (bool) (int) ( $row['is_downloadable'] ?? 0 ),
+			gift_card: (bool) (int) ( $row['is_gift_card'] ?? 0 ),
 			downloads: Downloads::from_json( $row['downloads'] ?? null ),
 			meta: self::decode_meta( $row['meta'] ?? null ),
 			created_at: (string) ( $row['created_at'] ?? '' ),
@@ -139,6 +141,7 @@ final class Variant {
 			'description'         => $this->description,
 			'is_virtual'          => $this->virtual ? 1 : 0,
 			'is_downloadable'     => $this->downloadable ? 1 : 0,
+			'is_gift_card'        => $this->gift_card ? 1 : 0,
 			'downloads'           => $this->downloads->to_json(),
 			'meta'                => $this->meta === [] ? null : json_encode( $this->meta, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR ), // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- THROW_ON_ERROR, wp_json_encode() swallows failures.
 		];
@@ -233,6 +236,7 @@ final class Variant {
 			'description'         => $this->description,
 			'virtual'             => $this->virtual,
 			'downloadable'        => $this->downloadable,
+			'gift_card'           => $this->gift_card,
 			'downloads'           => $this->downloads->to_array(),
 		];
 	}

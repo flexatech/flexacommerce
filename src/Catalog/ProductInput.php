@@ -180,7 +180,7 @@ final class ProductInput {
 	 */
 	public static function fields( array $data, string $path ): array {
 		$out = [];
-		foreach ( [ 'enabled', 'manage_stock', 'stock_from_base', 'virtual', 'downloadable' ] as $key ) {
+		foreach ( [ 'enabled', 'manage_stock', 'stock_from_base', 'virtual', 'downloadable', 'gift_card' ] as $key ) {
 			if ( array_key_exists( $key, $data ) ) {
 				$out[ $key ] = self::to_bool( $data[ $key ] );
 			}

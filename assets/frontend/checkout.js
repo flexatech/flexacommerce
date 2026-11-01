@@ -312,14 +312,63 @@ function setup( root ) {
 		renderCoupons( data.coupons );
 		renderFees( data.fees );
 		renderTaxes( data.tax );
+		renderGiftCards( data );
 		const foldTotal = form.querySelector( '[data-fxc-fold-total]' );
 		if ( foldTotal && data.totals?.total ) {
 			foldTotal.textContent = data.totals.total.formatted;
 		}
 		const expected = form.querySelector( '[data-fxc-expected]' );
 		if ( expected && data.totals?.total ) {
-			expected.value = String( data.totals.total.amount );
+			expected.value = String( ( data.totals.due ?? data.totals.total ).amount );
 		}
+	}
+
+	// Mirrors CheckoutForm::gift_card_rows(): after the total, then what is left to pay (ADR-069).
+	function renderGiftCards( data ) {
+		const totalRow = form.querySelector( '[data-fxc-total="total"]' )?.closest( 'tr' );
+		if ( ! totalRow || ! data.totals ) {
+			return;
+		}
+		form.querySelectorAll( '[data-fxc-gift-card-row]' ).forEach( ( row ) => row.remove() );
+		form.querySelector( '[data-fxc-total="due"]' )?.closest( 'tr' )?.remove();
+		const cards = data.gift_cards ?? [];
+		if ( ! cards.length || ! data.totals.due ) {
+			return;
+		}
+		let anchor = totalRow.nextSibling;
+		const add = ( row ) => {
+			totalRow.parentNode.insertBefore( row, anchor );
+			anchor = row.nextSibling;
+		};
+		for ( const card of cards ) {
+			const row = el( 'tr', { class: 'fxc-checkout__gift-card', 'data-fxc-gift-card-row': true } );
+			const label = el( 'th', { scope: 'row' }, ( i18n.giftCard || '%s' ).replace( '%s', card.label ) );
+			if ( couponForm ) {
+				label.append(
+					' ',
+					el(
+						'button',
+						{
+							type: 'submit',
+							class: 'fxc-checkout__remove-coupon',
+							form: couponForm.id,
+							name: 'remove_coupon',
+							value: card.code,
+							'aria-label': ( i18n.removeGiftCard || '%s' ).replace( '%s', card.label ),
+						},
+						'\u00d7'
+					)
+				);
+			}
+			if ( card.message ) {
+				label.append( el( 'span', { class: 'fxc-checkout__gift-card-message' }, card.message ) );
+			}
+			row.append( label, el( 'td', {}, card.message ? '' : '-' + card.amount.formatted ) );
+			add( row );
+		}
+		const due = el( 'tr', { class: 'fxc-checkout__due' } );
+		due.append( el( 'th', { scope: 'row' }, i18n.due || '' ), el( 'td', { 'data-fxc-total': 'due' }, data.totals.due.formatted ) );
+		add( due );
 	}
 
 	// Mirrors CheckoutForm::coupon_rows(): after the subtotal.
@@ -673,8 +722,9 @@ function setup( root ) {
 				couponCode.closest( 'details' ).open = true;
 				couponCode.focus();
 			} else {
+				const entered = code.replace( /[\s-]+/g, '' ).toUpperCase();
 				couponCode.value = '';
-				couponSays( i18n.couponApplied || '', false );
+				couponSays( ( cart.gift_cards ?? [] ).some( ( card ) => card.code === entered ) ? i18n.cardApplied || '' : i18n.couponApplied || '', false );
 			}
 		} catch ( error ) {
 			couponSays( error.message, true );

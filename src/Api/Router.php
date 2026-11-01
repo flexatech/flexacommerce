@@ -42,6 +42,7 @@ final class Router {
 			( new Admin\InvoicesEndpoint() )->register_routes();
 			( new Admin\RecoveryEndpoint() )->register_routes();
 			( new Admin\StockAlertsEndpoint() )->register_routes();
+			( new Admin\GiftCardsEndpoint() )->register_routes();
 			( new Admin\MigrationsEndpoint() )->register_routes();
 			( new Admin\CutoverEndpoint() )->register_routes();
 			( new WebhooksEndpoint() )->register_routes();

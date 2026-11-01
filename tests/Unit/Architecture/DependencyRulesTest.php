@@ -52,8 +52,11 @@ final class DependencyRulesTest extends TestCase {
 		'StockAlerts' => [ 'Catalog', 'Inventory', 'Notifications', 'Support', 'Database' ],
 		// Wishlists check the product and limit new guest lists (ADR-066).
 		'Wishlist'    => [ 'Catalog', 'Support', 'Database' ],
+		// Gift cards are issued from paid orders, pay through a transaction and go out by email (ADR-069).
+		'GiftCards'   => [ 'Catalog', 'Orders', 'Payments', 'Notifications', 'Support', 'Database' ],
 		// The admin order editor reads variants (Catalog) and posted options (Options), ADR-061.
-		'Checkout'    => [ 'Cart', 'Catalog', 'Coupons', 'Options', 'Pricing', 'Inventory', 'Shipping', 'Tax', 'Orders', 'Payments', 'Customers', 'Support', 'Database' ],
+		// Gift cards take part of the total and pay it at submit (ADR-069).
+		'Checkout'    => [ 'Cart', 'Catalog', 'Coupons', 'GiftCards', 'Options', 'Pricing', 'Inventory', 'Shipping', 'Tax', 'Orders', 'Payments', 'Customers', 'Support', 'Database' ],
 	];
 
 	/**

@@ -26,6 +26,7 @@ final class RateLimiter {
 		'order_lookup_ip'  => [ 10, 3600 ],
 		'stock_alert_ip'   => [ 10, 3600 ],
 		'wishlist_ip'      => [ 20, 3600 ],
+		'gift_card_ip'     => [ 10, 3600 ],
 	];
 
 	public function __construct( private readonly Clock $clock = new Clock() ) {}

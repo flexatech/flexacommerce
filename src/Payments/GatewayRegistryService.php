@@ -21,6 +21,9 @@ final class GatewayRegistryService implements GatewayRegistry {
 	/** @var array<string,callable():PaymentGateway> */
 	private array $factories = [];
 
+	/** @var array<string,callable():PaymentGateway> core gateways with no settings screen, never offered at checkout */
+	private array $internal = [];
+
 	/** @var array<string,PaymentGateway> */
 	private array $built = [];
 
@@ -44,18 +47,31 @@ final class GatewayRegistryService implements GatewayRegistry {
 		$this->factories[ $id ] = $factory;
 	}
 
+	/**
+	 * A core gateway that only records payments made another way, such as
+	 * gift cards (ADR-069). get() finds it so its payments can be refunded;
+	 * ids() and available() leave it out.
+	 */
+	public function internal( string $id, callable $factory ): void {
+		if ( ! str_starts_with( $id, 'fxc_' ) || isset( $this->internal[ $id ] ) ) {
+			throw new DuplicateRegistration( sprintf( 'The internal gateway id "%s" is taken or lacks the fxc_ prefix.', $id ) );
+		}
+		$this->internal[ $id ] = $factory;
+	}
+
 	public function has( string $id ): bool {
-		return isset( $this->factories[ $id ] );
+		return isset( $this->factories[ $id ] ) || isset( $this->internal[ $id ] );
 	}
 
 	public function get( string $id ): ?PaymentGateway {
 		if ( isset( $this->built[ $id ] ) ) {
 			return $this->built[ $id ];
 		}
-		if ( ! isset( $this->factories[ $id ] ) ) {
+		$factory = $this->factories[ $id ] ?? $this->internal[ $id ] ?? null;
+		if ( $factory === null ) {
 			return null;
 		}
-		$gateway = ( $this->factories[ $id ] )();
+		$gateway = $factory();
 		if ( $gateway->id() !== $id ) {
 			throw new \UnexpectedValueException( sprintf( 'The factory for gateway "%s" returned another gateway.', $id ) );
 		}

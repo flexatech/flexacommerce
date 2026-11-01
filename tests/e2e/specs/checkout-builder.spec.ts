@@ -250,8 +250,8 @@ test( 'the coupon box under the summary applies and removes a code without leavi
 	const discounted = store.simple.price - Math.round( store.simple.price / 10 ) + 500;
 	await expect( total ).toHaveText( money( store.simple.price + 500 ) );
 
-	await shopper.getByText( 'Have a coupon code?' ).click();
-	const code = shopper.getByLabel( 'Coupon code', { exact: true } );
+	await shopper.getByText( 'Have a coupon or gift card?' ).click();
+	const code = shopper.getByLabel( 'Coupon or gift card code', { exact: true } );
 	const said = shopper.locator( '[data-fxc-coupon-message]' );
 	await code.fill( 'nope' );
 	await code.press( 'Enter' );

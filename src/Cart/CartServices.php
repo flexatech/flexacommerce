@@ -21,6 +21,7 @@ defined( 'ABSPATH' ) || exit;
  * `$product_options` the product options, called only when the store has option sets;
  * `$history` the customer's past orders, called only when a condition reads them.
  * `$restocked` hears of stock that went up, for the back-in-stock emails.
+ * `$gift_cards` tells a gift card code in the code box from a coupon (ADR-069).
  */
 final class CartServices {
 	private ?PricingService $pricing  = null;
@@ -44,6 +45,7 @@ final class CartServices {
 		private readonly ?\Closure $product_options = null,
 		private readonly ?\Closure $history = null,
 		private readonly ?\Closure $restocked = null,
+		private readonly ?\Closure $gift_cards = null,
 	) {
 		$this->token_store = $tokens;
 	}
@@ -96,6 +98,7 @@ final class CartServices {
 			$this->coupons,
 			$this->product_options,
 			$this->history,
+			$this->gift_cards,
 		);
 	}
 

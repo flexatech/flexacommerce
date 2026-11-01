@@ -19,6 +19,7 @@ Status: **Approved 2026-10-24**. All table names below are shown without `{$wpdb
 | Back-in-stock signups | `fxc_stock_alerts` | One row per address, product and variant waiting for stock, with a due flag the cron reads (§4.18, ADR-065). |
 | Wishlists | `fxc_wishlists`, `fxc_wishlist_items` | One list per customer or guest token, with a share key, and one row per saved product (§4.19, ADR-066). |
 | Shipments | `fxc_shipments` | One row per package of an order with its carrier, tracking number and link, and the lines it holds (§4.20, ADR-067). |
+| Gift cards | `fxc_gift_cards`, `fxc_gift_card_activity` | One row per card with its code, balance and recipient, and one row per change of the balance (§4.21, ADR-069). |
 | Order number allocation | `fxc_sequences` | Atomic counter. |
 | Download permissions | `fxc_downloads` | One row per order line and file with a token and counters that change on every download (§4.16, ADR-058). |
 | Option choice stock | `fxc_option_stock` | Counts change on every order, so they need atomic updates outside the autoloaded option sets (§4.15, ADR-040). |
@@ -273,6 +274,7 @@ CREATE TABLE fxc_variants (
 | `tax_class` | Class slug, `''` = Standard. On variation rows `parent` takes the base row's class; the `DB_VERSION` 2 upgrade step sets every variation row to `parent` (no store had taxes before). |
 | `shipping_class` | Slug from the setting `shipping_classes`, `''` = no class on the base row; on variation rows `''` takes the base row's class. A slug no longer in the setting counts as no class. Added in `DB_VERSION` 15 (ADR-068). |
 | `is_virtual`, `is_downloadable` | Nothing to ship; sells files. Added in `DB_VERSION` 10 (ADR-058). |
+| `is_gift_card` | Sold as gift cards (ADR-069). Set on the base row; saving the product copies it to every variation, with `is_virtual` 1 and `tax_status` `none`. Added in `DB_VERSION` 16. |
 | `downloads` | JSON `{files: [{id, name, file}], limit, expiry_days}`, up to 50 files. A file id never changes once saved, because `fxc_downloads.file_id` points at it. NULL when the variant sells no files. |
 | `meta` | JSON, extension and import data for this variant. Not queryable. |
 
@@ -372,6 +374,7 @@ CREATE TABLE fxc_order_items (
 - Product, shipping and fee lines keep the per-rate split of their `tax_total` in `meta.taxes` (`{"<rate_id>": amount}`). Invariant: `orders.tax_total = Σ tax lines.total = Σ other lines.tax_total`.
 - Product lines keep the raw choices the order was priced with: `meta.selection` (attribute key => value key) and `meta.options` (option key => value or list of choice ids), so the admin order editor can price the line again (ADR-061). Lines from before ADR-061 have neither.
 - Product lines with product options that track stock keep them in `meta.option_stock` (`{"<set>-<field>-<choice>": "Finish: Gold"}`) and the units taken from `fxc_option_stock` in `meta.option_held` (ADR-040).
+- Gift card lines keep who the cards go to in `meta.gift_card`: `{issue: true, to, name, from, message, date}` with only the fields the buyer filled (`issue` keeps the entry when none was). `fxc_gift_cards.order_item_id` points back at the line (ADR-069).
 - `code`: shipping rate id (`flat_rate:3`), fee code, coupon code, tax rate code.
 - `discount` lines (doc 02 §7.13.5): one per applied coupon, `name` and `code` = the code as saved, `quantity` 1, `total` = the coupon's net share of the order discount, `meta` = `{coupon_id, type, amount, discount_tax}`. They are a record: the amount is already in the product lines' `discount_total`. Invariant: `orders.discount_total = Σ product lines.discount_total = Σ discount lines.total`.
 - Amounts are **exclusive of tax**; `tax_total` holds the line's tax. `total = subtotal − discount_total` (ex-tax).
@@ -947,6 +950,57 @@ CREATE TABLE fxc_shipments (
 - **Writes.** `ShipmentService` inserts a row inside the order's transaction, with the order row locked, and deletes one when the admin removes it. Migration writes rows with the order. Rows are never updated: a wrong one is removed and added again.
 - **Reads.** An order's shipments by `order_id`, oldest first; the admin search by `tracking_number` (exact, in a derived table for the MariaDB semijoin issue of ADR-055); the last carrier used by the primary key. The integrity check counts rows whose order is gone. Uninstall drops the table.
 
+### 4.21 `fxc_gift_cards` and `fxc_gift_card_activity`
+
+Added with gift cards (ADR-069), `DB_VERSION` 16.
+
+```sql
+CREATE TABLE fxc_gift_cards (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  code varchar(32) NOT NULL,
+  initial_amount bigint(20) NOT NULL,
+  balance bigint(20) NOT NULL,
+  currency char(3) NOT NULL,
+  status varchar(20) NOT NULL DEFAULT 'active',
+  recipient_email varchar(200) NOT NULL DEFAULT '',
+  recipient_name varchar(200) NOT NULL DEFAULT '',
+  sender_name varchar(200) NOT NULL DEFAULT '',
+  message text NULL,
+  order_id bigint(20) unsigned NULL,
+  order_item_id bigint(20) unsigned NULL,
+  deliver_at datetime NULL,
+  delivered_at datetime NULL,
+  expires_at datetime NULL,
+  created_at datetime NOT NULL,
+  updated_at datetime NOT NULL,
+  PRIMARY KEY  (id),
+  UNIQUE KEY code (code),
+  KEY order_item (order_id,order_item_id),
+  KEY recipient_email (recipient_email),
+  KEY deliver_at (deliver_at)
+) {charset_collate};
+
+CREATE TABLE fxc_gift_card_activity (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  gift_card_id bigint(20) unsigned NOT NULL,
+  type varchar(20) NOT NULL,
+  amount bigint(20) NOT NULL,
+  balance_after bigint(20) NOT NULL,
+  order_id bigint(20) unsigned NULL,
+  transaction_id bigint(20) unsigned NULL,
+  note varchar(500) NOT NULL DEFAULT '',
+  user_id bigint(20) unsigned NULL,
+  created_at datetime NOT NULL,
+  PRIMARY KEY  (id),
+  KEY gift_card_id (gift_card_id),
+  KEY transaction_id (transaction_id)
+) {charset_collate};
+```
+
+- **Columns.** `code` is the normalized code (16 characters, no dashes); it is shown in groups of four in the admin and masked everywhere else. `initial_amount` and `balance` are minor units of `currency`, the store currency when the card was made. `status` is `active` or `disabled`; used up and expired are worked out from `balance` and `expires_at`. `order_id` and `order_item_id` are the order line that bought the card, NULL for a card made in the admin. `deliver_at` is the UTC start of the day the buyer picked, NULL to send at once; `delivered_at` is when the email went out. `expires_at` is UTC, NULL for no expiry. Activity `type` is `issued`, `redeemed`, `credited` or `adjusted`; `amount` is signed; `transaction_id` is the payment (redeemed) or refund (credited) row of `fxc_transactions`; `user_id` is who made the change, NULL for the shop.
+- **Writes.** `GiftCardService` only. A balance changes with the card row locked (`SELECT ... FOR UPDATE`) inside a transaction, together with its activity row: at checkout, on a refund, on a cancel and on an admin change. Issuing is idempotent per order line (the cards a line already has are counted). The privacy eraser clears `recipient_email`, `recipient_name` and `message`. Uninstall drops both tables.
+- **Reads.** The code box by `code`; an order's cards by `order_item`; due emails by `deliver_at` (`delivered_at IS NULL AND deliver_at <= now`); privacy by `recipient_email`; the admin list by primary key, newest first, with `LIKE` on code, email and name. A refund credit checks `transaction_id` so a retry adds nothing.
+
 ## 5. Query patterns and indexes
 
 | Query | Index used |
@@ -967,6 +1021,7 @@ CREATE TABLE fxc_shipments (
 | Due stock alerts | `fxc_stock_alerts.status_due`; a product's rows and the waiting count per product `product_status`; stop link and privacy `email` (ADR-065) |
 | Wishlist | `fxc_wishlists.user_id`, `token_hash`, `share_key`; the products `fxc_wishlist_items` primary key; guest purge `updated_at` (ADR-066) |
 | Shipments | `fxc_shipments.order_id`; the admin search by tracking number `tracking_number` (ADR-067) |
+| Gift cards | `fxc_gift_cards.code` for the code box; an order's cards `order_item`; due emails `deliver_at`; privacy `recipient_email`; activity per card `gift_card_id`, refund credits `transaction_id` (ADR-069) |
 | Download link | `fxc_downloads.token`; an order's links `order_id`, a customer's `customer_id`, privacy `email`, a product edit `variant_file` |
 | Tax rate match for one address | `class_country_state`, then `rate_type` for the join; `type_code` and `type_range` for rates found by postcode (§4.13) |
 | Shop sort by price | `wp_postmeta` `meta_key/meta_value` on `_fxc_price_min` (core index on `meta_key`). See revisit condition below. |

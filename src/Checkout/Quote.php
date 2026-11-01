@@ -9,6 +9,7 @@ use Flexa\Commerce\Contracts\Money;
 use Flexa\Commerce\Contracts\Shipping\ShippingPackage;
 use Flexa\Commerce\Contracts\Shipping\ShippingRate;
 use Flexa\Commerce\Contracts\Tax\TaxResult;
+use Flexa\Commerce\GiftCards\AppliedGiftCard;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -21,9 +22,14 @@ defined( 'ABSPATH' ) || exit;
  * `undiscounted` is the same calculation before coupons, null without a
  * discount. `tax_failure` names the tax add-on that failed when the rate
  * table was used instead. `taxes` is null while taxes are off.
+ * `gift_cards` pay part of `total` (ADR-069); `due()` is what is left for
+ * the payment method.
  */
 final class Quote {
-	/** @param list<ShippingRate> $rates */
+	/**
+	 * @param list<ShippingRate>    $rates
+	 * @param list<AppliedGiftCard> $gift_cards
+	 */
 	public function __construct(
 		public readonly CartState $state,
 		public readonly ShippingPackage $package,
@@ -39,7 +45,27 @@ final class Quote {
 		public readonly ?string $tax_failure = null,
 		public readonly ?Money $discount = null,
 		public readonly ?TaxResult $undiscounted = null,
+		public readonly array $gift_cards = [],
 	) {}
+
+	/** @param list<AppliedGiftCard> $gift_cards */
+	public function with_gift_cards( array $gift_cards ): self {
+		return new self( $this->state, $this->package, $this->needs_shipping, $this->rates, $this->rate, $this->shipping, $this->tax, $this->total, $this->taxes, $this->items_net, $this->prices_include_tax, $this->tax_failure, $this->discount, $this->undiscounted, $gift_cards );
+	}
+
+	/** What the gift cards pay together. */
+	public function gift_card_total(): Money {
+		$paid = 0;
+		foreach ( $this->gift_cards as $card ) {
+			$paid += $card->amount;
+		}
+		return new Money( $paid, $this->total->currency );
+	}
+
+	/** The total less the gift cards: what the payment method charges. */
+	public function due(): Money {
+		return $this->total->subtract( $this->gift_card_total() );
+	}
 
 	public function discount(): Money {
 		return $this->discount ?? $this->items_net->multiply( 0 );

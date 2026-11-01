@@ -50,6 +50,7 @@ final class VariantRepository {
 		'description'         => '%s',
 		'is_virtual'          => '%d',
 		'is_downloadable'     => '%d',
+		'is_gift_card'        => '%d',
 		'downloads'           => '%s',
 		'meta'                => '%s',
 		'created_at'          => '%s',

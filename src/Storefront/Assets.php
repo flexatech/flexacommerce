@@ -168,6 +168,9 @@ final class Assets {
 				'discount'    => __( 'Discount: %s', 'flexacommerce' ),
 				'applied'     => __( 'Coupon applied.', 'flexacommerce' ),
 				'unapplied'   => __( 'Coupon removed.', 'flexacommerce' ),
+				/* translators: %s: last characters of the gift card code */
+				'giftCard'    => __( 'Gift card: %s', 'flexacommerce' ),
+				'cardApplied' => __( 'Gift card applied.', 'flexacommerce' ),
 				'freeShip'    => __( 'Free shipping', 'flexacommerce' ),
 				'alerted'     => __( 'Thanks. We will email you when it is back in stock.', 'flexacommerce' ),
 				'saved'       => __( 'Saved to your wishlist.', 'flexacommerce' ),

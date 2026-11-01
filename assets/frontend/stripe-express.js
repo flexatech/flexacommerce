@@ -145,6 +145,7 @@ async function mount( row ) {
 			quantity: 1,
 			attributes: {},
 			options: {},
+			gift_card: {},
 		};
 		for ( const [ name, raw ] of new FormData( product ).entries() ) {
 			if ( typeof raw !== 'string' ) {
@@ -157,6 +158,8 @@ async function mount( row ) {
 				out.quantity = Number( raw ) || 1;
 			} else if ( ( match = /^attributes\[([^\]]+)\]$/.exec( name ) ) ) {
 				out.attributes[ match[ 1 ] ] = raw;
+			} else if ( ( match = /^gift_card\[([a-z]+)\]$/.exec( name ) ) ) {
+				out.gift_card[ match[ 1 ] ] = raw;
 			} else if ( ( match = /^options\[([^\]]+)\](\[\])?$/.exec( name ) ) ) {
 				if ( match[ 2 ] ) {
 					( out.options[ match[ 1 ] ] ??= [] ).push( raw );

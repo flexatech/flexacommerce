@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Flexa\Commerce\Privacy;
 
 use Flexa\Commerce\Concerns\HasInstance;
+use Flexa\Commerce\GiftCards\GiftCard;
 use Flexa\Commerce\Plugin;
 use Flexa\Commerce\Support\Settings;
 
@@ -59,6 +60,10 @@ final class Privacy {
 			'exporter_friendly_name' => __( 'FlexaCommerce wishlist', 'flexacommerce' ),
 			'callback'               => [ $this, 'export_wishlist' ],
 		];
+		$exporters['flexacommerce-gift-cards']   = [
+			'exporter_friendly_name' => __( 'FlexaCommerce gift cards', 'flexacommerce' ),
+			'callback'               => [ $this, 'export_gift_cards' ],
+		];
 		return $exporters;
 	}
 
@@ -94,6 +99,10 @@ final class Privacy {
 		$erasers['flexacommerce-wishlist']     = [
 			'eraser_friendly_name' => __( 'FlexaCommerce wishlist', 'flexacommerce' ),
 			'callback'             => [ $this, 'erase_wishlist' ],
+		];
+		$erasers['flexacommerce-gift-cards']   = [
+			'eraser_friendly_name' => __( 'FlexaCommerce gift cards', 'flexacommerce' ),
+			'callback'             => [ $this, 'erase_gift_cards' ],
 		];
 		return $erasers;
 	}
@@ -393,5 +402,74 @@ final class Privacy {
 			);
 		}
 		return $this->data;
+	}
+
+	/**
+	 * Gift cards sent to the address (ADR-069). The code shows masked: an
+	 * export file travels, and the full code spends like cash.
+	 *
+	 * @return array{data:list<array<string,mixed>>,done:bool}
+	 */
+	public function export_gift_cards( string $email, int $page = 1 ): array {
+		unset( $page );
+		$money = Plugin::instance()->services()->money();
+		$data  = [];
+		foreach ( Plugin::instance()->gift_cards()->repository()->for_email( strtolower( $email ) ) as $card ) {
+			$fields = [
+				[
+					'name'  => __( 'Card', 'flexacommerce' ),
+					'value' => GiftCard::mask( $card->code ),
+				],
+				[
+					'name'  => __( 'Balance', 'flexacommerce' ),
+					'value' => $money->format( $money->from_minor( $card->balance, $card->currency ) ),
+				],
+				[
+					'name'  => __( 'Recipient name', 'flexacommerce' ),
+					'value' => $card->recipient_name,
+				],
+				[
+					'name'  => __( 'From', 'flexacommerce' ),
+					'value' => $card->sender_name,
+				],
+				[
+					'name'  => __( 'Message', 'flexacommerce' ),
+					'value' => $card->message,
+				],
+			];
+			if ( $card->delivered_at !== null ) {
+				$fields[] = [
+					'name'  => __( 'Emailed on', 'flexacommerce' ),
+					'value' => get_date_from_gmt( $card->delivered_at ),
+				];
+			}
+			$data[] = [
+				'group_id'    => 'flexacommerce-gift-cards',
+				'group_label' => __( 'Gift cards', 'flexacommerce' ),
+				'item_id'     => 'fxc-gift-card-' . $card->id,
+				'data'        => $fields,
+			];
+		}
+		return [
+			'data' => $data,
+			'done' => true,
+		];
+	}
+
+	/**
+	 * Clears the recipient details. The cards stay: a balance is money the
+	 * holder can still spend, so deleting it would take that away.
+	 *
+	 * @return array{items_removed:bool,items_retained:bool,messages:list<string>,done:bool}
+	 */
+	public function erase_gift_cards( string $email, int $page = 1 ): array {
+		unset( $page );
+		$cleared = Plugin::instance()->gift_cards()->repository()->anonymize_email( strtolower( $email ), gmdate( 'Y-m-d H:i:s' ) );
+		return [
+			'items_removed'  => $cleared > 0,
+			'items_retained' => $cleared > 0,
+			'messages'       => $cleared > 0 ? [ __( 'Gift cards sent to this address keep their code and balance; the recipient details were removed.', 'flexacommerce' ) ] : [],
+			'done'           => true,
+		];
 	}
 }

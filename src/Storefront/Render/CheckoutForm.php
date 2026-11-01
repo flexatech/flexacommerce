@@ -74,7 +74,7 @@ final class CheckoutForm {
 		$steps = $layout->flow() === CheckoutLayout::FLOW_STEPS;
 		$html .= empty( $state['preview'] ) ? ExpressButtons::html( 'checkout' ) : '';
 		$html .= '<form class="fxc-checkout__form" method="post" action="' . esc_url( CheckoutPage::form_action() ) . '"' . ( $steps ? ' data-fxc-flow="steps"' : '' ) . '>';
-		$html .= CheckoutPage::hidden_fields( (string) $state['checkout_token'], (int) ( $state['totals']['total']['amount'] ?? 0 ) );
+		$html .= CheckoutPage::hidden_fields( (string) $state['checkout_token'], (int) ( $state['totals']['due']['amount'] ?? $state['totals']['total']['amount'] ?? 0 ) );
 		if ( $steps ) {
 			$html .= $this->steps( ! empty( $state['needs_shipping'] ) );
 		}
@@ -447,7 +447,15 @@ final class CheckoutForm {
 			$rows['tax'] = __( 'Tax', 'flexacommerce' );
 		}
 		$rows['total'] = __( 'Total', 'flexacommerce' );
+		if ( isset( $totals['due'] ) ) {
+			$rows['gift_cards'] = __( 'Gift cards', 'flexacommerce' );
+			$rows['due']        = __( 'Left to pay', 'flexacommerce' );
+		}
 		foreach ( $rows as $key => $label ) {
+			if ( $key === 'gift_cards' ) {
+				$html .= self::gift_card_rows( (array) ( $state['gift_cards'] ?? [] ), $removable );
+				continue;
+			}
 			if ( $key === 'total' ) {
 				$html .= self::fee_rows( (array) ( $state['fees'] ?? [] ) );
 			}
@@ -479,9 +487,9 @@ final class CheckoutForm {
 	private static function coupon_box(): string {
 		$notice = FormHandler::notice_for( 0 );
 		return '<details class="fxc-checkout__coupons" data-fxc-coupons' . ( $notice !== '' ? ' open' : '' ) . '>'
-			. '<summary>' . esc_html__( 'Have a coupon code?', 'flexacommerce' ) . '</summary>'
+			. '<summary>' . esc_html__( 'Have a coupon or gift card?', 'flexacommerce' ) . '</summary>'
 			. '<p class="fxc-checkout__coupon-field">'
-			. '<label for="fxc-checkout-coupon-code">' . esc_html__( 'Coupon code', 'flexacommerce' ) . '</label> '
+			. '<label for="fxc-checkout-coupon-code">' . esc_html__( 'Coupon or gift card code', 'flexacommerce' ) . '</label> '
 			. '<input id="fxc-checkout-coupon-code" type="text" name="coupon_code" form="' . self::COUPON_FORM . '" maxlength="' . Coupon::MAX_CODE_LENGTH . '" autocomplete="off" aria-describedby="fxc-checkout-coupon-message" data-fxc-coupon-code> '
 			. '<button type="submit" class="wp-element-button" form="' . self::COUPON_FORM . '">' . esc_html__( 'Apply', 'flexacommerce' ) . '</button>'
 			. '</p>'
@@ -523,6 +531,42 @@ final class CheckoutForm {
 					: esc_html( sprintf( __( 'Discount: %s', 'flexacommerce' ), (string) $coupon['label'] ) ),
 				$remove,
 				esc_html( self::coupon_amount( $coupon ) )
+			);
+		}
+		return $html;
+	}
+
+	/**
+	 * One row per gift card after the total (ADR-069): what it pays, or why
+	 * it cannot. The remove button posts the coupon form like a coupon's.
+	 * checkout.js rebuilds the rows after a requote.
+	 *
+	 * @param array<int,mixed> $cards the `gift_cards` entry of the checkout state
+	 */
+	public static function gift_card_rows( array $cards, bool $removable = false ): string {
+		$html = '';
+		foreach ( $cards as $card ) {
+			if ( ! is_array( $card ) ) {
+				continue;
+			}
+			$code    = (string) ( $card['code'] ?? '' );
+			$message = (string) ( $card['message'] ?? '' );
+			$remove  = $removable && $code !== ''
+				? sprintf(
+					' <button type="submit" class="fxc-checkout__remove-coupon" form="%1$s" name="remove_coupon" value="%2$s" aria-label="%3$s">&times;</button>',
+					self::COUPON_FORM,
+					esc_attr( $code ),
+					/* translators: %s: last characters of the gift card code */
+					esc_attr( sprintf( __( 'Remove gift card %s', 'flexacommerce' ), (string) ( $card['label'] ?? '' ) ) )
+				)
+				: '';
+			$html .= sprintf(
+				'<tr class="fxc-checkout__gift-card" data-fxc-gift-card-row><th scope="row">%1$s%2$s%3$s</th><td>%4$s</td></tr>',
+				/* translators: %s: last characters of the gift card code */
+				esc_html( sprintf( __( 'Gift card: %s', 'flexacommerce' ), (string) ( $card['label'] ?? '' ) ) ),
+				$remove,
+				$message !== '' ? '<span class="fxc-checkout__gift-card-message">' . esc_html( $message ) . '</span>' : '',
+				esc_html( $message !== '' ? '' : '-' . (string) ( $card['amount']['formatted'] ?? '' ) )
 			);
 		}
 		return $html;
@@ -600,7 +644,7 @@ final class CheckoutForm {
 	 */
 	private function methods( array $state, array $posted, array $errors, string $title = '' ): string {
 		$methods = is_array( $state['payment_methods'] ?? null ) ? $state['payment_methods'] : [];
-		if ( $methods === [] && (int) ( $state['totals']['total']['amount'] ?? 0 ) === 0 ) {
+		if ( $methods === [] && (int) ( $state['totals']['due']['amount'] ?? $state['totals']['total']['amount'] ?? 0 ) === 0 ) {
 			return '<div data-fxc-methods></div>';
 		}
 		$chosen = is_string( $posted['payment_method'] ?? null ) ? $posted['payment_method'] : (string) ( $state['payment_method'] ?? '' );
@@ -763,35 +807,41 @@ final class CheckoutForm {
 			'countries' => $state['countries'] ?? [],
 			'states'    => $state['states'] ?? [],
 			'i18n'      => [
-				'placing'       => __( 'Placing your order…', 'flexacommerce' ),
-				'failed'        => __( 'Could not place the order. Please try again.', 'flexacommerce' ),
-				'changed'       => __( 'Your order total changed. Review the new total and place the order again.', 'flexacommerce' ),
+				'placing'        => __( 'Placing your order…', 'flexacommerce' ),
+				'failed'         => __( 'Could not place the order. Please try again.', 'flexacommerce' ),
+				'changed'        => __( 'Your order total changed. Review the new total and place the order again.', 'flexacommerce' ),
 				/* translators: 1: tax amount, 2: tax label such as "CA State Tax". */
-				'includes'      => __( 'Includes %1$s %2$s', 'flexacommerce' ),
+				'includes'       => __( 'Includes %1$s %2$s', 'flexacommerce' ),
 				/* translators: %s: coupon code */
-				'coupon'        => __( 'Coupon: %s', 'flexacommerce' ),
+				'coupon'         => __( 'Coupon: %s', 'flexacommerce' ),
 				/* translators: %s: the name of an automatic discount */
-				'discount'      => __( 'Discount: %s', 'flexacommerce' ),
-				'freeShip'      => __( 'Free shipping', 'flexacommerce' ),
-				'summary'       => __( 'Please fix the following before placing your order:', 'flexacommerce' ),
-				'noRates'       => __( 'There are no shipping options for this address. Check the address or contact us.', 'flexacommerce' ),
-				'select'        => __( 'Select an option', 'flexacommerce' ),
-				'required'      => __( 'required', 'flexacommerce' ),
+				'discount'       => __( 'Discount: %s', 'flexacommerce' ),
+				'freeShip'       => __( 'Free shipping', 'flexacommerce' ),
+				'summary'        => __( 'Please fix the following before placing your order:', 'flexacommerce' ),
+				'noRates'        => __( 'There are no shipping options for this address. Check the address or contact us.', 'flexacommerce' ),
+				'select'         => __( 'Select an option', 'flexacommerce' ),
+				'required'       => __( 'required', 'flexacommerce' ),
 				/* translators: %s: the name of the next step, such as "Shipping" */
-				'next'          => __( 'Continue to %s', 'flexacommerce' ),
+				'next'           => __( 'Continue to %s', 'flexacommerce' ),
 				/* translators: %s: the name of the step before, such as "Information" */
-				'back'          => __( 'Back to %s', 'flexacommerce' ),
-				'contact'       => __( 'Contact', 'flexacommerce' ),
-				'shipTo'        => __( 'Ship to', 'flexacommerce' ),
-				'method'        => __( 'Shipping method', 'flexacommerce' ),
-				'change'        => __( 'Change', 'flexacommerce' ),
+				'back'           => __( 'Back to %s', 'flexacommerce' ),
+				'contact'        => __( 'Contact', 'flexacommerce' ),
+				'shipTo'         => __( 'Ship to', 'flexacommerce' ),
+				'method'         => __( 'Shipping method', 'flexacommerce' ),
+				'change'         => __( 'Change', 'flexacommerce' ),
 				/* translators: %s: what the button changes, such as "Contact" */
-				'changeIt'      => __( 'Change %s', 'flexacommerce' ),
-				'couponEmpty'   => __( 'Enter a coupon code.', 'flexacommerce' ),
-				'couponApplied' => __( 'Coupon applied.', 'flexacommerce' ),
-				'couponRemoved' => __( 'Coupon removed.', 'flexacommerce' ),
+				'changeIt'       => __( 'Change %s', 'flexacommerce' ),
+				'couponEmpty'    => __( 'Enter a coupon code.', 'flexacommerce' ),
+				'couponApplied'  => __( 'Coupon applied.', 'flexacommerce' ),
+				'couponRemoved'  => __( 'Coupon removed.', 'flexacommerce' ),
 				/* translators: %s: coupon code */
-				'removeCoupon'  => __( 'Remove coupon %s', 'flexacommerce' ),
+				'removeCoupon'   => __( 'Remove coupon %s', 'flexacommerce' ),
+				/* translators: %s: last characters of the gift card code */
+				'giftCard'       => __( 'Gift card: %s', 'flexacommerce' ),
+				/* translators: %s: last characters of the gift card code */
+				'removeGiftCard' => __( 'Remove gift card %s', 'flexacommerce' ),
+				'cardApplied'    => __( 'Gift card applied.', 'flexacommerce' ),
+				'due'            => __( 'Left to pay', 'flexacommerce' ),
 			],
 		];
 	}

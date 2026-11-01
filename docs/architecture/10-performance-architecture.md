@@ -385,6 +385,8 @@ P3 memory was re-recorded once in phase 5, from 1,048,848 B to 1,316,960 B at 25
 
 ADR-068 added the 33rd variant column, which pushed every keyed row into a larger PHP hash table and P3 memory at 250 variants to 1,740,320 B. The variants cache now keeps each product's rows as plain lists with the column names once (`VariantRepository::for_products()`), which measures 1,420,752 B against 1,419,040 B before the column; the budget is unchanged.
 
+ADR-069 added `is_gift_card` as the 34th column. With the plain-list rows the P3 product page stays under its budget. Gift cards add no query to catalog pages or to a cart without codes; a cart with codes reads them in one `IN` query (`GiftCardRepository::by_codes()`).
+
 The Playwright pass with axe on Twenty Twenty-Five, Astra and Twenty Twenty-One is green (doc 07 phase 5 notes).
 
 **T3 (2026-10-25).** The §6.4 set ran on dataset M at 1 and 10 VU against WooCommerce 11.2.1 default (HPOS on) and tuned (the list is in the report). Report: `docs/benchmarks/2026-10-25-phase5.md`.

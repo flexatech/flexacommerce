@@ -61,6 +61,8 @@ export interface VariantRow {
     /** Sells the files in `downloads` once the order is paid (ADR-058). */
     downloadable: boolean;
     downloads: Downloads;
+    /** Sold as a gift card: each unit paid becomes a code sent by email (ADR-069). */
+    gift_card: boolean;
 }
 
 export interface DownloadFile {

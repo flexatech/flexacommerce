@@ -184,6 +184,7 @@ final class OrderItem {
 			refunded_qty: $this->refunded_qty,
 			refunded_total: new Money( $this->refunded_total, $currency ),
 			downloadable: ! empty( $this->meta['downloadable'] ),
+			gift_card: isset( $this->meta['gift_card'] ),
 		);
 	}
 }

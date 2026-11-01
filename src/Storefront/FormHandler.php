@@ -80,14 +80,15 @@ final class FormHandler {
 					}
 				}
 				$options  = isset( $_POST['options'] ) && is_array( $_POST['options'] ) ? ProductOptions::posted( wp_unslash( $_POST['options'] ) ) : []; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- ProductOptions::accept() cleans each value for its field type.
+				$gift     = isset( $_POST['gift_card'] ) && is_array( $_POST['gift_card'] ) ? CartService::posted_gift( wp_unslash( $_POST['gift_card'] ) ) : []; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- posted_gift() sanitizes each field.
 				$variant  = isset( $_POST['variant_id'] ) ? absint( $_POST['variant_id'] ) : 0;
 				$quantity = isset( $_POST['quantity'] ) ? max( 1, absint( $_POST['quantity'] ) ) : 1;
 				$replace  = isset( $_POST['replace'] ) ? sanitize_key( wp_unslash( $_POST['replace'] ) ) : '';
 				if ( $replace !== '' ) {
-					$service->replace( $user, $replace, $product, $variant, $quantity, $attributes, $options );
+					$service->replace( $user, $replace, $product, $variant, $quantity, $attributes, $options, $gift );
 					self::redirect( Assets::cart_url(), 'updated' );
 				}
-				$service->add( $user, $product, $variant, $quantity, $attributes, $options );
+				$service->add( $user, $product, $variant, $quantity, $attributes, $options, $gift );
 				self::redirect( $back, 'added', $product );
 			}
 			if ( $operation === 'add_group' ) {
@@ -117,11 +118,13 @@ final class FormHandler {
 			if ( $operation === 'coupon' ) {
 				$remove = isset( $_POST['remove_coupon'] ) ? sanitize_text_field( wp_unslash( $_POST['remove_coupon'] ) ) : '';
 				if ( $remove !== '' ) {
+					$card = in_array( CartService::gift_card_code( $remove ), $service->saved( $user )->gift_cards, true );
 					$service->remove_coupon( $user, $remove );
-					self::redirect( $back, 'coupon_removed' );
+					self::redirect( $back, $card ? 'gift_card_removed' : 'coupon_removed' );
 				}
-				$service->apply_coupon( $user, isset( $_POST['coupon_code'] ) ? sanitize_text_field( wp_unslash( $_POST['coupon_code'] ) ) : '' );
-				self::redirect( $back, 'coupon_applied' );
+				$code  = isset( $_POST['coupon_code'] ) ? sanitize_text_field( wp_unslash( $_POST['coupon_code'] ) ) : '';
+				$state = $service->apply_coupon( $user, $code );
+				self::redirect( $back, in_array( CartService::gift_card_code( $code ), $state->cart->gift_cards, true ) ? 'gift_card_applied' : 'coupon_applied' );
 			}
 		} catch ( CommerceException $e ) {
 			self::redirect( $back, self::code_for( $e ), $product );
@@ -143,7 +146,7 @@ final class FormHandler {
 		if ( $message === null || str_starts_with( $code, 'wishlist_' ) !== ( $scope === self::SCOPE_WISHLIST ) ) {
 			return '';
 		}
-		$error = ! in_array( $code, [ 'added', 'updated', 'removed', 'coupon_applied', 'coupon_removed', 'alert_added', 'alert_in_stock', 'wishlist_added', 'wishlist_removed' ], true );
+		$error = ! in_array( $code, [ 'added', 'updated', 'removed', 'coupon_applied', 'coupon_removed', 'gift_card_applied', 'gift_card_removed', 'alert_added', 'alert_in_stock', 'wishlist_added', 'wishlist_removed' ], true );
 		$link  = match ( $code ) {
 			'added' => ' <a href="' . esc_url( Assets::cart_url() ) . '">' . esc_html__( 'View cart', 'flexacommerce' ) . '</a>',
 			'wishlist_added' => ' <a href="' . esc_url( AccountPage::url( 'wishlist' ) ) . '">' . esc_html__( 'View wishlist', 'flexacommerce' ) . '</a>',
@@ -177,6 +180,9 @@ final class FormHandler {
 			'coupon_duplicate'   => __( 'That coupon is already applied.', 'flexacommerce' ),
 			'coupon_invalid'     => __( 'That coupon cannot be used with this cart.', 'flexacommerce' ),
 			'coupon_limit'       => __( 'No more coupons can be added to this cart.', 'flexacommerce' ),
+			'gift_card_applied'  => __( 'Gift card applied.', 'flexacommerce' ),
+			'gift_card_removed'  => __( 'Gift card removed.', 'flexacommerce' ),
+			'gift_card_invalid'  => __( 'That gift card cannot be used. Check the code, its balance and its expiry date.', 'flexacommerce' ),
 			'alert_added'        => SignupMessages::text( SignupMessages::ADDED ),
 			'alert_off'          => SignupMessages::text( 'off' ),
 			'alert_login'        => SignupMessages::text( 'login' ),
@@ -235,7 +241,7 @@ final class FormHandler {
 			$e instanceof InvalidCartRequest && $e->reason === 'incomplete_selection' => 'incomplete',
 			$e instanceof InvalidCartRequest && $e->field === 'quantities' => 'no_quantity',
 			$e instanceof InvalidCartRequest && $e->reason === 'coupon_applied' => 'coupon_duplicate',
-			$e instanceof InvalidCartRequest && in_array( $e->reason, [ 'coupon_empty', 'coupon_invalid', 'coupon_limit' ], true ) => $e->reason,
+			$e instanceof InvalidCartRequest && in_array( $e->reason, [ 'coupon_empty', 'coupon_invalid', 'coupon_limit', 'gift_card_invalid' ], true ) => $e->reason,
 			default => 'invalid',
 		};
 	}

@@ -55,6 +55,8 @@ export interface Settings {
     wishlist: "off" | "single" | "all";
     /** How a download link sends a file from this server (ADR-058). */
     download_method: "force" | "xsendfile" | "redirect";
+    /** 0: gift cards never expire (ADR-069). */
+    gift_card_expiry_months: number;
 }
 
 export interface SettingsPayload {

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Flexa\Commerce\Api\Store;
 
 use Flexa\Commerce\Cart\Cart;
+use Flexa\Commerce\Cart\CartService;
 use Flexa\Commerce\Checkout\CheckoutRequest;
 use Flexa\Commerce\Checkout\CheckoutService;
 use Flexa\Commerce\Contracts\CommerceException;
@@ -238,7 +239,8 @@ final class ExpressEndpoint extends StoreEndpoint {
 			(int) ( $product['variant_id'] ?? 0 ),
 			(int) ( $product['quantity'] ?? 1 ),
 			$attributes,
-			is_array( $options ) && $options !== [] ? ProductOptions::posted( $options ) : []
+			is_array( $options ) && $options !== [] ? ProductOptions::posted( $options ) : [],
+			is_array( $product['gift_card'] ?? null ) ? CartService::posted_gift( $product['gift_card'] ) : []
 		);
 	}
 

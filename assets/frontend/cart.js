@@ -459,6 +459,18 @@ const { state, actions } = store( 'flexacommerce/cart', {
 		get coupons() {
 			return state.cart?.coupons ?? [];
 		},
+		// Gift cards entered in the code box (ADR-069).
+		get giftCards() {
+			return state.cart?.gift_cards ?? [];
+		},
+		get giftCardLabel() {
+			const { card } = getContext();
+			return ( i18n.giftCard || '%s' ).replace( '%s', () => card.label );
+		},
+		get giftCardAmount() {
+			const { card } = getContext();
+			return card.message || '-' + card.amount.formatted;
+		},
 		get hasDiscount() {
 			return ( state.cart?.totals?.discount?.amount ?? 0 ) > 0;
 		},
@@ -592,6 +604,14 @@ const { state, actions } = store( 'flexacommerce/cart', {
 			}
 			if ( context.fields ) {
 				body.options = readOptions( getElement().ref, context ).values;
+			}
+			// Who a gift card goes to (ADR-069).
+			const gift = {};
+			for ( const field of getElement().ref.querySelectorAll( '[name^="gift_card["]' ) ) {
+				gift[ field.name.slice( 10, -1 ) ] = field.value;
+			}
+			if ( Object.keys( gift ).length ) {
+				body.gift_card = gift;
 			}
 			if ( context.replace ) {
 				body.replace = context.replace;
@@ -902,9 +922,10 @@ const { state, actions } = store( 'flexacommerce/cart', {
 			}
 			state.couponBusy = true;
 			try {
+				const entered = state.couponCode.replace( /[\s-]+/g, '' ).toUpperCase();
 				applyCart( yield request( 'cart/coupons', 'POST', { code: state.couponCode } ) );
 				state.couponCode = '';
-				state.couponMessage = i18n.applied;
+				state.couponMessage = state.giftCards.some( ( card ) => card.code === entered ) ? i18n.cardApplied : i18n.applied;
 			} catch ( error ) {
 				state.couponMessage = error.message || i18n.failed;
 			} finally {

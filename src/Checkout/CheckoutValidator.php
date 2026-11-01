@@ -109,7 +109,7 @@ final class CheckoutValidator {
 		}
 
 		$result = new ValidationResult();
-		if ( $quote->total->amount > 0 ) {
+		if ( $quote->due()->amount > 0 ) {
 			$gateway = $gateways[ $request->payment_method ] ?? null;
 			if ( $gateway === null ) {
 				$errors['payment_method'] = __( 'Choose a payment method.', 'flexacommerce' );

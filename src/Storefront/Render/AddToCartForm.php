@@ -223,6 +223,10 @@ final class AddToCartForm {
 			$html .= OptionFields::html( $sets, $this->pricing, $editing?->options, $this->product_options !== null ? ( $this->product_options )()->sold_out( $sets ) : [] );
 		}
 
+		if ( $mode === self::SINGLE && $product->is_gift_card() ) {
+			$html .= self::gift_fields( $editing->gift ?? [] );
+		}
+
 		if ( $mode === self::SINGLE ) {
 			$id    = wp_unique_id( 'fxc-qty-' );
 			$html .= sprintf(
@@ -253,6 +257,34 @@ final class AddToCartForm {
 		$html .= '<p class="fxc-add-to-cart__message" role="status" aria-live="polite" data-wp-text="context.message" data-wp-class--is-error="context.failed"></p>';
 		$html .= FormHandler::notice_for( $product->id );
 		return $html . '</form>';
+	}
+
+	/**
+	 * Who a gift card goes to (ADR-069). Every field is optional: without
+	 * an email the card goes to the buyer, without a date it goes when the
+	 * order is paid.
+	 *
+	 * @param array<string,string> $gift the line being changed
+	 */
+	private static function gift_fields( array $gift ): string {
+		$field = static function ( string $key, string $label, string $type, string $extra = '' ) use ( $gift ): string {
+			$id    = wp_unique_id( 'fxc-gift-' . $key . '-' );
+			$value = $gift[ $key ] ?? '';
+			$input = $type === 'textarea'
+				? sprintf( '<textarea id="%1$s" name="gift_card[%2$s]" rows="3"%3$s>%4$s</textarea>', esc_attr( $id ), esc_attr( $key ), $extra, esc_textarea( $value ) )
+				: sprintf( '<input id="%1$s" type="%2$s" name="gift_card[%3$s]" value="%4$s"%5$s>', esc_attr( $id ), esc_attr( $type ), esc_attr( $key ), esc_attr( $value ), $extra );
+			return sprintf( '<p class="fxc-gift-card__field"><label for="%1$s">%2$s</label>%3$s</p>', esc_attr( $id ), esc_html( $label ), $input );
+		};
+		$today = wp_date( 'Y-m-d' );
+		$last  = wp_date( 'Y-m-d', time() + YEAR_IN_SECONDS );
+		return '<fieldset class="fxc-gift-card"><legend>' . esc_html__( 'Gift card details', 'flexacommerce' ) . '</legend>'
+			. '<p class="fxc-gift-card__help">' . esc_html__( 'Leave the email empty to receive the card yourself.', 'flexacommerce' ) . '</p>'
+			. $field( 'to', __( 'Recipient email', 'flexacommerce' ), 'email', ' autocomplete="off" maxlength="200"' )
+			. $field( 'name', __( 'Recipient name', 'flexacommerce' ), 'text', ' maxlength="200"' )
+			. $field( 'from', __( 'From', 'flexacommerce' ), 'text', ' maxlength="200"' )
+			. $field( 'message', __( 'Message', 'flexacommerce' ), 'textarea', ' maxlength="1000"' )
+			. $field( 'date', __( 'Delivery date', 'flexacommerce' ), 'date', sprintf( ' min="%1$s" max="%2$s"', esc_attr( (string) $today ), esc_attr( (string) $last ) ) )
+			. '</fieldset>';
 	}
 
 	/** The button of an external product: a link to where it is sold (ADR-062). */

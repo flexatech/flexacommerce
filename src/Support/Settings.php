@@ -77,6 +77,8 @@ final class Settings {
 		'reviews'                  => [ 'enum:off|all|buyers', 'all' ],
 		// Where the wishlist button shows (ADR-066): nowhere, on product pages, or on product pages and lists.
 		'wishlist'                 => [ 'enum:off|single|all', 'all' ],
+		// Months a new gift card stays usable (ADR-069); 0 keeps it usable until spent.
+		'gift_card_expiry_months'  => [ 'int:0:120', 0 ],
 		// How download links send a file (ADR-058): through PHP, handed to the web server, or a redirect.
 		'download_method'          => [ 'enum:force|xsendfile|redirect', 'force' ],
 		'tax_enabled'              => [ 'bool', false ],

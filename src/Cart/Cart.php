@@ -13,6 +13,8 @@ defined( 'ABSPATH' ) || exit;
  * payment_method?}` (doc 03 §4.9). `coupons` holds normalized codes in the
  * order added and is written only when there is one; `payment_method` is
  * the gateway last chosen at checkout, for conditions (ADR-041).
+ * `gift_cards` holds normalized gift card codes in the order added, written
+ * only when there is one (ADR-069).
  * Immutable; every change returns a new instance.
  */
 final class Cart {
@@ -26,6 +28,7 @@ final class Cart {
 	 * @param array{window:int,count:int}          $rate
 	 * @param array{country:string,state:string,postcode:string,city:string} $destination last address used for shipping quotes
 	 * @param list<string>                         $coupons normalized codes
+	 * @param list<string>                         $gift_cards normalized gift card codes
 	 */
 	public function __construct(
 		public readonly array $lines = [],
@@ -44,6 +47,7 @@ final class Cart {
 		public readonly string $checkout_token = '',
 		public readonly array $coupons = [],
 		public readonly string $payment_method = '',
+		public readonly array $gift_cards = [],
 	) {}
 
 	/** @param array<string,mixed> $data */
@@ -70,6 +74,12 @@ final class Cart {
 				$coupons[] = $code;
 			}
 		}
+		$gift_cards = [];
+		foreach ( is_array( $data['gift_cards'] ?? null ) ? $data['gift_cards'] : [] as $code ) {
+			if ( is_string( $code ) && $code !== '' && ! in_array( $code, $gift_cards, true ) ) {
+				$gift_cards[] = $code;
+			}
+		}
 		$rate        = is_array( $data['rate'] ?? null ) ? $data['rate'] : [];
 		$destination = is_array( $data['destination'] ?? null ) ? $data['destination'] : [];
 		return new self(
@@ -89,6 +99,7 @@ final class Cart {
 			is_string( $data['checkout_token'] ?? null ) ? $data['checkout_token'] : '',
 			$coupons,
 			is_string( $data['payment_method'] ?? null ) ? $data['payment_method'] : '',
+			$gift_cards,
 		);
 	}
 
@@ -108,6 +119,9 @@ final class Cart {
 		}
 		if ( $this->payment_method !== '' ) {
 			$data['payment_method'] = $this->payment_method;
+		}
+		if ( $this->gift_cards !== [] ) {
+			$data['gift_cards'] = $this->gift_cards;
 		}
 		return $data;
 	}
@@ -180,7 +194,7 @@ final class Cart {
 		return $this->copy( lines: array_values( array_filter( $this->lines, static fn ( CartLine $l ): bool => $l->key !== $key ) ) );
 	}
 
-	/** After an order: no lines, no coupons, a new checkout token. The destination is kept for the next quote. */
+	/** After an order: no lines, no coupons or gift cards, a new checkout token. The destination is kept for the next quote. */
 	public function emptied( string $checkout_token = '' ): self {
 		return new self( [], [], $this->rate, '', $this->destination, $checkout_token );
 	}
@@ -213,14 +227,20 @@ final class Cart {
 		return $this->copy( coupons: $codes );
 	}
 
+	/** @param list<string> $codes */
+	public function with_gift_cards( array $codes ): self {
+		return $this->copy( gift_cards: $codes );
+	}
+
 	/**
 	 * @param list<CartLine>|null                                     $lines
 	 * @param list<array{code:string,message:string}>|null            $notices
 	 * @param array{window:int,count:int}|null                        $rate
 	 * @param array{country:string,state:string,postcode:string,city:string}|null $destination
 	 * @param list<string>|null                                       $coupons
+	 * @param list<string>|null                                       $gift_cards
 	 */
-	private function copy( ?array $lines = null, ?array $notices = null, ?array $rate = null, ?string $shipping_rate = null, ?array $destination = null, ?string $checkout_token = null, ?array $coupons = null, ?string $payment_method = null ): self {
+	private function copy( ?array $lines = null, ?array $notices = null, ?array $rate = null, ?string $shipping_rate = null, ?array $destination = null, ?string $checkout_token = null, ?array $coupons = null, ?string $payment_method = null, ?array $gift_cards = null ): self {
 		return new self(
 			$lines ?? $this->lines,
 			$notices ?? $this->notices,
@@ -230,6 +250,7 @@ final class Cart {
 			$checkout_token ?? $this->checkout_token,
 			$coupons ?? $this->coupons,
 			$payment_method ?? $this->payment_method,
+			$gift_cards ?? $this->gift_cards,
 		);
 	}
 }

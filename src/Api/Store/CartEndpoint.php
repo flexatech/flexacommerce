@@ -74,6 +74,11 @@ final class CartEndpoint extends StoreEndpoint {
 							'type'    => 'object',
 							'default' => [],
 						],
+						// Who a gift card product goes to (ADR-069); CartService checks each field.
+						'gift_card'  => [
+							'type'    => 'object',
+							'default' => [],
+						],
 						// The line these choices replace (ADR-037).
 						'replace'    => [
 							'type'    => 'string',
@@ -176,6 +181,8 @@ final class CartEndpoint extends StoreEndpoint {
 		}
 		$options = $request->get_param( 'options' );
 		$options = is_array( $options ) && $options !== [] ? ProductOptions::posted( $options ) : [];
+		$gift    = $request->get_param( 'gift_card' );
+		$gift    = is_array( $gift ) ? CartService::posted_gift( $gift ) : [];
 		$replace = (string) $request->get_param( 'replace' );
 		if ( $replace !== '' ) {
 			return $this->run(
@@ -186,7 +193,8 @@ final class CartEndpoint extends StoreEndpoint {
 					(int) $request->get_param( 'variant_id' ),
 					(int) $request->get_param( 'quantity' ),
 					$attributes,
-					$options
+					$options,
+					$gift
 				)
 			);
 		}
@@ -197,7 +205,8 @@ final class CartEndpoint extends StoreEndpoint {
 				(int) $request->get_param( 'variant_id' ),
 				(int) $request->get_param( 'quantity' ),
 				$attributes,
-				$options
+				$options,
+				$gift
 			),
 			201
 		);

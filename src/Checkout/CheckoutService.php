@@ -46,6 +46,8 @@ use Flexa\Commerce\Contracts\Tax\TaxRequest;
 use Flexa\Commerce\Contracts\Money;
 use Flexa\Commerce\Coupons\AppliedCoupon;
 use Flexa\Commerce\Coupons\CouponService;
+use Flexa\Commerce\GiftCards\GiftCardService;
+use Flexa\Commerce\GiftCards\GiftCardUnusable;
 use Flexa\Commerce\Tax\TaxService;
 
 defined( 'ABSPATH' ) || exit;
@@ -87,6 +89,7 @@ final class CheckoutService {
 		?CartTaxes $cart_taxes = null,
 		?CustomerProfile $profile = null,
 		private readonly ?\Closure $coupons = null,
+		private readonly ?\Closure $gift_cards = null,
 	) {
 		$this->cart_taxes = $cart_taxes ?? new CartTaxes( $tax, $presenter );
 		$this->profile    = $profile ?? new CustomerProfile();
@@ -125,7 +128,7 @@ final class CheckoutService {
 				}
 			}
 			$discount = $state->discount();
-			return new Quote( $state, $package, $needs, $rates, $rate, $shipping, $zero, $net->subtract( $discount )->add( $shipping )->add( $state->fee_total() ), null, $net, discount: $discount );
+			return $this->paid_by_cards( new Quote( $state, $package, $needs, $rates, $rate, $shipping, $zero, $net->subtract( $discount )->add( $shipping )->add( $state->fee_total() ), null, $net, discount: $discount ) );
 		}
 		$to       = new TaxLocation( $destination->country, $destination->state, $destination->postcode, $destination->city );
 		$from     = $billing !== null ? new TaxLocation( (string) $billing->country, (string) $billing->state, (string) $billing->postcode, (string) $billing->city ) : $to;
@@ -145,7 +148,16 @@ final class CheckoutService {
 		$tax = $taxes->total();
 
 		// Fees carry no tax (ADR-043).
-		return new Quote( $state, $package, $needs, $rates, $rate, $shipping, $tax, $net->add( $shipping )->add( $tax )->add( $state->fee_total() ), $taxes, $before, $request->prices_include_tax, $outcome->failure, $before->subtract( $net ), $base );
+		return $this->paid_by_cards( new Quote( $state, $package, $needs, $rates, $rate, $shipping, $tax, $net->add( $shipping )->add( $tax )->add( $state->fee_total() ), $taxes, $before, $request->prices_include_tax, $outcome->failure, $before->subtract( $net ), $base ) );
+	}
+
+	/** The cart's gift cards, each paying what it can of the total in the order entered (ADR-069). */
+	private function paid_by_cards( Quote $quote ): Quote {
+		$codes = $quote->state->cart->gift_cards;
+		if ( $codes === [] || $this->gift_cards === null ) {
+			return $quote;
+		}
+		return $quote->with_gift_cards( $this->gift_cards()->allocate( $codes, $quote->total->amount, $quote->total->currency ) );
 	}
 
 	/**
@@ -410,7 +422,8 @@ final class CheckoutService {
 		return [
 			'currency'       => $quote->total->currency,
 			'total'          => $quote->total->amount,
-			'payable'        => $quote->total->amount > 0 && $pay === $method && ! $state->has_problems(),
+			// A wallet charges the whole total, so a cart paid in part by gift cards uses the form.
+			'payable'        => $quote->total->amount > 0 && $quote->gift_cards === [] && $pay === $method && ! $state->has_problems(),
 			'needs_shipping' => $quote->needs_shipping,
 			'shipping_rates' => $rates,
 			'shipping_rate'  => $quote->rate->id ?? '',
@@ -455,11 +468,12 @@ final class CheckoutService {
 		if ( $errors !== [] ) {
 			throw new InvalidCheckout( $errors );
 		}
-		if ( $request->expected_total !== null && $request->expected_total !== $quote->total->amount ) {
+		// The browser posts what is due after gift cards, the amount it showed as left to pay.
+		if ( $request->expected_total !== null && $request->expected_total !== $quote->due()->amount ) {
 			throw new TotalsChanged( __( 'Your order total changed. Review the new total and place the order again.', 'flexacommerce' ) );
 		}
 
-		$gateway = $quote->total->amount > 0 ? $gateways[ $request->payment_method ] : null;
+		$gateway = $quote->due()->amount > 0 ? $gateways[ $request->payment_method ] : null;
 		$new     = $this->new_order( $request, $quote, $addresses['billing'], $addresses['shipping'], $addresses['meta'], $gateway );
 		$ctx     = new TransitionContext( 'customer', $request->user_id );
 		$number  = $this->orders->next_number();
@@ -467,7 +481,7 @@ final class CheckoutService {
 		try {
 			/** @var array{0:Order,1:?Transaction} $created */
 			$created = $this->transaction->run(
-				function () use ( $new, $number, $ctx, $gateway, $state, $request ): array {
+				function () use ( $new, $number, $ctx, $gateway, $state, $request, $quote ): array {
 					$order = $this->orders->create( $new, $number, $ctx );
 					if ( $order->order_number !== $number ) {
 						return [ $order, null ];
@@ -475,11 +489,17 @@ final class CheckoutService {
 					if ( $state->discounts !== null && $state->discounts->applied !== [] ) {
 						$this->coupons()->redeem( $state->discounts, $order->id, $request->user_id, $new->customer_email );
 					}
+					if ( $quote->gift_card_total()->amount > 0 ) {
+						$this->gift_cards()->redeem( $order, $quote->gift_cards, $ctx );
+						$order = $this->orders->get( $order->id );
+					}
 					return [ $order, $gateway !== null ? $this->payments->create_payment( $order, $gateway ) : null ];
 				}
 			);
 		} catch ( InsufficientStock $e ) {
 			throw new InvalidCheckout( [ 'cart' => $e->getMessage() ] );
+		} catch ( GiftCardUnusable $e ) {
+			throw new InvalidCheckout( [ 'gift_card' => $e->getMessage() ] );
 		}
 		[ $order, $txn ] = $created;
 		if ( $order->order_number !== $number ) {
@@ -533,12 +553,12 @@ final class CheckoutService {
 		if ( ! $this->may_view( $order, $key, $user_id ) ) {
 			throw new OrderNotFound( __( 'Order not found.', 'flexacommerce' ) );
 		}
-		if ( $order->status !== OrderStatus::PENDING || $order->total <= 0 ) {
+		if ( $order->status !== OrderStatus::PENDING || $order->balance_due() <= 0 ) {
 			throw new InvalidCheckout( [ 'order' => __( 'This order does not need a payment.', 'flexacommerce' ) ] );
 		}
 
 		$context  = new CheckoutContext(
-			$this->money->from_minor( $order->total, $order->currency ),
+			$this->money->from_minor( $order->balance_due(), $order->currency ),
 			$order->billing->country ?? '',
 			$order->shipping->country ?? '',
 			$order->shipping_total > 0 || $order->shipping !== null,
@@ -564,7 +584,7 @@ final class CheckoutService {
 		$txn   = $this->transaction->run( fn (): Transaction => $this->payments->create_payment( $order, $gateway ) );
 
 		if ( $gateway instanceof OfflineGateway ) {
-			$status = $this->payments->initial_status( $gateway, $order->total );
+			$status = $this->payments->initial_status( $gateway, $order->balance_due() );
 			if ( $status !== OrderStatus::PENDING ) {
 				$order = $this->orders->transition( $order->id, $status, $ctx );
 			}
@@ -592,7 +612,7 @@ final class CheckoutService {
 	/** @return list<array<string,mixed>> gateways the order-pay page offers for a pending order */
 	public function pay_methods( Order $order ): array {
 		$context = new CheckoutContext(
-			$this->money->from_minor( $order->total, $order->currency ),
+			$this->money->from_minor( $order->balance_due(), $order->currency ),
 			$order->billing->country ?? '',
 			$order->shipping->country ?? '',
 			$order->shipping !== null,
@@ -676,6 +696,38 @@ final class CheckoutService {
 		return $gateway instanceof BankTransfer ? $gateway->instructions( $order->order_number ) : '';
 	}
 
+	private function gift_cards(): GiftCardService {
+		if ( $this->gift_cards === null ) {
+			throw new \LogicException( 'Gift cards are not available.' );
+		}
+		return ( $this->gift_cards )();
+	}
+
+	/**
+	 * The gift card rows of the checkout summary: what each card pays, or
+	 * why it cannot.
+	 *
+	 * @return list<array<string,mixed>>
+	 */
+	private function gift_card_rows( Quote $quote ): array {
+		$codes = $quote->state->cart->gift_cards;
+		if ( $codes === [] || $this->gift_cards === null ) {
+			return [];
+		}
+		$currency = $quote->total->currency;
+		$rows     = [];
+		foreach ( $this->gift_cards()->rows( $codes, $quote->total->amount, $currency ) as $row ) {
+			$rows[] = [
+				'code'    => $row['code'],
+				'label'   => $row['label'],
+				'amount'  => $this->presenter->money( new Money( $row['amount'], $currency ) ),
+				'balance' => $this->presenter->money( new Money( $row['balance'], $currency ) ),
+				'message' => $row['message'],
+			];
+		}
+		return $rows;
+	}
+
 	private function coupons(): CouponService {
 		if ( $this->coupons === null ) {
 			throw new \LogicException( 'Coupons are not available.' );
@@ -752,7 +804,7 @@ final class CheckoutService {
 		$quote = $this->quote( $state, $destination, $rate_id, null, $user_id );
 		$rate  = $quote->rate->id ?? '';
 		$pay   = $method;
-		if ( $quote->total->amount > 0 ) {
+		if ( $quote->due()->amount > 0 ) {
 			$ids = array_keys( $this->payments->gateways()->available( $this->context( $quote, $destination->country, '', $user_id ) ) );
 			$pay = in_array( $method, $ids, true ) ? $method : (string) ( $ids[0] ?? '' );
 		}
@@ -789,7 +841,7 @@ final class CheckoutService {
 
 	private function context( Quote $quote, string $billing_country, string $shipping_country, int $user_id ): CheckoutContext {
 		return new CheckoutContext(
-			$quote->total,
+			$quote->due(),
 			$billing_country,
 			$shipping_country !== '' ? $shipping_country : $quote->package->destination->country,
 			$quote->needs_shipping,
@@ -821,6 +873,10 @@ final class CheckoutService {
 		if ( $quote->state->fees !== [] ) {
 			$totals = array_slice( $totals, 0, -2, true ) + [ 'fees' => $this->presenter->money( $quote->state->fee_total() ) ] + array_slice( $totals, -2, null, true );
 		}
+		if ( $quote->state->cart->gift_cards !== [] && $this->gift_cards !== null ) {
+			$totals['gift_cards'] = $this->presenter->money( $quote->gift_card_total() );
+			$totals['due']        = $this->presenter->money( $quote->due() );
+		}
 		$coupons = [];
 		if ( $quote->state->discounts !== null ) {
 			$discount = $this->display_discount( $quote );
@@ -835,8 +891,9 @@ final class CheckoutService {
 			'needs_address'   => $quote->needs_address(),
 			'shipping_rates'  => $rates,
 			'shipping_rate'   => $quote->rate->id ?? '',
-			'payment_methods' => $quote->total->amount > 0 ? $this->methods_view( $context ) : [],
+			'payment_methods' => $quote->due()->amount > 0 ? $this->methods_view( $context ) : [],
 			'totals'          => $totals,
+			'gift_cards'      => $this->gift_card_rows( $quote ),
 			'tax'             => $this->cart_taxes->view( $quote->taxes, $quote->package->destination->country ),
 		];
 	}
@@ -937,6 +994,8 @@ final class CheckoutService {
 						'downloadable' => $item->variant?->sells_files() === true,
 						'selection'    => $item->line->attributes,
 						'options'      => $item->line->options,
+						// Who the cards from this line go to (ADR-069); `issue` keeps the entry when no field is filled.
+						'gift_card'    => $item->variant?->gift_card === true ? [ 'issue' => true ] + $item->line->gift : null,
 					]
 				)
 			);
@@ -988,7 +1047,12 @@ final class CheckoutService {
 		[ 'items' => $items, 'discount' => $discount, 'fees' => $fees ] = $this->order_items( $quote );
 		$currency = $quote->total->currency;
 		$title    = $gateway !== null ? $this->payments->gateways()->title( $gateway ) : '';
-		$wallet   = $request->gateway_input['express'] ?? '';
+		$method   = $gateway?->id() ?? '';
+		if ( $gateway === null && $quote->gift_card_total()->amount > 0 ) {
+			$method = GiftCardService::GATEWAY;
+			$title  = __( 'Gift card', 'flexacommerce' );
+		}
+		$wallet = $request->gateway_input['express'] ?? '';
 		if ( $gateway !== null && is_string( $wallet ) && isset( self::WALLETS[ $wallet ] ) ) {
 			$title                = sprintf( '%1$s (%2$s)', $title, self::WALLETS[ $wallet ] );
 			$meta['_fxc_express'] = $wallet;
@@ -1008,7 +1072,7 @@ final class CheckoutService {
 			shipping: $shipping,
 			customer_note: $this->validator->note( $request ),
 			customer_ip: Settings::bool( 'store_customer_ip' ) ? $request->customer_ip : '',
-			payment_method: $gateway?->id() ?? '',
+			payment_method: $method,
 			payment_method_title: $title,
 			checkout_token: $request->checkout_token,
 			locale: determine_locale(),

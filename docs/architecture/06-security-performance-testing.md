@@ -48,6 +48,7 @@ WordPress nonces are tied to the user id and session token. For logged-out visit
 - No-JS form posts (`admin-post.php`) use a hidden HMAC token with the same construction, plus the Origin/Referer check.
 - Cookie `fxc_session`: `HttpOnly`, `Secure` when the site is HTTPS, `SameSite=Lax`, path `COOKIEPATH`.
 - Cookies `fxc_wishlist` and `fxc_wishlist_ids` (ADR-066) are set only by a wishlist save or removal, never on a catalog view. `fxc_wishlist` carries a guest list's random token: `HttpOnly`, `Secure` on HTTPS, `SameSite=Lax`, 90 days; the database keeps only its SHA-256 hash. `fxc_wishlist_ids` is readable by scripts and holds the owner's user id and the saved product ids, nothing secret, so a cached page can draw the filled heart.
+- Gift card codes (ADR-069) are 16 characters from a 27-character alphabet made with `random_int()` (about 76 bits), so guessing is ruled out by the code space and the `gift_card_ip` limit together. Only a code with the right shape is looked up, and a wrong one counts against the limit. Outside the admin screen a code is masked to its last four characters: in the cart, at checkout, in order notes and payment rows, and in the privacy export. A balance changes only with the card row locked inside the transaction that records the change, so two orders cannot spend the same money; a refund credit is keyed on its refund transaction, so a retried refund adds once.
 
 ### 2.4 Input validation and output escaping
 
@@ -113,6 +114,7 @@ Order key (32 random bytes) + `hash_equals()`, `Cache-Control: private, no-store
 | Order lookup failures (number + email, ADR-057) | 10 per hour | IP | transient |
 | Back-in-stock signups (form and `store/stock-alerts`, ADR-065) | 10 per hour | IP | transient |
 | New guest wishlists (form and `store/wishlist`, ADR-066) | 20 per hour | IP | transient |
+| Gift card codes that match no card (cart and checkout code box, ADR-069) | 10 per hour | IP | transient |
 | Customer cancel | 5 per hour | order | order history count |
 
 Limits are filterable. IPs come from `REMOTE_ADDR` unless the admin configures a trusted proxy header (no automatic trust of `X-Forwarded-For`). The site names the header with the filter `flexacommerce.client_ip_header` (for example `HTTP_X_FORWARDED_FOR`; there is no settings field for it in 1.0). The header is read from the right: each proxy appends the address it saw, so the left entries are whatever the client sent. The client is the right-most public address in the list; private and reserved hops (internal proxies) are skipped, and a list of only internal hops yields the nearest one.

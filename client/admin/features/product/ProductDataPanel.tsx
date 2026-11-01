@@ -107,6 +107,13 @@ export function ProductDataPanel({ editor }: { editor: ProductDraftState }) {
                                 <Toggle checked={draft.base.downloadable} onChange={(downloadable) => setBase({ downloadable })} label={__("Downloadable")} />
                             </>
                         )}
+                        {!notSold && (
+                            <Toggle
+                                checked={draft.base.gift_card}
+                                onChange={(gift_card) => setBase(gift_card ? { gift_card, virtual: true, tax_status: "none" } : { gift_card })}
+                                label={__("Gift card")}
+                            />
+                        )}
                     </div>
                     <div className="fxc:ml-auto fxc:flex fxc:items-center fxc:gap-3 fxc:pb-0.5">
                         {saving && <span className="fxc:text-muted-foreground fxc:text-xs">{__("Saving…")}</span>}

@@ -12,7 +12,7 @@ defined( 'ABSPATH' ) || exit;
  * One order line: a product, shipping, fee, discount or tax line (doc 03
  * §4.3). Name, SKU, attributes and unit price are snapshots taken when the
  * order was placed. `downloadable` is true when the line sold files at
- * that time (ADR-058).
+ * that time (ADR-058), `gift_card` when it sold gift cards (ADR-069).
  *
  * @api
  */
@@ -35,5 +35,6 @@ final class OrderItemView {
 		public readonly int $refunded_qty,
 		public readonly Money $refunded_total,
 		public readonly bool $downloadable = false,
+		public readonly bool $gift_card = false,
 	) {}
 }

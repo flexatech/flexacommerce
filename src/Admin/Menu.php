@@ -32,6 +32,7 @@ final class Menu {
 		self::SLUG . '-customers',
 		self::SLUG . '-recovery',
 		self::SLUG . '-stock-alerts',
+		self::SLUG . '-gift-cards',
 		'edit.php?post_type=' . PostTypes::PRODUCT,
 		'edit-tags.php?taxonomy=' . PostTypes::CATEGORY . '&post_type=' . PostTypes::PRODUCT,
 		'edit-tags.php?taxonomy=' . PostTypes::TAG . '&post_type=' . PostTypes::PRODUCT,
@@ -128,6 +129,17 @@ final class Menu {
 				__( 'Stock alerts', 'flexacommerce' ),
 				Capabilities::VIEW_ORDERS,
 				self::SLUG . '-stock-alerts',
+				[ $this, 'render_page' ]
+			)
+		);
+		$this->add(
+			self::SLUG . '-gift-cards',
+			(string) add_submenu_page(
+				self::SLUG,
+				__( 'Gift cards', 'flexacommerce' ),
+				__( 'Gift cards', 'flexacommerce' ),
+				Capabilities::VIEW_ORDERS,
+				self::SLUG . '-gift-cards',
 				[ $this, 'render_page' ]
 			)
 		);

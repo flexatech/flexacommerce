@@ -17,7 +17,7 @@ defined( 'ABSPATH' ) || exit;
  */
 // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- schema DDL on plugin-owned tables, no user input.
 final class Schema {
-	public const DB_VERSION        = '15';
+	public const DB_VERSION        = '16';
 	public const DB_VERSION_OPTION = 'flexacommerce_db_version';
 	public const OPTION_PREFIX     = 'flexacommerce_';
 
@@ -82,6 +82,7 @@ final class Schema {
 				description text NULL,
 				is_virtual tinyint(1) NOT NULL DEFAULT 0,
 				is_downloadable tinyint(1) NOT NULL DEFAULT 0,
+				is_gift_card tinyint(1) NOT NULL DEFAULT 0,
 				downloads longtext NULL,
 				meta longtext NULL,
 				created_at datetime NOT NULL,
@@ -340,6 +341,45 @@ final class Schema {
 				PRIMARY KEY  (id),
 				KEY order_id (order_id),
 				KEY tracking_number (tracking_number)
+			) {$charset};",
+			'gift_cards'         => "CREATE TABLE {$p}gift_cards (
+				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+				code varchar(32) NOT NULL,
+				initial_amount bigint(20) NOT NULL,
+				balance bigint(20) NOT NULL,
+				currency char(3) NOT NULL,
+				status varchar(20) NOT NULL DEFAULT 'active',
+				recipient_email varchar(200) NOT NULL DEFAULT '',
+				recipient_name varchar(200) NOT NULL DEFAULT '',
+				sender_name varchar(200) NOT NULL DEFAULT '',
+				message text NULL,
+				order_id bigint(20) unsigned NULL,
+				order_item_id bigint(20) unsigned NULL,
+				deliver_at datetime NULL,
+				delivered_at datetime NULL,
+				expires_at datetime NULL,
+				created_at datetime NOT NULL,
+				updated_at datetime NOT NULL,
+				PRIMARY KEY  (id),
+				UNIQUE KEY code (code),
+				KEY order_item (order_id,order_item_id),
+				KEY recipient_email (recipient_email),
+				KEY deliver_at (deliver_at)
+			) {$charset};",
+			'gift_card_activity' => "CREATE TABLE {$p}gift_card_activity (
+				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+				gift_card_id bigint(20) unsigned NOT NULL,
+				type varchar(20) NOT NULL,
+				amount bigint(20) NOT NULL,
+				balance_after bigint(20) NOT NULL,
+				order_id bigint(20) unsigned NULL,
+				transaction_id bigint(20) unsigned NULL,
+				note varchar(500) NOT NULL DEFAULT '',
+				user_id bigint(20) unsigned NULL,
+				created_at datetime NOT NULL,
+				PRIMARY KEY  (id),
+				KEY gift_card_id (gift_card_id),
+				KEY transaction_id (transaction_id)
 			) {$charset};",
 			'sequences'          => "CREATE TABLE {$p}sequences (
 				name varchar(32) NOT NULL,

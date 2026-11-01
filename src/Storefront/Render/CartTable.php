@@ -122,7 +122,7 @@ final class CartTable {
 	private static function coupon_form(): string {
 		return '<form id="' . self::COUPON_FORM . '" class="fxc-cart__coupon" method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '" data-wp-on--submit="actions.applyCoupon">'
 			. FormHandler::hidden_fields( 'coupon' )
-			. '<label for="fxc-coupon-code">' . esc_html__( 'Coupon code', 'flexacommerce' ) . '</label> '
+			. '<label for="fxc-coupon-code">' . esc_html__( 'Coupon or gift card code', 'flexacommerce' ) . '</label> '
 			. '<input id="fxc-coupon-code" type="text" name="coupon_code" maxlength="' . Coupon::MAX_CODE_LENGTH . '" autocomplete="off" data-wp-bind--value="state.couponCode" data-wp-on--input="actions.setCouponCode"> '
 			. '<button type="submit" class="wp-element-button" data-wp-bind--disabled="state.couponBusy">' . esc_html__( 'Apply', 'flexacommerce' ) . '</button>'
 			. '<span class="fxc-cart__coupon-message" role="status" aria-live="polite" data-wp-text="state.couponMessage"></span>'
@@ -147,6 +147,38 @@ final class CartTable {
 			esc_attr__( 'Remove coupon', 'flexacommerce' ),
 			esc_html( ! empty( $coupon['valid'] ) ? CheckoutForm::coupon_amount( $coupon ) : (string) ( $coupon['message'] ?? '' ) ),
 			empty( $coupon['automatic'] ) ? '' : ' hidden'
+		);
+	}
+
+	/**
+	 * One row per gift card after the total (ADR-069): what it pays of the
+	 * total so far, or why it cannot. Checkout takes the exact amount once
+	 * shipping and tax are known.
+	 *
+	 * @param array<string,mixed> $data
+	 */
+	private static function gift_card_rows( array $data ): string {
+		$html = '<template data-wp-each--card="state.giftCards" data-wp-each-key="context.card.code">' . self::gift_card_row( [], false ) . '</template>';
+		foreach ( (array) ( $data['gift_cards'] ?? [] ) as $card ) {
+			$html .= self::gift_card_row( (array) $card, true );
+		}
+		return $html;
+	}
+
+	/** @param array<mixed> $card a gift card row of the cart response */
+	private static function gift_card_row( array $card, bool $child ): string {
+		$message = (string) ( $card['message'] ?? '' );
+		return sprintf(
+			'<tr class="fxc-cart__gift-card"%1$s><th scope="row"><span data-wp-text="state.giftCardLabel">%2$s</span> <button type="submit" class="fxc-cart__remove-coupon" form="%3$s" name="remove_coupon" data-wp-bind--value="context.card.code" value="%4$s" aria-label="%5$s" data-wp-on--click="actions.removeCoupon">&times;</button></th><td data-wp-text="state.giftCardAmount">%6$s</td></tr>',
+			$child ? ' data-wp-each-child' : '',
+			$card !== [] ? esc_html(
+				/* translators: %s: last characters of the gift card code */
+				sprintf( __( 'Gift card: %s', 'flexacommerce' ), (string) ( $card['label'] ?? '' ) )
+			) : '',
+			self::COUPON_FORM,
+			esc_attr( (string) ( $card['code'] ?? '' ) ),
+			esc_attr__( 'Remove gift card', 'flexacommerce' ),
+			esc_html( $message !== '' ? $message : ( $card !== [] ? '-' . (string) ( $card['amount']['formatted'] ?? '' ) : '' ) )
 		);
 	}
 
@@ -202,7 +234,8 @@ final class CartTable {
 		foreach ( (array) ( $data['fees'] ?? [] ) as $fee ) {
 			$html .= '<tr class="fxc-cart__fee" data-wp-each-child><th scope="row" data-wp-text="context.fee.name">' . esc_html( (string) $fee['name'] ) . '</th><td data-wp-text="context.fee.amount.formatted">' . esc_html( (string) $fee['amount']['formatted'] ) . '</td></tr>';
 		}
-		$tax = is_array( $data['tax'] ?? null ) ? $data['tax'] : null;
+		$tax   = is_array( $data['tax'] ?? null ) ? $data['tax'] : null;
+		$cards = self::gift_card_rows( $data );
 		if ( $tax === null ) {
 			// Without taxes the total row only shows once a coupon takes something off or a fee adds to it.
 			$html .= sprintf(
@@ -211,10 +244,10 @@ final class CartTable {
 				esc_html__( 'Total', 'flexacommerce' ),
 				esc_html( (string) ( $totals['total']['formatted'] ?? '' ) )
 			);
-			return $html . '</tbody></table>';
+			return $html . $cards . '</tbody></table>';
 		}
 		if ( ! empty( $tax['pending'] ) ) {
-			return $html . '<tr class="fxc-cart__note"><td colspan="2">' . esc_html__( 'Tax and shipping are calculated at checkout.', 'flexacommerce' ) . '</td></tr></tbody></table>';
+			return $html . $cards . '<tr class="fxc-cart__note"><td colspan="2">' . esc_html__( 'Tax and shipping are calculated at checkout.', 'flexacommerce' ) . '</td></tr></tbody></table>';
 		}
 		$rows = '';
 		foreach ( (array) $tax['lines'] as $line ) {
@@ -231,7 +264,7 @@ final class CartTable {
 			esc_html( (string) ( $totals['total']['formatted'] ?? '' ) )
 		);
 		$html    .= ! empty( $tax['included'] ) ? $total . $template . $rows : $template . $rows . $total;
-		return $html . '<tr class="fxc-cart__note"><td colspan="2">' . esc_html__( 'Shipping is calculated at checkout.', 'flexacommerce' ) . '</td></tr></tbody></table>';
+		return $html . $cards . '<tr class="fxc-cart__note"><td colspan="2">' . esc_html__( 'Shipping is calculated at checkout.', 'flexacommerce' ) . '</td></tr></tbody></table>';
 	}
 
 	/** @param array<string,mixed> $shown the item in the public cart shape, with display prices */

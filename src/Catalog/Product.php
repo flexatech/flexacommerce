@@ -52,6 +52,11 @@ final class Product {
 		return $this->type === ProductTypes::EXTERNAL;
 	}
 
+	/** Sold as a gift card: paid rows issue codes instead of shipping (ADR-069). Variations inherit it. */
+	public function is_gift_card(): bool {
+		return $this->base->gift_card;
+	}
+
 	/** Whether rows of this product can go in the cart. */
 	public function is_sold(): bool {
 		return ProductTypes::is_sold( $this->type );
