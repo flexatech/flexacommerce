@@ -99,6 +99,7 @@ final class Cron {
 		$webhooks = Plugin::instance()->payments()->service()->purge_webhooks();
 		Plugin::instance()->recovery()->daily();
 		Plugin::instance()->stock_alerts()->daily();
+		Plugin::instance()->wishlist()->daily();
 
 		do_action( 'flexacommerce.cron.daily_done', $deleted, $sessions, $webhooks );
 	}

@@ -55,6 +55,10 @@ final class Privacy {
 			'exporter_friendly_name' => __( 'FlexaCommerce back-in-stock emails', 'flexacommerce' ),
 			'callback'               => [ $this, 'export_stock_alerts' ],
 		];
+		$exporters['flexacommerce-wishlist']     = [
+			'exporter_friendly_name' => __( 'FlexaCommerce wishlist', 'flexacommerce' ),
+			'callback'               => [ $this, 'export_wishlist' ],
+		];
 		return $exporters;
 	}
 
@@ -86,6 +90,10 @@ final class Privacy {
 		$erasers['flexacommerce-stock-alerts'] = [
 			'eraser_friendly_name' => __( 'FlexaCommerce back-in-stock emails', 'flexacommerce' ),
 			'callback'             => [ $this, 'erase_stock_alerts' ],
+		];
+		$erasers['flexacommerce-wishlist']     = [
+			'eraser_friendly_name' => __( 'FlexaCommerce wishlist', 'flexacommerce' ),
+			'callback'             => [ $this, 'erase_wishlist' ],
 		];
 		return $erasers;
 	}
@@ -263,6 +271,52 @@ final class Privacy {
 		];
 	}
 
+	/**
+	 * The products saved by the account of the address (ADR-066). Guest
+	 * lists carry no address, so they cannot be found by one.
+	 *
+	 * @return array{data:list<array<string,mixed>>,done:bool}
+	 */
+	public function export_wishlist( string $email, int $page = 1 ): array {
+		unset( $page );
+		$user = get_user_by( 'email', $email );
+		$list = $user instanceof \WP_User ? Plugin::instance()->wishlist()->repository()->for_user( $user->ID ) : null;
+		$data = [];
+		foreach ( $list !== null ? Plugin::instance()->wishlist()->items( $list ) : [] as $product_id ) {
+			$data[] = [
+				'group_id'    => 'flexacommerce-wishlist',
+				'group_label' => __( 'Wishlist', 'flexacommerce' ),
+				'item_id'     => 'fxc-wishlist-' . $product_id,
+				'data'        => [
+					[
+						'name'  => __( 'Product', 'flexacommerce' ),
+						'value' => get_the_title( $product_id ) !== '' ? get_the_title( $product_id ) : '#' . $product_id,
+					],
+				],
+			];
+		}
+		return [
+			'data' => $data,
+			'done' => true,
+		];
+	}
+
+	/** @return array{items_removed:bool,items_retained:bool,messages:list<string>,done:bool} */
+	public function erase_wishlist( string $email, int $page = 1 ): array {
+		unset( $page );
+		$user = get_user_by( 'email', $email );
+		$list = $user instanceof \WP_User ? Plugin::instance()->wishlist()->repository()->for_user( $user->ID ) : null;
+		if ( $list !== null ) {
+			Plugin::instance()->wishlist()->repository()->delete( $list->id );
+		}
+		return [
+			'items_removed'  => $list !== null,
+			'items_retained' => false,
+			'messages'       => [],
+			'done'           => true,
+		];
+	}
+
 	/** @return array{data:list<array<string,mixed>>,done:bool} */
 	public function export_orders( string $email, int $page = 1 ): array {
 		return $this->data()->export_orders( $email, $page );
@@ -318,6 +372,7 @@ final class Privacy {
 			. '<p>' . esc_html( $cart ) . '</p>'
 			. '<p>' . esc_html__( 'If you are signed in, or typed your email at checkout, and leave items in your cart without ordering, we may email you up to three reminders about it. Each email has a link to stop them. We keep the record of a left cart for up to 90 days.', 'flexacommerce' ) . '</p>'
 			. '<p>' . esc_html__( 'If you ask to hear when a product is back in stock, we keep your email address and the product until we send that one email, or until you use the link in it to stop. We delete the record 90 days after it is sent or stopped.', 'flexacommerce' ) . '</p>'
+			. '<p>' . esc_html__( 'When you save products to a wishlist we keep the list in our database. For guests it is found by a cookie named fxc_wishlist and deleted 90 days after its last change; a second cookie, fxc_wishlist_ids, holds only the product numbers in the list. A signed-in customer\'s list stays with the account until the account is deleted. The share link shows the products only, never your name.', 'flexacommerce' ) . '</p>'
 			. '<h2>' . esc_html__( 'How long we keep it', 'flexacommerce' ) . '</h2>'
 			. '<p>' . esc_html__( 'We keep order records for as long as tax and accounting rules require. If you ask us to erase your data, we remove your name, addresses, email, phone, IP address and order notes from your orders and keep the amounts and products for our accounts. Orders that are still being processed are erased once they are completed or cancelled.', 'flexacommerce' ) . '</p>'
 			. '<h2>' . esc_html__( 'Who we share it with', 'flexacommerce' ) . '</h2>'

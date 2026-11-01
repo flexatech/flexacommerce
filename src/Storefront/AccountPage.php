@@ -12,8 +12,12 @@ use Flexa\Commerce\Orders\Order;
 use Flexa\Commerce\Orders\OrderAccess;
 use Flexa\Commerce\Plugin;
 use Flexa\Commerce\Storefront\Render\Account;
+use Flexa\Commerce\Storefront\Render\Component;
 use Flexa\Commerce\Support\SameSite;
 use Flexa\Commerce\Support\Settings;
+use Flexa\Commerce\Wishlist\WishlistCookies;
+use Flexa\Commerce\Wishlist\WishlistRefused;
+use Flexa\Commerce\Wishlist\WishlistService;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -88,6 +92,11 @@ final class AccountPage {
 
 	public function handle(): void {
 		nocache_headers();
+		// A guest wishlist moves into the account before the page prints, while cookies can still be set (ADR-066).
+		if ( is_user_logged_in() && isset( $_COOKIE[ WishlistCookies::TOKEN ] ) && WishlistService::enabled() ) {
+			// A signed-in customer is never refused: only a new guest list is.
+			Plugin::instance()->wishlist()->current( get_current_user_id() );
+		}
 		// phpcs:disable WordPress.Security.NonceVerification.Missing -- verified() checks the nonce before anything changes.
 		if ( ! is_user_logged_in() || ! isset( $_POST[ self::ACTION ] ) ) {
 			return;
@@ -118,8 +127,13 @@ final class AccountPage {
 				return $view->guest_order( $order );
 			}
 		}
+		// Plain permalinks link the own list as `?fxc_wishlist=1`.
+		if ( $endpoint === 'wishlist' && $value !== '' && $value !== '1' ) {
+			return $this->shared_wishlist( $value );
+		}
 		if ( $user === 0 ) {
-			return $view->login( self::url() ) . OrderLookup::instance()->render();
+			// A guest's own wishlist lives in a cookie, so it shows without signing in (ADR-066).
+			return $endpoint === 'wishlist' ? $this->wishlist( 0 ) : $view->login( self::url() ) . OrderLookup::instance()->render();
 		}
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- display only.
 		$saved = isset( $_GET[ self::SAVED ] ) ? sanitize_key( wp_unslash( (string) $_GET[ self::SAVED ] ) ) : '';
@@ -130,9 +144,55 @@ final class AccountPage {
 			'downloads' => $view->downloads( $user ),
 			'edit-address' => $view->addresses( $user, $value, $this->posted, $this->errors ),
 			'edit-account' => $view->details( $user, $this->posted, $this->errors ),
+			'wishlist' => $this->wishlist_content( $user ),
 			default => $view->dashboard( $user ),
 		};
 		return $view->page( $endpoint, $saved, $content );
+	}
+
+	/**
+	 * The visitor's wishlist outside the account navigation: the guest view
+	 * of the endpoint and the `[flexacommerce_wishlist]` shortcode.
+	 */
+	public function wishlist( int $user ): string {
+		if ( ! defined( 'DONOTCACHEPAGE' ) ) {
+			define( 'DONOTCACHEPAGE', true ); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedConstantFound -- read by page cache plugins.
+		}
+		$html = '<div class="fxc-account fxc-account--guest"><div class="fxc-account__content"><h2>' . esc_html__( 'Wishlist', 'flexacommerce' ) . '</h2>' . $this->wishlist_content( $user );
+		if ( $user === 0 && WishlistService::enabled() ) {
+			$html .= '<p>' . sprintf(
+				/* translators: %s: link to the sign-in form. */
+				esc_html__( '%s to keep your wishlist on every device.', 'flexacommerce' ),
+				'<a href="' . esc_url( self::url() ) . '">' . esc_html__( 'Sign in', 'flexacommerce' ) . '</a>'
+			) . '</p>';
+		}
+		return Component::wrap( 'account', static fn (): string => $html . '</div></div>', [ 'endpoint' => 'wishlist' ] );
+	}
+
+	private function wishlist_content( int $user ): string {
+		if ( ! WishlistService::enabled() ) {
+			return '<p class="fxc-notice">' . esc_html( WishlistRefused::text( 'off' ) ) . '</p>';
+		}
+		try {
+			$list = Plugin::instance()->wishlist()->current( $user );
+		} catch ( WishlistRefused ) {
+			$list = null;
+		}
+		$service = Plugin::instance()->wishlist();
+		return Storefront::instance()->wishlist_table()->html( $list !== null ? $service->items( $list ) : [], true, $list->share_key ?? '', $user );
+	}
+
+	/** A wishlist opened from its share link: read-only, no owner shown. */
+	private function shared_wishlist( string $key ): string {
+		$list = WishlistService::enabled() ? Plugin::instance()->wishlist()->shared( $key ) : null;
+		$body = $list === null
+			? '<p class="fxc-notice fxc-notice--error" role="alert">' . esc_html__( 'This wishlist link does not work any more.', 'flexacommerce' ) . '</p>'
+			: Storefront::instance()->wishlist_table()->html( Plugin::instance()->wishlist()->items( $list ), false, '', get_current_user_id() );
+		return Component::wrap(
+			'account',
+			static fn (): string => '<div class="fxc-account fxc-account--guest"><div class="fxc-account__content"><h2>' . esc_html__( 'Shared wishlist', 'flexacommerce' ) . '</h2>' . $body . '</div></div>',
+			[ 'endpoint' => 'wishlist' ]
+		);
 	}
 
 	/** The order key of a guest order link (ADR-057). */

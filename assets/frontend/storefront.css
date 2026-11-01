@@ -318,6 +318,22 @@
 .fxc-account__updates li { margin-block-end: .75rem; }
 .fxc-account__note { font-style: italic; }
 
+/* Wishlist (ADR-066). The heart fills when the store sets aria-pressed. */
+.fxc-wishlist-button { margin-block: .5rem; }
+.fxc-wishlist-button__button { display: inline-flex; align-items: center; gap: .4rem; padding: .35rem .5rem; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+.fxc-wishlist-button__icon { fill: none; stroke: currentColor; stroke-width: 2; }
+.fxc-wishlist-button__button[aria-pressed="true"] .fxc-wishlist-button__icon { fill: #c9184a; stroke: #c9184a; }
+.fxc-wishlist-button__button:disabled { opacity: .6; cursor: progress; }
+.fxc-wishlist-button--loop { margin-block: 0; }
+.fxc-wishlist__table { width: 100%; border-collapse: collapse; margin-block-end: 1rem; }
+.fxc-wishlist__table caption { text-align: start; font-weight: 600; font-size: 1.125em; margin-block-end: .75rem; }
+.fxc-wishlist__table th, .fxc-wishlist__table td { padding: .5rem; text-align: start; border-block-end: 1px solid rgba(0, 0, 0, .1); vertical-align: middle; }
+.fxc-wishlist__table .fxc-add-to-cart { margin: 0; }
+.fxc-wishlist__image img { display: block; width: 64px; height: auto; }
+.fxc-wishlist__remove { padding: 0; border: 0; background: none; color: inherit; font: inherit; text-decoration: underline; cursor: pointer; }
+.fxc-wishlist__share input { width: 100%; max-width: 32rem; padding: .5rem; box-sizing: border-box; font: inherit; }
+.fxc-wishlist__hint { font-size: .875em; }
+
 @media (max-width: 600px) {
 	.fxc-cart__table thead { display: none; }
 	.fxc-cart__table tr { display: grid; grid-template-columns: 1fr auto; padding-block: .5rem; border-block-end: 1px solid rgba(0, 0, 0, .1); }
@@ -326,6 +342,10 @@
 	.fxc-account__orders thead { display: none; }
 	.fxc-account__orders tr { display: grid; grid-template-columns: 1fr auto; border-block-end: 1px solid rgba(0, 0, 0, .1); }
 	.fxc-account__orders td { border: 0; padding: .25rem .5rem; }
+	.fxc-wishlist__table thead { display: none; }
+	.fxc-wishlist__table tr { display: grid; grid-template-columns: 72px 1fr; border-block-end: 1px solid rgba(0, 0, 0, .1); }
+	.fxc-wishlist__table :is(th, td) { border: 0; padding: .25rem .5rem; }
+	.fxc-wishlist__image { grid-row: span 4; }
 	:is(.fxc-checkout__address, .fxc-checkout__additional, .fxc-account__form fieldset) > .fxc-field--half { flex-basis: 100%; }
 }
 

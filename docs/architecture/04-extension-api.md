@@ -164,6 +164,7 @@ interface ShippingMethod {
 | `flexacommerce.stock.changed` | `int $variant_id, int $old, int $new, string $reason` | any stock mutation |
 | `flexacommerce.stock.low` / `.out` | `int $variant_id, int $qty` | threshold crossed |
 | `flexacommerce.stock_alert.created` | `StockAlert $alert` | a shopper signed up for a back-in-stock email (ADR-065); once per new row, not when the same address asks again |
+| `flexacommerce.wishlist.added` | `int $product_id, int $user_id` | a shopper saved a product to a wishlist (ADR-066); `$user_id` is 0 for a guest; not fired when the product was already saved |
 | `flexacommerce.migration.entity_imported` | `string $entity, string $remote_id, int $local_id, string $direction` | per entity, migration only |
 
 Because these fire after commit, a listener that throws cannot roll back the order. Exceptions are caught per listener, logged, and do not stop other listeners.
@@ -267,7 +268,7 @@ interface TaxCalculator {
 ## 8. Storefront extension
 
 - Templates: overridable from `{theme}/flexacommerce/` (classic) and the Site Editor (block). Every template file carries a `@version` header; the Status screen lists outdated overrides (same mechanism shop owners know from WooCommerce).
-- Render hooks inside shared renderers: `flexacommerce.render.{component}.before` / `.after` actions, and `flexacommerce.render.{component}.html` filter on the output. Components: `product_price`, `add_to_cart`, `gallery`, `cart_table`, `checkout_form`, `order_summary`, `account_nav`.
+- Render hooks inside shared renderers: `flexacommerce.render.{component}.before` / `.after` actions, and `flexacommerce.render.{component}.html` filter on the output. Components: `product_price`, `add_to_cart`, `gallery`, `cart_table`, `checkout_form`, `order_summary`, `account_nav`, `wishlist_button` and `wishlist` (ADR-066).
 - Blocks: core blocks are extendable with standard block APIs (block variations, block hooks, `render_block` filters). FlexaCommerce adds no custom JS extension registry in 1.0.
 - Interactivity: the store namespace `flexacommerce` state is documented read-only for extensions (`state.cart.count`, `state.cart.total`). Extensions add their own namespaced stores.
 - Emails: `flexacommerce.email.recipients`, `.subject`, `.heading`, `.content_html` filters per email id, and `flexacommerce.emails.register` to add custom emails (`Contracts\Email\Email` interface with `id()`, `trigger_hooks()`, `render()`). With `defer_emails` on, these filters still run during the request that triggered the email, because the message is built there and only the sending waits for cron; a filter that needs the order's state at send time cannot rely on deferral.

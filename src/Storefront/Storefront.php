@@ -24,6 +24,7 @@ use Flexa\Commerce\Storefront\Render\ProductPrice;
 use Flexa\Commerce\Storefront\Render\ProductReviews;
 use Flexa\Commerce\Storefront\Render\RelatedProducts;
 use Flexa\Commerce\Storefront\Render\ShopControls;
+use Flexa\Commerce\Storefront\Render\WishlistTable;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -325,6 +326,16 @@ final class Storefront {
 	public function shortcode_order_confirmation( array|string $atts = [] ): string {
 		unset( $atts );
 		return CheckoutPage::instance()->render_confirmation();
+	}
+
+	/** The visitor's wishlist (ADR-066). */
+	public function shortcode_wishlist(): string {
+		return AccountPage::instance()->wishlist( get_current_user_id() );
+	}
+
+	/** @internal The wishlist page's table. */
+	public function wishlist_table(): WishlistTable {
+		return new WishlistTable( Plugin::instance()->catalog()->products(), $this->price(), $this->form() );
 	}
 
 	/** @param array<string,mixed>|string $atts */

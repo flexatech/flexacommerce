@@ -16,6 +16,7 @@ import {
     Tag,
     Timer,
     Star,
+    Heart,
     ZoomIn,
 } from "lucide-react";
 
@@ -49,6 +50,7 @@ const KEYS = [
     "tier_table",
     "tier_table_title",
     "reviews",
+    "wishlist",
     "download_method",
 ] as const;
 
@@ -405,6 +407,33 @@ export function StorefrontPanel() {
                                 { value: "all", label: __("Anyone") },
                                 { value: "buyers", label: __("Customers who bought the product") },
                                 { value: "off", label: __("Nobody (reviews off)") },
+                            ]}
+                        />
+                    }
+                />
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>{__("Wishlist")}</CardTitle>
+                    <CardDescription>
+                        {__("Shoppers save products with a heart button and find them under My account > Wishlist. Guests keep their list in a cookie, and it moves to their account when they sign in. The [flexacommerce_wishlist] shortcode shows the list on any page.")}
+                    </CardDescription>
+                </CardHeader>
+                <SettingRow
+                    icon={Heart}
+                    label={__("Heart button")}
+                    htmlFor="fxc-wishlist"
+                    description={__("Product lists get a small heart next to the add-to-cart button. Turning the wishlist off hides the button and the account page; saved lists are kept.")}
+                    control={
+                        <Select
+                            id="fxc-wishlist"
+                            value={draft.wishlist}
+                            onChange={(e) => set("wishlist", e.target.value as Draft["wishlist"])}
+                            options={[
+                                { value: "all", label: __("Product pages and lists") },
+                                { value: "single", label: __("Product pages only") },
+                                { value: "off", label: __("Nowhere (wishlist off)") },
                             ]}
                         />
                     }

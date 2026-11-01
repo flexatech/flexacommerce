@@ -8,6 +8,7 @@ use Flexa\Commerce\Cart\CookieTokenStore;
 use Flexa\Commerce\Catalog\PostTypes;
 use Flexa\Commerce\Plugin;
 use Flexa\Commerce\Support\Settings;
+use Flexa\Commerce\Wishlist\WishlistCookies;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -147,6 +148,9 @@ final class Assets {
 			'loggedIn'  => is_user_logged_in(),
 			'cartUrl'   => self::cart_url(),
 			'countName' => CookieTokenStore::COUNT_COOKIE,
+			// The heart buttons (ADR-066) trust the ids cookie only when it belongs to this user.
+			'userId'    => get_current_user_id(),
+			'savedName' => WishlistCookies::IDS,
 			'i18n'      => [
 				'added'       => __( 'Added to your cart.', 'flexacommerce' ),
 				'failed'      => __( 'Could not update the cart. Please try again.', 'flexacommerce' ),
@@ -166,6 +170,8 @@ final class Assets {
 				'unapplied'   => __( 'Coupon removed.', 'flexacommerce' ),
 				'freeShip'    => __( 'Free shipping', 'flexacommerce' ),
 				'alerted'     => __( 'Thanks. We will email you when it is back in stock.', 'flexacommerce' ),
+				'saved'       => __( 'Saved to your wishlist.', 'flexacommerce' ),
+				'unsaved'     => __( 'Removed from your wishlist.', 'flexacommerce' ),
 			],
 		];
 	}

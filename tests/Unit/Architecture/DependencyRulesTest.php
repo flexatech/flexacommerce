@@ -50,6 +50,8 @@ final class DependencyRulesTest extends TestCase {
 		'Recovery'    => [ 'Cart', 'Coupons', 'Orders', 'Notifications', 'Support', 'Database' ],
 		// Back-in-stock emails read stock and send through the mailer (ADR-065).
 		'StockAlerts' => [ 'Catalog', 'Inventory', 'Notifications', 'Support', 'Database' ],
+		// Wishlists check the product and limit new guest lists (ADR-066).
+		'Wishlist'    => [ 'Catalog', 'Support', 'Database' ],
 		// The admin order editor reads variants (Catalog) and posted options (Options), ADR-061.
 		'Checkout'    => [ 'Cart', 'Catalog', 'Coupons', 'Options', 'Pricing', 'Inventory', 'Shipping', 'Tax', 'Orders', 'Payments', 'Customers', 'Support', 'Database' ],
 	];

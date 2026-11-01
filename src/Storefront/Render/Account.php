@@ -16,6 +16,7 @@ use Flexa\Commerce\Storefront\CheckoutPage;
 use Flexa\Commerce\Storefront\OrderLookup;
 use Flexa\Commerce\Support\Countries;
 use Flexa\Commerce\Support\Settings;
+use Flexa\Commerce\Wishlist\WishlistService;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -88,13 +89,16 @@ final class Account {
 
 	/** The navigation, a saved notice and the sub-page. */
 	public function page( string $endpoint, string $saved, string $content ): string {
-		$links  = [
+		$links = [
 			''             => __( 'Dashboard', 'flexacommerce' ),
 			'orders'       => __( 'Orders', 'flexacommerce' ),
 			'downloads'    => __( 'Downloads', 'flexacommerce' ),
 			'edit-address' => __( 'Addresses', 'flexacommerce' ),
 			'edit-account' => __( 'Account details', 'flexacommerce' ),
 		];
+		if ( WishlistService::enabled() ) {
+			$links = array_slice( $links, 0, 3, true ) + [ 'wishlist' => __( 'Wishlist', 'flexacommerce' ) ] + $links;
+		}
 		$active = $endpoint === 'view-order' ? 'orders' : $endpoint;
 		$nav    = '<nav class="fxc-account__nav" aria-label="' . esc_attr__( 'Account', 'flexacommerce' ) . '"><ul>';
 		foreach ( $links as $slug => $label ) {

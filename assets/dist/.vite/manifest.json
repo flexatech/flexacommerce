@@ -4,7 +4,7 @@
     "name": "SearchBox"
   },
   "admin/features/checkout/CheckoutBuilderPage.tsx": {
-    "file": "assets/CheckoutBuilderPage-CzPMvAA4.js",
+    "file": "assets/CheckoutBuilderPage-CkuzUcXt.js",
     "name": "CheckoutBuilderPage",
     "src": "admin/features/checkout/CheckoutBuilderPage.tsx",
     "isDynamicEntry": true,
@@ -14,7 +14,7 @@
     ]
   },
   "admin/main.tsx": {
-    "file": "assets/admin-DqGrThk1.js",
+    "file": "assets/admin-DhPNOH8N.js",
     "name": "admin",
     "src": "admin/main.tsx",
     "isEntry": true,

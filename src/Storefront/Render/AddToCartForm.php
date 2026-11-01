@@ -50,10 +50,11 @@ final class AddToCartForm {
 		private readonly ?ProductPrice $price = null,
 	) {}
 
-	public function html( Product $product, string $mode = self::SINGLE, int $user_id = 0 ): string {
+	/** `$wishlist` false leaves out the heart button (ADR-066), as the wishlist page does. */
+	public function html( Product $product, string $mode = self::SINGLE, int $user_id = 0, bool $wishlist = true ): string {
 		return Component::wrap(
 			'add_to_cart',
-			fn (): string => $this->markup( $product, $mode, $user_id ),
+			fn (): string => $this->markup( $product, $mode, $user_id ) . ( $wishlist ? WishlistButton::html( $product, $mode ) : '' ),
 			[
 				'product_id' => $product->id,
 				'mode'       => $mode,

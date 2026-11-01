@@ -49,6 +49,8 @@ export interface Settings {
     tier_table: boolean;
     tier_table_title: string;
     reviews: "off" | "all" | "buyers";
+    /** Where the wishlist heart shows (ADR-066). */
+    wishlist: "off" | "single" | "all";
     /** How a download link sends a file from this server (ADR-058). */
     download_method: "force" | "xsendfile" | "redirect";
 }

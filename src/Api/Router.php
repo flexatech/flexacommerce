@@ -52,6 +52,7 @@ final class Router {
 			( new Store\ExpressEndpoint() )->register_routes();
 			( new Store\ProductsEndpoint() )->register_routes();
 			( new Store\StockAlertsEndpoint() )->register_routes();
+			( new Store\WishlistEndpoint() )->register_routes();
 			add_filter( 'rest_authentication_errors', [ $this, 'keep_cookie_user_on_store' ], 50 );
 		}
 

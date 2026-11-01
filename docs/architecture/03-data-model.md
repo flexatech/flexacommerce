@@ -17,6 +17,7 @@ Status: **Approved 2026-10-24**. All table names below are shown without `{$wpdb
 | Cart sessions | `fxc_sessions` | Server-side, lazily created (ADR-008). |
 | Left carts | `fxc_recoveries` | One row per cart a known shopper left, with the reminder progress and the outcome (§4.17, ADR-063). |
 | Back-in-stock signups | `fxc_stock_alerts` | One row per address, product and variant waiting for stock, with a due flag the cron reads (§4.18, ADR-065). |
+| Wishlists | `fxc_wishlists`, `fxc_wishlist_items` | One list per customer or guest token, with a share key, and one row per saved product (§4.19, ADR-066). |
 | Order number allocation | `fxc_sequences` | Atomic counter. |
 | Download permissions | `fxc_downloads` | One row per order line and file with a token and counters that change on every download (§4.16, ADR-058). |
 | Option choice stock | `fxc_option_stock` | Counts change on every order, so they need atomic updates outside the autoloaded option sets (§4.15, ADR-040). |
@@ -884,6 +885,38 @@ CREATE TABLE fxc_stock_alerts (
 - **Writes.** A signup inserts a row unless the same address already waits for the same product and variant. Stock that goes up and a product save set `due` on the product's waiting rows; the daily cron sets it on every waiting row. The cron sets `sent` and `sent_at`, or clears `due` when the variant is still sold out or the send failed. The stop link sets `cancelled` on every waiting row of the email. The daily cron deletes sent and cancelled rows older than 90 days, and rows whose product is gone; the admin deletes single rows.
 - **Reads.** Due rows by `status_due`, oldest first, 50 a run; the signup's duplicate check and the admin filter by `product_status`; the most wanted products by grouping waiting rows on `product_id`; the stop link by `id`; privacy by `email`. Uninstall drops the table.
 
+### 4.19 `fxc_wishlists` and `fxc_wishlist_items`
+
+Added with wishlists (ADR-066), `DB_VERSION` 13.
+
+```sql
+CREATE TABLE fxc_wishlists (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  user_id bigint(20) unsigned NULL,
+  token_hash char(64) NULL,
+  share_key char(32) NOT NULL,
+  created_at datetime NOT NULL,
+  updated_at datetime NOT NULL,
+  PRIMARY KEY  (id),
+  UNIQUE KEY user_id (user_id),
+  UNIQUE KEY token_hash (token_hash),
+  UNIQUE KEY share_key (share_key),
+  KEY updated_at (updated_at)
+) {charset_collate};
+
+CREATE TABLE fxc_wishlist_items (
+  wishlist_id bigint(20) unsigned NOT NULL,
+  product_id bigint(20) unsigned NOT NULL,
+  created_at datetime NOT NULL,
+  PRIMARY KEY  (wishlist_id,product_id),
+  KEY product_id (product_id)
+) {charset_collate};
+```
+
+- **Columns.** A customer's list has `user_id` and no `token_hash`; a guest's has the SHA-256 hash of the `fxc_wishlist` cookie token and no `user_id`. Both keys are unique, and MySQL allows many NULLs in a unique key. `share_key` is 32 random hex characters for the read-only link. `fxc_wishlist_items.created_at` orders the list, newest first.
+- **Writes.** Saving the first product creates the list; a save is `INSERT IGNORE` and touches `updated_at`, as does a removal. On sign-in a guest list either gets the `user_id` (and loses its hash) or its rows are copied into the customer's list with `INSERT IGNORE ... SELECT`, up to 200 rows, and the guest list is deleted. The daily cron deletes guest lists with `updated_at` older than 90 days, lists whose user is gone, rows without a list and rows of deleted products. The privacy eraser deletes the customer's list.
+- **Reads.** The visitor's list by `user_id` or `token_hash`, the shared one by `share_key`; the products by the primary key prefix, sorted by `created_at` (at most 200 rows); the purge of deleted products by `product_id`. Uninstall drops both tables.
+
 ## 5. Query patterns and indexes
 
 | Query | Index used |
@@ -902,6 +935,7 @@ CREATE TABLE fxc_stock_alerts (
 | Session lookup | `token_hash`, `user_id` |
 | Quiet carts for recovery | `fxc_sessions.updated_at` range; due reminders `fxc_recoveries.next_send_at` (ADR-063) |
 | Due stock alerts | `fxc_stock_alerts.status_due`; a product's rows and the waiting count per product `product_status`; stop link and privacy `email` (ADR-065) |
+| Wishlist | `fxc_wishlists.user_id`, `token_hash`, `share_key`; the products `fxc_wishlist_items` primary key; guest purge `updated_at` (ADR-066) |
 | Download link | `fxc_downloads.token`; an order's links `order_id`, a customer's `customer_id`, privacy `email`, a product edit `variant_file` |
 | Tax rate match for one address | `class_country_state`, then `rate_type` for the join; `type_code` and `type_range` for rates found by postcode (§4.13) |
 | Shop sort by price | `wp_postmeta` `meta_key/meta_value` on `_fxc_price_min` (core index on `meta_key`). See revisit condition below. |

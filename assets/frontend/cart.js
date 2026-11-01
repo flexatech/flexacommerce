@@ -16,6 +16,7 @@ const i18n = config.i18n || {};
 let nonce = config.nonce || '';
 let countRequested = false;
 let nudgeRequested = false;
+let savedRequested = false;
 // Lines with a DELETE in flight. Typing a quantity and then clicking that
 // line's remove button sends a PUT (the input's change on blur) and a DELETE
 // at once; the PUT may land second and fail with `unknown_line`.
@@ -33,6 +34,25 @@ function readCount() {
 		}
 	}
 	return 0;
+}
+
+/**
+ * The products in the wishlist from the `fxc_wishlist_ids` cookie
+ * ("5:12.34"), or null when the cookie belongs to another user.
+ */
+function readSaved() {
+	const name = config.savedName + '=';
+	for ( const part of document.cookie.split( ';' ) ) {
+		const cookie = part.trim();
+		if ( cookie.startsWith( name ) ) {
+			const [ owner, ids = '' ] = decodeURIComponent( cookie.slice( name.length ) ).split( ':' );
+			if ( parseInt( owner, 10 ) !== ( config.userId || 0 ) ) {
+				return null;
+			}
+			return ids.split( '.' ).map( Number ).filter( ( id ) => id > 0 );
+		}
+	}
+	return null;
 }
 
 class StoreError extends Error {
@@ -430,6 +450,8 @@ const { state, actions } = store( 'flexacommerce/cart', {
 		chosen: {},
 		gallery: {},
 		count: 0,
+		// Product ids in the wishlist, once known (ADR-066).
+		saved: null,
 		message: '',
 		couponCode: '',
 		couponBusy: false,
@@ -533,6 +555,9 @@ const { state, actions } = store( 'flexacommerce/cart', {
 			// pickable, so the shopper can ask for an email about it.
 			return optionMissing( getContext(), getElement().attributes.value, getContext().alertId === undefined );
 		},
+		get inWishlist() {
+			return state.saved ? state.saved.includes( getContext().productId ) : false;
+		},
 		get optionSoldOut() {
 			const context = getContext();
 			return context.alertId !== undefined && optionMissing( context, getElement().attributes.value, true );
@@ -618,6 +643,27 @@ const { state, actions } = store( 'flexacommerce/cart', {
 			} catch ( error ) {
 				context.message = error.message || i18n.failed;
 				context.failed = true;
+			} finally {
+				context.busy = false;
+			}
+		} ),
+		/** The heart button (ADR-066): saves the product, or takes it out again. */
+		toggleWishlist: withSyncEvent( function* ( event ) {
+			event.preventDefault();
+			const context = getContext();
+			if ( context.busy ) {
+				return;
+			}
+			context.busy = true;
+			const saved = state.inWishlist;
+			try {
+				const data = saved
+					? yield request( `wishlist/items/${ context.productId }`, 'DELETE' )
+					: yield request( 'wishlist/items', 'POST', { product_id: context.productId } );
+				state.saved = data.items;
+				context.wishlistMessage = saved ? i18n.unsaved : i18n.saved;
+			} catch ( error ) {
+				context.wishlistMessage = error.message || i18n.failed;
 			} finally {
 				context.busy = false;
 			}
@@ -972,6 +1018,27 @@ const { state, actions } = store( 'flexacommerce/cart', {
 				applyCart( yield request( 'cart' ) );
 			} catch ( error ) {
 				// The bar stays hidden.
+			}
+		},
+		/**
+		 * The page is the same for everyone, so the cookie says which hearts
+		 * are filled. A customer whose cookie is missing or belongs to someone
+		 * else asks the server; a guest without one has saved nothing.
+		 */
+		*initWishlist() {
+			if ( savedRequested ) {
+				return;
+			}
+			savedRequested = true;
+			const ids = readSaved();
+			if ( ids !== null || ! config.userId ) {
+				state.saved = ids ?? [];
+				return;
+			}
+			try {
+				state.saved = ( yield request( 'wishlist' ) ).items;
+			} catch ( error ) {
+				state.saved = [];
 			}
 		},
 		*initCount() {

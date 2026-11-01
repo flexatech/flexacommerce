@@ -17,6 +17,7 @@ use Flexa\Commerce\StockAlerts\SignupRefused;
 use Flexa\Commerce\Support\ClientIp;
 use Flexa\Commerce\Support\RateLimiter;
 use Flexa\Commerce\Support\SameSite;
+use Flexa\Commerce\Wishlist\WishlistRefused;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -31,6 +32,10 @@ final class FormHandler {
 	public const ACTION = 'flexacommerce_cart';
 	public const RESULT = 'fxc-cart';
 	public const FIELD  = 'fxc_nonce';
+
+	/** Which notices a component shows: the cart's, or the wishlist button's (ADR-066). */
+	public const SCOPE_CART     = 'cart';
+	public const SCOPE_WISHLIST = 'wishlist';
 
 	public static function hidden_fields( string $operation ): string {
 		$cart  = Plugin::instance()->cart();
@@ -61,6 +66,9 @@ final class FormHandler {
 		$product   = isset( $_POST['product_id'] ) ? absint( $_POST['product_id'] ) : 0;
 		if ( $operation === 'stock_alert' ) {
 			self::stock_alert( $back, $product );
+		}
+		if ( $operation === 'wishlist_add' || $operation === 'wishlist_remove' ) {
+			self::wishlist( $back, $operation, $product );
 		}
 		try {
 			if ( $operation === 'add' ) {
@@ -123,7 +131,7 @@ final class FormHandler {
 	}
 
 	/** The message for a result code in the current URL, for the component that sent the form. */
-	public static function notice_for( int $product_id ): string {
+	public static function notice_for( int $product_id, string $scope = self::SCOPE_CART ): string {
 		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- display only; the code selects a fixed message.
 		$code = isset( $_GET[ self::RESULT ] ) ? sanitize_key( wp_unslash( $_GET[ self::RESULT ] ) ) : '';
 		$for  = isset( $_GET['fxc-product'] ) ? absint( $_GET['fxc-product'] ) : 0;
@@ -132,11 +140,15 @@ final class FormHandler {
 			return '';
 		}
 		$message = self::messages()[ $code ] ?? null;
-		if ( $message === null ) {
+		if ( $message === null || str_starts_with( $code, 'wishlist_' ) !== ( $scope === self::SCOPE_WISHLIST ) ) {
 			return '';
 		}
-		$error = ! in_array( $code, [ 'added', 'updated', 'removed', 'coupon_applied', 'coupon_removed', 'alert_added', 'alert_in_stock' ], true );
-		$link  = $code === 'added' ? ' <a href="' . esc_url( Assets::cart_url() ) . '">' . esc_html__( 'View cart', 'flexacommerce' ) . '</a>' : '';
+		$error = ! in_array( $code, [ 'added', 'updated', 'removed', 'coupon_applied', 'coupon_removed', 'alert_added', 'alert_in_stock', 'wishlist_added', 'wishlist_removed' ], true );
+		$link  = match ( $code ) {
+			'added' => ' <a href="' . esc_url( Assets::cart_url() ) . '">' . esc_html__( 'View cart', 'flexacommerce' ) . '</a>',
+			'wishlist_added' => ' <a href="' . esc_url( AccountPage::url( 'wishlist' ) ) . '">' . esc_html__( 'View wishlist', 'flexacommerce' ) . '</a>',
+			default => '',
+		};
 		return sprintf(
 			'<p class="fxc-notice%1$s" role="%2$s">%3$s%4$s</p>',
 			$error ? ' fxc-notice--error' : '',
@@ -172,6 +184,12 @@ final class FormHandler {
 			'alert_in_stock'     => SignupMessages::text( 'in_stock' ),
 			'alert_limit'        => SignupMessages::text( 'limit' ),
 			'alert_product'      => SignupMessages::text( 'product' ),
+			'wishlist_added'     => __( 'Saved to your wishlist.', 'flexacommerce' ),
+			'wishlist_removed'   => __( 'Removed from your wishlist.', 'flexacommerce' ),
+			'wishlist_off'       => WishlistRefused::text( 'off' ),
+			'wishlist_full'      => WishlistRefused::text( 'full' ),
+			'wishlist_limit'     => WishlistRefused::text( 'limit' ),
+			'wishlist_product'   => WishlistRefused::text( 'product' ),
 		];
 	}
 
@@ -192,6 +210,21 @@ final class FormHandler {
 			self::redirect( $back, 'alert_' . $e->reason, $product );
 		}
 		self::redirect( $back, 'alert_added', $product );
+	}
+
+	/** The heart button and the Remove button of the wishlist page (ADR-066). */
+	private static function wishlist( string $back, string $operation, int $product ): never {
+		$service = Plugin::instance()->wishlist();
+		try {
+			if ( $operation === 'wishlist_remove' ) {
+				$service->remove( get_current_user_id(), $product );
+				self::redirect( $back, 'wishlist_removed' );
+			}
+			$service->add( get_current_user_id(), $product );
+		} catch ( WishlistRefused $e ) {
+			self::redirect( $back, 'wishlist_' . $e->reason, $product );
+		}
+		self::redirect( $back, 'wishlist_added', $product );
 	}
 
 	private static function code_for( CommerceException $e ): string {

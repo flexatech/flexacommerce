@@ -94,7 +94,8 @@ Legend: **MVP** = required for MVP. **FND** = architectural foundation in MVP, u
 | Theme compatibility (block and classic) | MVP | Tested on Twenty Twenty-Five and one popular classic theme (Q9). |
 | Blocks | MVP | List in doc 02 §6.3. |
 | Shortcodes as fallback | MVP | Same renderers as the blocks. |
-| Wishlist, compare, quick view, recently viewed | OUT | |
+| Wishlist | POST (built 2026-11-01, ADR-066) | A heart under the add-to-cart button saves the product for guests and customers, without scripts too. The list lives on the account page (and the `[flexacommerce_wishlist]` shortcode) with prices and add-to-cart buttons, can be shared by a read-only link, and moves into the account on sign-in. Pages stay cacheable: a cookie tells the script which hearts are filled. Settings > Storefront shows it on product pages and lists, product pages only, or nowhere. |
+| Compare, quick view, recently viewed | OUT | |
 
 ### 4.3 Commerce
 

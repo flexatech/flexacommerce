@@ -42,7 +42,8 @@ final class ListSwatchesTest extends CartTestCase {
 		self::assertStringContainsString( 'Green (out of stock)', wp_strip_all_tags( $html ) );
 		self::assertDoesNotMatchRegularExpression( '/is-unavailable" href="[^"]+' . $blue . '"/', $html );
 		self::assertStringContainsString( '>Choose options</a>', $html, 'The button stays.' );
-		self::assertStringNotContainsString( '<input', $html, 'No form fields in a list.' );
+		// The wishlist heart is its own small form (ADR-066).
+		self::assertStringNotContainsString( '<input', (string) preg_replace( '#<form class="fxc-wishlist-button.*?</form>#s', '', $html ), 'No form fields in a list.' );
 
 		Settings::update(
 			[

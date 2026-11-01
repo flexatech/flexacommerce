@@ -64,6 +64,8 @@ final class Plugin {
 
 	private ?StockAlerts\StockAlertService $stock_alerts = null;
 
+	private ?Wishlist\WishlistService $wishlist = null;
+
 	private bool $blocks = false;
 
 	public function boot(): void {
@@ -93,6 +95,7 @@ final class Plugin {
 		add_shortcode( 'flexacommerce_account', [ $this, 'shortcode_account' ] );
 		add_shortcode( 'flexacommerce_order_confirmation', [ $this, 'shortcode_order_confirmation' ] );
 		add_shortcode( 'flexacommerce_order_tracking', [ $this, 'shortcode_order_tracking' ] );
+		add_shortcode( 'flexacommerce_wishlist', [ $this, 'shortcode_wishlist' ] );
 		// Listed here, not read from the Storefront class, so the class loads only when one is used.
 		foreach ( [ 'flexacommerce_quantity_prices', 'flexacommerce_discount_badge', 'flexacommerce_countdown', 'flexacommerce_discount_nudge' ] as $tag ) {
 			add_shortcode( $tag, [ $this, 'shortcode_pricing' ] );
@@ -359,6 +362,16 @@ final class Plugin {
 			$this->notifications()->templates(),
 			$this->services()->clock(),
 			$this->services()->logger( 'stock-alerts' )
+		);
+	}
+
+	/** @internal Wishlists (ADR-066). */
+	public function wishlist(): Wishlist\WishlistService {
+		return $this->wishlist ??= new Wishlist\WishlistService(
+			new Wishlist\WishlistRepository( $this->services()->wpdb() ),
+			$this->catalog()->products(),
+			new Wishlist\WishlistCookies(),
+			$this->services()->clock()
 		);
 	}
 
@@ -637,6 +650,7 @@ final class Plugin {
 
 	public function on_logout(): void {
 		( new Cart\CookieTokenStore() )->clear();
+		Wishlist\WishlistCookies::clear_ids();
 	}
 
 	/** @param array<string,string>|string $atts */
@@ -667,6 +681,12 @@ final class Plugin {
 	/** @param array<string,string>|string $atts */
 	public function shortcode_order_tracking( array|string $atts = [] ): string {
 		return Storefront\Storefront::instance()->shortcode_order_tracking( $atts );
+	}
+
+	/** @param array<string,string>|string $atts */
+	public function shortcode_wishlist( array|string $atts = [] ): string {
+		unset( $atts );
+		return Storefront\Storefront::instance()->shortcode_wishlist();
 	}
 
 	/**
