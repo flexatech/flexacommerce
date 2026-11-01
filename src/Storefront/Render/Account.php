@@ -16,6 +16,9 @@ use Flexa\Commerce\Plugin;
 use Flexa\Commerce\Storefront\AccountPage;
 use Flexa\Commerce\Storefront\CheckoutPage;
 use Flexa\Commerce\Storefront\OrderLookup;
+use Flexa\Commerce\Subscriptions\Subscription;
+use Flexa\Commerce\Subscriptions\SubscriptionService;
+use Flexa\Commerce\Subscriptions\SubscriptionStatus;
 use Flexa\Commerce\Support\Countries;
 use Flexa\Commerce\Support\Settings;
 use Flexa\Commerce\Wishlist\WishlistService;
@@ -105,8 +108,16 @@ final class Account {
 		if ( (int) get_user_meta( get_current_user_id(), GiftCardService::CREDIT_META, true ) > 0 || $endpoint === 'store-credit' ) {
 			$links = array_slice( $links, 0, 3, true ) + [ 'store-credit' => __( 'Store credit', 'flexacommerce' ) ] + $links;
 		}
-		$active = $endpoint === 'view-order' ? 'orders' : $endpoint;
-		$nav    = '<nav class="fxc-account__nav" aria-label="' . esc_attr__( 'Account', 'flexacommerce' ) . '"><ul>';
+		// Only customers who ever subscribed see the page (ADR-073).
+		if ( SubscriptionService::has_any( get_current_user_id() ) || in_array( $endpoint, [ 'subscriptions', 'view-subscription' ], true ) ) {
+			$links = array_slice( $links, 0, 2, true ) + [ 'subscriptions' => __( 'Subscriptions', 'flexacommerce' ) ] + $links;
+		}
+		$active = match ( $endpoint ) {
+			'view-order' => 'orders',
+			'view-subscription' => 'subscriptions',
+			default => $endpoint,
+		};
+		$nav = '<nav class="fxc-account__nav" aria-label="' . esc_attr__( 'Account', 'flexacommerce' ) . '"><ul>';
 		foreach ( $links as $slug => $label ) {
 			$nav .= sprintf(
 				'<li><a href="%1$s"%2$s>%3$s</a></li>',
@@ -120,6 +131,8 @@ final class Account {
 		$notice = match ( $saved ) {
 			'address' => __( 'Address saved.', 'flexacommerce' ),
 			'account' => __( 'Account details saved.', 'flexacommerce' ),
+			'subscription_cancel' => __( 'Your subscription is cancelled. It ends when the period you paid for does.', 'flexacommerce' ),
+			'subscription_reactivate' => __( 'Your subscription is active again.', 'flexacommerce' ),
 			default => '',
 		};
 		$notice = $notice !== '' ? '<p class="fxc-notice" role="status">' . esc_html( $notice ) . '</p>' : '';
@@ -204,6 +217,124 @@ final class Account {
 			. '<th scope="col">' . esc_html__( 'Amount', 'flexacommerce' ) . '</th>'
 			. '<th scope="col">' . esc_html__( 'Balance', 'flexacommerce' ) . '</th>'
 			. '</tr></thead><tbody>' . $rows . '</tbody></table>';
+	}
+
+	/** The account's subscriptions, newest first (ADR-073). */
+	public function subscriptions( int $user_id ): string {
+		$service = Plugin::instance()->subscriptions();
+		$rows    = $service->repository()->for_customer( $user_id );
+		if ( $rows === [] ) {
+			return '<p class="fxc-notice">' . esc_html__( 'You have no subscriptions.', 'flexacommerce' ) . '</p>';
+		}
+		$html = '<table class="fxc-account__orders fxc-account__subscriptions"><caption>' . esc_html__( 'Subscriptions', 'flexacommerce' ) . '</caption><thead><tr>'
+			. '<th scope="col">' . esc_html__( 'Subscription', 'flexacommerce' ) . '</th>'
+			. '<th scope="col">' . esc_html__( 'Status', 'flexacommerce' ) . '</th>'
+			. '<th scope="col">' . esc_html__( 'Next payment', 'flexacommerce' ) . '</th>'
+			. '<th scope="col">' . esc_html__( 'Price', 'flexacommerce' ) . '</th>'
+			. '</tr></thead><tbody>';
+		foreach ( $rows as $row ) {
+			$html .= sprintf(
+				'<tr><th scope="row"><a href="%1$s">%2$s</a></th><td>%3$s</td><td>%4$s</td><td>%5$s</td></tr>',
+				esc_url( AccountPage::url( 'view-subscription', (string) $row->id ) ),
+				esc_html( '#' . $row->id . ' ' . $row->title() ),
+				esc_html( SubscriptionStatus::label( $row->status ) ),
+				esc_html( $row->next_payment_at !== null ? self::day( $row->next_payment_at ) : '–' ),
+				esc_html( $service->price_text( $row ) )
+			);
+		}
+		return $html . '</tbody></table>';
+	}
+
+	/**
+	 * One subscription: its terms, the orders it made, and what the
+	 * shopper can do with it.
+	 *
+	 * @param array<string,string> $errors
+	 */
+	public function subscription( ?Subscription $row, array $errors = [] ): string {
+		if ( $row === null ) {
+			return '<p class="fxc-notice fxc-notice--error" role="alert">' . esc_html__( 'Subscription not found.', 'flexacommerce' ) . '</p>';
+		}
+		$service = Plugin::instance()->subscriptions();
+		$html    = self::summary( $errors ) . '<h2>' . esc_html( '#' . $row->id . ' ' . $row->title() ) . '</h2><dl class="fxc-account__terms">';
+		$terms   = [
+			__( 'Status', 'flexacommerce' ) => SubscriptionStatus::label( $row->status ),
+			__( 'Price', 'flexacommerce' )  => $service->price_text( $row ),
+		];
+		if ( $row->start_at !== null ) {
+			$terms[ __( 'Started', 'flexacommerce' ) ] = self::day( $row->start_at );
+		}
+		if ( $row->trial_end_at !== null && $row->in_trial( gmdate( 'Y-m-d H:i:s' ) ) ) {
+			$terms[ __( 'Free trial until', 'flexacommerce' ) ] = self::day( $row->trial_end_at );
+		}
+		if ( $row->next_payment_at !== null ) {
+			$terms[ __( 'Next payment', 'flexacommerce' ) ] = self::day( $row->next_payment_at );
+		}
+		if ( $row->end_at !== null ) {
+			$terms[ $row->is_ended() ? __( 'Ended', 'flexacommerce' ) : __( 'Ends', 'flexacommerce' ) ] = self::day( $row->end_at );
+		}
+		if ( $row->plan->length > 0 ) {
+			/* translators: 1: payments made, 2: payments in the plan. */
+			$terms[ __( 'Payments', 'flexacommerce' ) ] = sprintf( __( '%1$d of %2$d', 'flexacommerce' ), $row->billed, $row->plan->length );
+		}
+		foreach ( $terms as $label => $value ) {
+			$html .= '<dt>' . esc_html( $label ) . '</dt><dd>' . esc_html( $value ) . '</dd>';
+		}
+		$html .= '</dl>';
+
+		$unpaid = $row->status === SubscriptionStatus::ON_HOLD ? $service->unpaid_renewal( $row ) : null;
+		if ( $unpaid !== null ) {
+			$html .= '<p class="fxc-notice" role="status">' . esc_html__( 'Your renewal is waiting for payment. The subscription continues once it is paid.', 'flexacommerce' ) . '</p>'
+				. '<p><a class="fxc-button" href="' . esc_url( $this->checkout->pages()->pay_url( $unpaid ) ) . '">' . esc_html__( 'Pay renewal', 'flexacommerce' ) . '</a></p>';
+		}
+		$do = match ( true ) {
+			$row->status === SubscriptionStatus::PENDING_CANCEL => [ 'reactivate', __( 'Keep my subscription', 'flexacommerce' ) ],
+			in_array( $row->status, [ SubscriptionStatus::ACTIVE, SubscriptionStatus::ON_HOLD ], true ) => [ 'cancel', __( 'Cancel subscription', 'flexacommerce' ) ],
+			default => null,
+		};
+		if ( $do !== null ) {
+			$html .= '<form method="post" class="fxc-account__subscription-action">' . self::hidden( 'subscription' )
+				. '<input type="hidden" name="subscription_id" value="' . esc_attr( (string) $row->id ) . '">'
+				. '<input type="hidden" name="subscription_do" value="' . esc_attr( $do[0] ) . '">';
+			if ( $do[0] === 'cancel' && $row->status === SubscriptionStatus::ACTIVE && $row->next_payment_at !== null ) {
+				$html .= '<p>' . sprintf(
+					/* translators: %s: date the paid period ends. */
+					esc_html__( 'If you cancel, nothing more is charged and the subscription ends on %s.', 'flexacommerce' ),
+					esc_html( self::day( $row->next_payment_at ) )
+				) . '</p>';
+			}
+			$html .= '<p><button type="submit" class="fxc-button">' . esc_html( $do[1] ) . '</button></p></form>';
+		}
+
+		$orders = '';
+		foreach ( array_reverse( $service->repository()->orders( $row->id ) ) as $link ) {
+			$order = Plugin::instance()->orders()->orders()->find( $link['order_id'] );
+			if ( $order === null ) {
+				continue;
+			}
+			$orders .= sprintf(
+				'<tr><th scope="row"><a href="%1$s">%2$s</a></th><td>%3$s</td><td>%4$s</td><td>%5$s</td><td>%6$s</td></tr>',
+				esc_url( AccountPage::url( 'view-order', (string) $order->id ) ),
+				esc_html( $order->order_number ),
+				esc_html( $link['relation'] === 'parent' ? __( 'First order', 'flexacommerce' ) : __( 'Renewal', 'flexacommerce' ) ),
+				esc_html( self::date( $order ) ),
+				esc_html( OrderStatus::label( $order->status ) ),
+				esc_html( $this->checkout->format( $order->total, $order->currency ) )
+			);
+		}
+		if ( $orders !== '' ) {
+			$html .= '<table class="fxc-account__orders"><caption>' . esc_html__( 'Related orders', 'flexacommerce' ) . '</caption><thead><tr>'
+				. '<th scope="col">' . esc_html__( 'Order', 'flexacommerce' ) . '</th>'
+				. '<th scope="col">' . esc_html__( 'Type', 'flexacommerce' ) . '</th>'
+				. '<th scope="col">' . esc_html__( 'Date', 'flexacommerce' ) . '</th>'
+				. '<th scope="col">' . esc_html__( 'Status', 'flexacommerce' ) . '</th>'
+				. '<th scope="col">' . esc_html__( 'Total', 'flexacommerce' ) . '</th>'
+				. '</tr></thead><tbody>' . $orders . '</tbody></table>';
+		}
+		return $html . '<div class="fxc-order__addresses">'
+			. OrderConfirmation::address( __( 'Billing address', 'flexacommerce' ), $row->billing )
+			. OrderConfirmation::address( __( 'Shipping address', 'flexacommerce' ), $row->shipping )
+			. '</div>';
 	}
 
 	public function orders( int $user_id, int $page ): string {
@@ -382,6 +513,10 @@ final class Account {
 
 	private static function date( Order $order ): string {
 		return mysql2date( (string) get_option( 'date_format' ), get_date_from_gmt( $order->created_at ) );
+	}
+
+	private static function day( string $utc ): string {
+		return mysql2date( (string) get_option( 'date_format' ), get_date_from_gmt( $utc ) );
 	}
 
 	private static function hidden( string $action ): string {

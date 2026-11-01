@@ -492,7 +492,7 @@ Errors reject one entity, never the batch. A job ends `completed_with_warnings` 
 | Product add-on and SEO plugin meta | `_fxc_import` bucket on the product, round-tripped on FXC→WC; the official Product Add-ons data also becomes option sets (§5.9) |
 | Unknown order and item meta | `fxc_order_meta` (`wc:` prefix) and item `meta` JSON, round-tripped |
 | Payment gateway settings | not migrated in MVP (tax rates and classes are, since ADR-020; shipping zones are, see §5.7; coupons are, see §5.8) |
-| Subscriptions, memberships, bookings | not migrated, warning if their plugins are active |
+| Subscriptions, memberships, bookings | not migrated, warning if their plugins are active. FlexaCommerce subscriptions (ADR-073) and their tables have no migration stage in either direction yet (doc 07 item 7, part 2) |
 | WooCommerce analytics tables, customer lookup, sessions, carts | not migrated (derived or transient data) |
 
 ## 8. Guarantees, side effects and sync

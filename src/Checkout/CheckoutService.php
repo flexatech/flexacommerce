@@ -35,6 +35,8 @@ use Flexa\Commerce\Payments\OfflineGateway;
 use Flexa\Commerce\Payments\PaymentService;
 use Flexa\Commerce\Payments\Transaction;
 use Flexa\Commerce\Shipping\ShippingService;
+use Flexa\Commerce\Subscriptions\Snapshot;
+use Flexa\Commerce\Subscriptions\SubscriptionService;
 use Flexa\Commerce\Support\ClientIp;
 use Flexa\Commerce\Support\Countries;
 use Flexa\Commerce\Support\RateLimiter;
@@ -60,6 +62,9 @@ defined( 'ABSPATH' ) || exit;
  */
 final class CheckoutService {
 	public const RETURN_ARG = 'fxc_return';
+
+	/** User meta: the checkout token of the checkout that made the account (ADR-073). */
+	public const ACCOUNT_TOKEN = '_fxc_checkout_token';
 
 	/** Wallets an express button pays with (ADR-053), named on the order. */
 	public const WALLETS = [
@@ -90,6 +95,7 @@ final class CheckoutService {
 		?CustomerProfile $profile = null,
 		private readonly ?\Closure $coupons = null,
 		private readonly ?\Closure $gift_cards = null,
+		private readonly ?\Closure $subscriptions = null,
 	) {
 		$this->cart_taxes = $cart_taxes ?? new CartTaxes( $tax, $presenter );
 		$this->profile    = $profile ?? new CustomerProfile();
@@ -473,21 +479,32 @@ final class CheckoutService {
 			throw new TotalsChanged( __( 'Your order total changed. Review the new total and place the order again.', 'flexacommerce' ) );
 		}
 
+		// A subscription belongs to an account, so a guest gets one (ADR-073).
+		$plans       = $this->subscriptions !== null ? self::plan_groups( $state ) : [];
+		$customer_id = $plans !== [] ? $this->subscriber( $request, $addresses['billing'] ) : $request->user_id;
+		$snapshots   = [];
+		foreach ( $plans as $group ) {
+			$snapshots[] = $this->snapshot( $group, $destination, $request->shipping_rate, $addresses['billing'], $customer_id );
+		}
+
 		$gateway = $quote->due()->amount > 0 ? $gateways[ $request->payment_method ] : null;
-		$new     = $this->new_order( $request, $quote, $addresses['billing'], $addresses['shipping'], $addresses['meta'], $gateway );
-		$ctx     = new TransitionContext( 'customer', $request->user_id );
+		$new     = $this->new_order( $request, $quote, $addresses['billing'], $addresses['shipping'], $addresses['meta'], $gateway, $customer_id );
+		$ctx     = new TransitionContext( 'customer', $customer_id );
 		$number  = $this->orders->next_number();
 
 		try {
 			/** @var array{0:Order,1:?Transaction} $created */
 			$created = $this->transaction->run(
-				function () use ( $new, $number, $ctx, $gateway, $state, $request, $quote ): array {
+				function () use ( $new, $number, $ctx, $gateway, $state, $quote, $customer_id, $snapshots ): array {
 					$order = $this->orders->create( $new, $number, $ctx );
 					if ( $order->order_number !== $number ) {
 						return [ $order, null ];
 					}
 					if ( $state->discounts !== null && $state->discounts->applied !== [] ) {
-						$this->coupons()->redeem( $state->discounts, $order->id, $request->user_id, $new->customer_email );
+						$this->coupons()->redeem( $state->discounts, $order->id, $customer_id, $new->customer_email );
+					}
+					if ( $snapshots !== [] ) {
+						$this->subscriptions()->create_for_order( $order, $snapshots );
 					}
 					if ( $quote->gift_card_total()->amount > 0 ) {
 						$this->gift_cards()->redeem( $order, $quote->gift_cards, $ctx );
@@ -514,11 +531,11 @@ final class CheckoutService {
 			$redirect = $this->redirect_for( $order, $result, $txn );
 		}
 
-		if ( $request->user_id > 0 ) {
+		if ( $customer_id > 0 ) {
 			// The next checkout and the account page start from the addresses used (doc 03 §7).
-			$this->profile->save( $request->user_id, $addresses['billing'] );
+			$this->profile->save( $customer_id, $addresses['billing'] );
 			if ( $addresses['shipping'] !== null ) {
-				$this->profile->save( $request->user_id, $addresses['shipping'] );
+				$this->profile->save( $customer_id, $addresses['shipping'] );
 			}
 		}
 
@@ -999,6 +1016,8 @@ final class CheckoutService {
 						// Who the cards from this line go to (ADR-069); `issue` keeps the entry when no field is filled.
 						'gift_card'    => $item->variant?->gift_card === true ? [ 'issue' => true ] + $item->line->gift : null,
 						'bundle'       => $item->parts !== [] ? [ 'key' => $item->line->key ] : null,
+						// The plan the line is sold on (ADR-073).
+						'subscription' => $item->plan?->to_array(),
 					]
 				)
 			);
@@ -1063,6 +1082,110 @@ final class CheckoutService {
 		];
 	}
 
+	/**
+	 * The cart lines sold on a plan, one group per plan key: lines that
+	 * renew on the same days share a subscription (ADR-073).
+	 *
+	 * @return array<string,list<\Flexa\Commerce\Cart\CartLine>>
+	 */
+	private static function plan_groups( CartState $state ): array {
+		$groups = [];
+		foreach ( $state->items as $item ) {
+			if ( $item->plan !== null && $item->unit !== null ) {
+				$groups[ $item->plan->key() ][] = $item->line;
+			}
+		}
+		return $groups;
+	}
+
+	/**
+	 * What each renewal of a group of lines bills: the lines at their
+	 * price without the trial and the sign-up fee, shipped and taxed as
+	 * this order is, without coupons, fee rules and credit.
+	 *
+	 * @param list<\Flexa\Commerce\Cart\CartLine> $lines
+	 */
+	private function snapshot( array $lines, Destination $destination, string $rate_id, AddressView $billing, int $customer_id ): Snapshot {
+		$cart  = ( new Cart( lines: $lines ) )->with_shipping(
+			[
+				'country'  => $destination->country,
+				'state'    => $destination->state,
+				'postcode' => $destination->postcode,
+				'city'     => $destination->city,
+			],
+			$rate_id
+		);
+		$state = $this->cart->preview( $cart, $customer_id, true, CartService::RECURRING );
+		$quote = $this->quote( $state, $destination, $rate_id, $billing, $customer_id );
+		$plan  = null;
+		foreach ( $state->items as $item ) {
+			$plan ??= $item->plan;
+		}
+		[ 'items' => $items, 'discount' => $discount, 'fees' => $fees ] = $this->order_items( $quote );
+		return new Snapshot(
+			$plan ?? throw new InvalidCheckout( [ 'cart' => __( 'Some items in your cart are no longer available. Review your cart and try again.', 'flexacommerce' ) ] ),
+			$items,
+			$quote->items_net->amount,
+			$quote->shipping->amount,
+			$quote->tax->amount,
+			$quote->total->amount,
+			$quote->prices_include_tax,
+			$discount,
+			$fees
+		);
+	}
+
+	/**
+	 * The account a subscription goes to. A guest gets a new account with
+	 * the billing email, which mails a link to set the password; an email
+	 * that has an account must log in first, unless this same checkout
+	 * made that account a moment ago (a repeated submit).
+	 *
+	 * @throws InvalidCheckout
+	 */
+	private function subscriber( CheckoutRequest $request, AddressView $billing ): int {
+		if ( $request->user_id > 0 ) {
+			return $request->user_id;
+		}
+		$email    = $billing->email;
+		$existing = $email !== '' ? get_user_by( 'email', $email ) : false;
+		if ( $existing instanceof \WP_User ) {
+			if ( hash_equals( (string) get_user_meta( $existing->ID, self::ACCOUNT_TOKEN, true ), $request->checkout_token ) ) {
+				return $existing->ID;
+			}
+			throw new InvalidCheckout( [ 'billing.email' => __( 'An account already uses this email. Log in to buy a subscription.', 'flexacommerce' ) ] );
+		}
+		$base  = sanitize_user( (string) strstr( $email, '@', true ), true );
+		$base  = $base !== '' ? mb_substr( $base, 0, 50 ) : 'customer';
+		$login = $base;
+		$i     = 2;
+		while ( username_exists( $login ) !== false ) {
+			$login = $base . $i;
+			++$i;
+		}
+		$id = wp_insert_user(
+			[
+				'user_login'   => $login,
+				'user_email'   => $email,
+				'user_pass'    => wp_generate_password( 24 ),
+				'first_name'   => $billing->first_name,
+				'last_name'    => $billing->last_name,
+				'display_name' => $billing->name() !== '' ? $billing->name() : $login,
+				'role'         => (string) get_option( 'default_role', 'subscriber' ),
+			]
+		);
+		if ( $id instanceof \WP_Error ) {
+			throw new InvalidCheckout( [ 'billing.email' => $id->get_error_message() ] );
+		}
+		update_user_meta( $id, self::ACCOUNT_TOKEN, $request->checkout_token );
+		wp_new_user_notification( $id, null, 'user' );
+		return $id;
+	}
+
+	private function subscriptions(): SubscriptionService {
+		return ( $this->subscriptions ?? throw new \LogicException( 'Subscriptions are not wired.' ) )();
+	}
+
 	/** The note to put on an order when a tax add-on failed and the rate table was used. */
 	public static function tax_attention( Quote $quote ): ?string {
 		return $quote->tax_failure !== null
@@ -1072,7 +1195,7 @@ final class CheckoutService {
 	}
 
 	/** @param array<string,string> $meta */
-	private function new_order( CheckoutRequest $request, Quote $quote, AddressView $billing, ?AddressView $shipping, array $meta, ?PaymentGateway $gateway ): NewOrder {
+	private function new_order( CheckoutRequest $request, Quote $quote, AddressView $billing, ?AddressView $shipping, array $meta, ?PaymentGateway $gateway, int $customer_id ): NewOrder {
 		[ 'items' => $items, 'discount' => $discount, 'fees' => $fees ] = $this->order_items( $quote );
 		$currency = $quote->total->currency;
 		$title    = $gateway !== null ? $this->payments->gateways()->title( $gateway ) : '';
@@ -1096,7 +1219,7 @@ final class CheckoutService {
 			shipping_total: $quote->shipping->amount,
 			total: $quote->total->amount,
 			customer_email: $billing->email,
-			customer_id: $request->user_id > 0 ? $request->user_id : null,
+			customer_id: $customer_id > 0 ? $customer_id : null,
 			billing: $billing,
 			shipping: $shipping,
 			customer_note: $this->validator->note( $request ),

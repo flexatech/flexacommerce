@@ -106,11 +106,13 @@ final class Cron {
 
 	/**
 	 * Sale prices that started or ended since the last run (doc 03 §3.3),
-	 * and gift cards whose delivery day has come (ADR-069).
+	 * gift cards whose delivery day has come (ADR-069) and subscription
+	 * renewals (ADR-073).
 	 */
 	public function run_hourly(): void {
 		$refreshed = Plugin::instance()->catalog()->product_service()->refresh_due_prices();
 		Plugin::instance()->gift_cards()->deliver_due();
+		Plugin::instance()->subscriptions()->run();
 
 		do_action( 'flexacommerce.cron.hourly_done', $refreshed );
 	}

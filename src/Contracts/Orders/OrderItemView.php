@@ -14,7 +14,8 @@ defined( 'ABSPATH' ) || exit;
  * order was placed. `downloadable` is true when the line sold files at
  * that time (ADR-058), `gift_card` when it sold gift cards (ADR-069).
  * `bundle_part` marks an unpriced line that came with the bundle line
- * before it (ADR-071).
+ * before it (ADR-071). `subscription` marks a line sold on a plan
+ * (ADR-073).
  *
  * @api
  */
@@ -39,5 +40,6 @@ final class OrderItemView {
 		public readonly bool $downloadable = false,
 		public readonly bool $gift_card = false,
 		public readonly bool $bundle_part = false,
+		public readonly bool $subscription = false,
 	) {}
 }

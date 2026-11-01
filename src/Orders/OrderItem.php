@@ -200,6 +200,7 @@ final class OrderItem {
 			downloadable: ! empty( $this->meta['downloadable'] ),
 			gift_card: isset( $this->meta['gift_card'] ),
 			bundle_part: $this->is_bundle_part(),
+			subscription: isset( $this->meta['subscription'] ),
 		);
 	}
 }

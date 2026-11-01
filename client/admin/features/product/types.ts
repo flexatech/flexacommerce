@@ -83,6 +83,18 @@ export interface VariantRow {
     downloads: Downloads;
     /** Sold as a gift card: each unit paid becomes a code sent by email (ADR-069). */
     gift_card: boolean;
+    /** Sold on a schedule (ADR-073); null for a one-off sale, and on a variation for "the product's plan". */
+    subscription: SubscriptionPlan | null;
+}
+
+export interface SubscriptionPlan {
+    period: "day" | "week" | "month" | "year";
+    interval: number;
+    /** Payments in all; 0 renews until cancelled. */
+    length: number;
+    trial_days: number;
+    /** Per unit, in minor units. */
+    signup_fee: number;
 }
 
 export interface DownloadFile {

@@ -232,6 +232,9 @@ final class ProductInput {
 		if ( array_key_exists( 'downloads', $data ) ) {
 			$out['downloads'] = Downloads::parse( $data['downloads'], $path . '.downloads' );
 		}
+		if ( array_key_exists( SubscriptionPlan::META, $data ) ) {
+			$out[ SubscriptionPlan::META ] = SubscriptionPlan::parse( $data[ SubscriptionPlan::META ], $path . '.' . SubscriptionPlan::META );
+		}
 		if ( array_key_exists( 'description', $data ) ) {
 			$text               = is_scalar( $data['description'] ) ? trim( wp_kses_post( (string) $data['description'] ) ) : '';
 			$out['description'] = $text === '' ? null : $text;

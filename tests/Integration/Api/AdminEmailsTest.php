@@ -19,7 +19,7 @@ final class AdminEmailsTest extends \WP_UnitTestCase {
 		self::assertSame( 200, $response->get_status() );
 		$data   = $response->get_data();
 		$emails = array_column( $data['emails'], null, 'id' );
-		self::assertCount( 11, $emails );
+		self::assertCount( 12, $emails );
 		self::assertTrue( $emails['customer_invoice']['manual'] );
 		self::assertFalse( $emails['new_order']['manual'] );
 		self::assertFalse( $emails['new_order']['to_customer'] );

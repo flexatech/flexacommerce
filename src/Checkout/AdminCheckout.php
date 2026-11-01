@@ -304,7 +304,7 @@ final class AdminCheckout {
 		];
 		$cart        = new Cart( lines: array_values( $lines ), coupons: $draft->coupons );
 		$billing     = $draft->billing->country !== '' ? $draft->billing : null;
-		$priced      = fn ( string $rate ): CartState => $this->cart->preview( $cart->with_shipping( $address, $rate )->with_payment_method( $draft->payment_method ), $user_id, true );
+		$priced      = fn ( string $rate ): CartState => $this->cart->preview( $cart->with_shipping( $address, $rate )->with_payment_method( $draft->payment_method ), $user_id, true, CartService::PLAIN );
 		$state       = $priced( $draft->shipping_rate );
 		$quote       = $this->checkout->quote( $state, $destination, $draft->shipping_rate, $billing, $user_id );
 		$rate        = $quote->rate->id ?? '';

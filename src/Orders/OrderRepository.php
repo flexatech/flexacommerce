@@ -60,11 +60,13 @@ final class OrderRepository {
 	public function stale_pending( string $older_than, int $limit ): array {
 		$rows = $this->wpdb->get_results(
 			$this->wpdb->prepare(
-				'SELECT * FROM %i o WHERE status = %s AND created_at < %s AND deleted_at IS NULL AND created_via <> %s AND NOT EXISTS ( SELECT 1 FROM %i m WHERE m.order_id = o.id AND m.meta_key = %s ) ORDER BY created_at, id LIMIT %d',
+				'SELECT * FROM %i o WHERE status = %s AND created_at < %s AND deleted_at IS NULL AND created_via NOT IN (%s, %s) AND NOT EXISTS ( SELECT 1 FROM %i m WHERE m.order_id = o.id AND m.meta_key = %s ) ORDER BY created_at, id LIMIT %d',
 				Schema::table( 'orders' ),
 				OrderStatus::PENDING,
 				$older_than,
 				'admin',
+				// A renewal waits for the customer to pay it (ADR-073).
+				'subscription',
 				Schema::table( 'order_meta' ),
 				'_fxc_import_job',
 				$limit

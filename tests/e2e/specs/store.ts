@@ -19,6 +19,7 @@ type Store = {
 	external: { url: string; link: string; text: string };
 	bundle: { id: number; name: string; url: string; mug: string; price: number };
 	soldout: { id: number; name: string; url: string };
+	club: { id: number; name: string; url: string; price: number; fee: number };
 	category: { slug: string; url: string };
 };
 

@@ -532,6 +532,12 @@ const { state, actions } = store( 'flexacommerce/cart', {
 			const item = state.cart?.items.find( ( line ) => line.key === key );
 			return item?.total?.formatted ?? '';
 		},
+		/** What a subscription line costs later (ADR-073). */
+		get linePlan() {
+			const { key } = getContext();
+			const item = state.cart?.items.find( ( line ) => line.key === key );
+			return item?.subscription?.text ?? '';
+		},
 		get sku() {
 			const { productId, sku } = getContext();
 			return state.chosen[ productId ]?.sku || sku || '';

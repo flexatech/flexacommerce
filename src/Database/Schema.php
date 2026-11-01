@@ -17,7 +17,7 @@ defined( 'ABSPATH' ) || exit;
  */
 // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- schema DDL on plugin-owned tables, no user input.
 final class Schema {
-	public const DB_VERSION        = '17';
+	public const DB_VERSION        = '18';
 	public const DB_VERSION_OPTION = 'flexacommerce_db_version';
 	public const OPTION_PREFIX     = 'flexacommerce_';
 
@@ -52,7 +52,7 @@ final class Schema {
 		$charset = $wpdb->get_charset_collate();
 
 		return [
-			'variants'           => "CREATE TABLE {$p}variants (
+			'variants'            => "CREATE TABLE {$p}variants (
 				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 				product_id bigint(20) unsigned NOT NULL,
 				is_base tinyint(1) NOT NULL DEFAULT 0,
@@ -93,7 +93,7 @@ final class Schema {
 				KEY product_order (product_id,menu_order),
 				KEY stock_status (stock_status)
 			) {$charset};",
-			'orders'             => "CREATE TABLE {$p}orders (
+			'orders'              => "CREATE TABLE {$p}orders (
 				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 				order_number varchar(40) NOT NULL,
 				order_key varchar(64) NOT NULL,
@@ -138,7 +138,7 @@ final class Schema {
 				KEY payment_status (payment_status,created_at),
 				KEY attention_created (needs_attention,created_at)
 			) {$charset};",
-			'order_items'        => "CREATE TABLE {$p}order_items (
+			'order_items'         => "CREATE TABLE {$p}order_items (
 				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 				order_id bigint(20) unsigned NOT NULL,
 				type varchar(16) NOT NULL,
@@ -165,7 +165,7 @@ final class Schema {
 				KEY variant_id (variant_id),
 				KEY product_id (product_id)
 			) {$charset};",
-			'order_addresses'    => "CREATE TABLE {$p}order_addresses (
+			'order_addresses'     => "CREATE TABLE {$p}order_addresses (
 				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 				order_id bigint(20) unsigned NOT NULL,
 				type varchar(10) NOT NULL,
@@ -183,7 +183,7 @@ final class Schema {
 				PRIMARY KEY  (id),
 				UNIQUE KEY order_type (order_id,type)
 			) {$charset};",
-			'order_history'      => "CREATE TABLE {$p}order_history (
+			'order_history'       => "CREATE TABLE {$p}order_history (
 				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 				order_id bigint(20) unsigned NOT NULL,
 				type varchar(16) NOT NULL,
@@ -198,7 +198,7 @@ final class Schema {
 				PRIMARY KEY  (id),
 				KEY order_created (order_id,created_at)
 			) {$charset};",
-			'order_meta'         => "CREATE TABLE {$p}order_meta (
+			'order_meta'          => "CREATE TABLE {$p}order_meta (
 				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 				order_id bigint(20) unsigned NOT NULL,
 				meta_key varchar(191) NOT NULL,
@@ -207,7 +207,7 @@ final class Schema {
 				KEY order_key (order_id,meta_key),
 				KEY meta_key_value (meta_key,meta_value(100))
 			) {$charset};",
-			'transactions'       => "CREATE TABLE {$p}transactions (
+			'transactions'        => "CREATE TABLE {$p}transactions (
 				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 				order_id bigint(20) unsigned NOT NULL,
 				parent_id bigint(20) unsigned NULL,
@@ -232,7 +232,7 @@ final class Schema {
 				KEY order_type (order_id,type),
 				KEY status_updated (status,updated_at)
 			) {$charset};",
-			'webhook_events'     => "CREATE TABLE {$p}webhook_events (
+			'webhook_events'      => "CREATE TABLE {$p}webhook_events (
 				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 				gateway varchar(64) NOT NULL,
 				event_id varchar(191) NOT NULL,
@@ -245,7 +245,7 @@ final class Schema {
 				UNIQUE KEY gateway_event (gateway,event_id),
 				KEY received_at (received_at)
 			) {$charset};",
-			'sessions'           => "CREATE TABLE {$p}sessions (
+			'sessions'            => "CREATE TABLE {$p}sessions (
 				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 				token_hash char(64) NOT NULL,
 				user_id bigint(20) unsigned NULL,
@@ -262,7 +262,7 @@ final class Schema {
 				KEY expires_at (expires_at),
 				KEY updated_at (updated_at)
 			) {$charset};",
-			'recoveries'         => "CREATE TABLE {$p}recoveries (
+			'recoveries'          => "CREATE TABLE {$p}recoveries (
 				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 				session_id bigint(20) unsigned NULL,
 				user_id bigint(20) unsigned NULL,
@@ -290,7 +290,7 @@ final class Schema {
 				KEY status_created (status,created_at),
 				KEY next_send_at (next_send_at)
 			) {$charset};",
-			'stock_alerts'       => "CREATE TABLE {$p}stock_alerts (
+			'stock_alerts'        => "CREATE TABLE {$p}stock_alerts (
 				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 				product_id bigint(20) unsigned NOT NULL,
 				variant_id bigint(20) unsigned NOT NULL DEFAULT 0,
@@ -308,7 +308,7 @@ final class Schema {
 				KEY status_due (status,due),
 				KEY email (email)
 			) {$charset};",
-			'wishlists'          => "CREATE TABLE {$p}wishlists (
+			'wishlists'           => "CREATE TABLE {$p}wishlists (
 				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 				user_id bigint(20) unsigned NULL,
 				token_hash char(64) NULL,
@@ -321,14 +321,14 @@ final class Schema {
 				UNIQUE KEY share_key (share_key),
 				KEY updated_at (updated_at)
 			) {$charset};",
-			'wishlist_items'     => "CREATE TABLE {$p}wishlist_items (
+			'wishlist_items'      => "CREATE TABLE {$p}wishlist_items (
 				wishlist_id bigint(20) unsigned NOT NULL,
 				product_id bigint(20) unsigned NOT NULL,
 				created_at datetime NOT NULL,
 				PRIMARY KEY  (wishlist_id,product_id),
 				KEY product_id (product_id)
 			) {$charset};",
-			'shipments'          => "CREATE TABLE {$p}shipments (
+			'shipments'           => "CREATE TABLE {$p}shipments (
 				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 				order_id bigint(20) unsigned NOT NULL,
 				carrier varchar(40) NOT NULL DEFAULT '',
@@ -342,7 +342,7 @@ final class Schema {
 				KEY order_id (order_id),
 				KEY tracking_number (tracking_number)
 			) {$charset};",
-			'gift_cards'         => "CREATE TABLE {$p}gift_cards (
+			'gift_cards'          => "CREATE TABLE {$p}gift_cards (
 				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 				code varchar(32) NOT NULL,
 				initial_amount bigint(20) NOT NULL,
@@ -368,7 +368,7 @@ final class Schema {
 				KEY recipient_email (recipient_email),
 				KEY deliver_at (deliver_at)
 			) {$charset};",
-			'gift_card_activity' => "CREATE TABLE {$p}gift_card_activity (
+			'gift_card_activity'  => "CREATE TABLE {$p}gift_card_activity (
 				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 				gift_card_id bigint(20) unsigned NOT NULL,
 				type varchar(20) NOT NULL,
@@ -383,12 +383,64 @@ final class Schema {
 				KEY gift_card_id (gift_card_id),
 				KEY transaction_id (transaction_id)
 			) {$charset};",
-			'sequences'          => "CREATE TABLE {$p}sequences (
+			'subscriptions'       => "CREATE TABLE {$p}subscriptions (
+				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+				status varchar(20) NOT NULL DEFAULT 'pending',
+				customer_id bigint(20) unsigned NOT NULL,
+				customer_email varchar(200) NOT NULL DEFAULT '',
+				currency char(3) NOT NULL,
+				period varchar(10) NOT NULL,
+				interval_count smallint(5) unsigned NOT NULL DEFAULT 1,
+				length smallint(5) unsigned NOT NULL DEFAULT 0,
+				trial_days smallint(5) unsigned NOT NULL DEFAULT 0,
+				anchor_day tinyint(3) unsigned NOT NULL DEFAULT 0,
+				billed smallint(5) unsigned NOT NULL DEFAULT 0,
+				total bigint(20) NOT NULL DEFAULT 0,
+				parent_order_id bigint(20) unsigned NULL,
+				payment_method varchar(100) NOT NULL DEFAULT '',
+				payment_method_title varchar(200) NOT NULL DEFAULT '',
+				snapshot longtext NOT NULL,
+				billing longtext NULL,
+				shipping longtext NULL,
+				start_at datetime NULL,
+				trial_end_at datetime NULL,
+				next_payment_at datetime NULL,
+				end_at datetime NULL,
+				cancelled_at datetime NULL,
+				created_at datetime NOT NULL,
+				updated_at datetime NOT NULL,
+				PRIMARY KEY  (id),
+				KEY status_next (status,next_payment_at),
+				KEY status_end (status,end_at),
+				KEY customer_id (customer_id),
+				KEY parent_order_id (parent_order_id)
+			) {$charset};",
+			'subscription_orders' => "CREATE TABLE {$p}subscription_orders (
+				subscription_id bigint(20) unsigned NOT NULL,
+				order_id bigint(20) unsigned NOT NULL,
+				relation varchar(10) NOT NULL,
+				created_at datetime NOT NULL,
+				PRIMARY KEY  (subscription_id,order_id),
+				KEY order_id (order_id)
+			) {$charset};",
+			'subscription_events' => "CREATE TABLE {$p}subscription_events (
+				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+				subscription_id bigint(20) unsigned NOT NULL,
+				type varchar(30) NOT NULL,
+				message varchar(500) NOT NULL DEFAULT '',
+				order_id bigint(20) unsigned NULL,
+				actor_type varchar(20) NOT NULL DEFAULT 'system',
+				actor_id bigint(20) unsigned NULL,
+				created_at datetime NOT NULL,
+				PRIMARY KEY  (id),
+				KEY subscription_id (subscription_id)
+			) {$charset};",
+			'sequences'           => "CREATE TABLE {$p}sequences (
 				name varchar(32) NOT NULL,
 				value bigint(20) unsigned NOT NULL DEFAULT 0,
 				PRIMARY KEY  (name)
 			) {$charset};",
-			'id_map'             => "CREATE TABLE {$p}id_map (
+			'id_map'              => "CREATE TABLE {$p}id_map (
 				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 				remote_system varchar(32) NOT NULL,
 				entity varchar(32) NOT NULL,
@@ -403,7 +455,7 @@ final class Schema {
 				UNIQUE KEY remote (remote_system,entity,remote_id),
 				UNIQUE KEY local (remote_system,entity,local_id)
 			) {$charset};",
-			'migration_jobs'     => "CREATE TABLE {$p}migration_jobs (
+			'migration_jobs'      => "CREATE TABLE {$p}migration_jobs (
 				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 				direction varchar(16) NOT NULL,
 				status varchar(32) NOT NULL DEFAULT 'draft',
@@ -424,7 +476,7 @@ final class Schema {
 				PRIMARY KEY  (id),
 				KEY status (status)
 			) {$charset};",
-			'migration_log'      => "CREATE TABLE {$p}migration_log (
+			'migration_log'       => "CREATE TABLE {$p}migration_log (
 				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 				job_id bigint(20) unsigned NOT NULL,
 				entity varchar(32) NOT NULL,
@@ -438,7 +490,7 @@ final class Schema {
 				KEY job_level (job_id,level),
 				KEY job_entity_source (job_id,entity,source_id)
 			) {$charset};",
-			'tax_rates'          => "CREATE TABLE {$p}tax_rates (
+			'tax_rates'           => "CREATE TABLE {$p}tax_rates (
 				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 				tax_class varchar(50) NOT NULL DEFAULT '',
 				country char(2) NOT NULL DEFAULT '',
@@ -458,7 +510,7 @@ final class Schema {
 				KEY class_order (tax_class,rate_order),
 				KEY source (source)
 			) {$charset};",
-			'tax_rate_locations' => "CREATE TABLE {$p}tax_rate_locations (
+			'tax_rate_locations'  => "CREATE TABLE {$p}tax_rate_locations (
 				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 				rate_id bigint(20) unsigned NOT NULL,
 				type varchar(10) NOT NULL,
@@ -470,7 +522,7 @@ final class Schema {
 				KEY type_code (type,code),
 				KEY type_range (type,range_from)
 			) {$charset};",
-			'coupons'            => "CREATE TABLE {$p}coupons (
+			'coupons'             => "CREATE TABLE {$p}coupons (
 				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 				code varchar(100) NOT NULL,
 				status varchar(10) NOT NULL DEFAULT 'active',
@@ -497,7 +549,7 @@ final class Schema {
 				KEY status_expires (status,expires_at),
 				KEY automatic_status (automatic,status)
 			) {$charset};",
-			'coupon_uses'        => "CREATE TABLE {$p}coupon_uses (
+			'coupon_uses'         => "CREATE TABLE {$p}coupon_uses (
 				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 				coupon_id bigint(20) unsigned NOT NULL,
 				order_id bigint(20) unsigned NOT NULL,
@@ -509,14 +561,14 @@ final class Schema {
 				KEY coupon_user (coupon_id,user_id),
 				KEY coupon_email (coupon_id,email)
 			) {$charset};",
-			'option_stock'       => "CREATE TABLE {$p}option_stock (
+			'option_stock'        => "CREATE TABLE {$p}option_stock (
 				set_id bigint(20) unsigned NOT NULL,
 				field_id int(10) unsigned NOT NULL,
 				choice_id int(10) unsigned NOT NULL,
 				quantity int(11) NOT NULL DEFAULT 0,
 				PRIMARY KEY  (set_id,field_id,choice_id)
 			) {$charset};",
-			'downloads'          => "CREATE TABLE {$p}downloads (
+			'downloads'           => "CREATE TABLE {$p}downloads (
 				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 				order_id bigint(20) unsigned NOT NULL,
 				order_item_id bigint(20) unsigned NOT NULL,
@@ -539,7 +591,7 @@ final class Schema {
 				KEY email (email),
 				KEY variant_file (variant_id,file_id)
 			) {$charset};",
-			'logs'               => "CREATE TABLE {$p}logs (
+			'logs'                => "CREATE TABLE {$p}logs (
 				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 				level varchar(10) NOT NULL,
 				channel varchar(64) NOT NULL,

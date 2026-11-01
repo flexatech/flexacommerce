@@ -281,6 +281,24 @@ $products->save(
 	)
 );
 
+// A simple product sold as a monthly subscription with a sign-up fee (ADR-073).
+$club_id = $make( 'Coffee club', 'coffee-club' );
+$products->save(
+	$club_id,
+	ProductInput::from_array(
+		[
+			'base' => [
+				'regular_price' => 1500,
+				'subscription'  => [
+					'period'     => 'month',
+					'interval'   => 1,
+					'signup_fee' => 500,
+				],
+			],
+		]
+	)
+);
+
 $category = get_term_by( 'slug', (string) $simple['categories'][0], PostTypes::CATEGORY );
 
 $out = [
@@ -338,6 +356,13 @@ $out = [
 		'id'   => $vase_id,
 		'name' => 'Sold out vase',
 		'url'  => (string) get_permalink( $vase_id ),
+	],
+	'club'     => [
+		'id'    => $club_id,
+		'name'  => 'Coffee club',
+		'url'   => (string) get_permalink( $club_id ),
+		'price' => 1500,
+		'fee'   => 500,
 	],
 	'category' => [
 		'slug' => $category instanceof WP_Term ? $category->slug : '',

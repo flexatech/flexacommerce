@@ -11,6 +11,7 @@ import { BundleFields } from "./BundleFields";
 import { DownloadFields } from "./DownloadFields";
 import type { Draft } from "./draft";
 import { Field, InvalidFields, Toggle } from "./fields";
+import { SubscriptionFields } from "./SubscriptionFields";
 import { GalleryPanel } from "./GalleryPanel";
 import { ExternalFields, GroupedFields } from "./GroupFields";
 import { InventoryFields, PricingFields, ShippingFields, TaxFields } from "./RowFields";
@@ -116,7 +117,7 @@ export function ProductDataPanel({ editor }: { editor: ProductDraftState }) {
                         {ownRows && (
                             <Toggle
                                 checked={draft.base.gift_card}
-                                onChange={(gift_card) => setBase(gift_card ? { gift_card, virtual: true, tax_status: "none" } : { gift_card })}
+                                onChange={(gift_card) => setBase(gift_card ? { gift_card, virtual: true, tax_status: "none", subscription: null } : { gift_card })}
                                 label={__("Gift card")}
                             />
                         )}
@@ -178,6 +179,9 @@ export function ProductDataPanel({ editor }: { editor: ProductDraftState }) {
                                     </p>
                                 ) : (
                                     <PricingFields row={draft.base} onChange={setBase} errors={errors} path="base" />
+                                )}
+                                {(draft.type === "simple" || isVariable) && !draft.base.gift_card && (
+                                    <SubscriptionFields row={draft.base} onChange={setBase} errors={errors} path="base" />
                                 )}
                                 {!isGrouped && <TaxFields row={draft.base} onChange={setBase} errors={errors} path="base" />}
                             </div>

@@ -289,7 +289,7 @@ Exit: **1.0 (M2)**.
 4. Product lookup table if the revisit condition in doc 03 §5 triggers.
 5. Public product-type API.
 6. Store credit: built on 2026-11-01 (ADR-072). A balance per customer built on the gift card engine (ADR-069), refunds paid to store credit, the balance in My Account, and admin adjustments with a reason.
-7. Subscriptions (deferred 2026-11-01 as larger than the other roadmap items).
+7. Subscriptions (deferred 2026-11-01 as larger than the other roadmap items). Part 1 built on 2026-11-01 (ADR-073): plans on simple and variable products and variations, checkout making the subscriptions (guests get an account), renewal orders from the hourly cron paid by hand from an email, cancel at the end of the period in My Account, and the Orders > Subscriptions screen. Part 2 open: automatic charges through Stripe and PayPal saved payment methods, a reminder before renewal, the shopper changing plan, quantity or address, and WooCommerce Subscriptions migration.
 
 ## Roadmap risks
 

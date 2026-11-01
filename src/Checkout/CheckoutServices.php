@@ -31,6 +31,7 @@ final class CheckoutServices {
 		private ?TaxServices $tax = null,
 		private readonly ?\Closure $coupons = null,
 		private readonly ?\Closure $gift_cards = null,
+		private readonly ?\Closure $subscriptions = null,
 	) {}
 
 	public function pages(): CheckoutPages {
@@ -63,6 +64,7 @@ final class CheckoutServices {
 			null,
 			$this->coupons,
 			$this->gift_cards,
+			$this->subscriptions,
 		);
 	}
 

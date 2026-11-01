@@ -62,6 +62,27 @@ final class Product {
 		return $this->base->gift_card;
 	}
 
+	/**
+	 * The plan a row is sold on (ADR-073): its own, else the product's.
+	 * Only simple and variable products are sold as subscriptions.
+	 */
+	public function plan_for( Variant $variant ): ?SubscriptionPlan {
+		if ( $this->type !== ProductTypes::SIMPLE && $this->type !== ProductTypes::VARIABLE ) {
+			return null;
+		}
+		return $variant->plan() ?? ( $variant->is_base ? null : $this->base->plan() );
+	}
+
+	/** Whether any row of the product is sold as a subscription. */
+	public function is_subscription(): bool {
+		foreach ( $this->rows() as $row ) {
+			if ( $this->plan_for( $row ) !== null ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	/** Whether rows of this product can go in the cart. */
 	public function is_sold(): bool {
 		return ProductTypes::is_sold( $this->type );

@@ -31,13 +31,15 @@ final class PostTypes {
 	 * do not meet WooCommerce's while both plugins run during a migration.
 	 */
 	public const ACCOUNT_ENDPOINTS = [
-		'fxc_orders'       => 'orders',
-		'fxc_view_order'   => 'view-order',
-		'fxc_downloads'    => 'downloads',
-		'fxc_edit_address' => 'edit-address',
-		'fxc_edit_account' => 'edit-account',
-		'fxc_wishlist'     => 'wishlist',
-		'fxc_store_credit' => 'store-credit',
+		'fxc_orders'            => 'orders',
+		'fxc_view_order'        => 'view-order',
+		'fxc_downloads'         => 'downloads',
+		'fxc_edit_address'      => 'edit-address',
+		'fxc_edit_account'      => 'edit-account',
+		'fxc_wishlist'          => 'wishlist',
+		'fxc_store_credit'      => 'store-credit',
+		'fxc_subscriptions'     => 'subscriptions',
+		'fxc_view_subscription' => 'view-subscription',
 	];
 
 	/** Exists only on a site where another plugin owns our archive URL; see maybe_flush(). */
@@ -85,8 +87,8 @@ final class PostTypes {
 	 * @param array<mixed> $rules
 	 */
 	private static function has_endpoints( array $rules, string $root ): bool {
-		// The newest endpoint (ADR-072): rules stored before it existed get flushed once.
-		return isset( $rules[ $root . '(.?.+?)/' . self::ACCOUNT_ENDPOINTS['fxc_store_credit'] . '(/(.*))?/?$' ] );
+		// The newest endpoint (ADR-073): rules stored before it existed get flushed once.
+		return isset( $rules[ $root . '(.?.+?)/' . self::ACCOUNT_ENDPOINTS['fxc_view_subscription'] . '(/(.*))?/?$' ] );
 	}
 
 	/**

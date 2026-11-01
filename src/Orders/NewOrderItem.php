@@ -90,6 +90,45 @@ final class NewOrderItem {
 	}
 
 	/**
+	 * Every field, for a stored copy such as a subscription's renewal lines
+	 * (ADR-073).
+	 *
+	 * @return array<string,mixed>
+	 */
+	public function to_array(): array {
+		return get_object_vars( $this );
+	}
+
+	/**
+	 * A stored copy back as an item; null when it does not read as one.
+	 *
+	 * @param array<array-key,mixed> $data
+	 */
+	public static function from_array( array $data ): ?self {
+		if ( ! in_array( $data['type'] ?? null, OrderItem::TYPES, true ) ) {
+			return null;
+		}
+		$id = static fn ( mixed $v ): ?int => $v === null ? null : (int) $v;
+		return new self(
+			type: (string) $data['type'],
+			name: (string) ( $data['name'] ?? '' ),
+			quantity: (int) ( $data['quantity'] ?? 1 ),
+			unit_price: (int) ( $data['unit_price'] ?? 0 ),
+			subtotal: (int) ( $data['subtotal'] ?? 0 ),
+			total: (int) ( $data['total'] ?? 0 ),
+			product_id: $id( $data['product_id'] ?? null ),
+			variant_id: $id( $data['variant_id'] ?? null ),
+			stock_id: (int) ( $data['stock_id'] ?? 0 ),
+			code: (string) ( $data['code'] ?? '' ),
+			sku: isset( $data['sku'] ) ? (string) $data['sku'] : null,
+			attributes: array_values( array_filter( (array) ( $data['attributes'] ?? [] ), 'is_array' ) ),
+			discount_total: (int) ( $data['discount_total'] ?? 0 ),
+			tax_total: (int) ( $data['tax_total'] ?? 0 ),
+			meta: (array) ( $data['meta'] ?? [] ),
+		);
+	}
+
+	/**
 	 * @param array<string,int> $taxes
 	 * @return array<string,mixed>
 	 */

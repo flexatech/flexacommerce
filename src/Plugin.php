@@ -68,6 +68,8 @@ final class Plugin {
 
 	private ?GiftCards\GiftCardService $gift_cards = null;
 
+	private ?Subscriptions\SubscriptionService $subscriptions = null;
+
 	private bool $blocks = false;
 
 	public function boot(): void {
@@ -230,6 +232,18 @@ final class Plugin {
 		if ( in_array( $view->status, [ Orders\OrderStatus::CANCELLED, Orders\OrderStatus::REFUNDED ], true ) || ( in_array( $view->status, Downloads\PermissionRepository::OPEN, true ) && self::sells_gift_cards( $view ) ) ) {
 			$this->gift_cards()->on_order( $view );
 		}
+		if ( $view->created_via === Subscriptions\SubscriptionService::CREATED_VIA || self::sells_subscriptions( $view ) ) {
+			$this->subscriptions()->on_order( $view );
+		}
+	}
+
+	private static function sells_subscriptions( Contracts\Orders\OrderView $view ): bool {
+		foreach ( $view->items as $item ) {
+			if ( $item->subscription ) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private static function sells_gift_cards( Contracts\Orders\OrderView $view ): bool {
@@ -254,6 +268,20 @@ final class Plugin {
 			$this->services()->money(),
 			$this->services()->clock(),
 			$this->services()->logger( 'gift-cards' )
+		);
+	}
+
+	/** @internal Subscriptions with manual renewals (ADR-073). */
+	public function subscriptions(): Subscriptions\SubscriptionService {
+		return $this->subscriptions ??= new Subscriptions\SubscriptionService(
+			new Subscriptions\SubscriptionRepository( $this->services()->wpdb() ),
+			$this->orders()->service(),
+			$this->services()->transaction(),
+			$this->notifications()->mailer(),
+			$this->notifications()->templates(),
+			$this->services()->money(),
+			$this->services()->clock(),
+			$this->services()->logger( 'subscriptions' )
 		);
 	}
 
@@ -508,7 +536,7 @@ final class Plugin {
 
 	/** @internal Checkout, order confirmation and order-pay. */
 	public function checkout(): Checkout\CheckoutServices {
-		return $this->checkout ??= new Checkout\CheckoutServices( $this->services(), $this->cart(), $this->shipping(), $this->orders(), $this->payments(), $this->tax(), fn (): Coupons\CouponService => $this->coupons()->service(), fn (): GiftCards\GiftCardService => $this->gift_cards() );
+		return $this->checkout ??= new Checkout\CheckoutServices( $this->services(), $this->cart(), $this->shipping(), $this->orders(), $this->payments(), $this->tax(), fn (): Coupons\CouponService => $this->coupons()->service(), fn (): GiftCards\GiftCardService => $this->gift_cards(), fn (): Subscriptions\SubscriptionService => $this->subscriptions() );
 	}
 
 	public function tax(): Tax\TaxServices {

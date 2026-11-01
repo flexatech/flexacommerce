@@ -20,6 +20,7 @@ Status: **Approved 2026-10-24**. All table names below are shown without `{$wpdb
 | Wishlists | `fxc_wishlists`, `fxc_wishlist_items` | One list per customer or guest token, with a share key, and one row per saved product (§4.19, ADR-066). |
 | Shipments | `fxc_shipments` | One row per package of an order with its carrier, tracking number and link, and the lines it holds (§4.20, ADR-067). |
 | Gift cards | `fxc_gift_cards`, `fxc_gift_card_activity` | One row per card with its code, balance and recipient, and one row per change of the balance (§4.21, ADR-069). A customer's store credit is a card row with `user_id` (ADR-072). |
+| Subscriptions | `fxc_subscriptions`, `fxc_subscription_orders`, `fxc_subscription_events` | One row per subscription with its plan, schedule and a snapshot of what each renewal bills, the orders it made, and its history (§4.22, ADR-073). |
 | Order number allocation | `fxc_sequences` | Atomic counter. |
 | Download permissions | `fxc_downloads` | One row per order line and file with a token and counters that change on every download (§4.16, ADR-058). |
 | Option choice stock | `fxc_option_stock` | Counts change on every order, so they need atomic updates outside the autoloaded option sets (§4.15, ADR-040). |
@@ -278,7 +279,7 @@ CREATE TABLE fxc_variants (
 | `is_virtual`, `is_downloadable` | Nothing to ship; sells files. Added in `DB_VERSION` 10 (ADR-058). |
 | `is_gift_card` | Sold as gift cards (ADR-069). Set on the base row; saving the product copies it to every variation, with `is_virtual` 1 and `tax_status` `none`. Added in `DB_VERSION` 16. |
 | `downloads` | JSON `{files: [{id, name, file}], limit, expiry_days}`, up to 50 files. A file id never changes once saved, because `fxc_downloads.file_id` points at it. NULL when the variant sells no files. |
-| `meta` | JSON, extension and import data for this variant. Not queryable. |
+| `meta` | JSON, extension and import data for this variant. Not queryable. `meta.subscription` holds the row's plan `{period, interval, length, trial_days, signup_fee}` (ADR-073); a variation without one uses the base row's. |
 
 Relationships: `product_id` → `wp_posts.ID` (`fxc_product`). Lifecycle: created/updated by `ProductService`, deleted with the product (`before_delete_post`). Trashing a product keeps variants (restorable) but makes them unpurchasable because the post is not published.
 
@@ -378,6 +379,7 @@ CREATE TABLE fxc_order_items (
 - Product lines with product options that track stock keep them in `meta.option_stock` (`{"<set>-<field>-<choice>": "Finish: Gold"}`) and the units taken from `fxc_option_stock` in `meta.option_held` (ADR-040).
 - A bundle line keeps `meta.bundle` = `{key}` (its cart line key). Its parts follow it as product lines with `meta.bundled_by` = that key, `subtotal`, `total` and taxes 0, quantity = bundle units × part units, and `stock_id` when the part manages stock; they carry `meta.virtual` and `meta.downloadable` from the part. Stock, holds, restocks and download permissions work on the part lines (ADR-071).
 - Gift card lines keep who the cards go to in `meta.gift_card`: `{issue: true, to, name, from, message, date}` with only the fields the buyer filled (`issue` keeps the entry when none was). `fxc_gift_cards.order_item_id` points back at the line (ADR-069).
+- Product lines sold on a plan keep it in `meta.subscription` (the plan array), which tells the order hooks to start a subscription when the order is paid (ADR-073). A renewal order has `created_via` `subscription` and order meta `_fxc_subscription` = the subscription id.
 - `code`: shipping rate id (`flat_rate:3`), fee code, coupon code, tax rate code.
 - `discount` lines (doc 02 §7.13.5): one per applied coupon, `name` and `code` = the code as saved, `quantity` 1, `total` = the coupon's net share of the order discount, `meta` = `{coupon_id, type, amount, discount_tax}`. They are a record: the amount is already in the product lines' `discount_total`. Invariant: `orders.discount_total = Σ product lines.discount_total = Σ discount lines.total`.
 - Amounts are **exclusive of tax**; `tax_total` holds the line's tax. `total = subtotal − discount_total` (ex-tax).
@@ -1006,6 +1008,71 @@ CREATE TABLE fxc_gift_card_activity (
 - **Writes.** `GiftCardService` only. A balance changes with the card row locked (`SELECT ... FOR UPDATE`) inside a transaction, together with its activity row: at checkout, on a refund, on a cancel and on an admin change. Issuing is idempotent per order line (the cards a line already has are counted). The privacy eraser clears `recipient_email`, `recipient_name` and `message`. Uninstall drops both tables.
 - **Reads.** The code box by `code`; an order's cards by `order_item`; due emails by `deliver_at` (`delivered_at IS NULL AND deliver_at <= now`); privacy by `recipient_email`; the admin list by primary key, newest first, with `LIKE` on code, email and name, leaving out rows with a `user_id`; store credit by `user_id` (one account, or an `IN` list for the customer screen). A refund credit checks `transaction_id` so a retry adds nothing.
 
+### 4.22 `fxc_subscriptions`, `fxc_subscription_orders` and `fxc_subscription_events`
+
+Added with subscriptions (ADR-073), `DB_VERSION` 18.
+
+```sql
+CREATE TABLE fxc_subscriptions (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  status varchar(20) NOT NULL DEFAULT 'pending',
+  customer_id bigint(20) unsigned NOT NULL,
+  customer_email varchar(200) NOT NULL DEFAULT '',
+  currency char(3) NOT NULL,
+  period varchar(10) NOT NULL,
+  interval_count smallint(5) unsigned NOT NULL DEFAULT 1,
+  length smallint(5) unsigned NOT NULL DEFAULT 0,
+  trial_days smallint(5) unsigned NOT NULL DEFAULT 0,
+  anchor_day tinyint(3) unsigned NOT NULL DEFAULT 0,
+  billed smallint(5) unsigned NOT NULL DEFAULT 0,
+  total bigint(20) NOT NULL DEFAULT 0,
+  parent_order_id bigint(20) unsigned NULL,
+  payment_method varchar(100) NOT NULL DEFAULT '',
+  payment_method_title varchar(200) NOT NULL DEFAULT '',
+  snapshot longtext NOT NULL,
+  billing longtext NULL,
+  shipping longtext NULL,
+  start_at datetime NULL,
+  trial_end_at datetime NULL,
+  next_payment_at datetime NULL,
+  end_at datetime NULL,
+  cancelled_at datetime NULL,
+  created_at datetime NOT NULL,
+  updated_at datetime NOT NULL,
+  PRIMARY KEY  (id),
+  KEY status_next (status,next_payment_at),
+  KEY status_end (status,end_at),
+  KEY customer_id (customer_id),
+  KEY parent_order_id (parent_order_id)
+) {charset_collate};
+
+CREATE TABLE fxc_subscription_orders (
+  subscription_id bigint(20) unsigned NOT NULL,
+  order_id bigint(20) unsigned NOT NULL,
+  relation varchar(10) NOT NULL,
+  created_at datetime NOT NULL,
+  PRIMARY KEY  (subscription_id,order_id),
+  KEY order_id (order_id)
+) {charset_collate};
+
+CREATE TABLE fxc_subscription_events (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  subscription_id bigint(20) unsigned NOT NULL,
+  type varchar(30) NOT NULL,
+  message varchar(500) NOT NULL DEFAULT '',
+  order_id bigint(20) unsigned NULL,
+  actor_type varchar(20) NOT NULL DEFAULT 'system',
+  actor_id bigint(20) unsigned NULL,
+  created_at datetime NOT NULL,
+  PRIMARY KEY  (id),
+  KEY subscription_id (subscription_id)
+) {charset_collate};
+```
+
+- **Columns.** `status` is `pending`, `active`, `on-hold`, `pending-cancel`, `cancelled` or `expired`. The plan is copied into `period`, `interval_count`, `length` and `trial_days` when the subscription is made, so a later product edit does not change it; the sign-up fee is only charged once and is not kept. `anchor_day` is the day of the month payments fall on (1 to 31, set at the start), so a short month does not move later payments. `billed` counts the paid periods, the first order included unless it only started a trial. `total` is a renewal's total in minor units of `currency`. `snapshot` is JSON: the plan, the order lines a renewal copies, and its subtotal, shipping, tax, discount and fee totals (`Snapshot`). `billing` and `shipping` are the address JSON of the first order. Dates are UTC. `next_payment_at` is NULL once no payment is left; `end_at` is when the last paid period ends (set ahead for a plan with a length or a cancel at the end of the period). The user meta `_fxc_has_subscriptions` marks customers with at least one row.
+- `fxc_subscription_orders.relation` is `parent` (the first order) or `renewal`.
+- Event `type` is `created`, `active`, `on-hold`, `resumed`, `pending-cancel`, `reactivated`, `renewal`, `renewal-paid`, `rescheduled`, `cancelled` or `expired`; `actor_type` is `system`, `cron`, `customer` or `admin`, with `actor_id` the user.
+
 ## 5. Query patterns and indexes
 
 | Query | Index used |
@@ -1028,6 +1095,7 @@ CREATE TABLE fxc_gift_card_activity (
 | Shipments | `fxc_shipments.order_id`; the admin search by tracking number `tracking_number` (ADR-067) |
 | Order list and CSV export by date | `created_at`, or `status_created` with a tab; the export pages by primary key (`id > after AND id <= until`) (ADR-070) |
 | Gift cards | `fxc_gift_cards.code` for the code box; an order's cards `order_item`; due emails `deliver_at`; privacy `recipient_email`; activity per card `gift_card_id`, refund credits `transaction_id` (ADR-069) |
+| Subscriptions | due renewals `status_next`, due endings `status_end`; a customer's rows `customer_id`; the rows a first order made `parent_order_id`; the subscriptions a renewal order bills `fxc_subscription_orders.order_id`; history `subscription_id` (ADR-073) |
 | Download link | `fxc_downloads.token`; an order's links `order_id`, a customer's `customer_id`, privacy `email`, a product edit `variant_file` |
 | Tax rate match for one address | `class_country_state`, then `rate_type` for the join; `type_code` and `type_range` for rates found by postcode (§4.13) |
 | Shop sort by price | `wp_postmeta` `meta_key/meta_value` on `_fxc_price_min` (core index on `meta_key`). See revisit condition below. |

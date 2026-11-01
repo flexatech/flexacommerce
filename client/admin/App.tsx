@@ -14,6 +14,7 @@ import { ProductCsvPage } from "./features/productcsv/ProductCsvPage";
 import { PromotionsPage } from "./features/promotions/PromotionsPage";
 import { RecoveryPage } from "./features/recovery/RecoveryPage";
 import { GiftCardsPage } from "./features/giftcards/GiftCardsPage";
+import { SubscriptionsPage } from "./features/subscriptions/SubscriptionsPage";
 import { StockAlertsPage } from "./features/stockalerts/StockAlertsPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
 import { StatusPage } from "./features/status/StatusPage";
@@ -29,6 +30,8 @@ export function App({ page }: { page: AdminPage }) {
                 <Toaster />
                 {page === "flexacommerce-orders" ? (
                     <OrdersPage />
+                ) : page === "flexacommerce-subscriptions" ? (
+                    <SubscriptionsPage />
                 ) : page === "flexacommerce-customers" ? (
                     <CustomersPage />
                 ) : page === "flexacommerce-recovery" ? (

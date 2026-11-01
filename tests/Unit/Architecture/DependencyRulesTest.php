@@ -25,38 +25,41 @@ final class DependencyRulesTest extends TestCase {
 	 * @var array<string,list<string>>
 	 */
 	private const ALLOW = [
-		'Contracts'   => [],
-		'Concerns'    => [],
-		'Support'     => [ 'Database' ],
-		'Database'    => [ 'Support' ],
-		'Catalog'     => [ 'Support', 'Database' ],
-		'Orders'      => [ 'Support', 'Database', 'Inventory' ],
-		'Downloads'   => [ 'Support', 'Database', 'Catalog', 'Orders' ],
-		'Invoices'    => [ 'Support', 'Database', 'Orders', 'Payments' ],
-		'Inventory'   => [ 'Catalog', 'Database', 'Support' ],
-		'Pricing'     => [ 'Catalog', 'Tax', 'Support' ],
-		'Shipping'    => [ 'Support' ],
-		'Tax'         => [ 'Support', 'Database' ],
-		'Payments'    => [ 'Orders', 'Database', 'Support' ],
-		'Cart'        => [ 'Catalog', 'Pricing', 'Inventory', 'Shipping', 'Coupons', 'Options', 'Support', 'Database' ],
+		'Contracts'     => [],
+		'Concerns'      => [],
+		'Support'       => [ 'Database' ],
+		'Database'      => [ 'Support' ],
+		'Catalog'       => [ 'Support', 'Database' ],
+		'Orders'        => [ 'Support', 'Database', 'Inventory' ],
+		'Downloads'     => [ 'Support', 'Database', 'Catalog', 'Orders' ],
+		'Invoices'      => [ 'Support', 'Database', 'Orders', 'Payments' ],
+		'Inventory'     => [ 'Catalog', 'Database', 'Support' ],
+		'Pricing'       => [ 'Catalog', 'Tax', 'Support' ],
+		'Shipping'      => [ 'Support' ],
+		'Tax'           => [ 'Support', 'Database' ],
+		'Payments'      => [ 'Orders', 'Database', 'Support' ],
+		'Cart'          => [ 'Catalog', 'Pricing', 'Inventory', 'Shipping', 'Coupons', 'Options', 'Support', 'Database' ],
 		// Coupons reads cart lines (CartItem) to price a discount; Cart asks
 		// Coupons for the discount. CartItem is a plain value, so the cycle
 		// is only in types.
-		'Coupons'     => [ 'Cart', 'Catalog', 'Pricing', 'Support', 'Database' ],
-		'Options'     => [ 'Catalog', 'Inventory', 'Support' ],
-		'Customers'   => [ 'Support' ],
-		'Reviews'     => [ 'Catalog', 'Support', 'Database' ],
+		'Coupons'       => [ 'Cart', 'Catalog', 'Pricing', 'Support', 'Database' ],
+		'Options'       => [ 'Catalog', 'Inventory', 'Support' ],
+		'Customers'     => [ 'Support' ],
+		'Reviews'       => [ 'Catalog', 'Support', 'Database' ],
 		// Reminders copy carts, make coupons, look for the order and send the email (ADR-063).
-		'Recovery'    => [ 'Cart', 'Coupons', 'Orders', 'Notifications', 'Support', 'Database' ],
+		'Recovery'      => [ 'Cart', 'Coupons', 'Orders', 'Notifications', 'Support', 'Database' ],
 		// Back-in-stock emails read stock and send through the mailer (ADR-065).
-		'StockAlerts' => [ 'Catalog', 'Inventory', 'Notifications', 'Support', 'Database' ],
+		'StockAlerts'   => [ 'Catalog', 'Inventory', 'Notifications', 'Support', 'Database' ],
 		// Wishlists check the product and limit new guest lists (ADR-066).
-		'Wishlist'    => [ 'Catalog', 'Support', 'Database' ],
+		'Wishlist'      => [ 'Catalog', 'Support', 'Database' ],
 		// Gift cards are issued from paid orders, pay through a transaction and go out by email (ADR-069).
-		'GiftCards'   => [ 'Catalog', 'Orders', 'Payments', 'Notifications', 'Support', 'Database' ],
+		'GiftCards'     => [ 'Catalog', 'Orders', 'Payments', 'Notifications', 'Support', 'Database' ],
+		// Subscriptions bill a frozen order snapshot through the order flow and email the store (ADR-073).
+		'Subscriptions' => [ 'Catalog', 'Orders', 'Payments', 'Notifications', 'Support', 'Database' ],
 		// The admin order editor reads variants (Catalog) and posted options (Options), ADR-061.
 		// Gift cards take part of the total and pay it at submit (ADR-069).
-		'Checkout'    => [ 'Cart', 'Catalog', 'Coupons', 'GiftCards', 'Options', 'Pricing', 'Inventory', 'Shipping', 'Tax', 'Orders', 'Payments', 'Customers', 'Support', 'Database' ],
+		// Subscription lines start a subscription with the order (ADR-073).
+		'Checkout'      => [ 'Cart', 'Catalog', 'Coupons', 'GiftCards', 'Subscriptions', 'Options', 'Pricing', 'Inventory', 'Shipping', 'Tax', 'Orders', 'Payments', 'Customers', 'Support', 'Database' ],
 	];
 
 	/**

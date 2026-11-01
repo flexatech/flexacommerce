@@ -6,6 +6,7 @@ namespace Flexa\Commerce\Cart;
 
 use Flexa\Commerce\Catalog\BundlePart;
 use Flexa\Commerce\Catalog\Product;
+use Flexa\Commerce\Catalog\SubscriptionPlan;
 use Flexa\Commerce\Catalog\Variant;
 use Flexa\Commerce\Contracts\Money;
 use Flexa\Commerce\Contracts\Pricing\PriceResolution;
@@ -27,6 +28,7 @@ final class CartItem {
 	/**
 	 * @param array<string,string> $option_stock the option choices that track stock, key => name (ADR-040)
 	 * @param list<BundlePart>     $parts        what one unit of a bundle holds (ADR-071)
+	 * @param ?Money               $recurring    a subscription line's price each period, before discounts (ADR-073)
 	 */
 	public function __construct(
 		public readonly CartLine $line,
@@ -39,6 +41,8 @@ final class CartItem {
 		public readonly int $fee = 0,
 		public readonly array $option_stock = [],
 		public readonly array $parts = [],
+		public readonly ?SubscriptionPlan $plan = null,
+		public readonly ?Money $recurring = null,
 	) {}
 
 	/** Nothing to ship: a virtual row, or a bundle of virtual rows (ADR-071). */

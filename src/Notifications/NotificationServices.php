@@ -79,6 +79,7 @@ final class NotificationServices {
 			new Emails\FailedOrder( $templates, $data ),
 			new Emails\NeedsAttention( $templates, $data ),
 			new Emails\CustomerInvoice( $templates, $data ),
+			new Emails\CustomerRenewalInvoice( $templates, $data ),
 		];
 		$all       = apply_filters( 'flexacommerce.emails.register', $core );
 		$byid      = [];

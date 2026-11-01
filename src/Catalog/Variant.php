@@ -147,7 +147,11 @@ final class Variant {
 		];
 	}
 
-	/** @param array<string,mixed> $changes property => new value */
+	/**
+	 * `subscription` takes a SubscriptionPlan or null and lands in `meta`.
+	 *
+	 * @param array<string,mixed> $changes property => new value
+	 */
 	public function with( array $changes ): self {
 		$props = get_object_vars( $this );
 		foreach ( $changes as $key => $value ) {
@@ -155,7 +159,19 @@ final class Variant {
 				$props[ $key ] = $value;
 			}
 		}
+		if ( array_key_exists( SubscriptionPlan::META, $changes ) ) {
+			$plan = $changes[ SubscriptionPlan::META ];
+			unset( $props['meta'][ SubscriptionPlan::META ] );
+			if ( $plan instanceof SubscriptionPlan ) {
+				$props['meta'][ SubscriptionPlan::META ] = $plan->to_array();
+			}
+		}
 		return new self( ...$props );
+	}
+
+	/** The row's own subscription plan (ADR-073); Product::plan_for() falls back to the base row. */
+	public function plan(): ?SubscriptionPlan {
+		return SubscriptionPlan::from_array( $this->meta[ SubscriptionPlan::META ] ?? null );
 	}
 
 	/**
@@ -238,6 +254,7 @@ final class Variant {
 			'downloadable'        => $this->downloadable,
 			'gift_card'           => $this->gift_card,
 			'downloads'           => $this->downloads->to_array(),
+			'subscription'        => $this->plan()?->to_array(),
 		];
 	}
 

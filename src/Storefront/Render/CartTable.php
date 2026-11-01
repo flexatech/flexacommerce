@@ -322,6 +322,18 @@ final class CartTable {
 		return $html === '' ? '' : '<p class="fxc-cart__includes">' . esc_html__( 'Includes:', 'flexacommerce' ) . '</p><ul class="fxc-cart__attributes">' . $html . '</ul>';
 	}
 
+	/**
+	 * What a subscription line costs later, under its name (ADR-073).
+	 *
+	 * `$live` follows quantity changes in the cart store.
+	 *
+	 * @param array<string,mixed> $item the item in the public cart shape
+	 */
+	public static function plan( array $item, bool $live = false ): string {
+		$text = is_array( $item['subscription'] ?? null ) ? (string) ( $item['subscription']['text'] ?? '' ) : '';
+		return $text === '' ? '' : '<p class="fxc-cart__plan"' . ( $live ? ' data-wp-text="state.linePlan"' : '' ) . '>' . esc_html( $text ) . '</p>';
+	}
+
 	/** @param array<string,mixed> $shown the item in the public cart shape, with display prices */
 	private function row( CartItem $item, array $shown ): string {
 		$line    = $item->line;
@@ -344,6 +356,7 @@ final class CartTable {
 			. ( $link !== '' ? '<a href="' . esc_url( $link ) . '">' . esc_html( $name ) . '</a>' : esc_html( $name ) )
 			. ( $labels !== '' ? '<ul class="fxc-cart__attributes">' . $labels . '</ul>' : '' )
 			. self::parts( (array) ( $shown['parts'] ?? [] ) )
+			. self::plan( $shown, true )
 			. ( $link !== '' && $this->editable( $item ) ? sprintf(
 				'<a class="fxc-cart__edit" href="%1$s" aria-label="%2$s">%3$s</a>',
 				esc_url( add_query_arg( AddToCartForm::EDIT, $line->key, $link ) ),

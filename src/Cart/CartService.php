@@ -65,6 +65,17 @@ final class CartService {
 		private readonly ?\Closure $credit = null,
 	) {}
 
+	/*
+	 * How resolve() prices subscription lines (ADR-073). FIRST is what the
+	 * shopper pays today: a trial makes the period free and the sign-up fee
+	 * is added. RECURRING is one renewal: the plain period price, with no
+	 * once-only option fee, coupon, fee rule or store credit. PLAIN prices
+	 * every line as a one-off purchase (orders made in the admin).
+	 */
+	public const FIRST     = 'first';
+	public const RECURRING = 'recurring';
+	public const PLAIN     = 'plain';
+
 	/** What the code box and the remove button send for the store credit row (ADR-072). */
 	public const CREDIT_CODE = 'store-credit';
 
@@ -98,8 +109,8 @@ final class CartService {
 	 * A cart that is never stored, priced as a shopper's would be: the rule
 	 * simulator (ADR-046). `$final` counts what is still unknown as not met.
 	 */
-	public function preview( Cart $cart, int $user_id, bool $final = false ): CartState {
-		return $this->resolve( $cart, $user_id, false, $final );
+	public function preview( Cart $cart, int $user_id, bool $final = false, string $mode = self::FIRST ): CartState {
+		return $this->resolve( $cart, $user_id, false, $final, $mode );
 	}
 
 	/**
@@ -742,7 +753,8 @@ final class CartService {
 		);
 	}
 
-	private function resolve( Cart $cart, int $user_id, bool $has_session, bool $final = false ): CartState {
+	private function resolve( Cart $cart, int $user_id, bool $has_session, bool $final = false, string $mode = self::FIRST ): CartState {
+		$recurring_only = $mode === self::RECURRING;
 		$this->load_products( array_map( static fn ( CartLine $l ): int => $l->product_id, $cart->lines ) );
 		$facts = $this->facts( $cart, $user_id, $final );
 
@@ -781,11 +793,20 @@ final class CartService {
 			$tracked      = [];
 			if ( $unit !== null && $line->options !== [] && $this->options !== null ) {
 				$options = ( $this->options )();
-				$fee     = $options->fee( $line->options );
+				$fee     = $recurring_only ? 0 : $options->fee( $line->options );
 				$tracked = $options->tracked( $line->options );
 				$unit    = self::with_extra( $unit, $options->extra( $line->options, $unit->active->amount, $line->quantity, Currency::exponent( $unit->active->currency ) ), $line->quantity );
 			}
-			$total = $unit !== null ? $this->pricing->line_total( $unit, $line->quantity ) : null;
+			$total     = $unit !== null ? $this->pricing->line_total( $unit, $line->quantity ) : null;
+			$plan      = $mode !== self::PLAIN ? $product->plan_for( $variant ) : null;
+			$recurring = $plan !== null ? $total : null;
+			if ( $plan !== null && $unit !== null && $total !== null && $mode === self::FIRST ) {
+				// Today's price: nothing for a trial period, plus the sign-up fee per unit.
+				$signup = new Money( $plan->signup_fee, $total->currency );
+				$active = $plan->trial_days > 0 ? $signup : $unit->active->add( $signup );
+				$total  = ( $plan->trial_days > 0 ? $total->multiply( 0 ) : $total )->add( $signup->multiply( $line->quantity ) );
+				$unit   = new PriceResolution( $unit->regular, $active, $unit->on_sale && $plan->trial_days === 0, null );
+			}
 			if ( $total !== null && $fee > 0 ) {
 				// An option charged once per line, whatever the quantity (ADR-029).
 				$total = $total->add( new Money( $fee, $total->currency ) );
@@ -811,13 +832,13 @@ final class CartService {
 						),
 				];
 			}
-			$items[] = new CartItem( $line, $product, $variant, $unit, $total, $availability, $status, $fee, $tracked, $parts );
+			$items[] = new CartItem( $line, $product, $variant, $unit, $total, $availability, $status, $fee, $tracked, $parts, $plan, $recurring );
 		}
 
 		$subtotal  = $this->pricing->sum( $totals );
 		$discounts = null;
 		// With no codes the coupons are still read when an automatic one may fit.
-		if ( $items !== [] && $this->coupons !== null && ( $cart->coupons !== [] || CouponRepository::has_automatic() ) ) {
+		if ( ! $recurring_only && $items !== [] && $this->coupons !== null && ( $cart->coupons !== [] || CouponRepository::has_automatic() ) ) {
 			$discounts = $this->coupons()->discounts( $cart->coupons, $items, $subtotal, $user_id, $facts );
 			if ( $cart->coupons === [] && $discounts->applied === [] && $discounts->next === null ) {
 				$discounts = null;
@@ -831,7 +852,7 @@ final class CartService {
 		}
 
 		$fees = [];
-		if ( $items !== [] && $this->pricing->rules() !== null ) {
+		if ( ! $recurring_only && $items !== [] && $this->pricing->rules() !== null ) {
 			$lines = [];
 			foreach ( $items as $item ) {
 				if ( $item->total !== null && $item->product !== null ) {
@@ -841,7 +862,7 @@ final class CartService {
 			$fees = $this->pricing->fees( $lines, $subtotal->currency, $user_id, $facts );
 		}
 
-		$credit = $user_id > 0 && $items !== [] && $this->credit !== null ? ( $this->credit )( $user_id ) : null;
+		$credit = ! $recurring_only && $user_id > 0 && $items !== [] && $this->credit !== null ? ( $this->credit )( $user_id ) : null;
 		return new CartState( $cart, $items, $subtotal, $notices, $has_session, $discounts, $fees, $credit );
 	}
 

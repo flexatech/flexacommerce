@@ -144,6 +144,9 @@ final class ProductService {
 						]
 					);
 				}
+				if ( $type !== ProductTypes::SIMPLE && $type !== ProductTypes::VARIABLE ) {
+					$base = $base->with( [ SubscriptionPlan::META => null ] );
+				}
 				$this->validate_row( $base, 'base' );
 
 				$variations = [];
@@ -157,6 +160,7 @@ final class ProductService {
 					] : [ 'gift_card' => false ];
 					$variations = array_map( static fn ( Variant $v ): Variant => $v->with( $gift ), $variations );
 				}
+				$this->check_plans( $before->id, $base, $variations );
 
 				$this->check_skus( $before->id, [ $base, ...$variations ] );
 				$children = $type === ProductTypes::GROUPED ? $this->children( $before->id, $input->children ?? $before->children ) : [];
@@ -232,6 +236,31 @@ final class ProductService {
 	}
 
 	/**
+	 * A subscription renews the same items on a schedule (ADR-073), so a
+	 * gift card or a bundle part cannot be one.
+	 *
+	 * @param list<Variant> $variations
+	 * @throws InvalidProduct
+	 */
+	private function check_plans( int $product_id, Variant $base, array $variations ): void {
+		$paths = $base->plan() !== null ? [ 'base.subscription' ] : [];
+		foreach ( $variations as $i => $variation ) {
+			if ( $variation->plan() !== null ) {
+				$paths[] = 'variations.' . $i . '.subscription';
+			}
+		}
+		if ( $paths === [] ) {
+			return;
+		}
+		if ( $base->gift_card ) {
+			throw new InvalidProduct( __( 'A gift card cannot be sold as a subscription.', 'flexacommerce' ), $paths[0] );
+		}
+		if ( $this->products->bundles_of( $product_id ) !== [] ) {
+			throw new InvalidProduct( __( 'This product is part of a bundle, so it cannot be sold as a subscription.', 'flexacommerce' ), $paths[0] );
+		}
+	}
+
+	/**
 	 * The rows a bundle holds, checked (ADR-071): rows customers can buy
 	 * of simple and variable products, with every attribute value fixed,
 	 * each once. Gift cards, bundles and the bundle itself are refused.
@@ -276,6 +305,9 @@ final class ProductService {
 			}
 			if ( $product->is_gift_card() ) {
 				throw new InvalidProduct( __( 'A bundle cannot hold a gift card.', 'flexacommerce' ), $path );
+			}
+			if ( $product->is_subscription() ) {
+				throw new InvalidProduct( __( 'A bundle cannot hold a subscription.', 'flexacommerce' ), $path );
 			}
 			if ( isset( $seen[ $variant->id ] ) ) {
 				throw new InvalidProduct( __( 'The same item is in the bundle twice. Raise its quantity instead.', 'flexacommerce' ), $path );

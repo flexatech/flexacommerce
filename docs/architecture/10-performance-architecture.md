@@ -391,6 +391,8 @@ The order CSV export (ADR-070) runs only in the admin and adds nothing to boot o
 
 Product bundles (ADR-071) add no column, table or boot-time hook. The bundle's price and stock status are written on its base row when it or a part changes, so catalog pages, sorting and filters read them like any product's and the P budgets did not move. Only a bundle's own product page, a cart holding a bundle and checkout read its parts (at most 20) through the product loader; a part finds its bundles from `_fxc_bundled_in` without a query.
 
+Subscriptions (ADR-073) add no column and no boot-time hook. The plan lives in the variant `meta` already loaded with each row, so catalog pages and carts without a plan read nothing more. The account menu reads the user meta `_fxc_has_subscriptions` (cached with the user) before it touches the table. The hourly cron reads due renewals and due endings with one query each on the `(status, next_payment_at)` and `(status, end_at)` indexes, 25 rows per run, and checkout builds the renewal snapshot only for carts that hold a plan. The P budgets did not move.
+
 The Playwright pass with axe on Twenty Twenty-Five, Astra and Twenty Twenty-One is green (doc 07 phase 5 notes).
 
 **T3 (2026-10-25).** The §6.4 set ran on dataset M at 1 and 10 VU against WooCommerce 11.2.1 default (HPOS on) and tuned (the list is in the report). Report: `docs/benchmarks/2026-10-25-phase5.md`.

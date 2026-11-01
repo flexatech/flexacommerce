@@ -11,9 +11,10 @@ import { formatMoney } from "@/shared/lib/units";
 import { canPickImage, pickImage } from "../../components/pickImage";
 import { combinationLabel, newVariation } from "./draft";
 import { DownloadFields } from "./DownloadFields";
+import { SubscriptionFields } from "./SubscriptionFields";
 import { Field, IntInput, MoneyInput, Toggle } from "./fields";
 import { InventoryFields, PricingFields, ShippingFields, TaxFields, type FieldErrors } from "./RowFields";
-import type { ProductAttribute, VariantRow } from "./types";
+import type { ProductAttribute, SubscriptionPlan, VariantRow } from "./types";
 
 type BulkAction = "" | "regular_price" | "sale_price" | "stock_quantity" | "enable" | "disable" | "delete";
 
@@ -157,6 +158,7 @@ export function VariationsPanel({
                                     path={path}
                                     errors={errors}
                                     baseManagesStock={base.manage_stock}
+                                    basePlan={base.gift_card ? undefined : base.subscription}
                                     onChange={(patch) => update(index, patch)}
                                     onRemove={() => {
                                         onChange(rows.filter((_, i) => i !== index));
@@ -254,6 +256,7 @@ function VariationEditor({
     path,
     errors,
     baseManagesStock,
+    basePlan,
     onChange,
     onRemove,
 }: {
@@ -262,6 +265,8 @@ function VariationEditor({
     path: string;
     errors: FieldErrors;
     baseManagesStock: boolean;
+    /** The product's plan; undefined when the product cannot be a subscription. */
+    basePlan: SubscriptionPlan | null | undefined;
     onChange: (patch: Partial<VariantRow>) => void;
     onRemove: () => void;
 }) {
@@ -295,6 +300,7 @@ function VariationEditor({
             <InventoryFields row={row} onChange={onChange} errors={errors} path={path} baseManagesStock={baseManagesStock} />
             {!row.virtual && <ShippingFields row={row} onChange={onChange} errors={errors} path={path} />}
             {row.downloadable && <DownloadFields row={row} onChange={onChange} errors={errors} path={path} />}
+            {basePlan !== undefined && <SubscriptionFields row={row} onChange={onChange} errors={errors} path={path} inherited={basePlan} />}
             <TaxFields row={row} onChange={onChange} errors={errors} path={path} />
 
             <Field label={__("Description")}>

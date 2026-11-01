@@ -29,6 +29,7 @@ final class Menu {
 	/** Submenu order; core adds the product list itself (show_in_menu). */
 	private const ORDER = [
 		self::SLUG . '-orders',
+		self::SLUG . '-subscriptions',
 		self::SLUG . '-customers',
 		self::SLUG . '-recovery',
 		self::SLUG . '-stock-alerts',
@@ -96,6 +97,17 @@ final class Menu {
 				__( 'Orders', 'flexacommerce' ),
 				Capabilities::VIEW_ORDERS,
 				self::SLUG . '-orders',
+				[ $this, 'render_page' ]
+			)
+		);
+		$this->add(
+			self::SLUG . '-subscriptions',
+			(string) add_submenu_page(
+				self::SLUG,
+				__( 'Subscriptions', 'flexacommerce' ),
+				__( 'Subscriptions', 'flexacommerce' ),
+				Capabilities::VIEW_ORDERS,
+				self::SLUG . '-subscriptions',
 				[ $this, 'render_page' ]
 			)
 		);

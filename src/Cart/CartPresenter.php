@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Flexa\Commerce\Cart;
 
 use Flexa\Commerce\Catalog\BundlePart;
+use Flexa\Commerce\Catalog\SubscriptionPlan;
 use Flexa\Commerce\Contracts\Money;
 use Flexa\Commerce\Coupons\AppliedCoupon;
 use Flexa\Commerce\Coupons\Coupon;
@@ -205,7 +206,41 @@ final class CartPresenter {
 				'on_sale' => $item->unit->is_reduced(),
 			] : null,
 			'total'        => $item->total !== null ? $this->money( $item->total ) : null,
+			// The plan of a subscription line and what it costs each period (ADR-073).
+			'subscription' => $item->plan !== null && $item->recurring !== null ? $this->subscription( $item->plan, $item->recurring ) : null,
 		];
+	}
+
+	/**
+	 * A subscription line's plan with the price per period and the line in
+	 * words, "Then $10.00 / month for 12 months". CartTaxes calls it again
+	 * with the price as the store shows it.
+	 *
+	 * @return array<string,mixed>
+	 */
+	public function subscription( SubscriptionPlan $plan, Money $recurring ): array {
+		return $plan->to_array() + [
+			'recurring' => $this->money( $recurring ),
+			'text'      => self::plan_text( $plan, $this->pricing->format( $recurring ), $this->pricing->format( new Money( $plan->signup_fee, $recurring->currency ) ) ),
+		];
+	}
+
+	/** What a cart or order line says under a subscription product. */
+	public static function plan_text( SubscriptionPlan $plan, string $recurring, string $fee ): string {
+		$first = $plan->trial_days > 0
+			/* translators: 1: free trial length in days, 2: the price per period such as "$10.00 / month". */
+			? sprintf( _n( 'Free for %1$d day, then %2$s', 'Free for %1$d days, then %2$s', $plan->trial_days, 'flexacommerce' ), $plan->trial_days, $plan->per( $recurring ) )
+			/* translators: %s: the price per period such as "$10.00 / month". */
+			: sprintf( __( 'Then %s', 'flexacommerce' ), $plan->per( $recurring ) );
+		if ( $plan->length > 0 ) {
+			/* translators: 1: the text so far, 2: number of payments. */
+			$first = sprintf( _n( '%1$s, %2$d payment', '%1$s, %2$d payments', $plan->length, 'flexacommerce' ), $first, $plan->length );
+		}
+		if ( $plan->signup_fee > 0 ) {
+			/* translators: 1: the text so far, 2: the sign-up fee per item. */
+			$first = sprintf( __( '%1$s. Includes a %2$s sign-up fee per item.', 'flexacommerce' ), $first, $fee );
+		}
+		return $first;
 	}
 
 	/** @return array{amount:int,formatted:string} */

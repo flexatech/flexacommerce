@@ -7,6 +7,7 @@ namespace Flexa\Commerce\Privacy;
 use Flexa\Commerce\Concerns\HasInstance;
 use Flexa\Commerce\GiftCards\GiftCard;
 use Flexa\Commerce\Plugin;
+use Flexa\Commerce\Subscriptions\SubscriptionStatus;
 use Flexa\Commerce\Support\Settings;
 
 defined( 'ABSPATH' ) || exit;
@@ -32,37 +33,41 @@ final class Privacy {
 	 * @return array<string,array<string,mixed>>
 	 */
 	public function exporters( array $exporters ): array {
-		$exporters['flexacommerce-orders']       = [
+		$exporters['flexacommerce-orders']        = [
 			'exporter_friendly_name' => __( 'FlexaCommerce orders', 'flexacommerce' ),
 			'callback'               => [ $this, 'export_orders' ],
 		];
-		$exporters['flexacommerce-cart']         = [
+		$exporters['flexacommerce-cart']          = [
 			'exporter_friendly_name' => __( 'FlexaCommerce cart', 'flexacommerce' ),
 			'callback'               => [ $this, 'export_cart' ],
 		];
-		$exporters['flexacommerce-addresses']    = [
+		$exporters['flexacommerce-addresses']     = [
 			'exporter_friendly_name' => __( 'FlexaCommerce saved addresses', 'flexacommerce' ),
 			'callback'               => [ $this, 'export_addresses' ],
 		];
-		$exporters['flexacommerce-downloads']    = [
+		$exporters['flexacommerce-downloads']     = [
 			'exporter_friendly_name' => __( 'FlexaCommerce downloads', 'flexacommerce' ),
 			'callback'               => [ $this, 'export_downloads' ],
 		];
-		$exporters['flexacommerce-reminders']    = [
+		$exporters['flexacommerce-reminders']     = [
 			'exporter_friendly_name' => __( 'FlexaCommerce cart reminders', 'flexacommerce' ),
 			'callback'               => [ $this, 'export_reminders' ],
 		];
-		$exporters['flexacommerce-stock-alerts'] = [
+		$exporters['flexacommerce-stock-alerts']  = [
 			'exporter_friendly_name' => __( 'FlexaCommerce back-in-stock emails', 'flexacommerce' ),
 			'callback'               => [ $this, 'export_stock_alerts' ],
 		];
-		$exporters['flexacommerce-wishlist']     = [
+		$exporters['flexacommerce-wishlist']      = [
 			'exporter_friendly_name' => __( 'FlexaCommerce wishlist', 'flexacommerce' ),
 			'callback'               => [ $this, 'export_wishlist' ],
 		];
-		$exporters['flexacommerce-gift-cards']   = [
+		$exporters['flexacommerce-gift-cards']    = [
 			'exporter_friendly_name' => __( 'FlexaCommerce gift cards', 'flexacommerce' ),
 			'callback'               => [ $this, 'export_gift_cards' ],
+		];
+		$exporters['flexacommerce-subscriptions'] = [
+			'exporter_friendly_name' => __( 'FlexaCommerce subscriptions', 'flexacommerce' ),
+			'callback'               => [ $this, 'export_subscriptions' ],
 		];
 		return $exporters;
 	}
@@ -72,37 +77,41 @@ final class Privacy {
 	 * @return array<string,array<string,mixed>>
 	 */
 	public function erasers( array $erasers ): array {
-		$erasers['flexacommerce-orders']       = [
+		$erasers['flexacommerce-orders']        = [
 			'eraser_friendly_name' => __( 'FlexaCommerce orders', 'flexacommerce' ),
 			'callback'             => [ $this, 'erase_orders' ],
 		];
-		$erasers['flexacommerce-cart']         = [
+		$erasers['flexacommerce-cart']          = [
 			'eraser_friendly_name' => __( 'FlexaCommerce cart', 'flexacommerce' ),
 			'callback'             => [ $this, 'erase_cart' ],
 		];
-		$erasers['flexacommerce-addresses']    = [
+		$erasers['flexacommerce-addresses']     = [
 			'eraser_friendly_name' => __( 'FlexaCommerce saved addresses', 'flexacommerce' ),
 			'callback'             => [ $this, 'erase_addresses' ],
 		];
-		$erasers['flexacommerce-downloads']    = [
+		$erasers['flexacommerce-downloads']     = [
 			'eraser_friendly_name' => __( 'FlexaCommerce downloads', 'flexacommerce' ),
 			'callback'             => [ $this, 'erase_downloads' ],
 		];
-		$erasers['flexacommerce-reminders']    = [
+		$erasers['flexacommerce-reminders']     = [
 			'eraser_friendly_name' => __( 'FlexaCommerce cart reminders', 'flexacommerce' ),
 			'callback'             => [ $this, 'erase_reminders' ],
 		];
-		$erasers['flexacommerce-stock-alerts'] = [
+		$erasers['flexacommerce-stock-alerts']  = [
 			'eraser_friendly_name' => __( 'FlexaCommerce back-in-stock emails', 'flexacommerce' ),
 			'callback'             => [ $this, 'erase_stock_alerts' ],
 		];
-		$erasers['flexacommerce-wishlist']     = [
+		$erasers['flexacommerce-wishlist']      = [
 			'eraser_friendly_name' => __( 'FlexaCommerce wishlist', 'flexacommerce' ),
 			'callback'             => [ $this, 'erase_wishlist' ],
 		];
-		$erasers['flexacommerce-gift-cards']   = [
+		$erasers['flexacommerce-gift-cards']    = [
 			'eraser_friendly_name' => __( 'FlexaCommerce gift cards', 'flexacommerce' ),
 			'callback'             => [ $this, 'erase_gift_cards' ],
+		];
+		$erasers['flexacommerce-subscriptions'] = [
+			'eraser_friendly_name' => __( 'FlexaCommerce subscriptions', 'flexacommerce' ),
+			'callback'             => [ $this, 'erase_subscriptions' ],
 		];
 		return $erasers;
 	}
@@ -492,6 +501,75 @@ final class Privacy {
 			'items_removed'  => $cleared > 0,
 			'items_retained' => $cleared > 0,
 			'messages'       => $cleared > 0 ? [ __( 'Gift cards sent to this address keep their code and balance; the recipient details were removed.', 'flexacommerce' ) ] : [],
+			'done'           => true,
+		];
+	}
+
+	/**
+	 * Subscriptions of the address (ADR-073): what renews, at what price,
+	 * and when.
+	 *
+	 * @return array{data:list<array<string,mixed>>,done:bool}
+	 */
+	public function export_subscriptions( string $email, int $page = 1 ): array {
+		unset( $page );
+		$service = Plugin::instance()->subscriptions();
+		$data    = [];
+		foreach ( $service->repository()->for_email( strtolower( $email ) ) as $row ) {
+			$fields = [
+				[
+					'name'  => __( 'Subscription', 'flexacommerce' ),
+					'value' => '#' . $row->id . ' ' . $row->title(),
+				],
+				[
+					'name'  => __( 'Status', 'flexacommerce' ),
+					'value' => SubscriptionStatus::label( $row->status ),
+				],
+				[
+					'name'  => __( 'Price', 'flexacommerce' ),
+					'value' => $service->price_text( $row ),
+				],
+			];
+			if ( $row->start_at !== null ) {
+				$fields[] = [
+					'name'  => __( 'Started', 'flexacommerce' ),
+					'value' => get_date_from_gmt( $row->start_at ),
+				];
+			}
+			if ( $row->next_payment_at !== null ) {
+				$fields[] = [
+					'name'  => __( 'Next payment', 'flexacommerce' ),
+					'value' => get_date_from_gmt( $row->next_payment_at ),
+				];
+			}
+			$data[] = [
+				'group_id'    => 'flexacommerce-subscriptions',
+				'group_label' => __( 'Subscriptions', 'flexacommerce' ),
+				'item_id'     => 'fxc-subscription-' . $row->id,
+				'data'        => $fields,
+			];
+		}
+		return [
+			'data' => $data,
+			'done' => true,
+		];
+	}
+
+	/**
+	 * Clears the email and addresses of ended subscriptions. A running one
+	 * keeps them: it still bills and ships; the shopper cancels it first.
+	 *
+	 * @return array{items_removed:bool,items_retained:bool,messages:list<string>,done:bool}
+	 */
+	public function erase_subscriptions( string $email, int $page = 1 ): array {
+		unset( $page );
+		$repository = Plugin::instance()->subscriptions()->repository();
+		$cleared    = $repository->anonymize_email( strtolower( $email ), gmdate( 'Y-m-d H:i:s' ) );
+		$running    = count( $repository->for_email( strtolower( $email ) ) );
+		return [
+			'items_removed'  => $cleared > 0,
+			'items_retained' => $running > 0,
+			'messages'       => $running > 0 ? [ __( 'Subscriptions that are still running keep the email and addresses; cancel them first.', 'flexacommerce' ) ] : [],
 			'done'           => true,
 		];
 	}

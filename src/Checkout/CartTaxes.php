@@ -6,6 +6,7 @@ namespace Flexa\Commerce\Checkout;
 
 use Flexa\Commerce\Cart\CartPresenter;
 use Flexa\Commerce\Cart\CartState;
+use Flexa\Commerce\Catalog\SubscriptionPlan;
 use Flexa\Commerce\Contracts\Exceptions\TaxUnavailable;
 use Flexa\Commerce\Contracts\Money;
 use Flexa\Commerce\Contracts\Shipping\ShippingRate;
@@ -230,6 +231,7 @@ final class CartTaxes {
 			$result = is_array( $item ) ? $shown_lines->line( (string) $item['key'] ) : null;
 			if ( is_array( $item ) && $result !== null ) {
 				$shown         = $incl ? $result->net->add( $result->total() ) : $result->net;
+				$entered       = (int) ( $item['total']['amount'] ?? 0 );
 				$item['total'] = $this->presenter->money( $shown );
 				$quantity      = max( 1, (int) $item['quantity'] );
 				if ( is_array( $item['prices'] ) && (int) $item['prices']['active']['amount'] > 0 ) {
@@ -238,6 +240,11 @@ final class CartTaxes {
 					$unit                      = intdiv( $shown->amount + intdiv( $quantity, 2 ), $quantity );
 					$item['prices']['regular'] = $this->presenter->money( new Money( IntMath::mul_div_half_up( (int) $item['prices']['regular']['amount'], $unit, $active ), $shown->currency ) );
 					$item['prices']['active']  = $this->presenter->money( new Money( $unit, $shown->currency ) );
+				}
+				$plan = is_array( $item['subscription'] ?? null ) ? SubscriptionPlan::from_array( $item['subscription'] ) : null;
+				if ( $plan !== null && $entered > 0 ) {
+					// The price each period at the rate the line shows; a free trial line keeps the price as entered (ADR-073).
+					$item['subscription'] = $this->presenter->subscription( $plan, new Money( IntMath::mul_div_half_up( (int) $item['subscription']['recurring']['amount'], $shown->amount, $entered ), $shown->currency ) );
 				}
 			}
 			$items[] = $item;

@@ -10,6 +10,7 @@ use Flexa\Commerce\Concerns\HasInstance;
 use Flexa\Commerce\Customers\CustomerProfile;
 use Flexa\Commerce\Orders\Order;
 use Flexa\Commerce\Orders\OrderAccess;
+use Flexa\Commerce\Orders\TransitionContext;
 use Flexa\Commerce\Plugin;
 use Flexa\Commerce\Storefront\Render\Account;
 use Flexa\Commerce\Storefront\Render\Component;
@@ -23,7 +24,8 @@ defined( 'ABSPATH' ) || exit;
 
 /**
  * The account page (doc 02 §6.3): dashboard, orders, one order, the saved
- * addresses, the account details and the store credit (ADR-072). Sub-pages are rewrite endpoints on
+ * addresses, the account details, the store credit (ADR-072) and the
+ * subscriptions (ADR-073). Sub-pages are rewrite endpoints on
  * the page (PostTypes::ACCOUNT_ENDPOINTS). Forms post to the page itself:
  * template_redirect checks the nonce and the origin, saves, and redirects
  * with a notice; on errors the page renders again with the posted values.
@@ -112,6 +114,8 @@ final class AccountPage {
 			$this->save_address( $user );
 		} elseif ( $action === 'details' ) {
 			$this->save_details( $user );
+		} elseif ( $action === 'subscription' ) {
+			$this->change_subscription( $user );
 		}
 	}
 
@@ -146,6 +150,8 @@ final class AccountPage {
 			'edit-account' => $view->details( $user, $this->posted, $this->errors ),
 			'wishlist' => $this->wishlist_content( $user ),
 			'store-credit' => $view->credit( $user ),
+			'subscriptions' => $view->subscriptions( $user ),
+			'view-subscription' => $view->subscription( Plugin::instance()->subscriptions()->owned( absint( $value ), $user ), $this->errors ),
 			default => $view->dashboard( $user ),
 		};
 		return $view->page( $endpoint, $saved, $content );
@@ -289,6 +295,31 @@ final class AccountPage {
 		/** Fires after a customer saved their account details on the account page. */
 		do_action( 'flexacommerce.customer.details_saved', $user );
 		self::redirect( add_query_arg( self::SAVED, 'account', self::url( 'edit-account' ) ) );
+	}
+
+	/** Cancel or reactivate a subscription of the account (ADR-073). */
+	private function change_subscription( int $user ): void {
+		$service = Plugin::instance()->subscriptions();
+		$id      = absint( is_scalar( $this->posted['subscription_id'] ?? null ) ? $this->posted['subscription_id'] : 0 );
+		$do      = sanitize_key( is_scalar( $this->posted['subscription_do'] ?? null ) ? (string) $this->posted['subscription_do'] : '' );
+		if ( $service->owned( $id, $user ) === null ) {
+			$this->errors = [ 'form' => __( 'Subscription not found.', 'flexacommerce' ) ];
+			return;
+		}
+		$ctx = new TransitionContext( 'customer', $user );
+		try {
+			if ( $do === 'reactivate' ) {
+				$service->reactivate( $id, $ctx );
+			} elseif ( $do === 'cancel' ) {
+				$service->cancel( $id, true, $ctx );
+			} else {
+				return;
+			}
+		} catch ( \InvalidArgumentException $e ) {
+			$this->errors = [ 'form' => $e->getMessage() ];
+			return;
+		}
+		self::redirect( add_query_arg( self::SAVED, 'subscription_' . $do, self::url( 'view-subscription', (string) $id ) ) );
 	}
 
 	private function verified( string $action ): bool {

@@ -7,9 +7,11 @@ namespace Flexa\Commerce\Storefront\Render;
 use Flexa\Commerce\Cart\CartService;
 use Flexa\Commerce\Catalog\Product;
 use Flexa\Commerce\Catalog\Variant;
+use Flexa\Commerce\Contracts\Money;
 use Flexa\Commerce\Contracts\Pricing\PriceResolution;
 use Flexa\Commerce\Plugin;
 use Flexa\Commerce\Pricing\PricingService;
+use Flexa\Commerce\Support\Settings;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -50,9 +52,21 @@ final class ProductPrice {
 				'<span class="fxc-price__amount">' . esc_html( $this->pricing->format( $low->active ) ) . '</span>',
 				'<span class="fxc-price__amount">' . esc_html( $this->pricing->format( $high->active ) ) . '</span>'
 			);
-			return '<p class="fxc-price fxc-price--range">' . $text . self::suffix( $suffix ) . '</p>';
+			return $this->with_plan( '<p class="fxc-price fxc-price--range">' . $text . self::suffix( $suffix ) . '</p>', $owner, $row );
 		}
-		return self::single( $this->pricing, $low, $suffix );
+		return $this->with_plan( self::single( $this->pricing, $low, $suffix ), $owner, $row );
+	}
+
+	/** A subscription price says how often it is paid, and the trial and sign-up fee under it (ADR-073). */
+	private function with_plan( string $html, Product $product, Variant $row ): string {
+		$plan = $product->plan_for( $row );
+		if ( $plan === null ) {
+			return $html;
+		}
+		$at    = strrpos( $html, '</p>' );
+		$html  = $at === false ? $html : substr_replace( $html, ' <span class="fxc-price__period">' . esc_html( $plan->period_label() ) . '</span></p>', $at, 4 );
+		$terms = $plan->terms( $this->pricing->format( new Money( $plan->signup_fee, Settings::string( 'currency' ) ) ) );
+		return $html . ( $terms !== '' ? '<p class="fxc-price__terms">' . esc_html( $terms ) . '</p>' : '' );
 	}
 
 	/**

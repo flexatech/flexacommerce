@@ -139,6 +139,11 @@ function __( string $text, string $domain = 'default' ): string {
 	return $text;
 }
 
+function _n( string $single, string $plural, int $number, string $domain = 'default' ): string {
+	unset( $domain );
+	return $number === 1 ? $single : $plural;
+}
+
 function sanitize_text_field( string $text ): string {
 	return trim( (string) preg_replace( '/[\r\n\t ]+/', ' ', strip_tags( $text ) ) );
 }
