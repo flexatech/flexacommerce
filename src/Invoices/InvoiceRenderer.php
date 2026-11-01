@@ -353,9 +353,13 @@ final class InvoiceRenderer {
 		$this->table_header();
 
 		foreach ( $order->items_of_type( OrderItem::PRODUCT ) as $item ) {
-			$lines = [];
-			foreach ( $this->pdf->wrap( $item->name, 'regular', 9.5, $this->columns[0]['width'] ) as $line ) {
-				$lines[] = [ $line, 'regular', 9.5, self::TEXT ];
+			// A bundle's parts sit under it, indented and without prices (ADR-071).
+			$part   = $item->is_bundle_part();
+			$indent = $part ? 12 : 0;
+			$width  = $this->columns[0]['width'] - $indent;
+			$lines  = [];
+			foreach ( $this->pdf->wrap( $item->name, 'regular', 9.5, $width ) as $line ) {
+				$lines[] = [ $line, 'regular', 9.5, $part ? self::MUTED : self::TEXT ];
 			}
 			$extra = [];
 			foreach ( $item->attributes as $attribute ) {
@@ -366,7 +370,7 @@ final class InvoiceRenderer {
 				$extra[] = sprintf( __( 'SKU: %s', 'flexacommerce' ), (string) $item->sku );
 			}
 			foreach ( $extra as $text ) {
-				foreach ( $this->pdf->wrap( $text, 'regular', 8, $this->columns[0]['width'] ) as $line ) {
+				foreach ( $this->pdf->wrap( $text, 'regular', 8, $width ) as $line ) {
 					$lines[] = [ $line, 'regular', 8, self::MUTED ];
 				}
 			}
@@ -376,11 +380,11 @@ final class InvoiceRenderer {
 			$y = $this->y + 8;
 			foreach ( $lines as $i => [ $text, $font, $size, $color ] ) {
 				$y += $size + ( $i === 0 ? 0 : 3.5 );
-				$this->pdf->text( $this->columns[0]['x'], $y, $text, $font, $size, $color );
+				$this->pdf->text( $this->columns[0]['x'] + $indent, $y, $text, $font, $size, $color );
 			}
 			$first = $this->y + 8 + 9.5;
 			$this->pdf->text( $this->columns[1]['x'], $first, number_format_i18n( $item->quantity ), 'regular', 9.5, self::TEXT, 'right' );
-			if ( $prices ) {
+			if ( $prices && ! $part ) {
 				$this->pdf->text( $this->columns[2]['x'], $first, $this->money( $order, $item->unit_price ), 'regular', 9.5, self::TEXT, 'right' );
 				$this->pdf->text( $this->columns[3]['x'], $first, $this->money( $order, $item->subtotal ), 'regular', 9.5, self::TEXT, 'right' );
 			}

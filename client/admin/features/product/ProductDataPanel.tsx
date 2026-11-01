@@ -7,6 +7,7 @@ import { Select } from "@/shared/components/ui/select";
 import { cn } from "@/shared/lib/cn";
 import { __, _n, sprintf } from "@/shared/lib/i18n";
 import { AttributesPanel } from "./AttributesPanel";
+import { BundleFields } from "./BundleFields";
 import { DownloadFields } from "./DownloadFields";
 import type { Draft } from "./draft";
 import { Field, InvalidFields, Toggle } from "./fields";
@@ -47,14 +48,18 @@ export function ProductDataPanel({ editor }: { editor: ProductDraftState }) {
     const isVariable = draft.type === "variable";
     const isGrouped = draft.type === "grouped";
     const isExternal = draft.type === "external";
+    const isBundle = draft.type === "bundle";
+    const bundle = draft.bundle ?? { mode: "fixed" as const, discount: 0, items: [] };
     // Grouped and external products are not sold here: no stock, shipping or files (ADR-062).
     const notSold = isGrouped || isExternal;
+    // A bundle's items hold its stock, weight and files (ADR-071).
+    const ownRows = !notSold && !isBundle;
     // A variable product sets these on each variation; the shipping tab then holds the defaults.
-    const noShipping = notSold || (!isVariable && draft.base.virtual);
-    const sellsFiles = !notSold && !isVariable && draft.base.downloadable;
+    const noShipping = !ownRows || (!isVariable && draft.base.virtual);
+    const sellsFiles = ownRows && !isVariable && draft.base.downloadable;
     const tabs: { id: Tab; label: string; icon: typeof Tag; hidden?: boolean }[] = [
         { id: "general", label: __("General"), icon: Tag },
-        { id: "inventory", label: __("Inventory"), icon: Boxes, hidden: notSold },
+        { id: "inventory", label: __("Inventory"), icon: Boxes, hidden: !ownRows },
         { id: "shipping", label: __("Shipping"), icon: Truck, hidden: noShipping },
         { id: "downloads", label: __("Downloads"), icon: Download, hidden: !sellsFiles },
         { id: "gallery", label: __("Gallery"), icon: Images },
@@ -84,6 +89,7 @@ export function ProductDataPanel({ editor }: { editor: ProductDraftState }) {
                                     { value: "variable", label: __("Variable product") },
                                     { value: "grouped", label: __("Grouped product") },
                                     { value: "external", label: __("External/Affiliate product") },
+                                    { value: "bundle", label: __("Bundle") },
                                 ]}
                                 onChange={(event) => set({ type: event.target.value as ProductType })}
                             />
@@ -101,13 +107,13 @@ export function ProductDataPanel({ editor }: { editor: ProductDraftState }) {
                     </Field>
                     <div className="fxc:flex fxc:flex-wrap fxc:gap-4 fxc:pb-2">
                         <Toggle checked={draft.featured} onChange={(featured) => set({ featured })} label={__("Featured")} />
-                        {!isVariable && !notSold && (
+                        {!isVariable && ownRows && (
                             <>
                                 <Toggle checked={draft.base.virtual} onChange={(virtual) => setBase({ virtual })} label={__("Virtual")} />
                                 <Toggle checked={draft.base.downloadable} onChange={(downloadable) => setBase({ downloadable })} label={__("Downloadable")} />
                             </>
                         )}
-                        {!notSold && (
+                        {ownRows && (
                             <Toggle
                                 checked={draft.base.gift_card}
                                 onChange={(gift_card) => setBase(gift_card ? { gift_card, virtual: true, tax_status: "none" } : { gift_card })}
@@ -163,9 +169,10 @@ export function ProductDataPanel({ editor }: { editor: ProductDraftState }) {
                                 {isExternal && (
                                     <ExternalFields url={draft.product_url} text={draft.button_text} errors={errors} onChange={(patch) => set(patch)} />
                                 )}
+                                {isBundle && <BundleFields bundle={bundle} productId={draft.id} errors={errors} onChange={(next) => set({ bundle: next })} />}
                                 {isGrouped ? (
                                     <GroupedFields productId={draft.id} items={draft.children} errors={errors} onChange={(children) => set({ children })} />
-                                ) : isVariable ? (
+                                ) : isBundle && bundle.mode !== "fixed" ? null : isVariable ? (
                                     <p className="fxc:text-muted-foreground fxc:text-sm">
                                         {__("Prices of a variable product are set on each variation. The shop shows the range from the lowest to the highest price.")}
                                     </p>

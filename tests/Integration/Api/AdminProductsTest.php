@@ -206,6 +206,60 @@ final class AdminProductsTest extends CatalogTestCase {
 		self::assertSame( [ 'https://partner.example/lamp', '' ], [ $response->get_data()['product_url'], $response->get_data()['button_text'] ] );
 	}
 
+	public function test_a_bundle_saves_its_items_and_reads_them_back_with_labels(): void {
+		$item = $this->product( 'Item ' . $this->run );
+		$this->service()->save(
+			$item,
+			\Flexa\Commerce\Catalog\ProductInput::from_array(
+				[
+					'base' => [
+						'sku'           => 'IT-' . $this->run,
+						'regular_price' => 700,
+					],
+				]
+			)
+		);
+		$response = $this->send(
+			'POST',
+			'/admin/products',
+			[
+				'title'  => 'Kit',
+				'type'   => 'bundle',
+				'bundle' => [
+					'mode'  => 'sum',
+					'items' => [
+						[
+							'product_id' => $item,
+							'quantity'   => 3,
+						],
+					],
+				],
+			]
+		);
+		self::assertSame( 201, $response->get_status(), (string) wp_json_encode( $response->get_data() ) );
+		$data = $response->get_data();
+		$this->track_post( $data['id'] );
+		self::assertSame( 'bundle', $data['type'] );
+		self::assertSame( 'sum', $data['bundle']['mode'] );
+		self::assertSame( [ $item, 3, 'IT-' . $this->run, false ], [ $data['bundle']['items'][0]['product_id'], $data['bundle']['items'][0]['quantity'], $data['bundle']['items'][0]['sku'], $data['bundle']['items'][0]['missing'] ] );
+		self::assertSame( 2100, $data['base']['regular_price'] );
+
+		// A save without `bundle` keeps the items.
+		$after = $this->send( 'PUT', '/admin/products/' . $data['id'], [ 'title' => 'Kit 2' ] )->get_data();
+		self::assertCount( 1, $after['bundle']['items'] );
+
+		$bad = $this->send(
+			'POST',
+			'/admin/products',
+			[
+				'title'  => 'Kit',
+				'type'   => 'bundle',
+				'bundle' => [ 'items' => [ [ 'product_id' => $data['id'] ] ] ],
+			]
+		);
+		self::assertSame( 400, $bad->get_status() );
+	}
+
 	private function count_products(): int {
 		global $wpdb;
 		return (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type = %s", PostTypes::PRODUCT ) );

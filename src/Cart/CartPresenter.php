@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Flexa\Commerce\Cart;
 
+use Flexa\Commerce\Catalog\BundlePart;
 use Flexa\Commerce\Contracts\Money;
 use Flexa\Commerce\Coupons\AppliedCoupon;
 use Flexa\Commerce\Coupons\Coupon;
@@ -181,6 +182,21 @@ final class CartPresenter {
 			'permalink'    => $product !== null ? (string) get_permalink( $product->id ) : '',
 			'image_id'     => $image,
 			'attributes'   => $line->labels,
+			// What one bundle holds (ADR-071).
+			'parts'        => array_map(
+				fn ( BundlePart $part ): array => [
+					'name'       => $part->product->title,
+					'quantity'   => $part->quantity,
+					'attributes' => array_map(
+						static fn ( array $label ): array => [
+							'name'  => $label['label'],
+							'value' => $label['value'],
+						],
+						$this->cart->part_labels( $part )
+					),
+				],
+				$item->parts
+			),
 			'status'       => $item->status,
 			'max_quantity' => $max,
 			'prices'       => $item->unit !== null ? [

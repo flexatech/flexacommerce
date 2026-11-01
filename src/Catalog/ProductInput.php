@@ -41,6 +41,7 @@ final class ProductInput {
 		public readonly ?array $children = null,
 		public readonly ?string $product_url = null,
 		public readonly ?string $button_text = null,
+		public readonly ?Bundle $bundle = null,
 	) {}
 
 	/**
@@ -124,6 +125,7 @@ final class ProductInput {
 			video: $video,
 			children: $children,
 			product_url: array_key_exists( 'product_url', $data ) ? self::url( $data['product_url'] ) : null,
+			bundle: isset( $data['bundle'] ) ? Bundle::from_input( $data['bundle'] ) : null,
 			button_text: array_key_exists( 'button_text', $data ) ? self::button_text( $data['button_text'] ) : null,
 		);
 	}

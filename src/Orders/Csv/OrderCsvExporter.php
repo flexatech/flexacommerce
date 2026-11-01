@@ -205,7 +205,14 @@ final class OrderCsvExporter {
 			$out[] = $base + [
 				'product'        => $item->name,
 				'sku'            => (string) $item->sku,
-				'details'        => implode( ', ', array_map( static fn ( array $attribute ): string => $attribute['label'] . ': ' . $attribute['value'], $item->attributes ) ),
+				'details'        => implode(
+					', ',
+					[
+						// A bundle part carries no price; the bundle line before it does (ADR-071).
+						...( $item->is_bundle_part() ? [ __( 'Part of a bundle', 'flexacommerce' ) ] : [] ),
+						...array_map( static fn ( array $attribute ): string => $attribute['label'] . ': ' . $attribute['value'], $item->attributes ),
+					]
+				),
 				'quantity'       => (string) $item->quantity,
 				'unit_price'     => self::money( $order, $item->unit_price ),
 				'line_subtotal'  => self::money( $order, $item->subtotal ),

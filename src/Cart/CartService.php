@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Flexa\Commerce\Cart;
 
+use Flexa\Commerce\Catalog\BundlePart;
 use Flexa\Commerce\Catalog\Combination;
 use Flexa\Commerce\Catalog\Product;
 use Flexa\Commerce\Catalog\ProductRepository;
@@ -17,12 +18,12 @@ use Flexa\Commerce\Contracts\Money;
 use Flexa\Commerce\Contracts\Orders\CustomerHistory;
 use Flexa\Commerce\Contracts\Pricing\PriceResolution;
 use Flexa\Commerce\Contracts\Shipping\Destination;
-use Flexa\Commerce\Contracts\Shipping\PackageLine;
 use Flexa\Commerce\Contracts\Shipping\ShippingPackage;
 use Flexa\Commerce\Contracts\ValidationResult;
 use Flexa\Commerce\Coupons\Coupon;
 use Flexa\Commerce\Coupons\CouponRepository;
 use Flexa\Commerce\Coupons\CouponService;
+use Flexa\Commerce\Inventory\Availability;
 use Flexa\Commerce\Inventory\StockService;
 use Flexa\Commerce\Options\ProductOptions;
 use Flexa\Commerce\Pricing\PricingService;
@@ -603,10 +604,7 @@ final class CartService {
 	public function package( CartState $state, Destination $destination ): ShippingPackage {
 		$lines = [];
 		foreach ( $state->items as $item ) {
-			if ( $item->total === null || $item->variant?->virtual === true ) {
-				continue;
-			}
-			$lines[] = new PackageLine( $item->line->variant_id, $item->line->quantity, $item->weight_g(), $item->dimensions_mm(), $item->total, $item->shipping_class() );
+			array_push( $lines, ...$item->package_lines() );
 		}
 		return new ShippingPackage(
 			$destination,
@@ -686,7 +684,7 @@ final class CartService {
 				continue;
 			}
 			$cap = $this->line_max( $product, $variant );
-			$max = $this->stock->availability( $product, $variant )->max_quantity();
+			$max = $this->availability( $product, $variant )->max_quantity();
 			if ( $max !== null ) {
 				$cap = min( $cap, max( 1, $max ) );
 			}
@@ -733,6 +731,7 @@ final class CartService {
 		foreach ( $cart->lines as $line ) {
 			$units[ $line->product_id ] = ( $units[ $line->product_id ] ?? 0 ) + $line->quantity;
 		}
+		$demand = $this->demand( $cart );
 		foreach ( $cart->lines as $line ) {
 			// Units of the product in the lines above, where a graduated rule goes on counting (ADR-042).
 			$before                     = $above[ $line->product_id ] ?? 0;
@@ -751,9 +750,9 @@ final class CartService {
 				];
 				continue;
 			}
-			$availability = $this->stock->availability( $product, $variant );
-			$owner_total  = $this->owner_quantity( $cart, $product, $variant );
-			$status       = $availability->allows( $owner_total ) ? CartItem::OK : CartItem::INSUFFICIENT_STOCK;
+			$parts        = $product->is_bundle() ? (array) $this->products->parts_of( $product ) : [];
+			$availability = $this->availability( $product, $variant );
+			$status       = $this->covers( $product, $variant, $demand, 0, false ) ? CartItem::OK : CartItem::INSUFFICIENT_STOCK;
 			$unit         = $this->pricing->unit_price( $product, $variant, $line->quantity, $user_id, product_quantity: $units[ $line->product_id ], facts: $facts, before: $before );
 			$fee          = 0;
 			$tracked      = [];
@@ -789,7 +788,7 @@ final class CartService {
 						),
 				];
 			}
-			$items[] = new CartItem( $line, $product, $variant, $unit, $total, $availability, $status, $fee, $tracked );
+			$items[] = new CartItem( $line, $product, $variant, $unit, $total, $availability, $status, $fee, $tracked, $parts );
 		}
 
 		$subtotal  = $this->pricing->sum( $totals );
@@ -834,9 +833,19 @@ final class CartService {
 			$quantity += $line->quantity;
 			$product   = $this->products->find( $line->product_id );
 			$variant   = $product?->sellable( $line->variant_id );
-			$grams     = $variant->weight ?? $product?->base->weight;
-			if ( $grams !== null && is_numeric( $grams ) ) {
-				$weight += (int) round( (float) $grams ) * $line->quantity;
+			// A bundle weighs what its parts do (ADR-071).
+			$rows = $product?->is_bundle() === true ? (array) $this->products->parts_of( $product ) : [];
+			if ( $rows === [] ) {
+				$grams = $variant->weight ?? $product?->base->weight;
+				if ( $grams !== null && is_numeric( $grams ) ) {
+					$weight += (int) round( (float) $grams ) * $line->quantity;
+				}
+			}
+			foreach ( $rows as $part ) {
+				$grams = $part->variant->weight ?? $part->product->base->weight;
+				if ( $grams !== null && is_numeric( $grams ) ) {
+					$weight += (int) round( (float) $grams ) * $line->quantity * $part->quantity;
+				}
 			}
 		}
 		return new ConditionFacts(
@@ -925,14 +934,19 @@ final class CartService {
 		return [ $variant, $stored ];
 	}
 
-	/** Published, enabled, priced, the right kind of row; `flexacommerce.product.is_purchasable` may only forbid. */
+	/**
+	 * Published, enabled, priced, the right kind of row, and for a bundle
+	 * every part can be sold (ADR-071); `flexacommerce.product.is_purchasable`
+	 * may only forbid.
+	 */
 	public function is_purchasable( Product $product, Variant $variant ): bool {
 		$ok = $product->status === 'publish'
 			&& $product->is_sold()
 			&& $variant->id > 0
 			&& $variant->enabled
 			&& $variant->regular_price !== null
-			&& $variant->is_base === ! $product->is_variable();
+			&& $variant->is_base === ! $product->is_variable()
+			&& ( ! $product->is_bundle() || ( $this->products->parts_of( $product ) ?? [] ) !== [] );
 		if ( ! $ok || ! has_filter( 'flexacommerce.product.is_purchasable' ) ) {
 			return $ok;
 		}
@@ -947,12 +961,127 @@ final class CartService {
 	}
 
 	private function assert_stock( Cart $cart, Product $product, Variant $variant, int $adding ): void {
-		$wanted = $this->owner_quantity( $cart, $product, $variant ) + $adding;
-		$fresh  = $this->stock->available( $product, $variant );
-		if ( ! $fresh->allows( $wanted ) ) {
-			$left = $fresh->max_quantity();
-			throw new InsufficientStock( $variant->id, $left === null ? null : max( 0, $left - ( $wanted - $adding ) ) );
+		$demand = $this->demand( $cart );
+		if ( ! $this->covers( $product, $variant, $demand, $adding, true ) ) {
+			throw new InsufficientStock( $variant->id, $this->left( $product, $variant, $demand ) );
 		}
+	}
+
+	/**
+	 * Units the cart takes of each stock row: its lines, and the parts of
+	 * its bundles times their quantity (ADR-071).
+	 *
+	 * @return array<int,int> stock row id => units
+	 */
+	private function demand( Cart $cart ): array {
+		$demand = [];
+		foreach ( $cart->lines as $line ) {
+			$product = $this->products->find( $line->product_id );
+			$variant = $product?->sellable( $line->variant_id );
+			if ( $product === null || $variant === null ) {
+				continue;
+			}
+			foreach ( $this->takes( $product, $variant ) as $owner => $units ) {
+				$demand[ $owner ] = ( $demand[ $owner ] ?? 0 ) + $units * $line->quantity;
+			}
+		}
+		return $demand;
+	}
+
+	/**
+	 * The stock rows one unit of a row takes, and how many of each.
+	 *
+	 * @return array<int,int>
+	 */
+	private function takes( Product $product, Variant $variant ): array {
+		if ( ! $product->is_bundle() ) {
+			return [ $product->stock_owner( $variant )->id => 1 ];
+		}
+		$takes = [];
+		foreach ( (array) $this->products->parts_of( $product ) as $part ) {
+			$takes[ $part->owner()->id ] = ( $takes[ $part->owner()->id ] ?? 0 ) + $part->quantity;
+		}
+		return $takes;
+	}
+
+	/**
+	 * Whether stock covers what the cart takes plus `$adding` units of the
+	 * row; with `$fresh` the rows are read again, bypassing caches.
+	 *
+	 * @param array<int,int> $demand
+	 */
+	private function covers( Product $product, Variant $variant, array $demand, int $adding, bool $fresh ): bool {
+		foreach ( $this->stock_rows( $product, $variant, $fresh ) as [ $owner, $per, $availability ] ) {
+			if ( ! $availability->allows( ( $demand[ $owner ] ?? 0 ) + $adding * $per ) ) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/**
+	 * How many more units of the row stock covers next to what the cart takes; null for no limit.
+	 *
+	 * @param array<int,int> $demand
+	 */
+	private function left( Product $product, Variant $variant, array $demand ): ?int {
+		$left = null;
+		foreach ( $this->stock_rows( $product, $variant, true ) as [ $owner, $per, $availability ] ) {
+			$max = $availability->max_quantity();
+			if ( $max !== null ) {
+				$fits = intdiv( max( 0, $max - ( $demand[ $owner ] ?? 0 ) ), $per );
+				$left = $left === null ? $fits : min( $left, $fits );
+			}
+		}
+		return $left;
+	}
+
+	/**
+	 * The stock rows a row draws on, with the units one unit takes and
+	 * their availability.
+	 *
+	 * @return list<array{0:int,1:int,2:Availability}>
+	 */
+	private function stock_rows( Product $product, Variant $variant, bool $fresh ): array {
+		if ( ! $product->is_bundle() ) {
+			return [ [ $product->stock_owner( $variant )->id, 1, $fresh ? $this->stock->available( $product, $variant ) : $this->stock->availability( $product, $variant ) ] ];
+		}
+		$rows = [];
+		foreach ( (array) $this->products->parts_of( $product ) as $part ) {
+			$rows[] = [ $part->owner()->id, $part->quantity, $fresh ? $this->stock->available( $part->product, $part->variant ) : $this->stock->availability( $part->product, $part->variant ) ];
+		}
+		return $rows;
+	}
+
+	/**
+	 * What can be sold of a row; for a bundle, as many as its scarcest part
+	 * gives (ADR-071).
+	 */
+	public function availability( Product $product, Variant $variant ): Availability {
+		if ( ! $product->is_bundle() ) {
+			return $this->stock->availability( $product, $variant );
+		}
+		$parts = $this->products->parts_of( $product );
+		if ( $parts === null || $parts === [] ) {
+			return new Availability( Variant::OUTOFSTOCK, 0, false );
+		}
+		$status   = Variant::INSTOCK;
+		$quantity = null;
+		foreach ( $parts as $part ) {
+			$own = $this->stock->availability( $part->product, $part->variant );
+			$max = $own->max_quantity();
+			if ( $max !== null ) {
+				$fits     = intdiv( $max, $part->quantity );
+				$quantity = $quantity === null ? $fits : min( $quantity, $fits );
+			}
+			if ( $own->status === Variant::ONBACKORDER ) {
+				$status = Variant::ONBACKORDER;
+			}
+		}
+		if ( $quantity === 0 ) {
+			return new Availability( Variant::OUTOFSTOCK, 0, false );
+		}
+		return new Availability( $status, $quantity, false );
 	}
 
 	/**
@@ -974,22 +1103,6 @@ final class CartService {
 			}
 		}
 		( $this->options )()->assert_stock( $values, $quantity, $adding, $others, $variant_id );
-	}
-
-	/** Units in the cart that draw on the same stock row as `$variant`. */
-	private function owner_quantity( Cart $cart, Product $product, Variant $variant ): int {
-		$owner = $product->stock_owner( $variant )->id;
-		$total = 0;
-		foreach ( $cart->lines as $line ) {
-			if ( $line->product_id !== $product->id ) {
-				continue;
-			}
-			$row = $product->sellable( $line->variant_id );
-			if ( $row !== null && $product->stock_owner( $row )->id === $owner ) {
-				$total += $line->quantity;
-			}
-		}
-		return $total;
 	}
 
 	private function line_max( Product $product, Variant $variant ): int {
@@ -1072,6 +1185,27 @@ final class CartService {
 	private static function day_label( string $date ): string {
 		$day = \DateTimeImmutable::createFromFormat( '!Y-m-d', $date, wp_timezone() );
 		return $day !== false ? (string) wp_date( (string) get_option( 'date_format' ), $day->getTimestamp() ) : $date;
+	}
+
+	/**
+	 * The variation values of a bundle part, for its order line (ADR-071).
+	 *
+	 * @return list<array{label:string,value:string}>
+	 */
+	public function part_labels( BundlePart $part ): array {
+		$selection = [];
+		foreach ( $part->variant->combination->to_array() as $key => $value ) {
+			if ( $value !== Combination::WILDCARD ) {
+				$selection[ $key ] = (string) $value;
+			}
+		}
+		return array_map(
+			static fn ( array $label ): array => [
+				'label' => $label['name'],
+				'value' => $label['value'],
+			],
+			$part->variant->is_base ? [] : $this->labels( $part->product, $selection )
+		);
 	}
 
 	/**

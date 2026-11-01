@@ -6,6 +6,7 @@ namespace Flexa\Commerce\Catalog\Csv;
 
 use Flexa\Commerce\Catalog\AttributeDefinition;
 use Flexa\Commerce\Catalog\AttributeRepository;
+use Flexa\Commerce\Catalog\Bundle;
 use Flexa\Commerce\Catalog\Combination;
 use Flexa\Commerce\Catalog\Downloads;
 use Flexa\Commerce\Catalog\PostTypes;
@@ -128,10 +129,11 @@ final class ProductCsvImporter {
 			$records[] = [ $row['line'], $record ];
 		}
 
-		// A grouped row names products by SKU or ID; it goes last so rows of the same batch exist by then.
+		// A grouped or bundle row names products by SKU or ID; it goes last so rows of the same batch exist by then.
+		$last    = static fn ( array $r ): bool => array_intersect( [ ProductTypes::GROUPED, ProductTypes::BUNDLE ], self::types( $r[1] ) ) !== [];
 		$records = array_merge(
-			array_values( array_filter( $records, static fn ( array $r ): bool => ! in_array( ProductTypes::GROUPED, self::types( $r[1] ), true ) ) ),
-			array_values( array_filter( $records, static fn ( array $r ): bool => in_array( ProductTypes::GROUPED, self::types( $r[1] ), true ) ) )
+			array_values( array_filter( $records, static fn ( array $r ): bool => ! $last( $r ) ) ),
+			array_values( array_filter( $records, $last ) )
 		);
 
 		$results = [];
@@ -192,7 +194,7 @@ final class ProductCsvImporter {
 		try {
 			$types = self::types( $record );
 			foreach ( array_diff( $types, [ ...ProductTypes::all(), 'virtual', 'downloadable' ] ) as $unknown ) {
-				/* translators: %s: product type from the file, such as "bundle" */
+				/* translators: %s: product type from the file, such as "subscription" */
 				throw new InvalidProduct( sprintf( __( 'FlexaCommerce does not sell %s products.', 'flexacommerce' ), $unknown ), 'type' );
 			}
 			$sku     = array_key_exists( 'sku', $record ) ? ProductInput::sku( $record['sku'] ) : null;
@@ -213,6 +215,8 @@ final class ProductCsvImporter {
 				$type = ProductTypes::GROUPED;
 			} elseif ( in_array( ProductTypes::EXTERNAL, $types, true ) ) {
 				$type = ProductTypes::EXTERNAL;
+			} elseif ( in_array( ProductTypes::BUNDLE, $types, true ) ) {
+				$type = ProductTypes::BUNDLE;
 			} elseif ( in_array( ProductTypes::SIMPLE, $types, true ) || $existing === 0 ) {
 				$type = ProductTypes::SIMPLE;
 			}
@@ -276,6 +280,9 @@ final class ProductCsvImporter {
 			}
 			if ( trim( $record['grouped_products'] ?? '' ) !== '' ) {
 				$data['children'] = $this->children( $record['grouped_products'], $warnings );
+			}
+			if ( ( $type ?? $before?->type ) === ProductTypes::BUNDLE && ( array_key_exists( 'bundle_items', $record ) || array_key_exists( 'bundle_pricing', $record ) || $before === null ) ) {
+				$data['bundle'] = $this->bundle( $record, $before?->bundle, $warnings );
 			}
 			$attributes = $this->attribute_rows( $record, $before, $warnings );
 			if ( $attributes !== null ) {
@@ -601,6 +608,81 @@ final class ProductCsvImporter {
 			}
 		}
 		return $ids;
+	}
+
+	/**
+	 * The Bundled items and Bundle pricing cells as the bundle payload
+	 * (ADR-071); a cell the file lacks keeps what the bundle has. An item
+	 * is `2 x SKU`, `2 x id:N` or `2 x variation:N`; one that cannot be
+	 * found is left out with a warning.
+	 *
+	 * @param array<string,string> $record
+	 * @param list<string>         $warnings
+	 * @return array{mode:string,discount:int,items:list<array{product_id:int,variant_id:int,quantity:int}>}
+	 * @throws InvalidProduct
+	 */
+	private function bundle( array $record, ?Bundle $before, array &$warnings ): array {
+		$bundle = ( $before ?? new Bundle() )->to_array();
+		$cell   = strtolower( trim( $record['bundle_pricing'] ?? '' ) );
+		if ( $cell !== '' ) {
+			if ( preg_match( '/^(\d{1,2})\s*%$/', $cell, $match ) === 1 ) {
+				$bundle['mode']     = Bundle::DISCOUNT;
+				$bundle['discount'] = (int) $match[1];
+			} elseif ( in_array( $cell, [ Bundle::FIXED, Bundle::SUM ], true ) ) {
+				$bundle['mode']     = $cell;
+				$bundle['discount'] = 0;
+			} else {
+				throw new InvalidProduct( __( 'Bundle pricing must be fixed, sum, or a discount such as 10%.', 'flexacommerce' ), 'bundle_pricing' );
+			}
+		}
+		if ( ! array_key_exists( 'bundle_items', $record ) ) {
+			return $bundle;
+		}
+		$bundle['items'] = [];
+		foreach ( CsvValues::split( $record['bundle_items'] ) as $entry ) {
+			$quantity  = 1;
+			$reference = trim( $entry );
+			if ( preg_match( '/^(\d+)\s*[x×]\s*(.+)$/iu', $reference, $match ) === 1 ) {
+				$quantity  = (int) $match[1];
+				$reference = trim( $match[2] );
+			}
+			$item = $this->bundle_item( $reference );
+			if ( $item === null ) {
+				if ( ! $this->dry_run ) {
+					/* translators: %s: SKU or ID from the Bundled items cell */
+					$warnings[] = sprintf( __( 'The bundled item %s was not found, so it was left out.', 'flexacommerce' ), $reference );
+				}
+				continue;
+			}
+			$bundle['items'][] = $item + [ 'quantity' => $quantity ];
+		}
+		return $bundle;
+	}
+
+	/**
+	 * A simple product's base row or one variation, by SKU, `id:N` (as
+	 * Parent reads it) or `variation:N`.
+	 *
+	 * @return array{product_id:int,variant_id:int}|null
+	 */
+	private function bundle_item( string $reference ): ?array {
+		if ( str_starts_with( strtolower( $reference ), 'variation:' ) ) {
+			$id  = trim( substr( $reference, 10 ) );
+			$row = ctype_digit( $id ) ? $this->variants->find( (int) $id ) : null;
+		} else {
+			$row = str_starts_with( strtolower( $reference ), 'id:' ) ? null : $this->variants->find_by_sku( $reference );
+			if ( $row === null || $row->is_base ) {
+				$product = $row !== null ? $row->product_id : $this->parent_of( $reference );
+				return $product !== null && $product > 0 ? [
+					'product_id' => $product,
+					'variant_id' => 0,
+				] : null;
+			}
+		}
+		return $row !== null && ! $row->is_base ? [
+			'product_id' => $row->product_id,
+			'variant_id' => $row->id,
+		] : null;
 	}
 
 	/**

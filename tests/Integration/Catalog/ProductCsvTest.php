@@ -238,10 +238,69 @@ final class ProductCsvTest extends CatalogTestCase {
 	}
 
 	public function test_an_unknown_type_is_an_error(): void {
-		$results = $this->import( [ 'Type', 'SKU', 'Name' ], [ [ 'bundle', $this->sku( 'BUN' ), 'Bundle' ], [ 'grouped, virtual', $this->sku( 'GRP' ), 'Group' ] ], false, true );
+		$results = $this->import( [ 'Type', 'SKU', 'Name' ], [ [ 'subscription', $this->sku( 'SUB' ), 'Subscription' ], [ 'grouped, virtual', $this->sku( 'GRP' ), 'Group' ] ], false, true );
 
 		self::assertSame( [ 'error', 'create' ], array_column( $results, 'action' ), wp_json_encode( $results ) );
-		self::assertStringContainsString( 'bundle', $results[0]['message'] );
+		self::assertStringContainsString( 'subscription', $results[0]['message'] );
+	}
+
+	public function test_a_bundle_round_trips_with_its_items_and_pricing(): void {
+		$mug = $this->product( 'Mug' );
+		$this->save(
+			$mug,
+			[
+				'base' => [
+					'sku'           => $this->sku( 'MUG' ),
+					'regular_price' => 800,
+				],
+			]
+		);
+		$plain = $this->product( 'Spoon' );
+		$this->save( $plain, [ 'base' => [ 'regular_price' => 200 ] ] );
+		$box = $this->product( 'Gift box' );
+		$this->save(
+			$box,
+			[
+				'type'   => 'bundle',
+				'base'   => [ 'sku' => $this->sku( 'BOX' ) ],
+				'bundle' => [
+					'mode'     => 'discount',
+					'discount' => 10,
+					'items'    => [
+						[
+							'product_id' => $mug,
+							'quantity'   => 2,
+						],
+						[ 'product_id' => $plain ],
+					],
+				],
+			]
+		);
+
+		[ $headers, [ $row ] ] = $this->export_rows( [ $this->sku( 'BOX' ) ] );
+		$cells                 = array_combine( $headers, $row );
+		self::assertSame( 'bundle', $cells['Type'] );
+		self::assertSame( '2 x ' . $this->sku( 'MUG' ) . ', 1 x id:' . $plain, $cells['Bundled items'] );
+		self::assertSame( '10%', $cells['Bundle pricing'] );
+
+		$results = $this->import(
+			[ 'Type', 'SKU', 'Name', 'Bundled items', 'Bundle pricing' ],
+			[
+				[ 'bundle', $this->sku( 'BOX2' ), 'Second box', '3 x ' . $this->sku( 'MUG' ) . ', id:' . $plain . ', 1 x NOPE-' . $this->run, 'sum' ],
+				[ 'simple', $this->sku( 'NEW' ), 'Listed after', '', '' ],
+			],
+			true
+		);
+		self::assertSame( [ 'create', 'create' ], array_column( $results, 'action' ), wp_json_encode( $results ) );
+		self::assertStringContainsString( 'NOPE-' . $this->run, implode( ' ', $results[0]['warnings'] ) );
+		$bundle = $this->get( (int) $results[0]['id'] );
+		self::assertTrue( $bundle->is_bundle() );
+		self::assertSame( 'sum', $bundle->bundle?->mode );
+		self::assertSame( [ [ $mug, 3 ], [ $plain, 1 ] ], array_map( static fn ( $item ): array => [ $item->product_id, $item->quantity ], $bundle->bundle?->items ?? [] ) );
+		self::assertSame( 2600, $bundle->base->regular_price, 'The sum of 3 mugs and a spoon.' );
+
+		$bad = $this->import( [ 'Type', 'SKU', 'Name', 'Bundle pricing' ], [ [ 'bundle', $this->sku( 'BOX3' ), 'Third', 'half' ] ], false, true );
+		self::assertSame( 'error', $bad[0]['action'] );
 	}
 
 	/**

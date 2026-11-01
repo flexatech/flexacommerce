@@ -6,6 +6,7 @@ namespace Flexa\Commerce\Catalog\Csv;
 
 use Flexa\Commerce\Catalog\AttributeDefinition;
 use Flexa\Commerce\Catalog\AttributeRepository;
+use Flexa\Commerce\Catalog\Bundle;
 use Flexa\Commerce\Catalog\Combination;
 use Flexa\Commerce\Catalog\PostTypes;
 use Flexa\Commerce\Catalog\Product;
@@ -166,6 +167,38 @@ final class ProductCsvExporter {
 	}
 
 	/**
+	 * A bundle's items as `2 x SKU` (ADR-071). A row without a SKU is
+	 * `id:N` for a simple product, `variation:N` for a variation.
+	 *
+	 * @return list<string>
+	 */
+	private function bundle_items( Bundle $bundle ): array {
+		$cells = [];
+		foreach ( $bundle->items as $item ) {
+			try {
+				$row = $this->service->get( $item->product_id )->sellable( $item->variant_id );
+			} catch ( ProductNotFound ) {
+				continue;
+			}
+			if ( $row === null ) {
+				continue;
+			}
+			$reference = match ( true ) {
+				$row->sku !== null && $row->sku !== '' => $row->sku,
+				$row->is_base => 'id:' . $item->product_id,
+				default => 'variation:' . $row->id,
+			};
+			$cells[] = $item->quantity . ' x ' . $reference;
+		}
+		return $cells;
+	}
+
+	/** `fixed`, `sum`, or the discount off the sum, as `10%`. */
+	private static function bundle_pricing( Bundle $bundle ): string {
+		return $bundle->mode === Bundle::DISCOUNT ? $bundle->discount . '%' : $bundle->mode;
+	}
+
+	/**
 	 * The product row, then its variation rows, as key => cell.
 	 *
 	 * @param Layout $layout
@@ -206,6 +239,8 @@ final class ProductCsvExporter {
 			'images'             => CsvValues::join( $images ),
 			'menu_order'         => (string) $post->menu_order,
 			'grouped_products'   => CsvValues::join( $this->references( $product->children ) ),
+			'bundle_items'       => $product->bundle !== null ? CsvValues::join( $this->bundle_items( $product->bundle ) ) : '',
+			'bundle_pricing'     => $product->bundle !== null ? self::bundle_pricing( $product->bundle ) : '',
 			'product_url'        => $product->product_url,
 			'button_text'        => $product->is_external() ? $product->button_text : '',
 		] + $this->row_fields( $base, $layout );

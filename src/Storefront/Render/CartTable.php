@@ -267,6 +267,23 @@ final class CartTable {
 		return $html . $cards . '<tr class="fxc-cart__note"><td colspan="2">' . esc_html__( 'Shipping is calculated at checkout.', 'flexacommerce' ) . '</td></tr></tbody></table>';
 	}
 
+	/**
+	 * What one bundle holds, under its name (ADR-071).
+	 *
+	 * @param array<mixed> $parts `[{name, quantity, attributes}]` from the public cart shape
+	 */
+	public static function parts( array $parts ): string {
+		$html = '';
+		foreach ( $parts as $part ) {
+			if ( ! is_array( $part ) ) {
+				continue;
+			}
+			$values = array_map( static fn ( array $label ): string => (string) $label['value'], (array) ( $part['attributes'] ?? [] ) );
+			$html  .= '<li>' . esc_html( (int) $part['quantity'] . ' × ' . (string) $part['name'] . ( $values !== [] ? ' (' . implode( ', ', $values ) . ')' : '' ) ) . '</li>';
+		}
+		return $html === '' ? '' : '<p class="fxc-cart__includes">' . esc_html__( 'Includes:', 'flexacommerce' ) . '</p><ul class="fxc-cart__attributes">' . $html . '</ul>';
+	}
+
 	/** @param array<string,mixed> $shown the item in the public cart shape, with display prices */
 	private function row( CartItem $item, array $shown ): string {
 		$line    = $item->line;
@@ -288,6 +305,7 @@ final class CartTable {
 		$html .= '<td class="fxc-cart__product">'
 			. ( $link !== '' ? '<a href="' . esc_url( $link ) . '">' . esc_html( $name ) . '</a>' : esc_html( $name ) )
 			. ( $labels !== '' ? '<ul class="fxc-cart__attributes">' . $labels . '</ul>' : '' )
+			. self::parts( (array) ( $shown['parts'] ?? [] ) )
 			. ( $link !== '' && $this->editable( $item ) ? sprintf(
 				'<a class="fxc-cart__edit" href="%1$s" aria-label="%2$s">%3$s</a>',
 				esc_url( add_query_arg( AddToCartForm::EDIT, $line->key, $link ) ),

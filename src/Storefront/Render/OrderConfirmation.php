@@ -109,6 +109,15 @@ final class OrderConfirmation {
 			foreach ( $item->attributes as $attribute ) {
 				$attributes .= '<li>' . esc_html( $attribute['label'] . ': ' . $attribute['value'] ) . '</li>';
 			}
+			if ( $item->is_bundle_part() ) {
+				$html .= sprintf(
+					'<tr class="fxc-order__part"><td>%1$s <span class="fxc-checkout__qty">&times;&nbsp;%2$d</span>%3$s</td><td></td></tr>',
+					esc_html( $item->name ),
+					$item->quantity,
+					$attributes !== '' ? '<ul class="fxc-cart__attributes">' . $attributes . '</ul>' : ''
+				);
+				continue;
+			}
 			$html .= sprintf(
 				'<tr><td>%1$s <span class="fxc-checkout__qty">&times;&nbsp;%2$d</span>%3$s</td><td>%4$s</td></tr>',
 				esc_html( $item->name ),

@@ -76,6 +76,20 @@ final class OrderItem {
 		);
 	}
 
+	/** The line key a bundle line is known by, '' for other lines (ADR-071). */
+	public function bundle_key(): string {
+		return is_array( $this->meta['bundle'] ?? null ) ? (string) ( $this->meta['bundle']['key'] ?? '' ) : '';
+	}
+
+	/** The key of the bundle line this part belongs to, '' for other lines (ADR-071). */
+	public function bundled_by(): string {
+		return (string) ( $this->meta['bundled_by'] ?? '' );
+	}
+
+	public function is_bundle_part(): bool {
+		return $this->bundled_by() !== '';
+	}
+
 	/** The stock owner row recorded at checkout, 0 when stock was not managed. */
 	public function stock_id(): int {
 		return (int) ( $this->meta['stock_id'] ?? 0 );
@@ -185,6 +199,7 @@ final class OrderItem {
 			refunded_total: new Money( $this->refunded_total, $currency ),
 			downloadable: ! empty( $this->meta['downloadable'] ),
 			gift_card: isset( $this->meta['gift_card'] ),
+			bundle_part: $this->is_bundle_part(),
 		);
 	}
 }

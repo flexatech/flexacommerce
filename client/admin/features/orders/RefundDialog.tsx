@@ -41,7 +41,7 @@ interface Props {
 export function RefundDialog({ order, open, onOpenChange }: Props) {
     const refund = useRefund(order.id);
     const exponent = currencyExponent(order.currency);
-    const items = useMemo(() => order.items.filter((i) => i.type !== "discount" && i.type !== "tax" && remaining(i) > 0), [order.items]);
+    const items = useMemo(() => order.items.filter((i) => i.type !== "discount" && i.type !== "tax" && i.bundled_by === null && remaining(i) > 0), [order.items]);
 
     const [lines, setLines] = useState<Record<number, Line>>({});
     const [amount, setAmount] = useState(0);

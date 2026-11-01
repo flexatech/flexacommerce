@@ -6,6 +6,7 @@ namespace Flexa\Commerce\Api\Admin;
 
 use Flexa\Commerce\Api\Endpoint;
 use Flexa\Commerce\Catalog\AttributeDefinition;
+use Flexa\Commerce\Catalog\Bundle;
 use Flexa\Commerce\Catalog\Combination;
 use Flexa\Commerce\Catalog\Product;
 use Flexa\Commerce\Catalog\PostTypes;
@@ -16,6 +17,7 @@ use Flexa\Commerce\Catalog\ProductTypes;
 use Flexa\Commerce\Catalog\Variant;
 use Flexa\Commerce\Contracts\CommerceException;
 use Flexa\Commerce\Contracts\Exceptions\InvalidProduct;
+use Flexa\Commerce\Coupons\RuleTargets;
 use Flexa\Commerce\Plugin;
 use WP_Error;
 use WP_REST_Request;
@@ -393,6 +395,7 @@ final class ProductsEndpoint extends Endpoint {
 			'visibility'   => $product->visibility,
 			'featured'     => $product->featured,
 			'children'     => self::children_data( $product->children ),
+			'bundle'       => self::bundle_data( $product ),
 			'product_url'  => $product->product_url,
 			'button_text'  => $product->button_text,
 			'price_min'    => self::meta_int( $product->id, ProductRepository::META_PRICE_MIN ),
@@ -437,6 +440,33 @@ final class ProductsEndpoint extends Endpoint {
 			}
 		}
 		return $out;
+	}
+
+	/**
+	 * A bundle's price mode and items, each with the label its picker shows
+	 * (ADR-071); null for other types. `missing` marks an item whose row
+	 * was deleted, so the editor can show it as removed.
+	 *
+	 * @return array<string,mixed>|null
+	 */
+	private static function bundle_data( Product $product ): ?array {
+		if ( ! $product->is_bundle() ) {
+			return null;
+		}
+		$bundle  = $product->bundle ?? new Bundle();
+		$catalog = Plugin::instance()->catalog();
+		$rows    = ( new RuleTargets( $catalog->products(), $catalog->variants() ) )->lookup_parts( $bundle->variant_ids() );
+		$data    = $bundle->to_array();
+		foreach ( $data['items'] as $i => $item ) {
+			$row                  = $rows[ $item['variant_id'] ] ?? null;
+			$data['items'][ $i ] += [
+				/* translators: %d: variant id */
+				'label'   => $row['label'] ?? sprintf( __( 'Removed item #%d', 'flexacommerce' ), $item['variant_id'] ),
+				'sku'     => $row['sku'] ?? '',
+				'missing' => $row === null,
+			];
+		}
+		return $data;
 	}
 
 	/** @return array<string,mixed> */
@@ -755,6 +785,10 @@ final class ProductsEndpoint extends Endpoint {
 					'type'        => 'array',
 					'items'       => [ 'type' => [ 'integer', 'object' ] ],
 					'description' => __( 'A grouped product: the IDs of the products it lists, in order. Read back as objects with id, title, sku, type and status.', 'flexacommerce' ),
+				],
+				'bundle'         => [
+					'type'        => [ 'object', 'null' ],
+					'description' => __( 'A bundle: { mode: fixed, sum or discount, discount: percent off the sum, items: [{ variant_id or product_id, quantity }] }. Read back with each item\'s label, sku and missing.', 'flexacommerce' ),
 				],
 				'product_url'    => [
 					'type'        => 'string',

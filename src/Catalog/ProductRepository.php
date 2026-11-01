@@ -26,6 +26,8 @@ final class ProductRepository {
 	public const META_GROUPED_IN   = '_fxc_grouped_in';
 	public const META_PRODUCT_URL  = '_fxc_product_url';
 	public const META_BUTTON_TEXT  = '_fxc_button_text';
+	public const META_BUNDLE       = '_fxc_bundle';
+	public const META_BUNDLED_IN   = '_fxc_bundled_in';
 
 	private const JSON_FLAGS = JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR;
 	private const JSON_MAX   = 65536;
@@ -70,6 +72,7 @@ final class ProductRepository {
 			children: $type === ProductTypes::GROUPED ? self::id_list( (string) get_post_meta( $product_id, self::META_CHILDREN, true ) ) : [],
 			product_url: $type === ProductTypes::EXTERNAL ? (string) get_post_meta( $product_id, self::META_PRODUCT_URL, true ) : '',
 			button_text: $type === ProductTypes::EXTERNAL ? (string) get_post_meta( $product_id, self::META_BUTTON_TEXT, true ) : '',
+			bundle: $type === ProductTypes::BUNDLE ? Bundle::from_meta( (string) get_post_meta( $product_id, self::META_BUNDLE, true ) ) : null,
 		);
 	}
 
@@ -81,6 +84,45 @@ final class ProductRepository {
 	 */
 	public function groups_of( int $product_id ): array {
 		return self::id_list( (string) get_post_meta( $product_id, self::META_GROUPED_IN, true ) );
+	}
+
+	/**
+	 * The bundles that hold a row of this product (ADR-071), kept on the
+	 * part so a price or stock change finds its bundles without a query.
+	 *
+	 * @return list<int>
+	 */
+	public function bundles_of( int $product_id ): array {
+		return self::id_list( (string) get_post_meta( $product_id, self::META_BUNDLED_IN, true ) );
+	}
+
+	/**
+	 * The parts of a bundle read against the catalog, in its order; null
+	 * when one of them cannot be sold now (missing, not published, disabled
+	 * or without a price), so the bundle cannot be sold either. Empty for a
+	 * bundle that holds nothing.
+	 *
+	 * @return list<BundlePart>|null
+	 */
+	public function parts_of( Product $bundle ): ?array {
+		$items = $bundle->bundle->items ?? [];
+		if ( $items === [] ) {
+			return [];
+		}
+		$ids = array_values( array_unique( array_map( static fn ( BundleItem $item ): int => $item->product_id, $items ) ) );
+		_prime_post_caches( $ids, false, true );
+		$this->prime( $ids );
+		$parts = [];
+		foreach ( $items as $item ) {
+			$product = $this->find( $item->product_id );
+			$variant = $product?->sellable( $item->variant_id );
+			if ( $product === null || $variant === null || $product->status !== 'publish' || ( $product->type !== ProductTypes::SIMPLE && $product->type !== ProductTypes::VARIABLE )
+				|| ! $variant->enabled || $variant->regular_price === null || $product->is_gift_card() ) {
+				return null;
+			}
+			$parts[] = new BundlePart( $product, $variant, $item->quantity );
+		}
+		return $parts;
 	}
 
 	/**
@@ -167,6 +209,20 @@ final class ProductRepository {
 			$this->link_group( $child, $id, true );
 		}
 
+		$before = self::id_list( implode( ',', Bundle::from_meta( (string) get_post_meta( $id, self::META_BUNDLE, true ) )->product_ids() ) );
+		$after  = $product->is_bundle() && $product->bundle !== null ? $product->bundle->product_ids() : [];
+		if ( $product->is_bundle() && $product->bundle !== null ) {
+			update_post_meta( $id, self::META_BUNDLE, wp_slash( $product->bundle->to_meta() ) );
+		} else {
+			delete_post_meta( $id, self::META_BUNDLE );
+		}
+		foreach ( array_diff( $before, $after ) as $part ) {
+			$this->link( $part, $id, false, self::META_BUNDLED_IN );
+		}
+		foreach ( array_diff( $after, $before ) as $part ) {
+			$this->link( $part, $id, true, self::META_BUNDLED_IN );
+		}
+
 		foreach ( [
 			self::META_PRODUCT_URL => $product->product_url,
 			self::META_BUTTON_TEXT => $product->button_text,
@@ -181,15 +237,20 @@ final class ProductRepository {
 
 	/** Adds or removes `$group` in the child's list of groups. */
 	public function link_group( int $child, int $group, bool $add ): void {
-		$groups = $this->groups_of( $child );
-		$next   = $add ? array_values( array_unique( [ ...$groups, $group ] ) ) : array_values( array_diff( $groups, [ $group ] ) );
-		if ( $next === $groups ) {
+		$this->link( $child, $group, $add, self::META_GROUPED_IN );
+	}
+
+	/** Adds or removes `$parent` in the reverse list `$key` kept on `$child`. */
+	private function link( int $child, int $parent, bool $add, string $key ): void {
+		$parents = self::id_list( (string) get_post_meta( $child, $key, true ) );
+		$next    = $add ? array_values( array_unique( [ ...$parents, $parent ] ) ) : array_values( array_diff( $parents, [ $parent ] ) );
+		if ( $next === $parents ) {
 			return;
 		}
 		if ( $next === [] ) {
-			delete_post_meta( $child, self::META_GROUPED_IN );
+			delete_post_meta( $child, $key );
 		} else {
-			update_post_meta( $child, self::META_GROUPED_IN, implode( ',', $next ) );
+			update_post_meta( $child, $key, implode( ',', $next ) );
 		}
 	}
 
@@ -211,6 +272,13 @@ final class ProductRepository {
 		foreach ( self::id_list( (string) get_post_meta( $product_id, self::META_CHILDREN, true ) ) as $child ) {
 			$this->link_group( $child, $product_id, false );
 		}
+		// A bundle keeps the item of a deleted part, so it cannot be sold until the merchant edits it (ADR-071).
+		foreach ( $this->bundles_of( $product_id ) as $bundle ) {
+			$this->sync_denormalized( $bundle, $now );
+		}
+		foreach ( Bundle::from_meta( (string) get_post_meta( $product_id, self::META_BUNDLE, true ) )->product_ids() as $part ) {
+			$this->link( $part, $product_id, false, self::META_BUNDLED_IN );
+		}
 	}
 
 	/**
@@ -227,6 +295,10 @@ final class ProductRepository {
 		if ( $product->is_grouped() ) {
 			$this->sync_group( $product );
 			return;
+		}
+		$bundle_change = null;
+		if ( $product->is_bundle() ) {
+			[ $product, $bundle_change ] = $this->sync_bundle( $product, $now );
 		}
 
 		$in_stock_prices = [];
@@ -272,15 +344,92 @@ final class ProductRepository {
 		};
 		update_post_meta( $product_id, self::META_STOCK_STATUS, $aggregate );
 
+		if ( $product->is_bundle() && $product->bundle?->is_computed() === true ) {
+			$next_change = $bundle_change;
+		}
 		if ( $next_change === null ) {
 			delete_post_meta( $product_id, self::META_NEXT_CHANGE );
 		} else {
 			update_post_meta( $product_id, self::META_NEXT_CHANGE, $next_change );
 		}
 
-		foreach ( $this->groups_of( $product_id ) as $group ) {
+		foreach ( [ ...$this->groups_of( $product_id ), ...$this->bundles_of( $product_id ) ] as $group ) {
 			$this->sync_denormalized( $group, $now );
 		}
+	}
+
+	/**
+	 * Writes on a bundle's base row what its parts make it (ADR-071): the
+	 * stock status, and with a computed price the regular price (the sum of
+	 * the parts' regular prices) and the sale price (their active prices,
+	 * less the discount). Returns the product read again and the next time
+	 * a part's price changes.
+	 *
+	 * @return array{0:Product,1:?string}
+	 */
+	private function sync_bundle( Product $product, string $now ): array {
+		$bundle = $product->bundle ?? new Bundle();
+		$parts  = $this->parts_of( $product );
+		$status = $parts === null || $parts === [] ? Variant::OUTOFSTOCK : self::bundle_status( $parts );
+
+		$changes = [ 'stock_status' => $status ];
+		$next    = null;
+		if ( $bundle->is_computed() ) {
+			$regular = null;
+			$active  = null;
+			if ( $parts !== null && $parts !== [] ) {
+				$regular = 0;
+				$active  = 0;
+				foreach ( $parts as $part ) {
+					$regular += (int) $part->variant->regular_price * $part->quantity;
+					$active  += (int) $part->variant->active_price( $now ) * $part->quantity;
+					$change   = $part->variant->next_price_change( $now );
+					if ( $change !== null && ( $next === null || $change < $next ) ) {
+						$next = $change;
+					}
+				}
+				$active = $bundle->price_of( $active );
+			}
+			$changes += [
+				'regular_price' => $regular,
+				'sale_price'    => $active !== null && $active < (int) $regular ? $active : null,
+				'sale_from'     => null,
+				'sale_to'       => null,
+			];
+		}
+
+		$base = $product->base;
+		$row  = $base->with( $changes );
+		if ( $base->id > 0 && $row->to_row() !== $base->to_row() ) {
+			$this->variants->update( $row );
+			$this->variants->flush( $product->id );
+			$product = $this->find( $product->id ) ?? $product;
+		}
+		return [ $product, $next ];
+	}
+
+	/**
+	 * Out of stock when a part cannot give the units one bundle takes, on
+	 * backorder when one gives them on backorder.
+	 *
+	 * @param list<BundlePart> $parts
+	 */
+	private static function bundle_status( array $parts ): string {
+		$status = Variant::INSTOCK;
+		foreach ( $parts as $part ) {
+			$owner = $part->owner();
+			$own   = $owner->computed_stock_status();
+			if ( $owner->manage_stock && (int) $owner->stock_quantity < $part->quantity ) {
+				$own = $owner->backorders === 'no' ? Variant::OUTOFSTOCK : Variant::ONBACKORDER;
+			}
+			if ( $own === Variant::OUTOFSTOCK ) {
+				return Variant::OUTOFSTOCK;
+			}
+			if ( $own === Variant::ONBACKORDER ) {
+				$status = Variant::ONBACKORDER;
+			}
+		}
+		return $status;
 	}
 
 	/**

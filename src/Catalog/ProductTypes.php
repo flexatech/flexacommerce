@@ -9,17 +9,19 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Internal product type registry (doc 04 §6). A grouped product shows other
  * products on its page and sells nothing itself; an external product links
- * to a page on another site (ADR-062).
+ * to a page on another site (ADR-062). A bundle sells rows of other
+ * products together and takes their stock (ADR-071).
  */
 final class ProductTypes {
 	public const SIMPLE   = 'simple';
 	public const VARIABLE = 'variable';
 	public const GROUPED  = 'grouped';
 	public const EXTERNAL = 'external';
+	public const BUNDLE   = 'bundle';
 
 	/** @return list<string> */
 	public static function all(): array {
-		return [ self::SIMPLE, self::VARIABLE, self::GROUPED, self::EXTERNAL ];
+		return [ self::SIMPLE, self::VARIABLE, self::GROUPED, self::EXTERNAL, self::BUNDLE ];
 	}
 
 	public static function is_valid( string $type ): bool {
@@ -33,11 +35,11 @@ final class ProductTypes {
 
 	/** Whether a row of the type can go in the cart. */
 	public static function is_sold( string $type ): bool {
-		return $type === self::SIMPLE || $type === self::VARIABLE;
+		return $type === self::SIMPLE || $type === self::VARIABLE || $type === self::BUNDLE;
 	}
 
-	/** Whether the type keeps stock, shipping data and files on its rows. */
+	/** Whether the type keeps stock, shipping data and files on its rows; a bundle uses its parts'. */
 	public static function has_stock( string $type ): bool {
-		return self::is_sold( $type );
+		return $type === self::SIMPLE || $type === self::VARIABLE;
 	}
 }

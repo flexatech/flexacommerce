@@ -77,6 +77,14 @@ export function toPayload(draft: Draft, saved?: ProductData): Record<string, unk
     if (draft.type === "grouped") {
         payload.children = draft.children.map((child) => child.id);
     }
+    if (draft.type === "bundle") {
+        const bundle = draft.bundle ?? { mode: "fixed", discount: 0, items: [] };
+        payload.bundle = {
+            mode: bundle.mode,
+            discount: bundle.discount,
+            items: bundle.items.map((item) => ({ product_id: item.product_id, variant_id: item.variant_id, quantity: item.quantity })),
+        };
+    }
     if (draft.type === "external") {
         payload.product_url = draft.product_url;
         payload.button_text = draft.button_text;

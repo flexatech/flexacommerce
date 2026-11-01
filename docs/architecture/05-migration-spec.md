@@ -486,7 +486,7 @@ Errors reject one entity, never the batch. A job ends `completed_with_warnings` 
 
 | Data | Handling |
 |---|---|
-| Bundles, subscriptions and other product types (grouped and external move since ADR-062) | skipped, listed in report with ids and edit links |
+| Bundles, subscriptions and other product types (grouped and external move since ADR-062) | skipped, listed in report with ids and edit links. FlexaCommerce bundles (ADR-071) stay behind on a copy to WooCommerce, which has no bundle type; preflight warns with `bundles_skipped` and their count, and orders that sold them keep their lines. |
 | Downloadable/virtual flags, files, limit and expiry | imported on the variant (§5.2), permissions with the order (§5.4), ADR-058 |
 | Product reviews | imported in the `reviews` stage (§5.11) |
 | Product add-on and SEO plugin meta | `_fxc_import` bucket on the product, round-tripped on FXC→WC; the official Product Add-ons data also becomes option sets (§5.9) |

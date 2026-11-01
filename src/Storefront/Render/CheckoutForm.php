@@ -432,7 +432,7 @@ final class CheckoutForm {
 				'<tr><th scope="row">%1$s <span class="fxc-checkout__qty">&times;&nbsp;%2$d</span>%3$s</th><td>%4$s</td></tr>',
 				esc_html( (string) $item['name'] ),
 				(int) $item['quantity'],
-				$attributes !== '' ? '<ul class="fxc-cart__attributes">' . $attributes . '</ul>' : '',
+				( $attributes !== '' ? '<ul class="fxc-cart__attributes">' . $attributes . '</ul>' : '' ) . CartTable::parts( (array) ( $item['parts'] ?? [] ) ),
 				esc_html( (string) ( $item['total']['formatted'] ?? '' ) )
 			);
 		}

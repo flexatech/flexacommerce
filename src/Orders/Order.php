@@ -131,7 +131,20 @@ final class Order {
 	}
 
 	public function item_count(): int {
-		return array_sum( array_map( static fn ( OrderItem $i ): int => $i->quantity, $this->items_of_type( OrderItem::PRODUCT ) ) );
+		return array_sum( array_map( static fn ( OrderItem $i ): int => $i->is_bundle_part() ? 0 : $i->quantity, $this->items_of_type( OrderItem::PRODUCT ) ) );
+	}
+
+	/**
+	 * The parts of a bundle line (ADR-071).
+	 *
+	 * @return list<OrderItem>
+	 */
+	public function parts_of( OrderItem $bundle ): array {
+		$key = $bundle->bundle_key();
+		if ( $key === '' ) {
+			return [];
+		}
+		return array_values( array_filter( $this->items_of_type( OrderItem::PRODUCT ), static fn ( OrderItem $i ): bool => $i->bundled_by() === $key ) );
 	}
 
 	/**

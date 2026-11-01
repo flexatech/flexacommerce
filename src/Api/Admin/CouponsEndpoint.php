@@ -81,7 +81,8 @@ final class CouponsEndpoint extends Endpoint {
 					'args'                => [
 						'kind'         => [
 							'type'    => 'string',
-							'enum'    => [ RuleTargets::PRODUCT, RuleTargets::CATEGORY ],
+							// `part`: what a bundle can hold (ADR-071).
+							'enum'    => [ RuleTargets::PRODUCT, RuleTargets::CATEGORY, RuleTargets::PART ],
 							'default' => RuleTargets::PRODUCT,
 						],
 						'search'       => [
@@ -188,7 +189,11 @@ final class CouponsEndpoint extends Endpoint {
 			return new WP_REST_Response( $targets->lookup( ...$given ), 200 );
 		}
 		$search = (string) $request->get_param( 'search' );
-		$rows   = $request->get_param( 'kind' ) === RuleTargets::CATEGORY ? $targets->search_categories( $search ) : $targets->search_products( $search );
+		$rows   = match ( $request->get_param( 'kind' ) ) {
+			RuleTargets::CATEGORY => $targets->search_categories( $search ),
+			RuleTargets::PART     => $targets->search_parts( $search ),
+			default               => $targets->search_products( $search ),
+		};
 		return new WP_REST_Response( $rows, 200 );
 	}
 

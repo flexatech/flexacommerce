@@ -9,6 +9,7 @@ use Flexa\Commerce\Cart\CartItem;
 use Flexa\Commerce\Cart\CartPresenter;
 use Flexa\Commerce\Cart\CartService;
 use Flexa\Commerce\Cart\CartState;
+use Flexa\Commerce\Catalog\BundlePart;
 use Flexa\Commerce\Catalog\Combination;
 use Flexa\Commerce\Catalog\VariantRepository;
 use Flexa\Commerce\Contracts\CommerceException;
@@ -192,6 +193,10 @@ final class AdminCheckout {
 	public function draft_of( Order $order ): array {
 		$lines = [];
 		foreach ( $order->items_of_type( OrderItem::PRODUCT ) as $item ) {
+			// The bundle line brings its parts back when the order is saved again (ADR-071).
+			if ( $item->is_bundle_part() ) {
+				continue;
+			}
 			$selection = is_array( $item->meta['selection'] ?? null ) ? $item->meta['selection'] : null;
 			if ( $selection === null && $item->variant_id !== null ) {
 				$selection = [];
@@ -422,7 +427,19 @@ final class AdminCheckout {
 			'variant_id' => $item->line->variant_id,
 			'name'       => $item->name(),
 			'sku'        => (string) $item->sku(),
-			'labels'     => array_map( static fn ( array $label ): string => $label['name'] . ': ' . $label['value'], $item->line->labels ),
+			'labels'     => [
+				...array_map( static fn ( array $label ): string => $label['name'] . ': ' . $label['value'], $item->line->labels ),
+				// What one bundle holds (ADR-071).
+				...array_map(
+					static fn ( BundlePart $part ): string => sprintf(
+						/* translators: 1: units in one bundle, 2: product name */
+						__( 'Includes %1$d × %2$s', 'flexacommerce' ),
+						$part->quantity,
+						$part->product->title
+					),
+					$item->parts
+				),
+			],
 			'quantity'   => $item->line->quantity,
 			'status'     => $item->status,
 			'unit'       => $item->unit !== null ? $this->presenter->money( $item->unit->active ) : null,

@@ -9,7 +9,9 @@ use Flexa\Commerce\Catalog\AttributeRepository;
 use Flexa\Commerce\Catalog\Combination;
 use Flexa\Commerce\Catalog\PostTypes;
 use Flexa\Commerce\Catalog\Product;
+use Flexa\Commerce\Catalog\ProductRepository;
 use Flexa\Commerce\Catalog\ProductService;
+use Flexa\Commerce\Catalog\ProductTypes;
 use Flexa\Commerce\Catalog\Variant;
 use Flexa\Commerce\Contracts\Exceptions\ProductNotFound;
 use Flexa\Commerce\Migration\Canonical\Dates;
@@ -98,6 +100,24 @@ final class FxcCatalogReader {
 		);
 	}
 
+	/** @return list<int> */
+	public function bundle_ids(): array {
+		return array_map(
+			'intval',
+			get_posts(
+				[
+					'post_type'      => PostTypes::PRODUCT,
+					'post_status'    => 'any',
+					'posts_per_page' => -1,
+					'fields'         => 'ids',
+					'no_found_rows'  => true,
+					'meta_key'       => ProductRepository::META_TYPE, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key
+					'meta_value'     => ProductTypes::BUNDLE, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value
+				]
+			)
+		);
+	}
+
 	public function product( int $id ): ?Record {
 		$post = get_post( $id );
 		if ( ! $post instanceof \WP_Post || $post->post_type !== PostTypes::PRODUCT || in_array( $post->post_status, [ 'trash', 'auto-draft' ], true ) ) {
@@ -107,6 +127,9 @@ final class FxcCatalogReader {
 			$product = $this->products->get( $id );
 		} catch ( ProductNotFound ) {
 			return null;
+		}
+		if ( $product->is_bundle() ) {
+			return null; // WooCommerce core has no bundles (ADR-071); preflight says how many stay behind.
 		}
 		$depends    = [];
 		$attributes = [];

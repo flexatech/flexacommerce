@@ -745,7 +745,7 @@ final class OrdersEndpoint extends Endpoint {
 			'anonymized'     => $order->anonymized_at !== null,
 			'billing'        => self::address( $order->billing ),
 			'shipping'       => self::address( $order->shipping ),
-			'items'          => array_map( [ self::class, 'item' ], $order->items ),
+			'items'          => array_map( static fn ( OrderItem $item ): array => self::item( $item, $order ), $order->items ),
 			'transitions'    => OrderStateMachine::targets( $order->status ),
 			'gateway'        => [
 				'id'      => $order->payment_method,
@@ -809,7 +809,8 @@ final class OrdersEndpoint extends Endpoint {
 	}
 
 	/** @return array<string,mixed> */
-	private static function item( OrderItem $item ): array {
+	private static function item( OrderItem $item, Order $order ): array {
+		$parts = $order->parts_of( $item );
 		return [
 			'id'             => $item->id,
 			'type'           => $item->type,
@@ -827,9 +828,22 @@ final class OrdersEndpoint extends Endpoint {
 			'refunded_qty'   => $item->refunded_qty,
 			'refunded_total' => $item->refunded_total,
 			'restocked_qty'  => $item->restocked_qty,
-			'stock_managed'  => $item->stock_id() > 0,
+			// A bundle line's stock is in its parts (ADR-071).
+			'stock_managed'  => $item->stock_id() > 0 || array_filter( $parts, static fn ( OrderItem $part ): bool => $part->stock_id() > 0 ) !== [],
 			'downloadable'   => ! empty( $item->meta['downloadable'] ),
+			'bundle'         => $item->bundle_key() !== '',
+			'bundled_by'     => $item->is_bundle_part() ? self::parent_id( $order, $item ) : null,
 		];
+	}
+
+	/** The id of the bundle line a part belongs to. */
+	private static function parent_id( Order $order, OrderItem $part ): ?int {
+		foreach ( $order->items_of_type( OrderItem::PRODUCT ) as $item ) {
+			if ( $item->bundle_key() === $part->bundled_by() ) {
+				return $item->id;
+			}
+		}
+		return null;
 	}
 
 	/** @return array<string,mixed> */

@@ -4,7 +4,7 @@
     "name": "SearchBox"
   },
   "admin/features/checkout/CheckoutBuilderPage.tsx": {
-    "file": "assets/CheckoutBuilderPage-D0MJeYNC.js",
+    "file": "assets/CheckoutBuilderPage-CVoKG7o3.js",
     "name": "CheckoutBuilderPage",
     "src": "admin/features/checkout/CheckoutBuilderPage.tsx",
     "isDynamicEntry": true,
@@ -14,7 +14,7 @@
     ]
   },
   "admin/main.tsx": {
-    "file": "assets/admin-0wayGcKL.js",
+    "file": "assets/admin-hxbeqi9Y.js",
     "name": "admin",
     "src": "admin/main.tsx",
     "isEntry": true,
@@ -25,11 +25,11 @@
       "admin/features/checkout/CheckoutBuilderPage.tsx"
     ],
     "css": [
-      "assets/admin-DgJgVXq9.css"
+      "assets/admin-k-qCzyr7.css"
     ]
   },
   "admin/product-editor.tsx": {
-    "file": "assets/product-editor-D3EMxlk3.js",
+    "file": "assets/product-editor-DSRUi8p9.js",
     "name": "product-editor",
     "src": "admin/product-editor.tsx",
     "isEntry": true,
@@ -37,7 +37,7 @@
       "_SearchBox-SdHm6v2h.js"
     ],
     "css": [
-      "assets/product-editor-C8n-d8Fo.css"
+      "assets/product-editor-D-Obrv1k.css"
     ]
   }
 }

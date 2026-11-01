@@ -156,7 +156,27 @@ function ItemsCard({ order }: { order: OrderDetail }) {
             </CardHeader>
             <table className="fxc:w-full fxc:text-sm">
                 <tbody>
-                    {[...products, ...extras].map((item) => (
+                    {[...products, ...extras].map((item) =>
+                        item.bundled_by !== null ? (
+                            <tr key={item.id} className="fxc:border-b">
+                                <td className="fxc:py-2 fxc:pr-5 fxc:pl-10" colSpan={2}>
+                                    <div>
+                                        {item.name} <span className="fxc:text-muted-foreground">× {item.quantity}</span>
+                                    </div>
+                                    <div className="fxc:text-muted-foreground fxc:text-xs">
+                                        {[
+                                            __("In the bundle above"),
+                                            item.sku !== "" ? sprintf(__("SKU: %s"), item.sku) : "",
+                                            ...item.attributes.map((a) => `${a.label}: ${a.value}`),
+                                            item.restocked_qty > 0 ? sprintf(__("%d restocked"), item.restocked_qty) : "",
+                                        ]
+                                            .filter(Boolean)
+                                            .join(" · ")}
+                                    </div>
+                                </td>
+                                <td />
+                            </tr>
+                        ) : (
                         <tr key={item.id} className="fxc:border-b">
                             <td className="fxc:px-5 fxc:py-3">
                                 <div className="fxc:font-medium">{item.name}</div>
@@ -181,7 +201,8 @@ function ItemsCard({ order }: { order: OrderDetail }) {
                             </td>
                             <td className="fxc:px-5 fxc:py-3 fxc:text-right fxc:whitespace-nowrap fxc:tabular-nums">{money(item.total)}</td>
                         </tr>
-                    ))}
+                        ),
+                    )}
                 </tbody>
             </table>
             <div className="fxc:space-y-1 fxc:border-b fxc:last:border-b-0 fxc:px-5 fxc:py-4 fxc:text-sm">

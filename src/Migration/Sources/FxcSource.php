@@ -68,6 +68,12 @@ final class FxcSource implements SourceAdapter {
 
 	public function preflight( Job $job ): array {
 		$problems = [];
+		if ( in_array( 'products', $job->stages(), true ) ) {
+			$bundles = count( $this->catalog->bundle_ids() );
+			if ( $bundles > 0 ) {
+				$problems[] = Problem::warning( 'bundles_skipped', sprintf( '%d bundles stay behind: WooCommerce has no bundle product type. Orders that sold them keep their lines.', $bundles ), [ 'bundles' => $bundles ] );
+			}
+		}
 		if ( in_array( 'orders', $job->stages(), true ) ) {
 			$statuses   = $this->enumeration->order_statuses();
 			$problems[] = Problem::info( 'order_statuses', sprintf( '%d orders to copy back.', array_sum( $statuses ) ), [ 'statuses' => $statuses ] );

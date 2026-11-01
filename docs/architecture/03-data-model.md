@@ -93,7 +93,7 @@ Status: **Approved 2026-10-24**. All table names below are shown without `{$wpdb
 
 ```
 fxc_product (post)
- ├── type: simple | variable | grouped | external     (_fxc_type, ADR-062)
+ ├── type: simple | variable | grouped | external | bundle  (_fxc_type, ADR-062, ADR-071)
  ├── attribute definitions                           (_fxc_attributes JSON)
  │     global: { key:"g:12", attribute_term_id:12, value_term_ids:[31,32], visible, variation, position }
  │     local:  { key:"l:fabric", name:"Fabric", values:["Cotton","Linen"], visible, variation, position }
@@ -154,9 +154,11 @@ Stored in **grams and millimetres** as `decimal(12,3)`, converted from the store
 
 | Key | Type | Notes |
 |---|---|---|
-| `_fxc_type` | `simple` \| `variable` \| `grouped` \| `external` | Required. Only simple and variable products are sold here (ADR-062). |
+| `_fxc_type` | `simple` \| `variable` \| `grouped` \| `external` \| `bundle` | Required. Simple, variable and bundle products are sold here (ADR-062, ADR-071). |
 | `_fxc_children` | comma-separated product ids | Grouped only: the listed products in their order, at most 100, none grouped (ADR-062). |
 | `_fxc_grouped_in` | comma-separated product ids | The grouped products that list this one, kept by the catalogue so a price or stock change updates them. |
+| `_fxc_bundle` | JSON `{mode, discount, items: [{product_id, variant_id, quantity}]}` | Bundle only (ADR-071): `mode` `fixed`, `sum` or `discount`, `discount` 1 to 99 (0 otherwise), at most 20 items of 1 to 999 units, in the order the shop lists them. `variant_id` is a simple product's base row or a variation. A bundle keeps one base row for its price and status; it has no stock of its own. |
+| `_fxc_bundled_in` | comma-separated product ids | The bundles that hold a row of this product, kept by the catalogue so a price or stock change updates them (ADR-071). |
 | `_fxc_product_url`, `_fxc_button_text` | string | External only: the http(s) link and the button label (empty means "Buy product"). |
 | `_fxc_attributes` | JSON list | Definitions (§3.1). |
 | `_fxc_gallery_ids` | comma-separated attachment ids | `_thumbnail_id` (core) is the main image. |
@@ -164,7 +166,7 @@ Stored in **grams and millimetres** as `decimal(12,3)`, converted from the store
 | `_fxc_visibility` | `visible` \| `catalog` \| `search` \| `hidden` | |
 | `_fxc_featured` | `0`/`1` | |
 | `_fxc_price_min`, `_fxc_price_max` | integer minor units | Denormalized, for sorting and range display. |
-| `_fxc_stock_status` | `instock` \| `outofstock` \| `onbackorder` | Product-level aggregate (in stock if any purchasable variation is; for a grouped product, if any published child is). |
+| `_fxc_stock_status` | `instock` \| `outofstock` \| `onbackorder` | Product-level aggregate (in stock if any purchasable variation is; for a grouped product, if any published child is; for a bundle, if every part gives the units one bundle takes, ADR-071). |
 | `_fxc_next_price_change` | UTC datetime string or absent | For the sale schedule cron. |
 | `_fxc_short_description` | HTML | Kept in meta (excerpt is also acceptable; decision: use `post_excerpt`, so this key is **not** created). |
 | `_fxc_import` | JSON | Unsupported source metadata bucket (doc 05 §7). |
@@ -374,6 +376,7 @@ CREATE TABLE fxc_order_items (
 - Product, shipping and fee lines keep the per-rate split of their `tax_total` in `meta.taxes` (`{"<rate_id>": amount}`). Invariant: `orders.tax_total = Σ tax lines.total = Σ other lines.tax_total`.
 - Product lines keep the raw choices the order was priced with: `meta.selection` (attribute key => value key) and `meta.options` (option key => value or list of choice ids), so the admin order editor can price the line again (ADR-061). Lines from before ADR-061 have neither.
 - Product lines with product options that track stock keep them in `meta.option_stock` (`{"<set>-<field>-<choice>": "Finish: Gold"}`) and the units taken from `fxc_option_stock` in `meta.option_held` (ADR-040).
+- A bundle line keeps `meta.bundle` = `{key}` (its cart line key). Its parts follow it as product lines with `meta.bundled_by` = that key, `subtotal`, `total` and taxes 0, quantity = bundle units × part units, and `stock_id` when the part manages stock; they carry `meta.virtual` and `meta.downloadable` from the part. Stock, holds, restocks and download permissions work on the part lines (ADR-071).
 - Gift card lines keep who the cards go to in `meta.gift_card`: `{issue: true, to, name, from, message, date}` with only the fields the buyer filled (`issue` keeps the entry when none was). `fxc_gift_cards.order_item_id` points back at the line (ADR-069).
 - `code`: shipping rate id (`flat_rate:3`), fee code, coupon code, tax rate code.
 - `discount` lines (doc 02 §7.13.5): one per applied coupon, `name` and `code` = the code as saved, `quantity` 1, `total` = the coupon's net share of the order discount, `meta` = `{coupon_id, type, amount, discount_tax}`. They are a record: the amount is already in the product lines' `discount_total`. Invariant: `orders.discount_total = Σ product lines.discount_total = Σ discount lines.total`.

@@ -204,7 +204,7 @@ final class FxcCatalogWriter {
 		}
 
 		[ $raw, $axes ] = $this->attributes_of( $data, $map, $problems );
-		$kind           = in_array( $data['kind'] ?? null, ProductTypes::all(), true ) ? (string) $data['kind'] : ProductTypes::SIMPLE;
+		$kind           = in_array( $data['kind'] ?? null, array_diff( ProductTypes::all(), [ ProductTypes::BUNDLE ] ), true ) ? (string) $data['kind'] : ProductTypes::SIMPLE;
 		$base_row       = ( is_array( $data['base'] ?? null ) ? $data['base'] : [] ) + array_intersect_key(
 			$data,
 			[

@@ -19,6 +19,7 @@ const TYPE_LABELS: Record<ProductType, string> = {
     variable: __("Variable"),
     grouped: __("Grouped"),
     external: __("External"),
+    bundle: __("Bundle"),
 };
 
 /**

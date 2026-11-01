@@ -93,7 +93,7 @@ final class CartState {
 	/** True when a line has something to ship; virtual products have nothing (ADR-058). */
 	public function needs_shipping(): bool {
 		foreach ( $this->items as $item ) {
-			if ( $item->variant !== null && ! $item->variant->virtual ) {
+			if ( $item->variant !== null && ! $item->is_virtual() ) {
 				return true;
 			}
 		}

@@ -302,6 +302,9 @@ final class OrderService {
 				throw new InvalidRefund( __( 'A refund line does not belong to this order.', 'flexacommerce' ) );
 			}
 			$seen[ $line->order_item_id ] = true;
+			if ( $item->is_bundle_part() && ( $line->qty > 0 || $line->amount > 0 || $line->restock ) ) {
+				throw new InvalidRefund( __( 'A bundle is refunded on its own line, with its parts.', 'flexacommerce' ) );
+			}
 			if ( $line->qty > $item->refundable_qty() || ( $line->restock && $item->type !== OrderItem::PRODUCT ) ) {
 				throw new InvalidRefund(
 					sprintf(
@@ -339,7 +342,7 @@ final class OrderService {
 				$now      = $this->clock->db_now();
 				$restock  = [];
 				$restocks = [];
-				foreach ( $lines as $line ) {
+				foreach ( $this->with_parts( $order, $lines ) as $line ) {
 					$item = $order->item( $line->order_item_id );
 					if ( $item === null ) {
 						continue;
@@ -415,6 +418,31 @@ final class OrderService {
 				return $this->orders->find( $order_id ) ?? $order;
 			}
 		);
+	}
+
+	/**
+	 * Refund lines plus, for each bundle line, its parts: the same share of
+	 * units, no money, and the bundle's restock choice (ADR-071).
+	 *
+	 * @param list<RefundLine> $lines
+	 * @return list<RefundLine>
+	 */
+	private function with_parts( Order $order, array $lines ): array {
+		$out = [];
+		foreach ( $lines as $line ) {
+			$out[] = $line;
+			$item  = $order->item( $line->order_item_id );
+			if ( $item === null || $line->qty === 0 || $item->quantity === 0 ) {
+				continue;
+			}
+			foreach ( $order->parts_of( $item ) as $part ) {
+				$qty = min( $part->refundable_qty(), intdiv( $part->quantity * $line->qty, $item->quantity ) );
+				if ( $qty > 0 ) {
+					$out[] = new RefundLine( $part->id, $qty, 0, $line->restock );
+				}
+			}
+		}
+		return $out;
 	}
 
 	public function flag_attention( int $order_id, string $reason, TransitionContext $ctx ): Order {
@@ -646,6 +674,8 @@ final class OrderService {
 	 * @param array<array-key,array<string,mixed>> $metas product line meta
 	 */
 	private static function only_downloads( array $metas ): bool {
+		// A bundle line stands for its parts, which follow it (ADR-071).
+		$metas = array_filter( $metas, static fn ( array $meta ): bool => ! isset( $meta['bundle'] ) );
 		foreach ( $metas as $meta ) {
 			if ( empty( $meta['virtual'] ) || empty( $meta['downloadable'] ) ) {
 				return false;

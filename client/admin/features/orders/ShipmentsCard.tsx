@@ -129,7 +129,7 @@ function ShipmentDialog({ order, open, onOpenChange }: DialogProps) {
     const carriers = useShipmentCarriers(open);
     const add = useAddShipment(order.id);
     const lines = useMemo(
-        () => order.items.filter((item) => item.type === "product" && item.quantity - item.refunded_qty > 0),
+        () => order.items.filter((item) => item.type === "product" && item.bundled_by === null && item.quantity - item.refunded_qty > 0),
         [order.items],
     );
     const canComplete = order.transitions.includes("completed");

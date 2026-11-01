@@ -52,6 +52,10 @@ export interface OrderItem {
     stock_managed: boolean;
     /** The line sold files when it was ordered. */
     downloadable: boolean;
+    /** A bundle line (ADR-071): its parts follow it. */
+    bundle: boolean;
+    /** The bundle line this part belongs to; parts carry no price. */
+    bundled_by: number | null;
 }
 
 /** One file one line may download (ADR-058); null limits mean no limit. */

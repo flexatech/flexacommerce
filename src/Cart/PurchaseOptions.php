@@ -7,7 +7,6 @@ namespace Flexa\Commerce\Cart;
 use Flexa\Commerce\Catalog\AttributeRepository;
 use Flexa\Commerce\Catalog\Product;
 use Flexa\Commerce\Catalog\Variant;
-use Flexa\Commerce\Inventory\StockService;
 use Flexa\Commerce\Pricing\PricingService;
 use Flexa\Commerce\Support\Settings;
 
@@ -35,7 +34,6 @@ final class PurchaseOptions {
 	public function __construct(
 		private readonly CartService $cart,
 		private readonly PricingService $pricing,
-		private readonly StockService $stock,
 	) {}
 
 	/**
@@ -80,7 +78,7 @@ final class PurchaseOptions {
 		}
 		$suffix       = $this->pricing->display_suffix( $product, $row, $unit );
 		$unit         = $this->pricing->for_display( $product, $row, $unit );
-		$availability = $this->stock->availability( $product, $row );
+		$availability = $this->cart->availability( $product, $row );
 		$max          = $availability->max_quantity();
 		return [
 			'id'         => $row->id,

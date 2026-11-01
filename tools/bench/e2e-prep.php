@@ -244,6 +244,28 @@ $products->save(
 	)
 );
 
+// Two pack mugs and the simple product sold as one, 10% off their sum (ADR-071).
+$set_id = $make( 'Breakfast set', 'breakfast-set' );
+$products->save(
+	$set_id,
+	ProductInput::from_array(
+		[
+			'type'   => 'bundle',
+			'bundle' => [
+				'mode'     => 'discount',
+				'discount' => 10,
+				'items'    => [
+					[
+						'product_id' => $mug_id,
+						'quantity'   => 2,
+					],
+					[ 'product_id' => $post( $simple )->ID ],
+				],
+			],
+		]
+	)
+);
+
 // A simple product with no stock, for the back-in-stock form (ADR-065).
 $vase_id = $make( 'Sold out vase', 'sold-out-vase' );
 $products->save(
@@ -304,6 +326,13 @@ $out = [
 		'url'  => (string) get_permalink( $lamp_id ),
 		'link' => 'https://partner.example/lamp',
 		'text' => 'Buy at Partner',
+	],
+	'bundle'   => [
+		'id'    => $set_id,
+		'name'  => 'Breakfast set',
+		'url'   => (string) get_permalink( $set_id ),
+		'mug'   => 'Pack mug',
+		'price' => intdiv( ( 800 + (int) $simple['regular_price'] ) * 90 + 50, 100 ),
 	],
 	'soldout'  => [
 		'id'   => $vase_id,

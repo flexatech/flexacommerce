@@ -990,15 +990,42 @@ final class CheckoutService {
 				// The raw choices, so the admin can edit the order later (ADR-061).
 				array_filter(
 					[
-						'virtual'      => $item->variant?->virtual === true,
+						'virtual'      => $item->parts !== [] ? $item->is_virtual() : $item->variant?->virtual === true,
 						'downloadable' => $item->variant?->sells_files() === true,
 						'selection'    => $item->line->attributes,
 						'options'      => $item->line->options,
 						// Who the cards from this line go to (ADR-069); `issue` keeps the entry when no field is filled.
 						'gift_card'    => $item->variant?->gift_card === true ? [ 'issue' => true ] + $item->line->gift : null,
+						'bundle'       => $item->parts !== [] ? [ 'key' => $item->line->key ] : null,
 					]
 				)
 			);
+			// A bundle's parts follow as unpriced lines, so stock, refunds and files work per part (ADR-071).
+			foreach ( $item->parts as $part ) {
+				$owner   = $part->owner();
+				$items[] = NewOrderItem::product(
+					$part->product->id,
+					$part->variant->id,
+					$owner->manage_stock ? $owner->id : 0,
+					$part->product->title,
+					$part->variant->sku ?? $part->product->base->sku,
+					$this->cart->part_labels( $part ),
+					$item->line->quantity * $part->quantity,
+					0,
+					0,
+					[],
+					0,
+					0,
+					[],
+					array_filter(
+						[
+							'bundled_by'   => $item->line->key,
+							'virtual'      => $part->variant->virtual,
+							'downloadable' => $part->variant->sells_files(),
+						]
+					)
+				);
+			}
 		}
 		$discount = 0;
 		foreach ( $this->discount_items( $quote ) as $line ) {
@@ -1155,7 +1182,7 @@ final class CheckoutService {
 	private function item_count( Order $order ): int {
 		$count = 0;
 		foreach ( $order->items as $item ) {
-			if ( $item->type === OrderItem::PRODUCT ) {
+			if ( $item->type === OrderItem::PRODUCT && ! $item->is_bundle_part() ) {
 				$count += $item->quantity;
 			}
 		}

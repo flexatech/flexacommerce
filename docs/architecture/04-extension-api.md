@@ -184,11 +184,11 @@ Because these fire after commit, a listener that throws cannot roll back the ord
 
 ### 5.3 Reading orders
 
-`OrderReader::find( int $id ): ?OrderView`, `find_by_number()`, `search( OrderQuery )`; `OrderQuery` takes `date_from` and `date_to` as store-local YYYY-MM-DD days (ADR-070). `OrderView` is an immutable read model (items, addresses, totals as Money, history ids). `OrderItemView::$gift_card` is true for a line that sold gift cards (ADR-069). Extension metadata: `OrderMeta::get( order_id, key )`, `set()`, `delete()` (writes `fxc_order_meta`, key must not start with `_fxc_`, value string or JSON-serializable array).
+`OrderReader::find( int $id ): ?OrderView`, `find_by_number()`, `search( OrderQuery )`; `OrderQuery` takes `date_from` and `date_to` as store-local YYYY-MM-DD days (ADR-070). `OrderView` is an immutable read model (items, addresses, totals as Money, history ids). `OrderItemView::$gift_card` is true for a line that sold gift cards (ADR-069). `OrderItemView::$bundle_part` is true for an unpriced line that came with the bundle line before it (ADR-071). Extension metadata: `OrderMeta::get( order_id, key )`, `set()`, `delete()` (writes `fxc_order_meta`, key must not start with `_fxc_`, value string or JSON-serializable array).
 
 ## 6. Product types
 
-[Decision] No public product-type registration in 1.0 (doc 01 §6). Internally `Catalog\ProductTypes` is a registry with `simple`, `variable`, `grouped` and `external` (ADR-062), with `is_sold()`, `has_stock()` and `has_variations()` deciding what the cart, stock and editor do with each. It will be published as `Contracts\Catalog\ProductType` once an extension needs a type of its own. Until then extensions can attach data to products with post meta and to variants through `VariantMeta` (JSON `meta` column, namespaced keys).
+[Decision] No public product-type registration in 1.0 (doc 01 §6). Internally `Catalog\ProductTypes` is a registry with `simple`, `variable`, `grouped`, `external` (ADR-062) and `bundle` (ADR-071), with `is_sold()`, `has_stock()` and `has_variations()` deciding what the cart, stock and editor do with each. It will be published as `Contracts\Catalog\ProductType` once an extension needs a type of its own. Until then extensions can attach data to products with post meta and to variants through `VariantMeta` (JSON `meta` column, namespaced keys).
 
 ## 7. Catalog, pricing and cart hooks
 

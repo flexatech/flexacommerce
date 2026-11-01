@@ -83,6 +83,7 @@ final class ProductService {
 			children: $product->children,
 			product_url: $product->product_url,
 			button_text: $product->button_text,
+			bundle: $product->bundle,
 		);
 	}
 
@@ -104,16 +105,35 @@ final class ProductService {
 				$base = $before->base->with( ( $input->base ?? [] ) + [ 'product_id' => $before->id ] );
 				if ( ! ProductTypes::has_stock( $type ) ) {
 					// Grouped and external products are not sold here: no stock, shipping or files (ADR-062).
+					// A bundle ships and takes the stock of its parts (ADR-071).
 					$base = $base->with(
 						[
 							'manage_stock' => false,
 							'stock_status' => Variant::INSTOCK,
-							'virtual'      => true,
+							'virtual'      => $type !== ProductTypes::BUNDLE,
 							'downloadable' => false,
 							'gift_card'    => false,
 							'downloads'    => new Downloads(),
 						]
 					);
+				}
+				$bundle = $type === ProductTypes::BUNDLE ? $this->bundle( $before->id, $input->bundle ?? $before->bundle ?? new Bundle() ) : null;
+				if ( $bundle !== null && $bundle->is_computed() ) {
+					// The parts set the price; sync_denormalized() writes it.
+					$base = $base->with(
+						[
+							'regular_price' => null,
+							'sale_price'    => null,
+							'sale_from'     => null,
+							'sale_to'       => null,
+						]
+					);
+				}
+				if ( $type !== ProductTypes::SIMPLE && $type !== ProductTypes::VARIABLE && $this->products->bundles_of( $before->id ) !== [] ) {
+					throw new InvalidProduct( __( 'This product is part of a bundle, so it must stay a simple or variable product.', 'flexacommerce' ), 'type' );
+				}
+				if ( $base->gift_card && $this->products->bundles_of( $before->id ) !== [] ) {
+					throw new InvalidProduct( __( 'This product is part of a bundle, so it cannot be a gift card.', 'flexacommerce' ), 'base.gift_card' );
 				}
 				if ( $base->gift_card ) {
 					// A gift card is a code by email: nothing ships, and tax is due when it is spent (ADR-069).
@@ -156,6 +176,7 @@ final class ProductService {
 					children: $children,
 					product_url: $type === ProductTypes::EXTERNAL ? $input->product_url ?? $before->product_url : '',
 					button_text: $type === ProductTypes::EXTERNAL ? $input->button_text ?? $before->button_text : '',
+					bundle: $bundle,
 				);
 
 				$this->write_rows( $before, $product );
@@ -208,6 +229,61 @@ final class ProductService {
 			}
 		}
 		return $ids;
+	}
+
+	/**
+	 * The rows a bundle holds, checked (ADR-071): rows customers can buy
+	 * of simple and variable products, with every attribute value fixed,
+	 * each once. Gift cards, bundles and the bundle itself are refused.
+	 *
+	 * @throws InvalidProduct
+	 */
+	private function bundle( int $product_id, Bundle $bundle ): Bundle {
+		if ( $this->products->bundles_of( $product_id ) !== [] ) {
+			throw new InvalidProduct( __( 'This product is part of a bundle, so it cannot be a bundle itself.', 'flexacommerce' ), 'type' );
+		}
+		$owners = $this->variants->owners( $bundle->variant_ids() );
+		$ids    = array_values( array_unique( array_filter( [ ...array_values( $owners ), ...$bundle->product_ids() ] ) ) );
+		if ( $ids !== [] ) {
+			_prime_post_caches( $ids, false, true );
+			$this->products->prime( $ids );
+		}
+		$items = [];
+		$seen  = [];
+		foreach ( $bundle->items as $i => $item ) {
+			$path       = 'bundle.items.' . $i;
+			$owner      = $item->variant_id > 0 ? ( $owners[ $item->variant_id ] ?? 0 ) : $item->product_id;
+			$product    = $owner > 0 ? $this->products->find( $owner ) : null;
+			$variant    = null;
+			$is_variant = $item->variant_id > 0;
+			if ( $product !== null ) {
+				$variant = $is_variant ? $product->sellable( $item->variant_id ) : ( $product->is_variable() ? null : $product->base );
+			}
+			if ( $product === null || $product->status === 'trash' ) {
+				throw new InvalidProduct( __( 'A bundle item does not exist.', 'flexacommerce' ), $path );
+			}
+			if ( $product->id === $product_id ) {
+				throw new InvalidProduct( __( 'A bundle cannot hold itself.', 'flexacommerce' ), $path );
+			}
+			if ( $product->type !== ProductTypes::SIMPLE && $product->type !== ProductTypes::VARIABLE ) {
+				throw new InvalidProduct( __( 'A bundle can hold simple products and variations only.', 'flexacommerce' ), $path );
+			}
+			if ( $variant === null ) {
+				throw new InvalidProduct( __( 'Pick one variation of a variable product.', 'flexacommerce' ), $path );
+			}
+			if ( $variant->combination->wildcard_count() > 0 ) {
+				throw new InvalidProduct( __( 'A bundle cannot hold a variation with an “Any” value.', 'flexacommerce' ), $path );
+			}
+			if ( $product->is_gift_card() ) {
+				throw new InvalidProduct( __( 'A bundle cannot hold a gift card.', 'flexacommerce' ), $path );
+			}
+			if ( isset( $seen[ $variant->id ] ) ) {
+				throw new InvalidProduct( __( 'The same item is in the bundle twice. Raise its quantity instead.', 'flexacommerce' ), $path );
+			}
+			$seen[ $variant->id ] = true;
+			$items[]              = new BundleItem( $product->id, $variant->id, $item->quantity );
+		}
+		return new Bundle( $bundle->mode, $bundle->discount, $items );
 	}
 
 	/**
@@ -284,8 +360,9 @@ final class ProductService {
 	/** Gives a new product its base row and type (hooked on `save_post_fxc_product`). */
 	public function ensure_base( int $product_id ): void {
 		if ( $this->variants->for_product( $product_id ) !== [] ) {
-			// Published, drafted or trashed: the grouped products listing it show it or not (ADR-062).
-			foreach ( $this->products->groups_of( $product_id ) as $group ) {
+			// Published, drafted or trashed: the grouped products listing it show it or not (ADR-062),
+			// and the bundles holding it can be sold or not (ADR-071).
+			foreach ( [ ...$this->products->groups_of( $product_id ), ...$this->products->bundles_of( $product_id ) ] as $group ) {
 				$this->products->sync_denormalized( $group, $this->clock->db_now() );
 			}
 			return;
@@ -382,6 +459,7 @@ final class ProductService {
 					children: $source->children,
 					product_url: $source->product_url,
 					button_text: $source->button_text,
+					bundle: $source->bundle,
 				);
 				$this->products->save_meta( $copy );
 				$this->products->sync_denormalized( $copy_id, $this->clock->db_now() );

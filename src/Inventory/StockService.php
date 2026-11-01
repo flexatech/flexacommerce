@@ -238,7 +238,8 @@ final class StockService {
 
 				$synced = [];
 				foreach ( $changes as $change ) {
-					if ( $change->status_changed() && ! isset( $synced[ $change->product_id ] ) ) {
+					// A bundle's status follows its parts' quantities, not only their status (ADR-071).
+					if ( ! isset( $synced[ $change->product_id ] ) && ( $change->status_changed() || $this->products->bundles_of( $change->product_id ) !== [] ) ) {
 						$synced[ $change->product_id ] = true;
 						$this->products->sync_denormalized( $change->product_id, $this->clock->db_now() );
 					}

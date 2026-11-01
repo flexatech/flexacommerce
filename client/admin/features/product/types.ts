@@ -4,7 +4,27 @@
  * millimetres, both as decimal strings.
  */
 
-export type ProductType = "simple" | "variable" | "grouped" | "external";
+export type ProductType = "simple" | "variable" | "grouped" | "external" | "bundle";
+
+export type BundleMode = "fixed" | "sum" | "discount";
+
+/** One item of a bundle (ADR-071): a variant row and the units one bundle takes. */
+export interface BundleItem {
+    product_id: number;
+    variant_id: number;
+    quantity: number;
+    /** Read only: what the picker shows, and whether the row was deleted. */
+    label: string;
+    sku: string;
+    missing: boolean;
+}
+
+export interface BundleData {
+    mode: BundleMode;
+    /** Percent off the items' sum, for the discount mode. */
+    discount: number;
+    items: BundleItem[];
+}
 
 /** A product a grouped product lists (ADR-062). */
 export interface GroupChild {
@@ -141,6 +161,8 @@ export interface ProductData {
     featured: boolean;
     /** A grouped product: the products it lists, in order. */
     children: GroupChild[];
+    /** A bundle: how it is priced and what it holds; null for other types. */
+    bundle: BundleData | null;
     /** An external product: where it is sold, and the text of its button. */
     product_url: string;
     button_text: string;

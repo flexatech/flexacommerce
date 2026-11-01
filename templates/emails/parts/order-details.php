@@ -4,7 +4,7 @@
  *
  * Override by copying to yourtheme/flexacommerce/emails/parts/order-details.php.
  *
- * @version 1.0.0
+ * @version 1.1.0
  *
  * @var array{order:\Flexa\Commerce\Contracts\Orders\OrderView,data:\Flexa\Commerce\Notifications\OrderData} $args
  */
@@ -43,6 +43,19 @@ if ( $fxc_taxes === [] && ! $fxc_order->tax_total->is_zero() ) {
 </h2>
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;font-size:14px;">
 	<?php foreach ( $fxc_order->items_of_type( 'product' ) as $fxc_line ) : ?>
+		<?php if ( $fxc_line->bundle_part ) : ?>
+			<tr>
+				<td style="padding:0 0 8px 16px;color:#52525b;font-size:13px;vertical-align:top;">
+					<?php echo esc_html( $fxc_line->name ); ?>
+					<?php foreach ( $fxc_line->attributes as $fxc_attribute ) : ?>
+						<br><span style="color:#71717a;"><?php echo esc_html( $fxc_attribute['label'] . ': ' . $fxc_attribute['value'] ); ?></span>
+					<?php endforeach; ?>
+				</td>
+				<td style="padding:0 0 8px;color:#52525b;font-size:13px;text-align:center;width:48px;white-space:nowrap;vertical-align:top;">&times; <?php echo esc_html( (string) $fxc_line->quantity ); ?></td>
+				<td></td>
+			</tr>
+			<?php continue; ?>
+		<?php endif; ?>
 		<tr>
 			<td style="<?php echo esc_attr( $fxc_cell ); ?>">
 				<?php echo esc_html( $fxc_line->name ); ?>

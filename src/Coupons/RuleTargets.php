@@ -8,6 +8,7 @@ use Flexa\Commerce\Catalog\Combination;
 use Flexa\Commerce\Catalog\PostTypes;
 use Flexa\Commerce\Catalog\Product;
 use Flexa\Commerce\Catalog\ProductRepository;
+use Flexa\Commerce\Catalog\ProductTypes;
 use Flexa\Commerce\Catalog\Variant;
 use Flexa\Commerce\Catalog\VariantRepository;
 
@@ -25,6 +26,7 @@ final class RuleTargets {
 	public const PRODUCT  = 'product';
 	public const VARIANT  = 'variant';
 	public const CATEGORY = 'category';
+	public const PART     = 'part';
 
 	/** Products and categories one search returns. */
 	public const LIMIT = 20;
@@ -46,6 +48,94 @@ final class RuleTargets {
 	 * @return list<Target>
 	 */
 	public function search_products( string $search ): array {
+		$out = [];
+		foreach ( $this->found( $search ) as $product_id => $which ) {
+			$product = $this->products->find( $product_id );
+			// Grouped and external products have nothing to sell here (ADR-062).
+			if ( $product === null || $product->status === 'trash' || ! $product->is_sold() ) {
+				continue;
+			}
+			$out[] = self::product_row( $product );
+			foreach ( $product->is_variable() ? $product->variations : [] as $variant ) {
+				if ( $which === true || in_array( $variant->id, $which, true ) ) {
+					$out[] = $this->variant_row( $product, $variant );
+				}
+			}
+			if ( count( $out ) >= self::MAX_ROWS ) {
+				break;
+			}
+		}
+		return array_slice( $out, 0, self::MAX_ROWS );
+	}
+
+	/**
+	 * What a bundle can hold (ADR-071): simple products and the variations
+	 * of variable ones, as rows of the variant table. A simple product's row
+	 * is its base row. Gift cards and variations with an “Any” value are
+	 * left out.
+	 *
+	 * @return list<array{type:string,id:int,label:string,sku:string,product_id:int}>
+	 */
+	public function search_parts( string $search ): array {
+		$out = [];
+		foreach ( $this->found( $search ) as $product_id => $which ) {
+			$product = $this->products->find( $product_id );
+			if ( $product === null || $product->status === 'trash' || ! in_array( $product->type, [ ProductTypes::SIMPLE, ProductTypes::VARIABLE ], true ) ) {
+				continue;
+			}
+			$rows = $product->is_variable() ? $product->variations : [ $product->base ];
+			foreach ( $rows as $variant ) {
+				if ( $variant->gift_card || $variant->combination->wildcard_count() > 0 || ( $which !== true && ! in_array( $variant->id, $which, true ) ) ) {
+					continue;
+				}
+				$row   = $variant->is_base ? [ 'type' => self::VARIANT ] + self::product_row( $product ) : $this->variant_row( $product, $variant );
+				$out[] = [
+					'id'         => $variant->id,
+					'sku'        => (string) ( $variant->sku ?? $product->base->sku ),
+					'product_id' => $product->id,
+				] + $row;
+			}
+			if ( count( $out ) >= self::MAX_ROWS ) {
+				break;
+			}
+		}
+		return array_slice( $out, 0, self::MAX_ROWS );
+	}
+
+	/**
+	 * The rows of a bundle's items, by variant id (ADR-071); rows that no
+	 * longer exist are left out.
+	 *
+	 * @param list<int> $variant_ids
+	 * @return array<int,array{type:string,id:int,label:string,sku:string,product_id:int}>
+	 */
+	public function lookup_parts( array $variant_ids ): array {
+		$owners = $this->variants->owners( $variant_ids );
+		$this->products->prime( array_values( array_unique( $owners ) ) );
+		$out = [];
+		foreach ( $variant_ids as $id ) {
+			$product = isset( $owners[ $id ] ) ? $this->products->find( $owners[ $id ] ) : null;
+			foreach ( $product?->rows() ?? [] as $variant ) {
+				if ( $variant->id === $id && $product !== null ) {
+					$row        = $variant->is_base ? [ 'type' => self::VARIANT ] + self::product_row( $product ) : $this->variant_row( $product, $variant );
+					$out[ $id ] = [
+						'id'         => $id,
+						'sku'        => (string) ( $variant->sku ?? $product->base->sku ),
+						'product_id' => $product->id,
+					] + $row;
+				}
+			}
+		}
+		return $out;
+	}
+
+	/**
+	 * Products whose title or SKU matches: product id => every row (true)
+	 * or the variant ids whose SKU matched.
+	 *
+	 * @return array<int,true|list<int>>
+	 */
+	private function found( string $search ): array {
 		$search = trim( $search );
 		$query  = new \WP_Query(
 			[
@@ -77,24 +167,7 @@ final class RuleTargets {
 		}
 
 		$this->products->prime( array_keys( $wanted ) );
-		$out = [];
-		foreach ( $wanted as $product_id => $which ) {
-			$product = $this->products->find( $product_id );
-			// Grouped and external products have nothing to sell here (ADR-062).
-			if ( $product === null || $product->status === 'trash' || ! $product->is_sold() ) {
-				continue;
-			}
-			$out[] = self::product_row( $product );
-			foreach ( $product->is_variable() ? $product->variations : [] as $variant ) {
-				if ( $which === true || in_array( $variant->id, $which, true ) ) {
-					$out[] = $this->variant_row( $product, $variant );
-				}
-			}
-			if ( count( $out ) >= self::MAX_ROWS ) {
-				break;
-			}
-		}
-		return array_slice( $out, 0, self::MAX_ROWS );
+		return $wanted;
 	}
 
 	/** @return list<Target> */

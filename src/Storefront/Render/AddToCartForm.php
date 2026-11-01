@@ -54,7 +54,7 @@ final class AddToCartForm {
 	public function html( Product $product, string $mode = self::SINGLE, int $user_id = 0, bool $wishlist = true ): string {
 		return Component::wrap(
 			'add_to_cart',
-			fn (): string => $this->markup( $product, $mode, $user_id ) . ( $wishlist ? WishlistButton::html( $product, $mode ) : '' ),
+			fn (): string => ( $mode === self::SINGLE && $product->is_bundle() ? self::includes( $product ) : '' ) . $this->markup( $product, $mode, $user_id ) . ( $wishlist ? WishlistButton::html( $product, $mode ) : '' ),
 			[
 				'product_id' => $product->id,
 				'mode'       => $mode,
@@ -300,6 +300,23 @@ final class AddToCartForm {
 			esc_attr( sprintf( __( '%1$s: %2$s (opens in a new tab)', 'flexacommerce' ), $text, $product->title ) ),
 			esc_html( $text )
 		);
+	}
+
+	/** What one bundle holds, linked to each product (ADR-071). */
+	private static function includes( Product $product ): string {
+		$items = '';
+		$cart  = Plugin::instance()->cart()->cart();
+		foreach ( (array) Plugin::instance()->catalog()->products()->parts_of( $product ) as $part ) {
+			$values = array_column( $cart->part_labels( $part ), 'value' );
+			$items .= sprintf(
+				'<li><span class="fxc-bundle__quantity">%1$s&nbsp;&times;</span> <a href="%2$s">%3$s</a>%4$s</li>',
+				esc_html( number_format_i18n( $part->quantity ) ),
+				esc_url( (string) get_permalink( $part->product->id ) ),
+				esc_html( $part->product->title ),
+				$values !== [] ? ' <span class="fxc-bundle__values">' . esc_html( implode( ', ', $values ) ) . '</span>' : ''
+			);
+		}
+		return $items === '' ? '' : '<div class="fxc-bundle"><p class="fxc-bundle__title">' . esc_html__( 'This bundle includes:', 'flexacommerce' ) . '</p><ul class="fxc-bundle__items">' . $items . '</ul></div>';
 	}
 
 	private static function link( Product $product, string $text ): string {

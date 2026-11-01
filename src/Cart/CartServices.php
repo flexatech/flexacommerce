@@ -103,7 +103,7 @@ final class CartServices {
 	}
 
 	public function purchase_options(): PurchaseOptions {
-		return $this->options ??= new PurchaseOptions( $this->cart(), $this->pricing(), $this->stock() );
+		return $this->options ??= new PurchaseOptions( $this->cart(), $this->pricing() );
 	}
 
 	public function presenter(): CartPresenter {

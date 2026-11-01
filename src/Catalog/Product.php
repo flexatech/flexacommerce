@@ -12,7 +12,7 @@ defined( 'ABSPATH' ) || exit;
  * A product post with its catalog data: type, attribute definitions, the
  * base row and (for variable products) the variation rows. A grouped
  * product lists its `children`; an external one links to `product_url`
- * (ADR-062).
+ * (ADR-062). A bundle holds rows of other products in `bundle` (ADR-071).
  */
 final class Product {
 	public const VISIBILITIES = [ 'visible', 'catalog', 'search', 'hidden' ];
@@ -38,6 +38,7 @@ final class Product {
 		public readonly array $children = [],
 		public readonly string $product_url = '',
 		public readonly string $button_text = '',
+		public readonly ?Bundle $bundle = null,
 	) {}
 
 	public function is_variable(): bool {
@@ -50,6 +51,10 @@ final class Product {
 
 	public function is_external(): bool {
 		return $this->type === ProductTypes::EXTERNAL;
+	}
+
+	public function is_bundle(): bool {
+		return $this->type === ProductTypes::BUNDLE;
 	}
 
 	/** Sold as a gift card: paid rows issue codes instead of shipping (ADR-069). Variations inherit it. */

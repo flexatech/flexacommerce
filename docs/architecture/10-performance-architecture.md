@@ -389,6 +389,8 @@ ADR-069 added `is_gift_card` as the 34th column. With the plain-list rows the P3
 
 The order CSV export (ADR-070) runs only in the admin and adds nothing to boot or the storefront. A page of 100 orders costs six queries (orders by primary key range, items, addresses, checkout fields, gift card net, tracking numbers; three for the product layout) whatever the page size, and the browser keeps the file, so server memory stays at one page.
 
+Product bundles (ADR-071) add no column, table or boot-time hook. The bundle's price and stock status are written on its base row when it or a part changes, so catalog pages, sorting and filters read them like any product's and the P budgets did not move. Only a bundle's own product page, a cart holding a bundle and checkout read its parts (at most 20) through the product loader; a part finds its bundles from `_fxc_bundled_in` without a query.
+
 The Playwright pass with axe on Twenty Twenty-Five, Astra and Twenty Twenty-One is green (doc 07 phase 5 notes).
 
 **T3 (2026-10-25).** The §6.4 set ran on dataset M at 1 and 10 VU against WooCommerce 11.2.1 default (HPOS on) and tuned (the list is in the report). Report: `docs/benchmarks/2026-10-25-phase5.md`.
