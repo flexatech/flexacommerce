@@ -11,7 +11,7 @@ import { Textarea } from "@/shared/components/ui/textarea";
 import { __, sprintf } from "@/shared/lib/i18n";
 import { canPickImage, pickImage } from "../../components/pickImage";
 import { SettingRow } from "../../components/SettingRow";
-import { useInvoiceSettings, useSaveInvoiceSettings, type InvoiceSettings } from "./useInvoices";
+import { useInvoiceSettings, useSaveInvoiceSettings, type InvoiceSettings, type InvoiceSettingsChanges } from "./useInvoices";
 
 function toInt(value: string): number {
     const n = Number.parseInt(value, 10);
@@ -19,11 +19,15 @@ function toInt(value: string): number {
 }
 
 /** A preview of a number with the placeholders filled in, as the server does it. */
-function preview(draft: InvoiceSettings, counter: number): string {
+function preview(draft: InvoiceSettings, counter: number, credit = false): string {
     const now = new Date();
     const fill = (text: string) =>
         text.replaceAll("{year}", String(now.getFullYear())).replaceAll("{month}", String(now.getMonth() + 1).padStart(2, "0"));
-    return fill(draft.prefix) + String(counter).padStart(draft.padding, "0") + fill(draft.suffix);
+    return (
+        fill(credit ? draft.credit_prefix : draft.prefix) +
+        String(counter).padStart(draft.padding, "0") +
+        fill(credit ? draft.credit_suffix : draft.suffix)
+    );
 }
 
 export function InvoicesPanel() {
@@ -31,6 +35,7 @@ export function InvoicesPanel() {
     const save = useSaveInvoiceSettings();
     const [draft, setDraft] = useState<InvoiceSettings | null>(null);
     const [next, setNext] = useState<number>(1);
+    const [nextCredit, setNextCredit] = useState<number>(1);
     const [logoUrl, setLogoUrl] = useState<string>("");
 
     const data = query.data;
@@ -38,12 +43,13 @@ export function InvoicesPanel() {
         if (data) {
             setDraft(data.settings);
             setNext(data.next_number);
+            setNextCredit(data.next_credit);
             setLogoUrl(data.logo_url);
         }
     }, [data]);
 
     const changes = useMemo(() => {
-        const out: Partial<InvoiceSettings> & { next_number?: number } = {};
+        const out: InvoiceSettingsChanges = {};
         if (!draft || !data) {
             return out;
         }
@@ -57,8 +63,11 @@ export function InvoicesPanel() {
         if (next !== data.next_number) {
             out.next_number = next;
         }
+        if (nextCredit !== data.next_credit) {
+            out.next_credit = nextCredit;
+        }
         return out;
-    }, [draft, data, next]);
+    }, [draft, data, next, nextCredit]);
     const dirty = Object.keys(changes).length > 0;
 
     if (query.isPending || !draft || !data) {
@@ -180,6 +189,75 @@ export function InvoicesPanel() {
                                 { value: "never", label: __("Never") },
                                 { value: "yearly", label: __("Every year") },
                             ]}
+                        />
+                    }
+                />
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>{__("Credit notes")}</CardTitle>
+                    <CardDescription>
+                        {sprintf(
+                            __("Each refund gets its own credit note, numbered the first time it is made. Next number: %s"),
+                            preview(draft, nextCredit, true),
+                        )}
+                    </CardDescription>
+                </CardHeader>
+                <SettingRow
+                    icon={Hash}
+                    label={__("Prefix")}
+                    htmlFor="fxc-credit-prefix"
+                    description={__("You can use {year} and {month}. The minimum digits and the yearly restart are the same as for invoices.")}
+                    control={
+                        <Input
+                            id="fxc-credit-prefix"
+                            className="fxc:w-40"
+                            maxLength={40}
+                            value={draft.credit_prefix}
+                            onChange={(e) => set("credit_prefix", e.target.value)}
+                        />
+                    }
+                />
+                <SettingRow
+                    icon={Hash}
+                    label={__("Suffix")}
+                    htmlFor="fxc-credit-suffix"
+                    control={
+                        <Input
+                            id="fxc-credit-suffix"
+                            className="fxc:w-40"
+                            maxLength={40}
+                            value={draft.credit_suffix}
+                            onChange={(e) => set("credit_suffix", e.target.value)}
+                        />
+                    }
+                />
+                <SettingRow
+                    icon={Hash}
+                    label={__("Next number")}
+                    htmlFor="fxc-credit-next"
+                    description={__("Can only go up, so no number is used twice.")}
+                    control={
+                        <Input
+                            id="fxc-credit-next"
+                            type="number"
+                            min={data.next_credit}
+                            className="fxc:w-32"
+                            value={nextCredit}
+                            onChange={(e) => setNextCredit(Math.max(1, toInt(e.target.value)))}
+                        />
+                    }
+                />
+                <SettingRow
+                    icon={Paperclip}
+                    label={__("Attach to the Refunded order email")}
+                    description={__("The refund gets its credit note number when the email is sent.")}
+                    control={
+                        <Switch
+                            aria-label={__("Attach to the Refunded order email")}
+                            checked={draft.credit_attach}
+                            onCheckedChange={(v) => set("credit_attach", v)}
                         />
                     }
                 />

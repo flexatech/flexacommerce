@@ -449,8 +449,9 @@ Reserved keys in use:
 |---|---|
 | `_fxc_invoice_number` | The formatted invoice number, set once when the order's first invoice is made (ADR-060). |
 | `_fxc_invoice_date` | The invoice date, UTC `Y-m-d H:i:s`. |
+| `_fxc_credit_note` | One row per credit note, JSON `{refund_id, number, date}` with the date in UTC; the first row for a refund wins (ADR-064). |
 
-Invoice numbers come from `fxc_sequences` rows `invoice_number`, or `invoice_number_YYYY` (site year) with the yearly reset. A number is taken only when an invoice is saved, under a `GET_LOCK` per order, so an order never gets two; a database error between taking and saving the number is the only way to leave a gap. "Next number" in the settings raises the counter and never lowers it.
+Invoice numbers come from `fxc_sequences` rows `invoice_number`, or `invoice_number_YYYY` (site year) with the yearly reset. A number is taken only when an invoice is saved, under a `GET_LOCK` per order, so an order never gets two; a database error between taking and saving the number is the only way to leave a gap. "Next number" in the settings raises the counter and never lowers it. Credit notes count in their own rows `credit_note_number` or `credit_note_number_YYYY`, with the same lock and raise-only rule; making one first gives the order its invoice.
 
 ### 4.7 `fxc_transactions`
 

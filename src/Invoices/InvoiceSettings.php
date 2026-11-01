@@ -13,7 +13,7 @@ defined( 'ABSPATH' ) || exit;
  * when a PDF is made, an email may carry one, or an order page offers the
  * link. The store settings have no room left (64 keys at most).
  *
- * @phpstan-type Values array{prefix:string,suffix:string,padding:int,reset:string,attach_to:list<string>,customer_access:string,shop_name:string,shop_address:string,shop_details:string,logo_id:int,footer:string,paper:string,show_sku:bool}
+ * @phpstan-type Values array{prefix:string,suffix:string,padding:int,reset:string,attach_to:list<string>,customer_access:string,shop_name:string,shop_address:string,shop_details:string,logo_id:int,footer:string,paper:string,show_sku:bool,credit_prefix:string,credit_suffix:string,credit_attach:bool}
  */
 final class InvoiceSettings {
 	public const OPTION = 'flexacommerce_invoices';
@@ -39,6 +39,9 @@ final class InvoiceSettings {
 		'footer'          => '',
 		'paper'           => '',
 		'show_sku'        => true,
+		'credit_prefix'   => 'CN-',
+		'credit_suffix'   => '',
+		'credit_attach'   => false,
 	];
 
 	/** @return Values */
@@ -96,6 +99,9 @@ final class InvoiceSettings {
 			'footer'          => mb_substr( $text( 'footer' ), 0, 2000 ),
 			'paper'           => $choice( 'paper', self::PAPERS ),
 			'show_sku'        => (bool) ( $values['show_sku'] ?? self::DEFAULTS['show_sku'] ),
+			'credit_prefix'   => mb_substr( $string( 'credit_prefix' ), 0, 40 ),
+			'credit_suffix'   => mb_substr( $string( 'credit_suffix' ), 0, 40 ),
+			'credit_attach'   => (bool) ( $values['credit_attach'] ?? false ),
 		];
 	}
 }

@@ -50,6 +50,8 @@ function useOrderAction<V>(id: number, run: (vars: V) => Promise<OrderDetail>) {
         onSettled: () => {
             void qc.invalidateQueries({ queryKey: [...ORDERS_KEY, "list"] });
             void qc.invalidateQueries({ queryKey: [...ORDERS_KEY, "counts"] });
+            // A payment or refund changes the invoice card: customer access and credit notes.
+            void qc.invalidateQueries({ queryKey: [...ORDERS_KEY, id, "invoice"] });
         },
     });
 }

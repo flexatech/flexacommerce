@@ -70,6 +70,17 @@ abstract class OrderEmail implements Email {
 		return '';
 	}
 
+	/**
+	 * What the attachments filter gets with this send.
+	 *
+	 * @param list<mixed> $args
+	 * @return array<string,mixed>
+	 */
+	protected function context( string $hook, array $args ): array {
+		unset( $hook, $args );
+		return [];
+	}
+
 	public function render( string $hook, array $args ): ?EmailMessage {
 		$order = $this->applies( $hook, $args );
 		if ( $order === null ) {
@@ -96,7 +107,7 @@ abstract class OrderEmail implements Email {
 			$email      = $order->customer_email !== '' ? $order->customer_email : (string) $order->billing?->email;
 			$recipients = $email !== '' ? [ $email ] : [];
 		}
-		return new EmailMessage( $this->subject( $order ), $this->heading( $order ), $content, $order, $recipients );
+		return new EmailMessage( $this->subject( $order ), $this->heading( $order ), $content, $order, $recipients, $this->context( $hook, $args ) );
 	}
 
 	/**

@@ -76,6 +76,19 @@ final class InvoicesEndpoint extends Endpoint {
 							'type'    => 'integer',
 							'minimum' => 1,
 						],
+						'credit_prefix'   => [
+							'type'      => 'string',
+							'maxLength' => 40,
+						],
+						'credit_suffix'   => [
+							'type'      => 'string',
+							'maxLength' => 40,
+						],
+						'credit_attach'   => [ 'type' => 'boolean' ],
+						'next_credit'     => [
+							'type'    => 'integer',
+							'minimum' => 1,
+						],
 					],
 				],
 			]
@@ -144,6 +157,22 @@ final class InvoicesEndpoint extends Endpoint {
 			}
 			$service->set_next_counter( $next );
 		}
+		if ( $request->has_param( 'next_credit' ) ) {
+			$next    = (int) $request->get_param( 'next_credit' );
+			$current = $service->next_counter( true );
+			if ( $next < $current ) {
+				return new WP_Error(
+					'flexacommerce_credit_number_lower',
+					/* translators: %d: the lowest number the next credit note can get */
+					sprintf( __( 'The next credit note number cannot go back; it must be %d or higher, so no number is used twice.', 'flexacommerce' ), $current ),
+					[
+						'status' => 400,
+						'field'  => 'next_credit',
+					]
+				);
+			}
+			$service->set_next_counter( $next, true );
+		}
 		return new WP_REST_Response( $this->settings_data(), 200 );
 	}
 
@@ -179,14 +208,33 @@ final class InvoicesEndpoint extends Endpoint {
 		$service = Plugin::instance()->invoices();
 		$order   = Plugin::instance()->orders()->orders()->find( $order_id );
 		$invoice = $service->find( $order_id );
+		$notes   = $service->credit_notes( $order_id );
+		$credits = [];
+		foreach ( $order !== null && $order->amount_refunded > 0 ? $service->refunds( $order ) : [] as $refund ) {
+			$note      = $notes[ $refund->id ] ?? null;
+			$credits[] = [
+				'refund_id'    => $refund->id,
+				'amount'       => html_entity_decode( Plugin::instance()->services()->money()->format( $order->money( $refund->amount ) ), ENT_QUOTES | ENT_HTML5, 'UTF-8' ),
+				'refunded_at'  => self::iso( (string) ( $refund->completed_at ?? $refund->created_at ) ),
+				'number'       => $note?->number,
+				'date'         => $note !== null ? self::iso( $note->date ) : null,
+				'customer_can' => $service->customer_can_credit( $order, $refund->id ),
+				'customer_url' => $service->customer_url( $order, $refund->id ),
+			];
+		}
 		return [
 			'invoice'      => $invoice === null ? null : [
 				'number' => $invoice->number,
-				'date'   => $invoice->date !== '' ? str_replace( ' ', 'T', $invoice->date ) . 'Z' : null,
+				'date'   => self::iso( $invoice->date ),
 			],
 			'customer_can' => $order !== null && $service->customer_can( $order ),
 			'customer_url' => $order !== null ? $service->customer_url( $order ) : '',
+			'credit_notes' => $credits,
 		];
+	}
+
+	private static function iso( string $utc ): ?string {
+		return $utc !== '' ? str_replace( ' ', 'T', $utc ) . 'Z' : null;
 	}
 
 	/** @return array<string,mixed> */
@@ -203,12 +251,14 @@ final class InvoicesEndpoint extends Endpoint {
 		}
 		$logo = $settings['logo_id'] > 0 ? wp_get_attachment_image_url( $settings['logo_id'], 'medium' ) : false;
 		return [
-			'settings'       => $settings,
-			'next_number'    => $service->next_counter(),
-			'next_formatted' => $service->next_number(),
-			'paper'          => InvoiceSettings::paper( $settings['paper'] ),
-			'emails'         => $emails,
-			'logo_url'       => is_string( $logo ) ? $logo : '',
+			'settings'              => $settings,
+			'next_number'           => $service->next_counter(),
+			'next_formatted'        => $service->next_number(),
+			'next_credit'           => $service->next_counter( true ),
+			'next_credit_formatted' => $service->next_number( true ),
+			'paper'                 => InvoiceSettings::paper( $settings['paper'] ),
+			'emails'                => $emails,
+			'logo_url'              => is_string( $logo ) ? $logo : '',
 		];
 	}
 }

@@ -11,10 +11,11 @@ use WP_CLI;
 defined( 'ABSPATH' ) || exit;
 
 /**
- *   wp flexacommerce invoice <order-id>... [--file=<path>] [--packing-slip]
+ *   wp flexacommerce invoice <order-id>... [--file=<path>] [--packing-slip] [--credit-note=<refund-id>]
  *
  * The same PDF as the order screen (ADR-060). An order without an invoice
- * gets its number now, as it would from the admin.
+ * gets its number now, as it would from the admin; so does a refund
+ * without a credit note (ADR-064).
  */
 final class InvoiceCommand {
 	public static function register(): void {
@@ -38,10 +39,14 @@ final class InvoiceCommand {
 	 * [--packing-slip]
 	 * : Packing slips (no prices) instead of invoices.
 	 *
+	 * [--credit-note=<refund-id>]
+	 * : The credit note of this refund of the order instead (one order only).
+	 *
 	 * ## EXAMPLES
 	 *
 	 *     wp flexacommerce invoice 1042
 	 *     wp flexacommerce invoice 1042 1043 --packing-slip --file=/tmp/slips.pdf
+	 *     wp flexacommerce invoice 1042 --credit-note=87
 	 *
 	 * @when after_wp_load
 	 *
@@ -57,8 +62,21 @@ final class InvoiceCommand {
 			$found = array_map( static fn ( $order ): int => $order->id, $orders );
 			WP_CLI::error( sprintf( 'Order not found: %s.', implode( ', ', array_diff( $ids, $found ) ) ) );
 		}
-		$bytes = $service->pdf( $orders, $document );
-		$file  = isset( $assoc_args['file'] ) && is_string( $assoc_args['file'] ) && $assoc_args['file'] !== '' ? $assoc_args['file'] : getcwd() . '/' . $service->filename( $orders, $document );
+		$name = $service->filename( $orders, $document );
+		if ( isset( $assoc_args['credit-note'] ) ) {
+			if ( count( $orders ) !== 1 ) {
+				WP_CLI::error( 'A credit note takes one order id.' );
+			}
+			$refund = $service->refund( $orders[0], (int) $assoc_args['credit-note'] );
+			if ( $refund === null ) {
+				WP_CLI::error( sprintf( 'Order %d has no succeeded refund %d.', $orders[0]->id, (int) $assoc_args['credit-note'] ) );
+			}
+			$bytes = $service->credit_note_pdf( $orders[0], $refund );
+			$name  = $service->credit_filename( $service->create_credit_note( $orders[0], $refund ) );
+		} else {
+			$bytes = $service->pdf( $orders, $document );
+		}
+		$file = isset( $assoc_args['file'] ) && is_string( $assoc_args['file'] ) && $assoc_args['file'] !== '' ? $assoc_args['file'] : getcwd() . '/' . $name;
 		if ( file_put_contents( $file, $bytes ) === false ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- a file the user asked for.
 			WP_CLI::error( sprintf( 'Could not write %s.', $file ) );
 		}

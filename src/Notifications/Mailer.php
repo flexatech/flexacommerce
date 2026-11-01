@@ -25,7 +25,7 @@ defined( 'ABSPATH' ) || exit;
  * single cron event per email (doc 02 §6.6). The built message waits in a
  * transient; when it cannot be stored or scheduled it is sent at once.
  *
- * @phpstan-type Outgoing array{email:string,title:string,order_id:?int,recipients:list<string>,subject:string,html:string}
+ * @phpstan-type Outgoing array{email:string,title:string,order_id:?int,recipients:list<string>,subject:string,html:string,context?:array<string,mixed>}
  */
 final class Mailer {
 	private const QUEUE_PREFIX = 'fxc_mail_';
@@ -120,6 +120,7 @@ final class Mailer {
 			'recipients' => $recipients,
 			'subject'    => $subject,
 			'html'       => $html,
+			'context'    => $message->context,
 		];
 	}
 
@@ -131,7 +132,7 @@ final class Mailer {
 		$listen      = static function ( \WP_Error $e ) use ( &$error ): void {
 			$error = $e->get_error_message();
 		};
-		$files       = apply_filters( 'flexacommerce.email.attachments', [], $id, $outgoing['order_id'] );
+		$files       = apply_filters( 'flexacommerce.email.attachments', [], $id, $outgoing['order_id'], $outgoing['context'] ?? [] );
 		$attachments = array_values( array_filter( is_array( $files ) ? $files : [], static fn ( mixed $path ): bool => is_string( $path ) && is_file( $path ) ) );
 		add_action( 'wp_mail_failed', $listen );
 		try {

@@ -11,16 +11,22 @@ defined( 'ABSPATH' ) || exit;
 /**
  * What an email renders: the body goes inside the store's email layout.
  * Recipients may be empty for an admin email; the settings fill them in.
+ * `context` reaches the `flexacommerce.email.attachments` filter (the
+ * refund email sets `refund_id`).
  *
  * @api
  */
 final class EmailMessage {
-	/** @param list<string> $recipients */
+	/**
+	 * @param list<string>        $recipients
+	 * @param array<string,mixed> $context
+	 */
 	public function __construct(
 		public readonly string $subject,
 		public readonly string $heading,
 		public readonly string $content_html,
 		public readonly ?OrderView $order = null,
 		public readonly array $recipients = [],
+		public readonly array $context = [],
 	) {}
 }

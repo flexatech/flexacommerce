@@ -12,6 +12,8 @@ use Flexa\Commerce\Invoices\Pdf\TrueTypeFont;
 use Flexa\Commerce\Orders\Order;
 use Flexa\Commerce\Orders\OrderRepository;
 use Flexa\Commerce\Orders\OrderStatus;
+use Flexa\Commerce\Payments\Transaction;
+use Flexa\Commerce\Payments\TransactionRepository;
 use Flexa\Commerce\Support\Clock;
 
 defined( 'ABSPATH' ) || exit;
@@ -23,10 +25,15 @@ defined( 'ABSPATH' ) || exit;
  * fxc_sequences, so they are unique and increasing; a yearly reset uses a
  * counter per year.
  *
+ * Each succeeded refund can have a credit note (ADR-064) with its own
+ * counter, numbered the same way and pointing to the order's invoice.
+ *
  * @phpstan-import-type Values from InvoiceSettings
  */
 final class InvoiceService {
 	public const SEQUENCE = 'invoice_number';
+
+	public const CREDIT_SEQUENCE = 'credit_note_number';
 
 	/** Orders in one bulk PDF at most. */
 	public const MAX_ORDERS = 100;
@@ -43,6 +50,7 @@ final class InvoiceService {
 		private readonly Sequence $sequence,
 		private readonly Clock $clock,
 		private readonly MoneyFactory $money,
+		private readonly TransactionRepository $transactions,
 	) {}
 
 	/** @return Values */
@@ -88,38 +96,98 @@ final class InvoiceService {
 		return $invoice;
 	}
 
-	/** The number the next new invoice will get, formatted. */
-	public function next_number(): string {
-		$now = $this->clock->now();
-		return $this->format( $this->sequence->current( $this->sequence_name( $now ) ) + 1, $now );
+	/**
+	 * The succeeded refunds of the order, oldest first: each can have a
+	 * credit note.
+	 *
+	 * @return list<Transaction>
+	 */
+	public function refunds( Order $order ): array {
+		return array_values(
+			array_filter(
+				$this->transactions->for_order( $order->id ),
+				static fn ( Transaction $txn ): bool => $txn->type === Transaction::REFUND && $txn->status === Transaction::SUCCEEDED
+			)
+		);
 	}
 
-	/** The counter value the next invoice will get. */
-	public function next_counter(): int {
-		return $this->sequence->current( $this->sequence_name( $this->clock->now() ) ) + 1;
+	/** A succeeded refund of this order, or null. */
+	public function refund( Order $order, int $refund_id ): ?Transaction {
+		$txn = $refund_id > 0 ? $this->transactions->find( $refund_id ) : null;
+		return $txn !== null && $txn->order_id === $order->id && $txn->type === Transaction::REFUND && $txn->status === Transaction::SUCCEEDED ? $txn : null;
+	}
+
+	/** @return array<int,CreditNote> by refund id */
+	public function credit_notes( int $order_id ): array {
+		return $this->invoices->credit_notes( $order_id );
 	}
 
 	/**
-	 * Makes the next invoice start at `$next` (or later). The counter never
-	 * goes back, so a number is never given twice.
+	 * The refund's credit note, made now when it has none. The order gets
+	 * its invoice first, since a credit note corrects an invoice. Held
+	 * under the order's lock like the invoice.
 	 */
-	public function set_next_counter( int $next ): void {
+	public function create_credit_note( Order $order, Transaction $refund ): CreditNote {
+		$existing = $this->invoices->credit_notes( $order->id )[ $refund->id ] ?? null;
+		if ( $existing !== null ) {
+			return $existing;
+		}
+		$this->create( $order );
+		if ( ! $this->invoices->lock( $order->id ) ) {
+			throw new \RuntimeException( sprintf( 'The credit note of refund %d is being created by another request.', $refund->id ) );
+		}
+		try {
+			$existing = $this->invoices->credit_notes( $order->id )[ $refund->id ] ?? null;
+			if ( $existing !== null ) {
+				return $existing;
+			}
+			$now    = $this->clock->now();
+			$number = $this->sequence->next( $this->sequence_name( $now, self::CREDIT_SEQUENCE ) );
+			$note   = new CreditNote( $refund->id, $this->format( $number, $now, true ), $now->format( 'Y-m-d H:i:s' ) );
+			$this->invoices->save_credit_note( $order->id, $note );
+		} finally {
+			$this->invoices->unlock( $order->id );
+		}
+		do_action( 'flexacommerce.credit_note.created', $order->id, $refund->id, $note->number, $note->date );
+		return $note;
+	}
+
+	/** The number the next new invoice (or credit note) will get, formatted. */
+	public function next_number( bool $credit = false ): string {
+		$now = $this->clock->now();
+		return $this->format( $this->sequence->current( $this->sequence_name( $now, $credit ? self::CREDIT_SEQUENCE : self::SEQUENCE ) ) + 1, $now, $credit );
+	}
+
+	/** The counter value the next invoice (or credit note) will get. */
+	public function next_counter( bool $credit = false ): int {
+		return $this->sequence->current( $this->sequence_name( $this->clock->now(), $credit ? self::CREDIT_SEQUENCE : self::SEQUENCE ) ) + 1;
+	}
+
+	/**
+	 * Makes the next invoice (or credit note) start at `$next` (or later).
+	 * The counter never goes back, so a number is never given twice.
+	 */
+	public function set_next_counter( int $next, bool $credit = false ): void {
 		if ( $next > 1 ) {
-			$this->sequence->raise_to( $this->sequence_name( $this->clock->now() ), $next - 1 );
+			$this->sequence->raise_to( $this->sequence_name( $this->clock->now(), $credit ? self::CREDIT_SEQUENCE : self::SEQUENCE ), $next - 1 );
 		}
 	}
 
-	/** The prefix and suffix may hold `{year}` and `{month}` of the invoice date (site time). */
-	public function format( int $number, \DateTimeImmutable $when ): string {
+	/**
+	 * The prefix and suffix may hold `{year}` and `{month}` of the date
+	 * (site time). Credit notes have their own prefix and suffix and share
+	 * the padding.
+	 */
+	public function format( int $number, \DateTimeImmutable $when, bool $credit = false ): string {
 		$settings = $this->settings();
 		$local    = $when->setTimezone( wp_timezone() );
 		$tokens   = [
 			'{year}'  => $local->format( 'Y' ),
 			'{month}' => $local->format( 'm' ),
 		];
-		return strtr( $settings['prefix'], $tokens )
+		return strtr( $credit ? $settings['credit_prefix'] : $settings['prefix'], $tokens )
 			. str_pad( (string) $number, $settings['padding'], '0', STR_PAD_LEFT )
-			. strtr( $settings['suffix'], $tokens );
+			. strtr( $credit ? $settings['credit_suffix'] : $settings['suffix'], $tokens );
 	}
 
 	/**
@@ -137,14 +205,30 @@ final class InvoiceService {
 		return $order->total > 0 && ( $order->is_paid() || in_array( $order->status, [ OrderStatus::PROCESSING, OrderStatus::COMPLETED, OrderStatus::REFUNDED ], true ) );
 	}
 
-	public function customer_url( Order $order ): string {
-		return add_query_arg(
-			[
-				'fxc_invoice' => $order->id,
-				'key'         => $order->order_key,
-			],
-			home_url( '/' )
-		);
+	/**
+	 * Whether the customer sees the credit note link of a refund: they can
+	 * see the invoice, and with "After you make the invoice" the shop made
+	 * this credit note.
+	 */
+	public function customer_can_credit( Order $order, int $refund_id ): bool {
+		if ( ! $this->customer_can( $order ) ) {
+			return false;
+		}
+		if ( $this->settings()['customer_access'] === 'invoiced' ) {
+			return isset( $this->invoices->credit_notes( $order->id )[ $refund_id ] );
+		}
+		return true;
+	}
+
+	public function customer_url( Order $order, int $refund_id = 0 ): string {
+		$args = [
+			'fxc_invoice' => $order->id,
+			'key'         => $order->order_key,
+		];
+		if ( $refund_id > 0 ) {
+			$args['refund'] = $refund_id;
+		}
+		return add_query_arg( $args, home_url( '/' ) );
 	}
 
 	/**
@@ -154,26 +238,49 @@ final class InvoiceService {
 	 * @param list<Order> $orders
 	 */
 	public function pdf( array $orders, string $document = InvoiceRenderer::INVOICE ): string {
-		$document = $document === InvoiceRenderer::PACKING_SLIP ? InvoiceRenderer::PACKING_SLIP : InvoiceRenderer::INVOICE;
+		$document           = $document === InvoiceRenderer::PACKING_SLIP ? InvoiceRenderer::PACKING_SLIP : InvoiceRenderer::INVOICE;
+		[ $pdf, $renderer ] = $this->document();
+		foreach ( $orders as $order ) {
+			$invoice = $document === InvoiceRenderer::INVOICE ? $this->create( $order ) : $this->invoices->find( $order->id );
+			$this->in_locale( $order, static fn () => $renderer->render( $pdf, $order, $invoice, $document ) );
+		}
+		$title = count( $orders ) === 1 ? $this->filename( $orders, $document ) : get_bloginfo( 'name' );
+		return $pdf->output( preg_replace( '/\.pdf$/', '', $title ) ?? $title );
+	}
+
+	/** The credit note of one refund as a PDF, numbered first when missing. */
+	public function credit_note_pdf( Order $order, Transaction $refund ): string {
+		$note               = $this->create_credit_note( $order, $refund );
+		$invoice            = $this->invoices->find( $order->id );
+		[ $pdf, $renderer ] = $this->document();
+		$this->in_locale( $order, static fn () => $renderer->render_credit_note( $pdf, $order, $invoice, $note, $refund ) );
+		return $pdf->output( preg_replace( '/\.pdf$/', '', $this->credit_filename( $note ) ) ?? $note->number );
+	}
+
+	public function credit_filename( CreditNote $note ): string {
+		return sanitize_file_name( 'credit-note-' . $note->number . '.pdf' );
+	}
+
+	/** @return array{0:PdfDocument,1:InvoiceRenderer} */
+	private function document(): array {
 		$settings = $this->settings();
 		$pdf      = new PdfDocument( InvoiceSettings::paper( $settings['paper'] ) );
 		foreach ( $this->fonts() as $key => $path ) {
 			$pdf->add_font( $key, TrueTypeFont::from_file( $path ) );
 		}
-		$renderer = new InvoiceRenderer( $settings, $this->money, $this->logo( $settings['logo_id'] ) );
-		foreach ( $orders as $order ) {
-			$invoice  = $document === InvoiceRenderer::INVOICE ? $this->create( $order ) : $this->invoices->find( $order->id );
-			$switched = $order->locale !== '' && $order->locale !== determine_locale() && switch_to_locale( $order->locale );
-			try {
-				$renderer->render( $pdf, $order, $invoice, $document );
-			} finally {
-				if ( $switched ) {
-					restore_previous_locale();
-				}
+		return [ $pdf, new InvoiceRenderer( $settings, $this->money, $this->logo( $settings['logo_id'] ) ) ];
+	}
+
+	/** Draws the order in its own locale. */
+	private function in_locale( Order $order, callable $draw ): void {
+		$switched = $order->locale !== '' && $order->locale !== determine_locale() && switch_to_locale( $order->locale );
+		try {
+			$draw();
+		} finally {
+			if ( $switched ) {
+				restore_previous_locale();
 			}
 		}
-		$title = count( $orders ) === 1 ? $this->filename( $orders, $document ) : get_bloginfo( 'name' );
-		return $pdf->output( preg_replace( '/\.pdf$/', '', $title ) ?? $title );
 	}
 
 	/** @param list<Order> $orders */
@@ -208,22 +315,52 @@ final class InvoiceService {
 
 	/**
 	 * `flexacommerce.email.attachments` filter: the invoice of the order
-	 * when the settings attach it to this email. The file is written to the
-	 * temp folder and removed after sending.
+	 * when the settings attach it to this email, and the credit note of the
+	 * refund on the refund email when that is on (ADR-064). The files are
+	 * written to the temp folder and removed after sending.
 	 *
-	 * @param mixed $attachments
+	 * @param mixed               $attachments
+	 * @param array<string,mixed> $context
 	 * @return list<string>|mixed
 	 */
-	public function attach( mixed $attachments, string $email_id, ?int $order_id ): mixed {
-		if ( $order_id === null || ! is_array( $attachments ) || ! in_array( $email_id, $this->settings()['attach_to'], true ) ) {
+	public function attach( mixed $attachments, string $email_id, ?int $order_id, array $context = [] ): mixed {
+		if ( $order_id === null || ! is_array( $attachments ) ) {
+			return $attachments;
+		}
+		$settings = $this->settings();
+		$invoice  = in_array( $email_id, $settings['attach_to'], true );
+		$refund   = $settings['credit_attach'] && $email_id === 'customer_refunded_order' ? (int) ( $context['refund_id'] ?? 0 ) : 0;
+		if ( ! $invoice && $refund <= 0 ) {
 			return $attachments;
 		}
 		$order = $this->orders->find( $order_id );
 		if ( $order === null ) {
 			return $attachments;
 		}
+		if ( $invoice ) {
+			$attachments = $this->attach_file( $attachments, $order_id, fn (): string => $this->pdf( [ $order ] ), fn (): string => $this->filename( [ $order ] ) );
+		}
+		$txn = $refund > 0 ? $this->refund( $order, $refund ) : null;
+		if ( $txn !== null ) {
+			$attachments = $this->attach_file(
+				$attachments,
+				$order_id,
+				fn (): string => $this->credit_note_pdf( $order, $txn ),
+				fn (): string => $this->credit_filename( $this->create_credit_note( $order, $txn ) )
+			);
+		}
+		return $attachments;
+	}
+
+	/**
+	 * @param list<string>          $attachments
+	 * @param callable(): string    $bytes
+	 * @param callable(): string    $name
+	 * @return list<string>
+	 */
+	private function attach_file( array $attachments, int $order_id, callable $bytes, callable $name ): array {
 		try {
-			$bytes = $this->pdf( [ $order ] );
+			$content = $bytes();
 		} catch ( \Throwable $e ) {
 			do_action( 'flexacommerce.invoice.failed', $order_id, $e->getMessage() );
 			return $attachments;
@@ -232,8 +369,8 @@ final class InvoiceService {
 		if ( ! wp_mkdir_p( $dir ) ) {
 			return $attachments;
 		}
-		$path = $dir . '/' . $this->filename( [ $order ] );
-		if ( file_put_contents( $path, $bytes ) === false ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- a temporary attachment.
+		$path = $dir . '/' . $name();
+		if ( file_put_contents( $path, $content ) === false ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- a temporary attachment.
 			return $attachments;
 		}
 		$this->temp_files[] = $path;
@@ -295,9 +432,9 @@ final class InvoiceService {
 	}
 
 	/** One counter, or one per year (site time) with the yearly reset. */
-	private function sequence_name( \DateTimeImmutable $when ): string {
+	private function sequence_name( \DateTimeImmutable $when, string $base = self::SEQUENCE ): string {
 		return $this->settings()['reset'] === 'yearly'
-			? self::SEQUENCE . '_' . $when->setTimezone( wp_timezone() )->format( 'Y' )
-			: self::SEQUENCE;
+			? $base . '_' . $when->setTimezone( wp_timezone() )->format( 'Y' )
+			: $base;
 	}
 }

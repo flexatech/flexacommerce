@@ -37,6 +37,11 @@ final class CustomerRefundedOrder extends OrderEmail {
 		return ( $args[1] ?? null ) instanceof TransactionView ? (string) $args[1]->id : '';
 	}
 
+	protected function context( string $hook, array $args ): array {
+		unset( $hook );
+		return ( $args[1] ?? null ) instanceof TransactionView ? [ 'refund_id' => $args[1]->id ] : [];
+	}
+
 	protected function extra( string $hook, array $args, OrderView $order ): array {
 		unset( $hook );
 		return [

@@ -136,14 +136,31 @@ final class OrderConfirmation {
 		return $html . '</tfoot></table>';
 	}
 
-	/** The customer's invoice link when the invoice settings allow it (ADR-060). */
+	/**
+	 * The customer's invoice link when the invoice settings allow it
+	 * (ADR-060), and a credit note link per refund (ADR-064).
+	 */
 	public static function invoice( Order $order ): string {
 		$invoices = Plugin::instance()->invoices();
 		if ( ! $invoices->customer_can( $order ) ) {
 			return '';
 		}
-		return '<p class="fxc-order__invoice"><a href="' . esc_url( $invoices->customer_url( $order ) ) . '" target="_blank" rel="noopener">'
+		$html  = '<p class="fxc-order__invoice"><a href="' . esc_url( $invoices->customer_url( $order ) ) . '" target="_blank" rel="noopener">'
 			. esc_html__( 'Download invoice (PDF)', 'flexacommerce' ) . '</a></p>';
+		$notes = $order->amount_refunded > 0 ? $invoices->credit_notes( $order->id ) : [];
+		foreach ( $order->amount_refunded > 0 ? $invoices->refunds( $order ) : [] as $refund ) {
+			if ( ! $invoices->customer_can_credit( $order, $refund->id ) ) {
+				continue;
+			}
+			$label = isset( $notes[ $refund->id ] )
+				/* translators: %s: credit note number */
+				? sprintf( __( 'Download credit note %s (PDF)', 'flexacommerce' ), $notes[ $refund->id ]->number )
+				/* translators: %s: refunded amount */
+				: sprintf( __( 'Download the credit note for the %s refund (PDF)', 'flexacommerce' ), html_entity_decode( Plugin::instance()->services()->money()->format( $order->money( $refund->amount ) ), ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
+			$html .= '<p class="fxc-order__invoice"><a href="' . esc_url( $invoices->customer_url( $order, $refund->id ) ) . '" target="_blank" rel="noopener">'
+				. esc_html( $label ) . '</a></p>';
+		}
+		return $html;
 	}
 
 	/**

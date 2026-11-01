@@ -83,4 +83,24 @@ test( 'invoice settings save and an order gets its invoice PDF and packing slip'
 			expect( pdf.disposition ).toContain( `invoice-${ number }.pdf` );
 		}
 	}
+
+	// A refund gets its own credit note, numbered when its PDF is first made (ADR-064).
+	await page.getByRole( 'button', { name: 'Record a payment' } ).click();
+	await page.getByRole( 'button', { name: 'Record payment' } ).click();
+	await expect( page.getByText( 'Payment recorded.' ) ).toBeVisible();
+	await page.getByRole( 'button', { name: 'Refund', exact: true } ).click();
+	await page.getByLabel( 'Refund amount' ).fill( '1.00' );
+	await page.getByLabel( 'Reason (optional)' ).fill( 'Late delivery' );
+	await page.getByRole( 'button', { name: /^Refund .* manually$/ } ).click();
+	await expect( page.getByText( 'Refund recorded.' ) ).toBeVisible();
+
+	const note = page.getByTestId( 'credit-note' );
+	await expect( note ).toHaveCount( 1 );
+	await expect( note.getByText( 'Not made yet.', { exact: false } ) ).toBeVisible();
+	const credit = await fetchPdf( page, ( await note.getByRole( 'link', { name: 'Credit note PDF' } ).getAttribute( 'href' ) ) as string );
+	expect( credit ).toMatchObject( { status: 200, head: '%PDF-' } );
+	expect( credit.disposition ).toMatch( /credit-note-CN-\d+\.pdf/ );
+	await page.reload();
+	await expect( page.getByTestId( 'credit-note' ).getByText( /^Number CN-\d+, made on / ) ).toBeVisible();
+	await expectAccessible( page, info, 'order with credit note' );
 } );

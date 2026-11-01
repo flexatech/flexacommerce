@@ -39,7 +39,7 @@ final class Transaction {
 	];
 
 	/**
-	 * @param list<array{item_id:int,qty:int,amount:int,restock:bool}> $refund_lines
+	 * @param list<array{item_id:int,qty:int,amount:int,restock:bool,taxes?:array<string,int>}> $refund_lines
 	 * @param array<string,mixed>                                       $data
 	 */
 	public function __construct(
@@ -141,18 +141,22 @@ final class Transaction {
 
 	/**
 	 * @param array<mixed> $rows
-	 * @return list<array{item_id:int,qty:int,amount:int,restock:bool}>
+	 * @return list<array{item_id:int,qty:int,amount:int,restock:bool,taxes?:array<string,int>}>
 	 */
 	private static function lines( array $rows ): array {
 		$out = [];
 		foreach ( $rows as $row ) {
 			if ( is_array( $row ) ) {
-				$out[] = [
+				$line = [
 					'item_id' => (int) ( $row['item_id'] ?? 0 ),
 					'qty'     => (int) ( $row['qty'] ?? 0 ),
 					'amount'  => (int) ( $row['amount'] ?? 0 ),
 					'restock' => (bool) ( $row['restock'] ?? false ),
 				];
+				if ( is_array( $row['taxes'] ?? null ) ) {
+					$line['taxes'] = array_map( 'intval', array_filter( $row['taxes'], 'is_numeric' ) );
+				}
+				$out[] = $line;
 			}
 		}
 		return $out;

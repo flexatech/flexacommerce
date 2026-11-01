@@ -7,6 +7,7 @@ namespace Flexa\Commerce\Tests\Integration\Api;
 use Flexa\Commerce\Database\Schema;
 use Flexa\Commerce\Invoices\InvoiceSettings;
 use Flexa\Commerce\Orders\OrderStatus as S;
+use Flexa\Commerce\Orders\TransitionContext;
 use Flexa\Commerce\Plugin;
 use Flexa\Commerce\Tests\Integration\Orders\OrderTestCase;
 
@@ -26,6 +27,7 @@ final class AdminInvoicesTest extends OrderTestCase {
 		parent::tear_down();
 		delete_option( InvoiceSettings::OPTION );
 		$wpdb->query( $wpdb->prepare( 'DELETE FROM %i WHERE name LIKE %s', Schema::table( 'sequences' ), 'invoice\\_number%' ) ); // phpcs:ignore WordPress.DB
+		$wpdb->query( $wpdb->prepare( 'DELETE FROM %i WHERE name LIKE %s', Schema::table( 'sequences' ), 'credit\\_note\\_number%' ) ); // phpcs:ignore WordPress.DB
 		Plugin::instance()->invoices()->reset();
 		wp_cache_flush();
 		$wpdb->query( 'COMMIT' ); // phpcs:ignore WordPress.DB
@@ -75,6 +77,51 @@ final class AdminInvoicesTest extends OrderTestCase {
 		self::assertMatchesRegularExpression( '/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/', $created->get_data()['invoice']['date'] );
 		self::assertSame( 'INV-0001', $this->send( 'POST', $path )->get_data()['invoice']['number'] );
 		self::assertSame( 404, $this->send( 'GET', '/admin/orders/999999/invoice' )->get_status() );
+	}
+
+	public function test_credit_note_settings_and_the_order_list_of_credit_notes(): void {
+		$data = $this->send( 'GET', '/admin/invoices/settings' )->get_data();
+		self::assertSame( 'CN-', $data['settings']['credit_prefix'] );
+		self::assertFalse( $data['settings']['credit_attach'] );
+		self::assertSame( 'CN-0001', $data['next_credit_formatted'] );
+
+		$saved = $this->send(
+			'PATCH',
+			'/admin/invoices/settings',
+			[
+				'credit_prefix' => 'CR-',
+				'credit_attach' => true,
+				'next_credit'   => 9,
+			]
+		)->get_data();
+		self::assertSame( 'CR-', $saved['settings']['credit_prefix'] );
+		self::assertTrue( $saved['settings']['credit_attach'] );
+		self::assertSame( 9, $saved['next_credit'] );
+		self::assertSame( 'INV-', $saved['settings']['prefix'] );
+		$lower = $this->send( 'PATCH', '/admin/invoices/settings', [ 'next_credit' => 2 ] );
+		self::assertSame( 400, $lower->get_status() );
+		self::assertSame( 'flexacommerce_credit_number_lower', $lower->get_data()['code'] );
+
+		$order = $this->place( [ $this->simple( 1500 ) => 1 ], 0, null, S::PROCESSING );
+		$path  = '/admin/orders/' . $order->id . '/invoice';
+		self::assertSame( [], $this->send( 'GET', $path )->get_data()['credit_notes'] );
+		Plugin::instance()->orders()->service()->record_payment( $order->id, 1500, TransitionContext::system() );
+		$refund = Plugin::instance()->payments()->service()->refund( $order->id, 400, [], '', false, TransitionContext::admin() );
+
+		$notes = $this->send( 'GET', $path )->get_data()['credit_notes'];
+		self::assertCount( 1, $notes );
+		self::assertSame( $refund->id, $notes[0]['refund_id'] );
+		self::assertSame( '$4.00', $notes[0]['amount'] );
+		self::assertSame( 'CR-0009', $notes[0]['number'], 'The Refunded order email made it.' );
+		self::assertTrue( $notes[0]['customer_can'] );
+		self::assertStringContainsString( '&refund=' . $refund->id, $notes[0]['customer_url'] );
+
+		$this->send( 'PATCH', '/admin/invoices/settings', [ 'credit_attach' => false ] );
+		$later = Plugin::instance()->payments()->service()->refund( $order->id, 100, [], '', false, TransitionContext::admin() );
+		$notes = $this->send( 'GET', $path )->get_data()['credit_notes'];
+		self::assertSame( $later->id, $notes[1]['refund_id'] );
+		self::assertNull( $notes[1]['number'] );
+		self::assertNull( $notes[1]['date'] );
 	}
 
 	public function test_the_routes_need_their_capabilities(): void {

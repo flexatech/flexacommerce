@@ -9,7 +9,8 @@ use Flexa\Commerce\Database\Schema;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * The invoice number and date of an order, in fxc_order_meta (ADR-060).
+ * The invoice number and date of an order, and the credit notes of its
+ * refunds (one `_fxc_credit_note` row each, ADR-064), in fxc_order_meta (ADR-060).
  * fxc_order_meta has no unique key, so creating an invoice holds a named
  * lock for the order: two requests at once (an email and the admin) still
  * give the order one number.
@@ -19,6 +20,8 @@ final class InvoiceRepository {
 	public const NUMBER = '_fxc_invoice_number';
 
 	public const DATE = '_fxc_invoice_date';
+
+	public const CREDIT_NOTE = '_fxc_credit_note';
 
 	private const LOCK_WAIT = 10;
 
@@ -87,6 +90,38 @@ final class InvoiceRepository {
 				self::DATE,
 				$invoice->date
 			)
+		);
+	}
+
+	/**
+	 * The credit notes of the order's refunds, by refund id.
+	 *
+	 * @return array<int,CreditNote>
+	 */
+	public function credit_notes( int $order_id ): array {
+		$values = $this->wpdb->get_col(
+			$this->wpdb->prepare( 'SELECT meta_value FROM %i WHERE order_id = %d AND meta_key = %s ORDER BY id', Schema::table( 'order_meta' ), $order_id, self::CREDIT_NOTE )
+		);
+		$out    = [];
+		foreach ( $values as $value ) {
+			$data = json_decode( (string) $value, true );
+			if ( is_array( $data ) && (int) ( $data['refund_id'] ?? 0 ) > 0 && is_string( $data['number'] ?? null ) && $data['number'] !== '' ) {
+				$note                      = new CreditNote( (int) $data['refund_id'], $data['number'], is_string( $data['date'] ?? null ) ? $data['date'] : '' );
+				$out[ $note->refund_id ] ??= $note;
+			}
+		}
+		return $out;
+	}
+
+	public function save_credit_note( int $order_id, CreditNote $note ): void {
+		$this->wpdb->insert(
+			Schema::table( 'order_meta' ),
+			[
+				'order_id'   => $order_id,
+				'meta_key'   => self::CREDIT_NOTE, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key -- plugin table with an order_id key.
+				'meta_value' => (string) wp_json_encode( $note->to_array() ), // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value -- as above.
+			],
+			[ '%d', '%s', '%s' ]
 		);
 	}
 

@@ -17,7 +17,8 @@ defined( 'ABSPATH' ) || exit;
  * Serves `?fxc_invoice=<order id>&key=<order key>` (ADR-060): the
  * customer's invoice, to the holder of the order key or the signed-in
  * owner, when the invoice settings let customers see it. Staff who may
- * view orders always get it.
+ * view orders always get it. With `&refund=<id>` it serves the credit
+ * note of that refund (ADR-064).
  */
 final class InvoiceHandler {
 	use HasInstance;
@@ -29,7 +30,12 @@ final class InvoiceHandler {
 		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- the order key is the credential; links come from emails and the order page.
 		$order_id = isset( $_GET[ self::PARAM ] ) ? absint( wp_unslash( $_GET[ self::PARAM ] ) ) : 0;
 		$key      = isset( $_GET['key'] ) ? sanitize_text_field( wp_unslash( (string) $_GET['key'] ) ) : '';
+		$refund   = isset( $_GET['refund'] ) ? absint( wp_unslash( $_GET['refund'] ) ) : 0;
 		// phpcs:enable
+		if ( $refund > 0 ) {
+			$this->credit_note( $order_id, $key, $refund );
+			return;
+		}
 		$order = $this->allowed( $order_id, $key, get_current_user_id() );
 		if ( $order === null ) {
 			nocache_headers();
@@ -46,8 +52,30 @@ final class InvoiceHandler {
 		exit;
 	}
 
-	/** The order when this visitor may see its invoice, so tests can check it. */
-	public function allowed( int $order_id, string $key, int $user_id ): ?Order {
+	private function credit_note( int $order_id, string $key, int $refund_id ): void {
+		$order   = $this->allowed( $order_id, $key, get_current_user_id(), $refund_id );
+		$service = Plugin::instance()->invoices();
+		$txn     = $order !== null ? $service->refund( $order, $refund_id ) : null;
+		if ( $order === null || $txn === null ) {
+			nocache_headers();
+			wp_die( esc_html__( 'This credit note is not available.', 'flexacommerce' ), esc_html__( 'Credit note', 'flexacommerce' ), [ 'response' => 404 ] );
+		}
+		try {
+			$bytes = $service->credit_note_pdf( $order, $txn );
+			$name  = $service->credit_filename( $service->create_credit_note( $order, $txn ) );
+		} catch ( \Throwable $e ) {
+			nocache_headers();
+			wp_die( esc_html__( 'The credit note could not be made. Please try again.', 'flexacommerce' ), esc_html__( 'Credit note', 'flexacommerce' ), [ 'response' => 503 ] );
+		}
+		PdfResponse::send( $bytes, $name );
+		exit;
+	}
+
+	/**
+	 * The order when this visitor may see its invoice, or the credit note
+	 * of `$refund_id`, so tests can check it.
+	 */
+	public function allowed( int $order_id, string $key, int $user_id, int $refund_id = 0 ): ?Order {
 		$order = $order_id > 0 ? Plugin::instance()->orders()->orders()->find( $order_id ) : null;
 		if ( $order === null ) {
 			return null;
@@ -58,6 +86,10 @@ final class InvoiceHandler {
 		if ( ! OrderAccess::can_view( $order, $key, $user_id ) ) {
 			return null;
 		}
-		return Plugin::instance()->invoices()->customer_can( $order ) ? $order : null;
+		$service = Plugin::instance()->invoices();
+		if ( $refund_id > 0 ) {
+			return $service->customer_can_credit( $order, $refund_id ) ? $order : null;
+		}
+		return $service->customer_can( $order ) ? $order : null;
 	}
 }

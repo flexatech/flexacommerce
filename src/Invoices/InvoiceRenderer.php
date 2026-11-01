@@ -10,6 +10,7 @@ use Flexa\Commerce\Invoices\Pdf\PdfDocument;
 use Flexa\Commerce\Invoices\Pdf\PdfImage;
 use Flexa\Commerce\Orders\Order;
 use Flexa\Commerce\Orders\OrderItem;
+use Flexa\Commerce\Payments\Transaction;
 use Flexa\Commerce\Support\Countries;
 use Flexa\Commerce\Support\Settings;
 
@@ -20,6 +21,8 @@ defined( 'ABSPATH' ) || exit;
  * PdfDocument (ADR-060): the shop and the document details, both
  * addresses, the items (the header row repeats on each page), the totals
  * on an invoice, the customer's note, the footer and "Page X of Y".
+ * A credit note (ADR-064) has the same frame with the refunded lines and
+ * the refunded totals.
  *
  * @phpstan-import-type Values from InvoiceSettings
  */
@@ -27,6 +30,8 @@ final class InvoiceRenderer {
 	public const INVOICE = 'invoice';
 
 	public const PACKING_SLIP = 'packing_slip';
+
+	public const CREDIT_NOTE = 'credit_note';
 
 	private const MARGIN = 48.0;
 
@@ -46,6 +51,8 @@ final class InvoiceRenderer {
 
 	private string $document = self::INVOICE;
 
+	private ?CreditNote $credit = null;
+
 	/** @var list<array{label:string,x:float,width:float,align:string}> */
 	private array $columns = [];
 
@@ -59,9 +66,8 @@ final class InvoiceRenderer {
 	public function render( PdfDocument $pdf, Order $order, ?Invoice $invoice, string $document ): void {
 		$this->pdf      = $pdf;
 		$this->document = $document;
-		$first          = $pdf->add_page();
-		$this->y        = self::MARGIN;
-		$this->bottom   = $pdf->height - self::MARGIN - $this->footer_height();
+		$this->credit   = null;
+		$first          = $this->start( $pdf );
 
 		$this->header( $order, $invoice );
 		$this->addresses( $order );
@@ -75,11 +81,43 @@ final class InvoiceRenderer {
 		$this->footers( $first );
 	}
 
+	/**
+	 * The credit note of one refund: the invoice it corrects, the refunded
+	 * lines (net), any amount refunded without items, the refunded tax per
+	 * rate and the total credited.
+	 */
+	public function render_credit_note( PdfDocument $pdf, Order $order, ?Invoice $invoice, CreditNote $note, Transaction $refund ): void {
+		$this->pdf      = $pdf;
+		$this->document = self::CREDIT_NOTE;
+		$this->credit   = $note;
+		$first          = $this->start( $pdf );
+
+		$this->header( $order, $invoice );
+		$this->addresses( $order );
+		$this->credit_items( $order, $refund );
+		$reason = is_string( $refund->data['reason'] ?? null ) ? trim( $refund->data['reason'] ) : '';
+		if ( $reason !== '' ) {
+			$this->note( $reason, __( 'Reason', 'flexacommerce' ) );
+		}
+		$this->footers( $first );
+	}
+
+	private function start( PdfDocument $pdf ): int {
+		$first        = $pdf->add_page();
+		$this->y      = self::MARGIN;
+		$this->bottom = $pdf->height - self::MARGIN - $this->footer_height();
+		return $first;
+	}
+
 	private function header( Order $order, ?Invoice $invoice ): void {
 		$pdf   = $this->pdf;
 		$left  = self::MARGIN;
 		$right = $pdf->width - self::MARGIN;
-		$title = $this->document === self::INVOICE ? __( 'Invoice', 'flexacommerce' ) : __( 'Packing slip', 'flexacommerce' );
+		$title = match ( $this->document ) {
+			self::INVOICE     => __( 'Invoice', 'flexacommerce' ),
+			self::CREDIT_NOTE => __( 'Credit note', 'flexacommerce' ),
+			default           => __( 'Packing slip', 'flexacommerce' ),
+		};
 		$pdf->text( $right, $this->y + 20, $title, 'bold', 20, self::TEXT, 'right' );
 
 		$y = $this->y;
@@ -107,7 +145,11 @@ final class InvoiceRenderer {
 		}
 
 		$details = [];
-		if ( $this->document === self::INVOICE && $invoice !== null ) {
+		if ( $this->credit !== null ) {
+			$details[ __( 'Credit note number', 'flexacommerce' ) ] = $this->credit->number;
+			$details[ __( 'Credit note date', 'flexacommerce' ) ]   = self::date( $this->credit->date );
+		}
+		if ( $this->document !== self::PACKING_SLIP && $invoice !== null ) {
 			$details[ __( 'Invoice number', 'flexacommerce' ) ] = $invoice->number;
 			$details[ __( 'Invoice date', 'flexacommerce' ) ]   = self::date( $invoice->date );
 		}
@@ -132,6 +174,101 @@ final class InvoiceRenderer {
 			$dy += 2;
 		}
 		$this->y = max( $y, $dy ) + 18;
+	}
+
+	/** The refunded lines, then the totals of the refund. */
+	private function credit_items( Order $order, Transaction $refund ): void {
+		$right         = $this->pdf->width - self::MARGIN;
+		$left          = self::MARGIN;
+		$this->columns = [
+			[
+				'label' => __( 'Product', 'flexacommerce' ),
+				'x'     => $left + 6,
+				'width' => $right - $left - 150,
+				'align' => 'left',
+			],
+			[
+				'label' => __( 'Qty', 'flexacommerce' ),
+				'x'     => $right - 96,
+				'width' => 40,
+				'align' => 'right',
+			],
+			[
+				'label' => __( 'Amount', 'flexacommerce' ),
+				'x'     => $right - 6,
+				'width' => 76,
+				'align' => 'right',
+			],
+		];
+		$lines_total   = 0;
+		$net_total     = 0;
+		$rows          = [];
+		foreach ( $refund->refund_lines as $line ) {
+			$item = $order->item( $line['item_id'] );
+			if ( $item === null || ( $line['amount'] <= 0 && $line['qty'] <= 0 ) ) {
+				continue;
+			}
+			$net          = $line['amount'] - array_sum( $line['taxes'] ?? [] );
+			$lines_total += $line['amount'];
+			$net_total   += $net;
+			$rows[]       = [ $item, $line['qty'], $net ];
+		}
+		if ( $rows !== [] ) {
+			$this->table_header();
+		}
+		foreach ( $rows as [ $item, $qty, $net ] ) {
+			$text = [];
+			foreach ( $this->pdf->wrap( $item->name, 'regular', 9.5, $this->columns[0]['width'] ) as $line ) {
+				$text[] = [ $line, 'regular', 9.5, self::TEXT ];
+			}
+			$extra = [];
+			foreach ( $item->attributes as $attribute ) {
+				$extra[] = $attribute['label'] . ': ' . $attribute['value'];
+			}
+			if ( $this->settings['show_sku'] && (string) $item->sku !== '' ) {
+				/* translators: %s: product SKU */
+				$extra[] = sprintf( __( 'SKU: %s', 'flexacommerce' ), (string) $item->sku );
+			}
+			foreach ( $extra as $part ) {
+				foreach ( $this->pdf->wrap( $part, 'regular', 8, $this->columns[0]['width'] ) as $line ) {
+					$text[] = [ $line, 'regular', 8, self::MUTED ];
+				}
+			}
+			$height = 8 + array_sum( array_map( static fn ( array $line ): float => $line[2] + 3.5, $text ) );
+			$this->room( $height, true );
+			$y = $this->y + 8;
+			foreach ( $text as $i => [ $line, $font, $size, $color ] ) {
+				$y += $size + ( $i === 0 ? 0 : 3.5 );
+				$this->pdf->text( $this->columns[0]['x'], $y, $line, $font, $size, $color );
+			}
+			$first = $this->y + 8 + 9.5;
+			$this->pdf->text( $this->columns[1]['x'], $first, $qty > 0 ? number_format_i18n( $qty ) : '–', 'regular', 9.5, self::TEXT, 'right' );
+			$this->pdf->text( $this->columns[2]['x'], $first, $this->money( $order, $net ), 'regular', 9.5, self::TEXT, 'right' );
+			$this->y += $height + 4;
+			$this->pdf->line( $left, $this->y, $right, $this->y, 0.5, self::RULE );
+		}
+		$this->y += 10;
+
+		$totals = [];
+		if ( $rows !== [] ) {
+			$totals[] = [ __( 'Subtotal', 'flexacommerce' ), $this->money( $order, $net_total ), false ];
+		}
+		$other = $refund->amount - $lines_total;
+		$taxes = self::int_map( $refund->data['taxes'] ?? [] );
+		if ( $other > 0 ) {
+			$totals[] = [ $rows !== [] ? __( 'Other refunded amount', 'flexacommerce' ) : __( 'Refunded amount', 'flexacommerce' ), $this->money( $order, $other ), false ];
+		}
+		$names = [];
+		foreach ( $order->items_of_type( OrderItem::TAX ) as $item ) {
+			$names[ (string) $item->code ] = $item->name;
+		}
+		foreach ( $taxes as $key => $tax ) {
+			if ( $tax > 0 ) {
+				$totals[] = [ ( $names[ $key ] ?? '' ) !== '' ? $names[ $key ] : __( 'Tax', 'flexacommerce' ), $this->money( $order, $tax ), false ];
+			}
+		}
+		$totals[] = [ __( 'Total credited', 'flexacommerce' ), $this->money( $order, $refund->amount ), true ];
+		$this->total_rows( $totals );
 	}
 
 	private function addresses( Order $order ): void {
@@ -284,7 +421,11 @@ final class InvoiceRenderer {
 		if ( $order->balance_due() > 0 && $order->amount_paid > 0 ) {
 			$rows[] = [ __( 'Amount due', 'flexacommerce' ), $this->money( $order, $order->balance_due() ), true ];
 		}
+		$this->total_rows( $rows );
+	}
 
+	/** @param list<array{0:string,1:string,2:bool}> $rows label, amount, strong */
+	private function total_rows( array $rows ): void {
 		$right = $this->pdf->width - self::MARGIN - 6;
 		$label = $right - 100;
 		foreach ( $rows as [ $text, $amount, $strong ] ) {
@@ -304,11 +445,11 @@ final class InvoiceRenderer {
 		$this->y += 12;
 	}
 
-	private function note( string $note ): void {
+	private function note( string $note, string $title = '' ): void {
 		$width = $this->pdf->width - 2 * self::MARGIN;
 		$lines = $this->pdf->wrap( $note, 'regular', 9, $width );
 		$this->room( 30, false );
-		$this->pdf->text( self::MARGIN, $this->y + 10, mb_strtoupper( __( 'Note', 'flexacommerce' ) ), 'bold', 8, self::MUTED );
+		$this->pdf->text( self::MARGIN, $this->y + 10, mb_strtoupper( $title !== '' ? $title : __( 'Note', 'flexacommerce' ) ), 'bold', 8, self::MUTED );
 		$this->y += 24;
 		foreach ( $lines as $line ) {
 			$this->room( 12, false );
@@ -423,6 +564,17 @@ final class InvoiceRenderer {
 	/** @return list<string> */
 	private static function lines( string $text ): array {
 		return array_values( array_filter( array_map( 'trim', preg_split( '/\R/u', $text ) ?: [] ), static fn ( string $line ): bool => $line !== '' ) );
+	}
+
+	/** @return array<string,int> */
+	private static function int_map( mixed $values ): array {
+		$out = [];
+		foreach ( is_array( $values ) ? $values : [] as $key => $value ) {
+			if ( is_numeric( $value ) ) {
+				$out[ (string) $key ] = (int) $value;
+			}
+		}
+		return $out;
 	}
 
 	private static function date( string $utc ): string {

@@ -307,7 +307,7 @@ final class Plugin {
 	public function notifications(): Notifications\NotificationServices {
 		if ( $this->notifications === null ) {
 			$this->notifications = new Notifications\NotificationServices( $this->services(), $this->orders(), fn (): Checkout\CheckoutServices => $this->checkout(), fn ( int $order_id ): array => $this->downloads()->links( $order_id ) );
-			add_filter( 'flexacommerce.email.attachments', [ $this, 'on_email_attachments' ], 10, 3 );
+			add_filter( 'flexacommerce.email.attachments', [ $this, 'on_email_attachments' ], 10, 4 );
 			add_action( 'flexacommerce.email.sent', [ $this, 'on_email_sent' ] );
 		}
 		return $this->notifications;
@@ -320,7 +320,8 @@ final class Plugin {
 			$this->orders()->orders(),
 			$this->services()->sequence(),
 			$this->services()->clock(),
-			$this->services()->money()
+			$this->services()->money(),
+			$this->payments()->transactions()
 		);
 	}
 
@@ -340,13 +341,15 @@ final class Plugin {
 	}
 
 	/**
-	 * @internal The invoice on the emails chosen in the invoice settings.
+	 * @internal The invoice on the emails chosen in the invoice settings,
+	 * and the credit note on the refund email (ADR-064).
 	 *
 	 * @param mixed $attachments
+	 * @param mixed $context
 	 * @return mixed
 	 */
-	public function on_email_attachments( mixed $attachments, string $email_id, ?int $order_id ): mixed {
-		return $this->invoices()->attach( $attachments, $email_id, $order_id );
+	public function on_email_attachments( mixed $attachments, string $email_id, ?int $order_id, mixed $context = [] ): mixed {
+		return $this->invoices()->attach( $attachments, $email_id, $order_id, is_array( $context ) ? $context : [] );
 	}
 
 	/** @internal Removes the invoice files written for an email. */
