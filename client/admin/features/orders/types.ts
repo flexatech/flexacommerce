@@ -171,7 +171,26 @@ export interface OrderListParams {
     search: string;
     /** 0 for every customer. */
     customer_id: number;
+    /** YYYY-MM-DD store-local days, both included; empty for no limit. */
+    date_from: string;
+    date_to: string;
     page: number;
+}
+
+export type OrderExportLayout = "orders" | "items";
+
+export interface OrderExportPage {
+    lines: string;
+    rows: number;
+    orders: number;
+    /** The id to send as `after` for the next page. */
+    last: number;
+    done: boolean;
+    /** First page only. */
+    total?: number;
+    until?: number;
+    header?: string;
+    name?: string;
 }
 
 export interface RefundLineInput {

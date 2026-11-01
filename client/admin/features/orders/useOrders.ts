@@ -1,26 +1,73 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 
 import { api } from "@/shared/lib/api";
-import type { OrderCounts, OrderDetail, OrderListParams, OrderStatus, OrderSummary, RefundLineInput, ShipmentCarriers, ShipmentInput } from "./types";
+import { download } from "../productcsv/csv";
+import type {
+    OrderCounts,
+    OrderDetail,
+    OrderExportLayout,
+    OrderExportPage,
+    OrderListParams,
+    OrderStatus,
+    OrderSummary,
+    RefundLineInput,
+    ShipmentCarriers,
+    ShipmentInput,
+} from "./types";
 
 export const ORDERS_PER_PAGE = 20;
 
 const ORDERS_KEY = ["orders"] as const;
 
+/** The list filters as request parameters; the export sends the same ones. */
+function filters(params: OrderListParams) {
+    return {
+        status: params.status,
+        needs_attention: params.needs_attention ? 1 : undefined,
+        search: params.search,
+        customer_id: params.customer_id > 0 ? params.customer_id : undefined,
+        date_from: params.date_from || undefined,
+        date_to: params.date_to || undefined,
+    };
+}
+
 export function useOrderList(params: OrderListParams) {
     return useQuery({
         queryKey: [...ORDERS_KEY, "list", params],
-        queryFn: () =>
-            api.list<OrderSummary>("admin/orders", {
-                status: params.status,
-                needs_attention: params.needs_attention ? 1 : undefined,
-                search: params.search,
-                customer_id: params.customer_id > 0 ? params.customer_id : undefined,
-                page: params.page,
-                per_page: ORDERS_PER_PAGE,
-            }),
+        queryFn: () => api.list<OrderSummary>("admin/orders", { ...filters(params), page: params.page, per_page: ORDERS_PER_PAGE }),
         placeholderData: keepPreviousData,
     });
+}
+
+/** Fetches the CSV export a page at a time (ADR-070) and saves the file. */
+export function useOrderExport() {
+    const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+
+    const mutation = useMutation({
+        mutationFn: async ({ params, layout }: { params: OrderListParams; layout: OrderExportLayout }) => {
+            const query = { ...filters(params), layout };
+            const first = await api.get<OrderExportPage>("admin/orders/export", query);
+            const total = first.total ?? 0;
+            const parts = ["\uFEFF", first.header ?? "", first.lines];
+            let rows = first.rows;
+            let done = first.orders;
+            let page = first;
+            setProgress({ done, total });
+            while (!page.done) {
+                page = await api.get<OrderExportPage>("admin/orders/export", { ...query, after: page.last, until: first.until });
+                parts.push(page.lines);
+                rows += page.rows;
+                done += page.orders;
+                setProgress({ done: Math.min(done, total), total });
+            }
+            download(first.name ?? "orders.csv", parts);
+            return { rows, orders: done };
+        },
+        onSettled: () => setProgress(null),
+    });
+
+    return { ...mutation, progress };
 }
 
 export function useOrderCounts() {

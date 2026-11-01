@@ -9,6 +9,9 @@ use Flexa\Commerce\Contracts\CommerceException;
 use Flexa\Commerce\Contracts\Orders\AddressView;
 use Flexa\Commerce\Downloads\DownloadService;
 use Flexa\Commerce\Downloads\Permission;
+use Flexa\Commerce\GiftCards\GiftCardService;
+use Flexa\Commerce\Orders\Csv\OrderCsvExporter;
+use Flexa\Commerce\Orders\Csv\OrderCsvRepository;
 use Flexa\Commerce\Orders\Carriers;
 use Flexa\Commerce\Orders\Order;
 use Flexa\Commerce\Orders\OrderFields;
@@ -54,6 +57,35 @@ final class OrdersEndpoint extends Endpoint {
 					'callback'            => [ $this, 'index' ],
 					'permission_callback' => [ $this, 'view_orders_permission' ],
 					'args'                => self::collection_args(),
+				],
+			]
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/admin/orders/export',
+			[
+				[
+					'methods'             => WP_REST_Server::READABLE,
+					'callback'            => [ $this, 'export' ],
+					'permission_callback' => [ $this, 'view_orders_permission' ],
+					'args'                => array_diff_key( self::collection_args(), array_flip( [ 'page', 'per_page', 'orderby', 'order' ] ) ) + [
+						'layout' => [
+							'type'    => 'string',
+							'enum'    => OrderCsvExporter::LAYOUTS,
+							'default' => OrderCsvExporter::ORDERS,
+						],
+						'after'  => [
+							'type'    => 'integer',
+							'minimum' => 0,
+							'default' => 0,
+						],
+						'until'  => [
+							'type'    => 'integer',
+							'minimum' => 0,
+							'default' => 0,
+						],
+					],
 				],
 			]
 		);
@@ -364,6 +396,36 @@ final class OrdersEndpoint extends Endpoint {
 		$response->header( 'X-WP-Total', (string) $result['total'] );
 		$response->header( 'X-WP-TotalPages', (string) (int) ceil( $result['total'] / $query->per_page ) );
 		return $response;
+	}
+
+	/**
+	 * One page of the CSV export (ADR-070), with the list's filters. The
+	 * first call (no `until`) also returns the header line, the file name,
+	 * how many orders match and the newest id; the screen sends `until` and
+	 * the `last` id it got back for every later page.
+	 *
+	 * @param WP_REST_Request<array<string,mixed>> $request
+	 */
+	public function export( WP_REST_Request $request ): WP_REST_Response {
+		$query    = OrderQuery::from_params( $request->get_params() );
+		$layout   = (string) $request->get_param( 'layout' );
+		$exporter = new OrderCsvExporter( new OrderCsvRepository( Plugin::instance()->services()->wpdb() ), GiftCardService::GATEWAY );
+		$until    = (int) $request->get_param( 'until' );
+		$body     = [];
+		if ( $until === 0 ) {
+			$scope = $exporter->scope( $query );
+			$until = $scope['until'];
+			$body  = [
+				'total'  => $scope['total'],
+				'until'  => $until,
+				'header' => OrderCsvExporter::header( $layout ),
+				'name'   => sanitize_file_name( ( $layout === OrderCsvExporter::ITEMS ? 'order-items-' : 'orders-' ) . wp_date( 'Y-m-d' ) . '.csv' ),
+			];
+		}
+		wp_raise_memory_limit( 'admin' );
+		$page = $exporter->page( $query, $layout, (int) $request->get_param( 'after' ), $until );
+		$body = $page + $body + [ 'done' => $page['orders'] < OrderCsvExporter::PER_PAGE ];
+		return new WP_REST_Response( $body, 200 );
 	}
 
 	/** @param WP_REST_Request<array<string,mixed>> $request */
@@ -833,6 +895,14 @@ final class OrdersEndpoint extends Endpoint {
 				'enum' => OrderStatus::PAYMENT_STATUSES,
 			],
 			'needs_attention' => [ 'type' => 'boolean' ],
+			'date_from'       => [
+				'type'    => 'string',
+				'pattern' => '^(\\d{4}-\\d{2}-\\d{2})?$',
+			],
+			'date_to'         => [
+				'type'    => 'string',
+				'pattern' => '^(\\d{4}-\\d{2}-\\d{2})?$',
+			],
 			'customer_id'     => [
 				'type'    => 'integer',
 				'minimum' => 1,

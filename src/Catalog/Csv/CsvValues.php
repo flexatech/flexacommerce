@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Flexa\Commerce\Catalog\Csv;
 
+use Flexa\Commerce\Support\Csv;
+
 defined( 'ABSPATH' ) || exit;
 
 /**
@@ -12,20 +14,18 @@ defined( 'ABSPATH' ) || exit;
  * a cell that a spreadsheet would run as a formula gets a leading `'`.
  */
 final class CsvValues {
-	private const FORMULA = [ '=', '+', '-', '@', "\t", "\r" ];
-
 	public static function strip_bom( string $text ): string {
 		return str_starts_with( $text, "\xEF\xBB\xBF" ) ? substr( $text, 3 ) : $text;
 	}
 
 	/** Guards a cell against formula injection when the file opens in a spreadsheet. */
 	public static function escape( string $value ): string {
-		return $value !== '' && in_array( $value[0], self::FORMULA, true ) ? "'" . $value : $value;
+		return Csv::escape( $value );
 	}
 
 	/** Removes the guard `escape()` adds. */
 	public static function unescape( string $value ): string {
-		return strlen( $value ) > 1 && $value[0] === "'" && in_array( $value[1], self::FORMULA, true ) ? substr( $value, 1 ) : $value;
+		return Csv::unescape( $value );
 	}
 
 	/** @param list<string> $values */
@@ -95,12 +95,6 @@ final class CsvValues {
 	 * @param list<string> $cells
 	 */
 	public static function line( array $cells ): string {
-		$out = [];
-		foreach ( $cells as $cell ) {
-			$out[] = preg_match( '/[",\r\n]/', $cell ) === 1 || ( $cell !== '' && ( $cell[0] === ' ' || str_ends_with( $cell, ' ' ) ) )
-				? '"' . str_replace( '"', '""', $cell ) . '"'
-				: $cell;
-		}
-		return implode( ',', $out ) . "\n";
+		return Csv::line( $cells );
 	}
 }

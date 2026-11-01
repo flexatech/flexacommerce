@@ -1021,6 +1021,7 @@ CREATE TABLE fxc_gift_card_activity (
 | Due stock alerts | `fxc_stock_alerts.status_due`; a product's rows and the waiting count per product `product_status`; stop link and privacy `email` (ADR-065) |
 | Wishlist | `fxc_wishlists.user_id`, `token_hash`, `share_key`; the products `fxc_wishlist_items` primary key; guest purge `updated_at` (ADR-066) |
 | Shipments | `fxc_shipments.order_id`; the admin search by tracking number `tracking_number` (ADR-067) |
+| Order list and CSV export by date | `created_at`, or `status_created` with a tab; the export pages by primary key (`id > after AND id <= until`) (ADR-070) |
 | Gift cards | `fxc_gift_cards.code` for the code box; an order's cards `order_item`; due emails `deliver_at`; privacy `recipient_email`; activity per card `gift_card_id`, refund credits `transaction_id` (ADR-069) |
 | Download link | `fxc_downloads.token`; an order's links `order_id`, a customer's `customer_id`, privacy `email`, a product edit `variant_file` |
 | Tax rate match for one address | `class_country_state`, then `rate_type` for the join; `type_code` and `type_range` for rates found by postcode (§4.13) |

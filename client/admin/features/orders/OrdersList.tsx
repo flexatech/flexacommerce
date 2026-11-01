@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, FileText, Package, Search } from "lucide-react";
+import { AlertTriangle, Download, FileText, Package, Search } from "lucide-react";
 
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
@@ -10,6 +10,7 @@ import { useDebounced } from "@/shared/lib/useDebounced";
 import { PageTitle } from "../../components/PageTitle";
 import { invoicePdfUrl } from "../invoices/useInvoices";
 import { Tabs } from "../../components/Tabs";
+import { ExportDialog } from "./ExportDialog";
 import { formatDate, orderMoney, PAYMENT_LABEL, STATUS_LABEL, STATUS_TONE, STATUSES } from "./format";
 import { NEW_ORDER, orderUrl } from "./navigation";
 import type { OrderListParams, OrderStatus } from "./types";
@@ -29,6 +30,7 @@ export function OrdersList({ params, onParams, onOpen }: Props) {
     const list = useOrderList(params);
     const counts = useOrderCounts();
     const [selected, setSelected] = useState<number[]>([]);
+    const [exporting, setExporting] = useState(false);
 
     // A new page or filter starts with nothing selected.
     useEffect(() => setSelected([]), [params]);
@@ -60,6 +62,7 @@ export function OrdersList({ params, onParams, onOpen }: Props) {
         tabs.push({ value: "attention", label: __("Needs attention") + count(counts.data?.needs_attention) });
     }
 
+    const narrowed = params.search !== "" || filter !== "" || params.customer_id > 0 || params.date_from !== "" || params.date_to !== "";
     const pages = list.data?.pages ?? 1;
     const ids = list.data?.items.map((order) => order.id) ?? [];
     const allSelected = ids.length > 0 && ids.every((id) => selected.includes(id));
@@ -71,34 +74,70 @@ export function OrdersList({ params, onParams, onOpen }: Props) {
                 title={__("Orders")}
                 description={__("Orders placed in your store, newest first.")}
                 actions={
-                    <Button asChild>
-                        <a
-                            href={orderUrl(NEW_ORDER)}
-                            className="fxc:no-underline"
-                            onClick={(e) => {
-                                e.preventDefault();
-                                onOpen(NEW_ORDER);
-                            }}
-                        >
-                            {__("Create order")}
-                        </a>
-                    </Button>
+                    <div className="fxc:flex fxc:items-center fxc:gap-2">
+                        <Button variant="outline" onClick={() => setExporting(true)}>
+                            <Download aria-hidden className="fxc:size-4" />
+                            {__("Export CSV")}
+                        </Button>
+                        <Button asChild>
+                            <a
+                                href={orderUrl(NEW_ORDER)}
+                                className="fxc:no-underline"
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    onOpen(NEW_ORDER);
+                                }}
+                            >
+                                {__("Create order")}
+                            </a>
+                        </Button>
+                    </div>
                 }
             />
 
             <div className="fxc:flex fxc:flex-wrap fxc:items-end fxc:justify-between fxc:gap-3">
                 <Tabs value={filter} onChange={setFilter} items={tabs} />
-                <div className="fxc:relative fxc:w-64">
-                    <Search aria-hidden className="fxc:text-muted-foreground fxc:pointer-events-none fxc:absolute fxc:top-2.5 fxc:left-3 fxc:size-4" />
-                    <Input
-                        aria-label={__("Search orders")}
-                        placeholder={__("Number, email or name")}
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        className="fxc:pl-9!"
-                    />
+                <div className="fxc:flex fxc:flex-wrap fxc:items-center fxc:gap-2">
+                    <div className="fxc:flex fxc:items-center fxc:gap-1.5 fxc:text-sm">
+                        <Input
+                            type="date"
+                            aria-label={__("Orders from")}
+                            className="fxc:w-40"
+                            value={params.date_from}
+                            max={params.date_to || undefined}
+                            onChange={(e) => onParams({ ...params, date_from: e.target.value, page: 1 })}
+                        />
+                        <span className="fxc:text-muted-foreground" aria-hidden>
+                            –
+                        </span>
+                        <Input
+                            type="date"
+                            aria-label={__("Orders to")}
+                            className="fxc:w-40"
+                            value={params.date_to}
+                            min={params.date_from || undefined}
+                            onChange={(e) => onParams({ ...params, date_to: e.target.value, page: 1 })}
+                        />
+                        {(params.date_from !== "" || params.date_to !== "") && (
+                            <Button variant="ghost" size="sm" onClick={() => onParams({ ...params, date_from: "", date_to: "", page: 1 })}>
+                                {__("Any date")}
+                            </Button>
+                        )}
+                    </div>
+                    <div className="fxc:relative fxc:w-64">
+                        <Search aria-hidden className="fxc:text-muted-foreground fxc:pointer-events-none fxc:absolute fxc:top-2.5 fxc:left-3 fxc:size-4" />
+                        <Input
+                            aria-label={__("Search orders")}
+                            placeholder={__("Number, email or name")}
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            className="fxc:pl-9!"
+                        />
+                    </div>
                 </div>
             </div>
+
+            <ExportDialog params={params} filtered={narrowed} open={exporting} onOpenChange={setExporting} />
 
             {params.customer_id > 0 && (
                 <div className="fxc:bg-muted fxc:flex fxc:items-center fxc:justify-between fxc:gap-3 fxc:rounded-lg fxc:px-4 fxc:py-2 fxc:text-sm">
@@ -137,7 +176,7 @@ export function OrdersList({ params, onParams, onOpen }: Props) {
                     <p className="fxc:text-destructive fxc:px-5 fxc:py-4">{list.error.message}</p>
                 ) : list.data.items.length === 0 ? (
                     <p className="fxc:text-muted-foreground fxc:px-5 fxc:py-8 fxc:text-center">
-                        {params.search !== "" || filter !== "" || params.customer_id > 0 ? __("No orders match.") : __("No orders yet.")}
+                        {narrowed ? __("No orders match.") : __("No orders yet.")}
                     </p>
                 ) : (
                     <table className="fxc:w-full fxc:text-sm">

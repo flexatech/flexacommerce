@@ -184,7 +184,7 @@ Because these fire after commit, a listener that throws cannot roll back the ord
 
 ### 5.3 Reading orders
 
-`OrderReader::find( int $id ): ?OrderView`, `find_by_number()`, `search( OrderQuery )`. `OrderView` is an immutable read model (items, addresses, totals as Money, history ids). `OrderItemView::$gift_card` is true for a line that sold gift cards (ADR-069). Extension metadata: `OrderMeta::get( order_id, key )`, `set()`, `delete()` (writes `fxc_order_meta`, key must not start with `_fxc_`, value string or JSON-serializable array).
+`OrderReader::find( int $id ): ?OrderView`, `find_by_number()`, `search( OrderQuery )`; `OrderQuery` takes `date_from` and `date_to` as store-local YYYY-MM-DD days (ADR-070). `OrderView` is an immutable read model (items, addresses, totals as Money, history ids). `OrderItemView::$gift_card` is true for a line that sold gift cards (ADR-069). Extension metadata: `OrderMeta::get( order_id, key )`, `set()`, `delete()` (writes `fxc_order_meta`, key must not start with `_fxc_`, value string or JSON-serializable array).
 
 ## 6. Product types
 

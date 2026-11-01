@@ -73,6 +73,7 @@ Legend: **MVP** = required for MVP. **FND** = architectural foundation in MVP, u
 | Subscription and bundle products | OUT (core) / POST (extension) | Migration reports them as unsupported (doc 05 §7). |
 | Public product-type registration API | FND | Internal type registry exists in MVP; public contract is post-MVP (doc 04 §6). |
 | Reviews and ratings | POST | Reviews are WordPress comments with a star rating, a verified-buyer badge, a setting for who may review and a rating sort (ADR-056). |
+| Order export CSV | POST (built 2026-11-01, ADR-070) | Export CSV on the order list saves the orders the list shows (tab, search, customer and a new date range) as one row per order or one row per product, with addresses, totals, payments, refunds, coupons and tracking numbers. Amounts are plain numbers and dates are in the store's time zone. |
 | Product import/export CSV | POST | WooCommerce's CSV columns both ways, so a WooCommerce export imports as it is: a column mapping screen, a check that writes nothing, batches with variations kept together, update by SKU or ID, and the same in WP-CLI (ADR-059). The migration format still covers moving a whole store. |
 
 ### 4.2 Storefront

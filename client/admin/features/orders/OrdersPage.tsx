@@ -18,6 +18,8 @@ export function OrdersPage() {
             needs_attention: false,
             search: query.get("search") ?? "",
             customer_id: Number.isFinite(customer) && customer > 0 ? customer : 0,
+            date_from: "",
+            date_to: "",
             page: 1,
         };
     });

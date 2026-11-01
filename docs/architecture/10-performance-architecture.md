@@ -387,6 +387,8 @@ ADR-068 added the 33rd variant column, which pushed every keyed row into a large
 
 ADR-069 added `is_gift_card` as the 34th column. With the plain-list rows the P3 product page stays under its budget. Gift cards add no query to catalog pages or to a cart without codes; a cart with codes reads them in one `IN` query (`GiftCardRepository::by_codes()`).
 
+The order CSV export (ADR-070) runs only in the admin and adds nothing to boot or the storefront. A page of 100 orders costs six queries (orders by primary key range, items, addresses, checkout fields, gift card net, tracking numbers; three for the product layout) whatever the page size, and the browser keeps the file, so server memory stays at one page.
+
 The Playwright pass with axe on Twenty Twenty-Five, Astra and Twenty Twenty-One is green (doc 07 phase 5 notes).
 
 **T3 (2026-10-25).** The §6.4 set ran on dataset M at 1 and 10 VU against WooCommerce 11.2.1 default (HPOS on) and tuned (the list is in the report). Report: `docs/benchmarks/2026-10-25-phase5.md`.

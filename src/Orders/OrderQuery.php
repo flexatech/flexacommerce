@@ -11,7 +11,8 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Admin list filters. Every filter maps to an indexed column; `search`
  * matches the order number prefix, the exact customer email or the exact
- * tracking number of a package (ADR-067).
+ * tracking number of a package (ADR-067). `date_from` and `date_to` are
+ * store-local days, both included (ADR-070).
  */
 final class OrderQuery {
 	public const ORDER_BY = [ 'created_at', 'total', 'id' ];
@@ -26,6 +27,8 @@ final class OrderQuery {
 		public readonly int $per_page = 20,
 		public readonly string $orderby = 'created_at',
 		public readonly string $order = 'desc',
+		public readonly string $date_from = '',
+		public readonly string $date_to = '',
 	) {}
 
 	/** @param array<string,mixed> $params */
@@ -43,7 +46,23 @@ final class OrderQuery {
 			per_page: min( 100, max( 1, (int) ( $params['per_page'] ?? 20 ) ) ),
 			orderby: in_array( $orderby, self::ORDER_BY, true ) ? $orderby : 'created_at',
 			order: strtolower( (string) ( $params['order'] ?? 'desc' ) ) === 'asc' ? 'asc' : 'desc',
+			date_from: self::day( $params['date_from'] ?? '' ),
+			date_to: self::day( $params['date_to'] ?? '' ),
 		);
+	}
+
+	/** A YYYY-MM-DD day that exists, or '' for anything else. */
+	public static function day( mixed $value ): string {
+		$value = is_string( $value ) ? trim( $value ) : '';
+		if ( preg_match( '/^(\d{4})-(\d{2})-(\d{2})$/', $value, $m ) !== 1 || ! checkdate( (int) $m[2], (int) $m[3], (int) $m[1] ) ) {
+			return '';
+		}
+		return $value;
+	}
+
+	/** The UTC time a store-local day starts, as stored in created_at. */
+	private static function utc_start( string $day ): string {
+		return ( new \DateTimeImmutable( $day . ' 00:00:00', wp_timezone() ) )->setTimezone( new \DateTimeZone( 'UTC' ) )->format( 'Y-m-d H:i:s' );
 	}
 
 	/** @return array{0:string,1:list<string|int>} SQL condition and its placeholders' values */
@@ -60,6 +79,14 @@ final class OrderQuery {
 		}
 		if ( $this->needs_attention ) {
 			$sql[] = 'needs_attention = 1';
+		}
+		if ( $this->date_from !== '' ) {
+			$sql[]  = 'created_at >= %s';
+			$args[] = self::utc_start( $this->date_from );
+		}
+		if ( $this->date_to !== '' ) {
+			$sql[]  = 'created_at < %s';
+			$args[] = self::utc_start( ( new \DateTimeImmutable( $this->date_to ) )->modify( '+1 day' )->format( 'Y-m-d' ) );
 		}
 		if ( $this->customer_id !== null ) {
 			$sql[]  = 'customer_id = %d';
