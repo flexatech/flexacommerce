@@ -234,6 +234,10 @@ final class OrdersEndpoint extends Endpoint {
 							'type'    => 'boolean',
 							'default' => false,
 						],
+						'to_credit'   => [
+							'type'    => 'boolean',
+							'default' => false,
+						],
 					],
 				],
 			]
@@ -505,10 +509,16 @@ final class OrdersEndpoint extends Endpoint {
 		$lines   = RefundLine::from_array( (array) $request->get_param( 'lines' ) );
 		$reason  = (string) $request->get_param( 'reason' );
 		$gateway = (bool) $request->get_param( 'via_gateway' );
+		$credit  = (bool) $request->get_param( 'to_credit' );
 		return $this->run(
 			$request,
-			static function ( int $id ) use ( $amount, $lines, $reason, $gateway ): int {
-				Plugin::instance()->payments()->service()->refund( $id, $amount, $lines, $reason, $gateway, TransitionContext::admin() );
+			static function ( int $id ) use ( $amount, $lines, $reason, $gateway, $credit ): int {
+				if ( $credit ) {
+					// Paid into the customer's store credit (ADR-072).
+					Plugin::instance()->gift_cards()->refund_to_credit( $id, $amount, $lines, $reason, TransitionContext::admin() );
+				} else {
+					Plugin::instance()->payments()->service()->refund( $id, $amount, $lines, $reason, $gateway, TransitionContext::admin() );
+				}
 				return $id;
 			},
 			201
@@ -752,6 +762,7 @@ final class OrdersEndpoint extends Endpoint {
 				'title'   => $order->payment_method_title,
 				'refunds' => $gateway !== null && $gateway->supports( 'refunds' ),
 			],
+			'credit_refunds' => (int) $order->customer_id > 0,
 			'editable'       => $order->is_editable(),
 			'can'            => [
 				'edit'   => Capabilities::can_edit_orders(),

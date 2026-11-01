@@ -17,7 +17,7 @@ defined( 'ABSPATH' ) || exit;
  */
 // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- schema DDL on plugin-owned tables, no user input.
 final class Schema {
-	public const DB_VERSION        = '16';
+	public const DB_VERSION        = '17';
 	public const DB_VERSION_OPTION = 'flexacommerce_db_version';
 	public const OPTION_PREFIX     = 'flexacommerce_';
 
@@ -358,10 +358,12 @@ final class Schema {
 				deliver_at datetime NULL,
 				delivered_at datetime NULL,
 				expires_at datetime NULL,
+				user_id bigint(20) unsigned NULL,
 				created_at datetime NOT NULL,
 				updated_at datetime NOT NULL,
 				PRIMARY KEY  (id),
 				UNIQUE KEY code (code),
+				UNIQUE KEY user_id (user_id),
 				KEY order_item (order_id,order_item_id),
 				KEY recipient_email (recipient_email),
 				KEY deliver_at (deliver_at)

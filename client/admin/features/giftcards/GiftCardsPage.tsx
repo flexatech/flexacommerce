@@ -19,6 +19,7 @@ import { SettingRow } from "../../components/SettingRow";
 import { Tabs } from "../../components/Tabs";
 import { useUrlTab } from "../../components/useUrlTab";
 import { currencyExponent, formatDate, orderMoney } from "../orders/format";
+import { ActivityTable, orderUrl } from "./ActivityTable";
 import { useSaveSettings, useSettings } from "../settings/useSettings";
 import {
     useAdjustGiftCard,
@@ -27,7 +28,6 @@ import {
     useGiftCardList,
     useSendGiftCard,
     useUpdateGiftCard,
-    type GiftCardActivityRow,
     type GiftCardDetail,
     type GiftCardFilter,
     type GiftCardState,
@@ -48,17 +48,6 @@ const STATE_VARIANT: Record<GiftCardState, "success" | "muted" | "destructive" |
     used: "brand",
     expired: "destructive",
 };
-
-const ACTIVITY_LABEL: Record<GiftCardActivityRow["type"], string> = {
-    issued: __("Issued"),
-    redeemed: __("Paid an order"),
-    credited: __("Refunded to the card"),
-    adjusted: __("Adjusted"),
-};
-
-function orderUrl(id: number): string {
-    return `${getPluginGlobal().adminUrl}?page=flexacommerce-orders&order=${id}`;
-}
 
 function today(): string {
     const now = new Date();
@@ -202,43 +191,7 @@ function Activity({ card }: { card: GiftCardDetail }) {
     return (
         <div>
             <h3 className="fxc:mb-2 fxc:text-sm fxc:font-semibold">{__("History")}</h3>
-            <table className="fxc:w-full fxc:text-sm">
-                <thead>
-                    <tr className="fxc:text-muted-foreground fxc:border-b fxc:text-left fxc:text-xs">
-                        <th className="fxc:py-2 fxc:pr-3 fxc:font-medium">{__("Date")}</th>
-                        <th className="fxc:py-2 fxc:pr-3 fxc:font-medium">{__("What")}</th>
-                        <th className="fxc:py-2 fxc:pr-3 fxc:text-right fxc:font-medium">{__("Amount")}</th>
-                        <th className="fxc:py-2 fxc:text-right fxc:font-medium">{__("Balance")}</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {card.activity.map((row) => (
-                        <tr key={row.id} className="fxc:border-b fxc:align-top fxc:last:border-b-0">
-                            <td className="fxc:text-muted-foreground fxc:py-2 fxc:pr-3 fxc:whitespace-nowrap">{formatDate(row.created_at)}</td>
-                            <td className="fxc:py-2 fxc:pr-3">
-                                <div>
-                                    {ACTIVITY_LABEL[row.type]}
-                                    {row.order_id !== null && (
-                                        <>
-                                            {" "}
-                                            <a href={orderUrl(row.order_id)} className="fxc:text-primary fxc:no-underline fxc:hover:underline">
-                                                {sprintf(__("order #%d"), row.order_id)}
-                                            </a>
-                                        </>
-                                    )}
-                                </div>
-                                {(row.note !== "" || row.user) && (
-                                    <div className="fxc:text-muted-foreground fxc:text-xs">{[row.note, row.user ?? ""].filter((part) => part !== "").join(" · ")}</div>
-                                )}
-                            </td>
-                            <td className="fxc:py-2 fxc:pr-3 fxc:text-right fxc:tabular-nums fxc:whitespace-nowrap">
-                                {(row.amount > 0 ? "+" : row.amount < 0 ? "−" : "") + orderMoney(Math.abs(row.amount), card.currency)}
-                            </td>
-                            <td className="fxc:py-2 fxc:text-right fxc:tabular-nums fxc:whitespace-nowrap">{orderMoney(row.balance_after, card.currency)}</td>
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
+            <ActivityTable rows={card.activity} currency={card.currency} />
         </div>
     );
 }

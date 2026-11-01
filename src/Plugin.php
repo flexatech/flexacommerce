@@ -270,6 +270,7 @@ final class Plugin {
 			history: fn (): Contracts\Orders\CustomerHistory => $this->customer_history(),
 			restocked: fn ( int $variant_id ) => $this->on_restocked( $variant_id ),
 			gift_cards: fn ( string $code ): ?string => $this->gift_card_code( $code ),
+			credit: fn ( int $user_id ): ?string => $this->credit_code( $user_id ),
 		);
 	}
 
@@ -322,7 +323,7 @@ final class Plugin {
 	 */
 	private function cart_totals( array $data, Cart\CartState $state ): array {
 		$data = Support\Settings::bool( 'tax_enabled' ) ? $this->checkout()->cart_taxes()->extend( $data, $state, get_current_user_id() ) : $data;
-		if ( $state->cart->gift_cards !== [] ) {
+		if ( $state->has_gift_cards() ) {
 			$total              = (int) ( $data['totals']['total']['amount'] ?? $state->subtotal->amount );
 			$money              = $this->services()->money();
 			$data['gift_cards'] = array_map(
@@ -338,8 +339,10 @@ final class Plugin {
 						'formatted' => $money->format( $money->from_minor( $row['balance'], $state->subtotal->currency ) ),
 					],
 					'message' => $row['message'],
+					'credit'  => $row['credit'],
+					'used'    => $row['used'],
 				],
-				$this->gift_cards()->rows( $state->cart->gift_cards, $total, $state->subtotal->currency )
+				$this->gift_cards()->rows( $state->cart->gift_cards, $total, $state->subtotal->currency, $state->credit, ! $state->cart->skip_credit )
 			);
 		}
 		return $data;
@@ -361,7 +364,8 @@ final class Plugin {
 		$ip      = Support\ClientIp::get();
 		$limiter->check( 'gift_card_ip', $ip );
 		$card = ( new GiftCards\GiftCardRepository( $this->services()->wpdb() ) )->find_by_code( $code );
-		if ( $card === null ) {
+		// Store credit pays only for its owner's carts, on its own (ADR-072).
+		if ( $card === null || $card->is_credit() ) {
 			$limiter->count( 'gift_card_ip', $ip );
 			return null;
 		}
@@ -370,6 +374,22 @@ final class Plugin {
 			throw new Contracts\Exceptions\InvalidCartRequest( $problem, 'code', 'gift_card_invalid' );
 		}
 		return $code;
+	}
+
+	/**
+	 * The code behind a customer's store credit while it can pay (ADR-072).
+	 * A customer who never had credit has no user meta, so no table is read.
+	 */
+	private function credit_code( int $user_id ): ?string {
+		$id = (int) get_user_meta( $user_id, GiftCards\GiftCardService::CREDIT_META, true );
+		if ( $id <= 0 ) {
+			return null;
+		}
+		$card = ( new GiftCards\GiftCardRepository( $this->services()->wpdb() ) )->find( $id );
+		if ( $card === null || $card->user_id !== $user_id ) {
+			return null;
+		}
+		return $card->problem( $this->services()->clock()->db_now(), Support\Settings::string( 'currency' ) ) === null ? $card->code : null;
 	}
 
 	/**

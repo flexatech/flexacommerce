@@ -288,6 +288,8 @@ Exit: **1.0 (M2)**.
 3. Coupons: built ahead of order on 2026-10-26 (ADR-021, doc 02 §7.13). WooCommerce coupon migration followed (doc 05 §5.8). Free-shipping coupons followed (doc 02 §7.13.8), then the product and category picker, the free shipping `ignore_discounts` setting and the item limit (DB_VERSION 6), then buy X get Y coupons (doc 02 §7.13.1).
 4. Product lookup table if the revisit condition in doc 03 §5 triggers.
 5. Public product-type API.
+6. Store credit: built on 2026-11-01 (ADR-072). A balance per customer built on the gift card engine (ADR-069), refunds paid to store credit, the balance in My Account, and admin adjustments with a reason.
+7. Subscriptions (deferred 2026-11-01 as larger than the other roadmap items).
 
 ## Roadmap risks
 

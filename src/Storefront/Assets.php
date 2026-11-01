@@ -171,6 +171,10 @@ final class Assets {
 				/* translators: %s: last characters of the gift card code */
 				'giftCard'    => __( 'Gift card: %s', 'flexacommerce' ),
 				'cardApplied' => __( 'Gift card applied.', 'flexacommerce' ),
+				/* translators: %s: store credit balance */
+				'creditLeft'  => __( '%s available', 'flexacommerce' ),
+				'creditOn'    => __( 'Your store credit is applied.', 'flexacommerce' ),
+				'creditOff'   => __( 'Your store credit will not be used for this order.', 'flexacommerce' ),
 				'freeShip'    => __( 'Free shipping', 'flexacommerce' ),
 				'alerted'     => __( 'Thanks. We will email you when it is back in stock.', 'flexacommerce' ),
 				'saved'       => __( 'Saved to your wishlist.', 'flexacommerce' ),

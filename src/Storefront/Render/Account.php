@@ -7,6 +7,8 @@ namespace Flexa\Commerce\Storefront\Render;
 use Flexa\Commerce\Checkout\CheckoutService;
 use Flexa\Commerce\Checkout\FieldSchema;
 use Flexa\Commerce\Customers\CustomerProfile;
+use Flexa\Commerce\GiftCards\GiftCardActivity;
+use Flexa\Commerce\GiftCards\GiftCardService;
 use Flexa\Commerce\Orders\Order;
 use Flexa\Commerce\Orders\OrderQuery;
 use Flexa\Commerce\Orders\OrderStatus;
@@ -99,6 +101,10 @@ final class Account {
 		if ( WishlistService::enabled() ) {
 			$links = array_slice( $links, 0, 3, true ) + [ 'wishlist' => __( 'Wishlist', 'flexacommerce' ) ] + $links;
 		}
+		// Only customers who have store credit see the page (ADR-072).
+		if ( (int) get_user_meta( get_current_user_id(), GiftCardService::CREDIT_META, true ) > 0 || $endpoint === 'store-credit' ) {
+			$links = array_slice( $links, 0, 3, true ) + [ 'store-credit' => __( 'Store credit', 'flexacommerce' ) ] + $links;
+		}
 		$active = $endpoint === 'view-order' ? 'orders' : $endpoint;
 		$nav    = '<nav class="fxc-account__nav" aria-label="' . esc_attr__( 'Account', 'flexacommerce' ) . '"><ul>';
 		foreach ( $links as $slug => $label ) {
@@ -126,8 +132,14 @@ final class Account {
 	}
 
 	public function dashboard( int $user_id ): string {
-		$user = get_userdata( $user_id );
-		$name = $user instanceof \WP_User ? $user->display_name : '';
+		$user   = get_userdata( $user_id );
+		$name   = $user instanceof \WP_User ? $user->display_name : '';
+		$card   = Plugin::instance()->gift_cards()->credit_account( $user_id );
+		$credit = $card !== null && $card->balance > 0 ? '<p class="fxc-account__credit-balance">' . sprintf(
+			/* translators: %s: store credit balance, linked to the store credit page. */
+			esc_html__( 'You have %s in store credit. It is used at checkout.', 'flexacommerce' ),
+			'<a href="' . esc_url( AccountPage::url( 'store-credit' ) ) . '">' . esc_html( $this->checkout->format( $card->balance, $card->currency ) ) . '</a>'
+		) . '</p>' : '';
 		return '<p>' . sprintf(
 			/* translators: %s: the customer's display name. */
 			esc_html__( 'Hello %s.', 'flexacommerce' ),
@@ -138,7 +150,60 @@ final class Account {
 			'<a href="' . esc_url( AccountPage::url( 'orders' ) ) . '">' . esc_html__( 'recent orders', 'flexacommerce' ) . '</a>',
 			'<a href="' . esc_url( AccountPage::url( 'edit-address' ) ) . '">' . esc_html__( 'addresses', 'flexacommerce' ) . '</a>',
 			'<a href="' . esc_url( AccountPage::url( 'edit-account' ) ) . '">' . esc_html__( 'password and account details', 'flexacommerce' ) . '</a>'
-		) . '</p>';
+		) . '</p>' . $credit;
+	}
+
+	/**
+	 * The store credit balance and what changed it (ADR-072). The credit
+	 * pays at checkout by itself, so the page has no code to copy.
+	 */
+	public function credit( int $user_id ): string {
+		$card = Plugin::instance()->gift_cards()->credit_account( $user_id );
+		if ( $card === null ) {
+			return '<p class="fxc-notice">' . esc_html__( 'You have no store credit.', 'flexacommerce' ) . '</p>';
+		}
+		$html = '<p class="fxc-account__credit-balance">' . sprintf(
+			/* translators: %s: store credit balance. */
+			esc_html__( 'Balance: %s', 'flexacommerce' ),
+			'<strong>' . esc_html( $this->checkout->format( $card->balance, $card->currency ) ) . '</strong>'
+		) . '</p><p>' . esc_html__( 'Your store credit pays at checkout before you choose a payment method. It never expires. You can choose not to use it for an order.', 'flexacommerce' ) . '</p>';
+
+		$rows = '';
+		foreach ( Plugin::instance()->gift_cards()->repository()->activity( $card->id, 100 ) as $row ) {
+			if ( $row->type === GiftCardActivity::ISSUED && $row->amount === 0 ) {
+				continue;
+			}
+			$order = $row->order_id !== null ? Plugin::instance()->orders()->orders()->find( $row->order_id ) : null;
+			$link  = $order !== null && (int) $order->customer_id === $user_id
+				? '<a href="' . esc_url( AccountPage::url( 'view-order', (string) $order->id ) ) . '">' . esc_html( $order->order_number ) . '</a>'
+				: '';
+			$what  = match ( $row->type ) {
+				/* translators: %s: order number */
+				GiftCardActivity::REDEEMED => $link !== '' ? sprintf( esc_html__( 'Paid for order %s', 'flexacommerce' ), $link ) : esc_html__( 'Paid for an order', 'flexacommerce' ),
+				/* translators: %s: order number */
+				GiftCardActivity::CREDITED => $link !== '' ? sprintf( esc_html__( 'Refund for order %s', 'flexacommerce' ), $link ) : esc_html__( 'Refund', 'flexacommerce' ),
+				default => $row->amount >= 0 ? esc_html__( 'Added by the store', 'flexacommerce' ) : esc_html__( 'Taken off by the store', 'flexacommerce' ),
+			};
+			if ( $row->type === GiftCardActivity::ADJUSTED && $row->note !== '' ) {
+				$what .= '<br><span class="fxc-account__credit-note">' . esc_html( $row->note ) . '</span>';
+			}
+			$rows .= sprintf(
+				'<tr><td>%1$s</td><td>%2$s</td><td>%3$s</td><td>%4$s</td></tr>',
+				esc_html( mysql2date( (string) get_option( 'date_format' ), get_date_from_gmt( $row->created_at ) ) ),
+				$what,
+				esc_html( ( $row->amount > 0 ? '+' : ( $row->amount < 0 ? '−' : '' ) ) . $this->checkout->format( abs( $row->amount ), $card->currency ) ),
+				esc_html( $this->checkout->format( $row->balance_after, $card->currency ) )
+			);
+		}
+		if ( $rows === '' ) {
+			return $html;
+		}
+		return $html . '<table class="fxc-account__orders fxc-account__credit"><caption>' . esc_html__( 'History', 'flexacommerce' ) . '</caption><thead><tr>'
+			. '<th scope="col">' . esc_html__( 'Date', 'flexacommerce' ) . '</th>'
+			. '<th scope="col">' . esc_html__( 'What', 'flexacommerce' ) . '</th>'
+			. '<th scope="col">' . esc_html__( 'Amount', 'flexacommerce' ) . '</th>'
+			. '<th scope="col">' . esc_html__( 'Balance', 'flexacommerce' ) . '</th>'
+			. '</tr></thead><tbody>' . $rows . '</tbody></table>';
 	}
 
 	public function orders( int $user_id, int $page ): string {

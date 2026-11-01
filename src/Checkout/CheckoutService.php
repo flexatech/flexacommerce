@@ -153,7 +153,7 @@ final class CheckoutService {
 
 	/** The cart's gift cards, each paying what it can of the total in the order entered (ADR-069). */
 	private function paid_by_cards( Quote $quote ): Quote {
-		$codes = $quote->state->cart->gift_cards;
+		$codes = $quote->state->gift_card_codes();
 		if ( $codes === [] || $this->gift_cards === null ) {
 			return $quote;
 		}
@@ -710,19 +710,21 @@ final class CheckoutService {
 	 * @return list<array<string,mixed>>
 	 */
 	private function gift_card_rows( Quote $quote ): array {
-		$codes = $quote->state->cart->gift_cards;
-		if ( $codes === [] || $this->gift_cards === null ) {
+		$state = $quote->state;
+		if ( ! $state->has_gift_cards() || $this->gift_cards === null ) {
 			return [];
 		}
 		$currency = $quote->total->currency;
 		$rows     = [];
-		foreach ( $this->gift_cards()->rows( $codes, $quote->total->amount, $currency ) as $row ) {
+		foreach ( $this->gift_cards()->rows( $state->cart->gift_cards, $quote->total->amount, $currency, $state->credit, ! $state->cart->skip_credit ) as $row ) {
 			$rows[] = [
 				'code'    => $row['code'],
 				'label'   => $row['label'],
 				'amount'  => $this->presenter->money( new Money( $row['amount'], $currency ) ),
 				'balance' => $this->presenter->money( new Money( $row['balance'], $currency ) ),
 				'message' => $row['message'],
+				'credit'  => $row['credit'],
+				'used'    => $row['used'],
 			];
 		}
 		return $rows;
@@ -873,7 +875,7 @@ final class CheckoutService {
 		if ( $quote->state->fees !== [] ) {
 			$totals = array_slice( $totals, 0, -2, true ) + [ 'fees' => $this->presenter->money( $quote->state->fee_total() ) ] + array_slice( $totals, -2, null, true );
 		}
-		if ( $quote->state->cart->gift_cards !== [] && $this->gift_cards !== null ) {
+		if ( $quote->state->has_gift_cards() && $this->gift_cards !== null ) {
 			$totals['gift_cards'] = $this->presenter->money( $quote->gift_card_total() );
 			$totals['due']        = $this->presenter->money( $quote->due() );
 		}

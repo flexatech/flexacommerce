@@ -37,6 +37,7 @@ final class PostTypes {
 		'fxc_edit_address' => 'edit-address',
 		'fxc_edit_account' => 'edit-account',
 		'fxc_wishlist'     => 'wishlist',
+		'fxc_store_credit' => 'store-credit',
 	];
 
 	/** Exists only on a site where another plugin owns our archive URL; see maybe_flush(). */
@@ -84,8 +85,8 @@ final class PostTypes {
 	 * @param array<mixed> $rules
 	 */
 	private static function has_endpoints( array $rules, string $root ): bool {
-		// The newest endpoint (ADR-066): rules stored before it existed get flushed once.
-		return isset( $rules[ $root . '(.?.+?)/' . self::ACCOUNT_ENDPOINTS['fxc_wishlist'] . '(/(.*))?/?$' ] );
+		// The newest endpoint (ADR-072): rules stored before it existed get flushed once.
+		return isset( $rules[ $root . '(.?.+?)/' . self::ACCOUNT_ENDPOINTS['fxc_store_credit'] . '(/(.*))?/?$' ] );
 	}
 
 	/**

@@ -130,6 +130,17 @@ final class CartTest extends TestCase {
 		self::assertSame( Cart::VERSION, $cart->to_data()['v'] );
 	}
 
+	public function test_turning_off_the_store_credit_survives_a_round_trip_and_an_emptied_cart(): void {
+		$cart = ( new Cart() )->with_added( $this->line( 3, 1 ) );
+		self::assertArrayNotHasKey( 'skip_credit', $cart->to_data(), 'The default is not stored.' );
+
+		$off = $cart->with_credit( false );
+		self::assertTrue( Cart::from_data( $off->to_data() )->skip_credit );
+		self::assertFalse( $off->with_credit( true )->skip_credit );
+		self::assertFalse( $off->emptied()->skip_credit, 'A new cart uses the credit again.' );
+		self::assertFalse( Cart::from_data( [ 'skip_credit' => 'yes' ] )->skip_credit );
+	}
+
 	public function test_bad_shipping_data_falls_back_to_empty(): void {
 		$cart = Cart::from_data(
 			[

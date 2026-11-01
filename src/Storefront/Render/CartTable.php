@@ -165,21 +165,59 @@ final class CartTable {
 		return $html;
 	}
 
-	/** @param array<mixed> $card a gift card row of the cart response */
+	/**
+	 * A gift card row, or the store credit row (ADR-072): that one has no
+	 * code to show, and its buttons turn the credit off and back on.
+	 *
+	 * @param array<mixed> $card a gift card row of the cart response
+	 */
 	private static function gift_card_row( array $card, bool $child ): string {
-		$message = (string) ( $card['message'] ?? '' );
+		$credit = ! empty( $card['credit'] );
+		$used   = $credit && ! empty( $card['used'] );
 		return sprintf(
-			'<tr class="fxc-cart__gift-card"%1$s><th scope="row"><span data-wp-text="state.giftCardLabel">%2$s</span> <button type="submit" class="fxc-cart__remove-coupon" form="%3$s" name="remove_coupon" data-wp-bind--value="context.card.code" value="%4$s" aria-label="%5$s" data-wp-on--click="actions.removeCoupon">&times;</button></th><td data-wp-text="state.giftCardAmount">%6$s</td></tr>',
+			'<tr class="fxc-cart__gift-card"%1$s><th scope="row"><span data-wp-text="state.giftCardLabel">%2$s</span> <button type="submit" class="fxc-cart__remove-coupon" form="%3$s" name="remove_coupon" data-wp-bind--value="context.card.code" data-wp-bind--hidden="context.card.credit" value="%4$s" aria-label="%5$s" data-wp-on--click="actions.removeCoupon"%7$s>&times;</button>'
+			. '<button type="submit" class="fxc-cart__credit-toggle" form="%3$s" name="remove_coupon" value="store-credit" data-wp-bind--hidden="!state.creditUsed" data-wp-on--click="actions.removeCoupon"%8$s>%9$s</button>'
+			. '<button type="submit" class="fxc-cart__credit-toggle" form="%3$s" name="use_credit" value="1" data-wp-bind--hidden="!state.creditUnused" data-wp-on--click="actions.useCredit"%10$s>%11$s</button></th><td data-wp-text="state.giftCardAmount">%6$s</td></tr>',
 			$child ? ' data-wp-each-child' : '',
-			$card !== [] ? esc_html(
-				/* translators: %s: last characters of the gift card code */
-				sprintf( __( 'Gift card: %s', 'flexacommerce' ), (string) ( $card['label'] ?? '' ) )
-			) : '',
+			esc_html( self::gift_card_label( $card ) ),
 			self::COUPON_FORM,
 			esc_attr( (string) ( $card['code'] ?? '' ) ),
 			esc_attr__( 'Remove gift card', 'flexacommerce' ),
-			esc_html( $message !== '' ? $message : ( $card !== [] ? '-' . (string) ( $card['amount']['formatted'] ?? '' ) : '' ) )
+			esc_html( self::gift_card_amount( $card ) ),
+			$credit ? ' hidden' : '',
+			$used ? '' : ' hidden',
+			esc_html__( "Don't use", 'flexacommerce' ),
+			$credit && ! $used ? '' : ' hidden',
+			esc_html__( 'Use', 'flexacommerce' )
 		);
+	}
+
+	/** @param array<mixed> $card */
+	private static function gift_card_label( array $card ): string {
+		if ( $card === [] ) {
+			return '';
+		}
+		return ! empty( $card['credit'] )
+			? (string) ( $card['label'] ?? '' )
+			/* translators: %s: last characters of the gift card code */
+			: sprintf( __( 'Gift card: %s', 'flexacommerce' ), (string) ( $card['label'] ?? '' ) );
+	}
+
+	/**
+	 * What the row pays, or the store credit left to use.
+	 *
+	 * @param array<mixed> $card
+	 */
+	public static function gift_card_amount( array $card ): string {
+		if ( $card === [] ) {
+			return '';
+		}
+		if ( ! empty( $card['credit'] ) && empty( $card['used'] ) ) {
+			/* translators: %s: store credit balance */
+			return sprintf( __( '%s available', 'flexacommerce' ), (string) ( $card['balance']['formatted'] ?? '' ) );
+		}
+		$message = (string) ( $card['message'] ?? '' );
+		return $message !== '' ? $message : '-' . (string) ( $card['amount']['formatted'] ?? '' );
 	}
 
 	/** @param array<mixed> $coupon a CartPresenter coupon row */

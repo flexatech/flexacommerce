@@ -124,7 +124,7 @@ export function useRecordPayment(id: number) {
 export function useRefund(id: number) {
     return useOrderAction(
         id,
-        (vars: { amount: number; lines: RefundLineInput[]; reason: string; via_gateway: boolean }) =>
+        (vars: { amount: number; lines: RefundLineInput[]; reason: string; via_gateway: boolean; to_credit?: boolean }) =>
             api.post<OrderDetail>(`admin/orders/${id}/refunds`, { ...vars, lines: vars.lines.map((l) => ({ ...l })) }),
     );
 }

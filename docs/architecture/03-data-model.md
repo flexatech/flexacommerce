@@ -19,7 +19,7 @@ Status: **Approved 2026-10-24**. All table names below are shown without `{$wpdb
 | Back-in-stock signups | `fxc_stock_alerts` | One row per address, product and variant waiting for stock, with a due flag the cron reads (§4.18, ADR-065). |
 | Wishlists | `fxc_wishlists`, `fxc_wishlist_items` | One list per customer or guest token, with a share key, and one row per saved product (§4.19, ADR-066). |
 | Shipments | `fxc_shipments` | One row per package of an order with its carrier, tracking number and link, and the lines it holds (§4.20, ADR-067). |
-| Gift cards | `fxc_gift_cards`, `fxc_gift_card_activity` | One row per card with its code, balance and recipient, and one row per change of the balance (§4.21, ADR-069). |
+| Gift cards | `fxc_gift_cards`, `fxc_gift_card_activity` | One row per card with its code, balance and recipient, and one row per change of the balance (§4.21, ADR-069). A customer's store credit is a card row with `user_id` (ADR-072). |
 | Order number allocation | `fxc_sequences` | Atomic counter. |
 | Download permissions | `fxc_downloads` | One row per order line and file with a token and counters that change on every download (§4.16, ADR-058). |
 | Option choice stock | `fxc_option_stock` | Counts change on every order, so they need atomic updates outside the autoloaded option sets (§4.15, ADR-040). |
@@ -955,7 +955,7 @@ CREATE TABLE fxc_shipments (
 
 ### 4.21 `fxc_gift_cards` and `fxc_gift_card_activity`
 
-Added with gift cards (ADR-069), `DB_VERSION` 16.
+Added with gift cards (ADR-069), `DB_VERSION` 16. `user_id` was added with store credit (ADR-072), `DB_VERSION` 17.
 
 ```sql
 CREATE TABLE fxc_gift_cards (
@@ -974,10 +974,12 @@ CREATE TABLE fxc_gift_cards (
   deliver_at datetime NULL,
   delivered_at datetime NULL,
   expires_at datetime NULL,
+  user_id bigint(20) unsigned NULL,
   created_at datetime NOT NULL,
   updated_at datetime NOT NULL,
   PRIMARY KEY  (id),
   UNIQUE KEY code (code),
+  UNIQUE KEY user_id (user_id),
   KEY order_item (order_id,order_item_id),
   KEY recipient_email (recipient_email),
   KEY deliver_at (deliver_at)
@@ -1000,9 +1002,9 @@ CREATE TABLE fxc_gift_card_activity (
 ) {charset_collate};
 ```
 
-- **Columns.** `code` is the normalized code (16 characters, no dashes); it is shown in groups of four in the admin and masked everywhere else. `initial_amount` and `balance` are minor units of `currency`, the store currency when the card was made. `status` is `active` or `disabled`; used up and expired are worked out from `balance` and `expires_at`. `order_id` and `order_item_id` are the order line that bought the card, NULL for a card made in the admin. `deliver_at` is the UTC start of the day the buyer picked, NULL to send at once; `delivered_at` is when the email went out. `expires_at` is UTC, NULL for no expiry. Activity `type` is `issued`, `redeemed`, `credited` or `adjusted`; `amount` is signed; `transaction_id` is the payment (redeemed) or refund (credited) row of `fxc_transactions`; `user_id` is who made the change, NULL for the shop.
+- **Columns.** `code` is the normalized code (16 characters, no dashes); it is shown in groups of four in the admin and masked everywhere else. `initial_amount` and `balance` are minor units of `currency`, the store currency when the card was made. `status` is `active` or `disabled`; used up and expired are worked out from `balance` and `expires_at`. `order_id` and `order_item_id` are the order line that bought the card, NULL for a card made in the admin. `deliver_at` is the UTC start of the day the buyer picked, NULL to send at once; `delivered_at` is when the email went out. `expires_at` is UTC, NULL for no expiry. `user_id` marks the store credit account of that customer (ADR-072): at most one per user, no expiry, and the user meta `_fxc_store_credit` holds its id. Activity `type` is `issued`, `redeemed`, `credited` or `adjusted`; `amount` is signed; `transaction_id` is the payment (redeemed) or refund (credited) row of `fxc_transactions`; `user_id` is who made the change, NULL for the shop.
 - **Writes.** `GiftCardService` only. A balance changes with the card row locked (`SELECT ... FOR UPDATE`) inside a transaction, together with its activity row: at checkout, on a refund, on a cancel and on an admin change. Issuing is idempotent per order line (the cards a line already has are counted). The privacy eraser clears `recipient_email`, `recipient_name` and `message`. Uninstall drops both tables.
-- **Reads.** The code box by `code`; an order's cards by `order_item`; due emails by `deliver_at` (`delivered_at IS NULL AND deliver_at <= now`); privacy by `recipient_email`; the admin list by primary key, newest first, with `LIKE` on code, email and name. A refund credit checks `transaction_id` so a retry adds nothing.
+- **Reads.** The code box by `code`; an order's cards by `order_item`; due emails by `deliver_at` (`delivered_at IS NULL AND deliver_at <= now`); privacy by `recipient_email`; the admin list by primary key, newest first, with `LIKE` on code, email and name, leaving out rows with a `user_id`; store credit by `user_id` (one account, or an `IN` list for the customer screen). A refund credit checks `transaction_id` so a retry adds nothing.
 
 ## 5. Query patterns and indexes
 

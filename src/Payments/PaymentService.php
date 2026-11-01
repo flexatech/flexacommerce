@@ -264,17 +264,7 @@ final class PaymentService {
 		$reason = sanitize_text_field( $reason );
 
 		if ( ! $via_gateway ) {
-			return $this->db->run(
-				function () use ( $order_id, $amount, $lines, $reason, $ctx ): Transaction {
-					$order = $this->orders->get( $order_id );
-					$this->assert_refundable( $order, $amount, $lines );
-					[ $rows, $meta ] = self::refund_rows( $order, $lines, $reason );
-					$id              = $this->transactions->insert( $order->id, Transaction::REFUND, Transaction::SUCCEEDED, Transaction::MANUAL, $order->payment_method, $amount, $order->currency, self::key(), $this->clock->db_now(), null, null, $rows, $meta );
-					$txn             = $this->must_find( $id );
-					$this->orders->record_refund( $order_id, $amount, $lines, $reason, $ctx, $txn->view() );
-					return $txn;
-				}
-			);
+			return $this->refund_as( $order_id, $amount, $lines, $reason, null, null, $ctx );
 		}
 
 		$chunks = $this->db->run(
@@ -298,6 +288,35 @@ final class PaymentService {
 			$first = $first ?? $done;
 		}
 		return $first ?? throw new InvalidRefund( __( 'No payment on this order can be refunded through its payment method. Record a manual refund instead.', 'flexacommerce' ) );
+	}
+
+	/**
+	 * A refund settled here and recorded as succeeded at once: a manual one,
+	 * or one paid out by `$settle` inside the same database transaction,
+	 * such as store credit (ADR-072). `$settle` gets the refund row and may
+	 * throw to roll it back.
+	 *
+	 * @param list<RefundLine>                $lines
+	 * @param ?\Closure(Transaction,Order):void $settle
+	 * @throws InvalidRefund
+	 */
+	public function refund_as( int $order_id, int $amount, array $lines, string $reason, ?string $gateway, ?\Closure $settle, TransitionContext $ctx ): Transaction {
+		$reason = sanitize_text_field( $reason );
+		return $this->db->run(
+			function () use ( $order_id, $amount, $lines, $reason, $gateway, $settle, $ctx ): Transaction {
+				$order = $this->orders->get( $order_id );
+				$this->assert_refundable( $order, $amount, $lines );
+				[ $rows, $meta ] = self::refund_rows( $order, $lines, $reason );
+				$id              = $this->transactions->insert( $order->id, Transaction::REFUND, Transaction::SUCCEEDED, Transaction::MANUAL, $gateway ?? $order->payment_method, $amount, $order->currency, self::key(), $this->clock->db_now(), null, null, $rows, $meta );
+				$txn             = $this->must_find( $id );
+				if ( $settle !== null ) {
+					$settle( $txn, $order );
+					$txn = $this->must_find( $id );
+				}
+				$this->orders->record_refund( $order_id, $amount, $lines, $reason, $ctx, $txn->view() );
+				return $txn;
+			}
+		);
 	}
 
 	private function send_refund( int $order_id, Transaction $refund, Transaction $payment, PaymentGateway $gateway, string $reason, TransitionContext $ctx ): Transaction {

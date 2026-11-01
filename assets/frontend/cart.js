@@ -465,11 +465,23 @@ const { state, actions } = store( 'flexacommerce/cart', {
 		},
 		get giftCardLabel() {
 			const { card } = getContext();
-			return ( i18n.giftCard || '%s' ).replace( '%s', () => card.label );
+			return card.credit ? card.label : ( i18n.giftCard || '%s' ).replace( '%s', () => card.label );
 		},
 		get giftCardAmount() {
 			const { card } = getContext();
+			if ( card.credit && ! card.used ) {
+				return ( i18n.creditLeft || '%s' ).replace( '%s', () => card.balance.formatted );
+			}
 			return card.message || '-' + card.amount.formatted;
+		},
+		// Store credit pays on its own; the shopper can turn it off (ADR-072).
+		get creditUsed() {
+			const { card } = getContext();
+			return !! card.credit && !! card.used;
+		},
+		get creditUnused() {
+			const { card } = getContext();
+			return !! card.credit && ! card.used;
 		},
 		get hasDiscount() {
 			return ( state.cart?.totals?.discount?.amount ?? 0 ) > 0;
@@ -937,7 +949,16 @@ const { state, actions } = store( 'flexacommerce/cart', {
 			const code = getElement().ref.value;
 			try {
 				applyCart( yield request( `cart/coupons/${ encodeURIComponent( code ) }`, 'DELETE' ) );
-				state.couponMessage = i18n.unapplied;
+				state.couponMessage = code === 'store-credit' ? i18n.creditOff : i18n.unapplied;
+			} catch ( error ) {
+				state.couponMessage = error.message || i18n.failed;
+			}
+		} ),
+		useCredit: withSyncEvent( function* ( event ) {
+			event.preventDefault();
+			try {
+				applyCart( yield request( 'cart/coupons', 'POST', { code: 'store-credit' } ) );
+				state.couponMessage = i18n.creditOn;
 			} catch ( error ) {
 				state.couponMessage = error.message || i18n.failed;
 			}

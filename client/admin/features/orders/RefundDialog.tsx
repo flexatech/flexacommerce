@@ -82,10 +82,10 @@ export function RefundDialog({ order, open, onOpenChange }: Props) {
 
     const valid = Number.isFinite(total) && total > 0 && total <= order.refundable;
 
-    const submit = (viaGateway: boolean) => {
+    const submit = (viaGateway: boolean, toCredit = false) => {
         setError("");
         refund.mutate(
-            { amount: total, lines: payload(), reason, via_gateway: viaGateway },
+            { amount: total, lines: payload(), reason, via_gateway: viaGateway, to_credit: toCredit },
             {
                 onSuccess: () => {
                     onOpenChange(false);
@@ -208,6 +208,11 @@ export function RefundDialog({ order, open, onOpenChange }: Props) {
                     <Button variant="outline" onClick={() => submit(false)} disabled={!valid || refund.isPending}>
                         {sprintf(__("Refund %s manually"), orderMoney(valid ? total : 0, order.currency))}
                     </Button>
+                    {order.credit_refunds && (
+                        <Button variant="outline" onClick={() => submit(false, true)} disabled={!valid || refund.isPending}>
+                            {sprintf(__("Refund %s to store credit"), orderMoney(valid ? total : 0, order.currency))}
+                        </Button>
+                    )}
                     {order.gateway.refunds && (
                         <Button onClick={() => submit(true)} disabled={!valid || refund.isPending}>
                             {refund.isPending

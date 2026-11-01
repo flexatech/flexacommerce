@@ -14,7 +14,8 @@ defined( 'ABSPATH' ) || exit;
  * order added and is written only when there is one; `payment_method` is
  * the gateway last chosen at checkout, for conditions (ADR-041).
  * `gift_cards` holds normalized gift card codes in the order added, written
- * only when there is one (ADR-069).
+ * only when there is one (ADR-069). `skip_credit` is set when the shopper
+ * chose not to pay with their store credit, written only when set (ADR-072).
  * Immutable; every change returns a new instance.
  */
 final class Cart {
@@ -48,6 +49,7 @@ final class Cart {
 		public readonly array $coupons = [],
 		public readonly string $payment_method = '',
 		public readonly array $gift_cards = [],
+		public readonly bool $skip_credit = false,
 	) {}
 
 	/** @param array<string,mixed> $data */
@@ -100,6 +102,7 @@ final class Cart {
 			$coupons,
 			is_string( $data['payment_method'] ?? null ) ? $data['payment_method'] : '',
 			$gift_cards,
+			( $data['skip_credit'] ?? false ) === true,
 		);
 	}
 
@@ -122,6 +125,9 @@ final class Cart {
 		}
 		if ( $this->gift_cards !== [] ) {
 			$data['gift_cards'] = $this->gift_cards;
+		}
+		if ( $this->skip_credit ) {
+			$data['skip_credit'] = true;
 		}
 		return $data;
 	}
@@ -232,6 +238,11 @@ final class Cart {
 		return $this->copy( gift_cards: $codes );
 	}
 
+	/** Whether the store credit of the shopper pays for this cart (ADR-072). */
+	public function with_credit( bool $use ): self {
+		return $this->copy( skip_credit: ! $use );
+	}
+
 	/**
 	 * @param list<CartLine>|null                                     $lines
 	 * @param list<array{code:string,message:string}>|null            $notices
@@ -240,7 +251,7 @@ final class Cart {
 	 * @param list<string>|null                                       $coupons
 	 * @param list<string>|null                                       $gift_cards
 	 */
-	private function copy( ?array $lines = null, ?array $notices = null, ?array $rate = null, ?string $shipping_rate = null, ?array $destination = null, ?string $checkout_token = null, ?array $coupons = null, ?string $payment_method = null, ?array $gift_cards = null ): self {
+	private function copy( ?array $lines = null, ?array $notices = null, ?array $rate = null, ?string $shipping_rate = null, ?array $destination = null, ?string $checkout_token = null, ?array $coupons = null, ?string $payment_method = null, ?array $gift_cards = null, ?bool $skip_credit = null ): self {
 		return new self(
 			$lines ?? $this->lines,
 			$notices ?? $this->notices,
@@ -251,6 +262,7 @@ final class Cart {
 			$coupons ?? $this->coupons,
 			$payment_method ?? $this->payment_method,
 			$gift_cards ?? $this->gift_cards,
+			$skip_credit ?? $this->skip_credit,
 		);
 	}
 }

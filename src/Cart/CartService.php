@@ -49,6 +49,7 @@ final class CartService {
 	 * @param ?\Closure():ProductOptions $options built only when the store has option sets
 	 * @param ?\Closure():CustomerHistory $history built only when a condition reads past orders
 	 * @param ?\Closure(string):?string   $gift_cards the normalized gift card code a code box entry names, else null; throws InvalidCartRequest for a card that cannot pay (ADR-069)
+	 * @param ?\Closure(int):?string      $credit the code behind a user's store credit while it can pay, else null (ADR-072)
 	 */
 	public function __construct(
 		private readonly SessionStore $sessions,
@@ -61,7 +62,11 @@ final class CartService {
 		private readonly ?\Closure $options = null,
 		private readonly ?\Closure $history = null,
 		private readonly ?\Closure $gift_cards = null,
+		private readonly ?\Closure $credit = null,
 	) {}
+
+	/** What the code box and the remove button send for the store credit row (ADR-072). */
+	public const CREDIT_CODE = 'store-credit';
 
 	/** Gift card codes a cart holds at most. */
 	public const MAX_GIFT_CARDS = 5;
@@ -441,6 +446,9 @@ final class CartService {
 	 * @throws InvalidCartRequest|RateLimited
 	 */
 	public function apply_coupon( int $user_id, string $code ): CartState {
+		if ( strtolower( trim( $code ) ) === self::CREDIT_CODE ) {
+			return $this->use_credit( $user_id, true );
+		}
 		$card = $this->gift_cards !== null ? ( $this->gift_cards )( $code ) : null;
 		if ( $card !== null ) {
 			return $this->apply_gift_card( $user_id, $card );
@@ -488,6 +496,18 @@ final class CartService {
 	}
 
 	/**
+	 * Turns the shopper's store credit on or off for this cart (ADR-072).
+	 *
+	 * @throws InvalidCartRequest|RateLimited
+	 */
+	public function use_credit( int $user_id, bool $use ): CartState {
+		if ( $user_id <= 0 ) {
+			throw new InvalidCartRequest( __( 'Log in to use your store credit.', 'flexacommerce' ), 'code', 'gift_card_invalid' );
+		}
+		return $this->mutate( $user_id, static fn ( Cart $cart ): Cart => $cart->with_credit( $use ) );
+	}
+
+	/**
 	 * The recipient fields of a gift card product as posted (ADR-069),
 	 * sanitized; prepare() checks them.
 	 *
@@ -512,6 +532,9 @@ final class CartService {
 
 	/** @throws InvalidCartRequest|RateLimited */
 	public function remove_coupon( int $user_id, string $code ): CartState {
+		if ( strtolower( trim( $code ) ) === self::CREDIT_CODE ) {
+			return $this->use_credit( $user_id, false );
+		}
 		$card = self::gift_card_code( $code );
 		if ( in_array( $card, $this->saved( $user_id )->gift_cards, true ) ) {
 			return $this->mutate(
@@ -818,7 +841,8 @@ final class CartService {
 			$fees = $this->pricing->fees( $lines, $subtotal->currency, $user_id, $facts );
 		}
 
-		return new CartState( $cart, $items, $subtotal, $notices, $has_session, $discounts, $fees );
+		$credit = $user_id > 0 && $items !== [] && $this->credit !== null ? ( $this->credit )( $user_id ) : null;
+		return new CartState( $cart, $items, $subtotal, $notices, $has_session, $discounts, $fees, $credit );
 	}
 
 	/**

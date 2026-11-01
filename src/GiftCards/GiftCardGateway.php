@@ -16,8 +16,8 @@ defined( 'ABSPATH' ) || exit;
 /**
  * The payments a gift card made (ADR-069). It never shows at checkout:
  * cards pay through the cart code box and GiftCardService::redeem(). It
- * exists so a refund of such a payment goes back on the card, whose id is
- * the payment's reference.
+ * exists so a refund of such a payment goes back on the card, whose id
+ * starts the payment's reference.
  */
 final class GiftCardGateway extends AbstractPaymentGateway {
 	protected const SUPPORTS = [ 'refunds', 'partial_refunds' ];
@@ -44,6 +44,7 @@ final class GiftCardGateway extends AbstractPaymentGateway {
 	}
 
 	public function refund( RefundRequest $request ): RefundResult {
+		// `<card id>-<order id>`; payments made before that carry the card id alone.
 		$card = (int) $request->payment_reference;
 		if ( $card <= 0 ) {
 			return RefundResult::failed( 'no_card', __( 'The gift card this order was paid with no longer exists.', 'flexacommerce' ) );

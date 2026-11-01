@@ -27,6 +27,31 @@ final class GiftCardRepository {
 		return $this->one( $this->wpdb->prepare( $sql, Schema::table( 'gift_cards' ), $code ) );
 	}
 
+	/** The store credit of a customer (ADR-072). */
+	public function for_user( int $user_id, bool $lock = false ): ?GiftCard {
+		$sql = 'SELECT * FROM %i WHERE user_id = %d' . ( $lock ? ' FOR UPDATE' : '' );
+		return $this->one( $this->wpdb->prepare( $sql, Schema::table( 'gift_cards' ), $user_id ) );
+	}
+
+	/**
+	 * The store credit accounts of several customers, for a list screen.
+	 *
+	 * @param list<int> $user_ids
+	 * @return array<int,GiftCard> by user id
+	 */
+	public function for_users( array $user_ids ): array {
+		if ( $user_ids === [] ) {
+			return [];
+		}
+		$in  = implode( ',', array_fill( 0, count( $user_ids ), '%d' ) );
+		$out = [];
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $in is placeholders only.
+		foreach ( $this->many( $this->wpdb->prepare( "SELECT * FROM %i WHERE user_id IN ({$in})", Schema::table( 'gift_cards' ), ...$user_ids ) ) as $card ) {
+			$out[ (int) $card->user_id ] = $card;
+		}
+		return $out;
+	}
+
 	/**
 	 * @param list<string> $codes
 	 * @return array<string,GiftCard> by code
@@ -106,9 +131,9 @@ final class GiftCardRepository {
 	}
 
 	/** @return list<GiftCardActivity> newest first */
-	public function activity( int $card_id ): array {
+	public function activity( int $card_id, int $limit = 1000 ): array {
 		$rows = $this->wpdb->get_results(
-			$this->wpdb->prepare( 'SELECT * FROM %i WHERE gift_card_id = %d ORDER BY id DESC', Schema::table( 'gift_card_activity' ), $card_id ),
+			$this->wpdb->prepare( 'SELECT * FROM %i WHERE gift_card_id = %d ORDER BY id DESC LIMIT %d', Schema::table( 'gift_card_activity' ), $card_id, $limit ),
 			ARRAY_A
 		);
 		return array_map( static fn ( array $row ): GiftCardActivity => GiftCardActivity::from_row( $row ), is_array( $rows ) ? $rows : [] );
@@ -131,7 +156,8 @@ final class GiftCardRepository {
 	 * @return array{rows:list<GiftCard>,total:int}
 	 */
 	public function page( string $search, string $status, int $page, int $per_page, string $now ): array {
-		$where = [];
+		// Store credit has its own place on the customer (ADR-072).
+		$where = [ 'user_id IS NULL' ];
 		if ( $search !== '' ) {
 			$code    = GiftCard::normalize( $search );
 			$like    = '%' . $this->wpdb->esc_like( $search ) . '%';
@@ -144,7 +170,7 @@ final class GiftCardRepository {
 		} elseif ( in_array( $status, GiftCard::STATUSES, true ) ) {
 			$where[] = $this->wpdb->prepare( 'status = %s', $status );
 		}
-		$sql   = $where !== [] ? 'WHERE ' . implode( ' AND ', $where ) : '';
+		$sql   = 'WHERE ' . implode( ' AND ', $where );
 		$table = Schema::table( 'gift_cards' );
 		$total = (int) $this->wpdb->get_var(
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $sql is prepared above.
@@ -187,7 +213,7 @@ final class GiftCardRepository {
 	 * @return list<string>
 	 */
 	private static function formats( array $row ): array {
-		$ints = [ 'initial_amount', 'balance', 'order_id', 'order_item_id' ];
+		$ints = [ 'initial_amount', 'balance', 'order_id', 'order_item_id', 'user_id' ];
 		return array_map( static fn ( string $key ): string => in_array( $key, $ints, true ) ? '%d' : '%s', array_keys( $row ) );
 	}
 

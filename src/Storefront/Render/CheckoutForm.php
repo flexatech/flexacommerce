@@ -539,7 +539,8 @@ final class CheckoutForm {
 	/**
 	 * One row per gift card after the total (ADR-069): what it pays, or why
 	 * it cannot. The remove button posts the coupon form like a coupon's.
-	 * checkout.js rebuilds the rows after a requote.
+	 * The store credit row (ADR-072) shows no code; its button turns the
+	 * credit off or back on. checkout.js rebuilds the rows after a requote.
 	 *
 	 * @param array<int,mixed> $cards the `gift_cards` entry of the checkout state
 	 */
@@ -551,22 +552,37 @@ final class CheckoutForm {
 			}
 			$code    = (string) ( $card['code'] ?? '' );
 			$message = (string) ( $card['message'] ?? '' );
-			$remove  = $removable && $code !== ''
-				? sprintf(
+			$credit  = ! empty( $card['credit'] );
+			$used    = ! empty( $card['used'] );
+			$button  = '';
+			if ( $removable && $credit ) {
+				$button = sprintf(
+					' <button type="submit" class="fxc-checkout__credit-toggle" form="%1$s" name="%2$s" value="%3$s">%4$s</button>',
+					self::COUPON_FORM,
+					$used ? 'remove_coupon' : 'use_credit',
+					$used ? esc_attr( $code ) : '1',
+					$used ? esc_html__( "Don't use", 'flexacommerce' ) : esc_html__( 'Use', 'flexacommerce' )
+				);
+			} elseif ( $removable && $code !== '' ) {
+				$button = sprintf(
 					' <button type="submit" class="fxc-checkout__remove-coupon" form="%1$s" name="remove_coupon" value="%2$s" aria-label="%3$s">&times;</button>',
 					self::COUPON_FORM,
 					esc_attr( $code ),
 					/* translators: %s: last characters of the gift card code */
 					esc_attr( sprintf( __( 'Remove gift card %s', 'flexacommerce' ), (string) ( $card['label'] ?? '' ) ) )
-				)
-				: '';
+				);
+			}
 			$html .= sprintf(
 				'<tr class="fxc-checkout__gift-card" data-fxc-gift-card-row><th scope="row">%1$s%2$s%3$s</th><td>%4$s</td></tr>',
-				/* translators: %s: last characters of the gift card code */
-				esc_html( sprintf( __( 'Gift card: %s', 'flexacommerce' ), (string) ( $card['label'] ?? '' ) ) ),
-				$remove,
+				esc_html(
+					$credit
+						? (string) ( $card['label'] ?? '' )
+						/* translators: %s: last characters of the gift card code */
+						: sprintf( __( 'Gift card: %s', 'flexacommerce' ), (string) ( $card['label'] ?? '' ) )
+				),
+				$button,
 				$message !== '' ? '<span class="fxc-checkout__gift-card-message">' . esc_html( $message ) . '</span>' : '',
-				esc_html( $message !== '' ? '' : '-' . (string) ( $card['amount']['formatted'] ?? '' ) )
+				esc_html( $message !== '' ? '' : CartTable::gift_card_amount( $card ) )
 			);
 		}
 		return $html;
@@ -841,6 +857,12 @@ final class CheckoutForm {
 				/* translators: %s: last characters of the gift card code */
 				'removeGiftCard' => __( 'Remove gift card %s', 'flexacommerce' ),
 				'cardApplied'    => __( 'Gift card applied.', 'flexacommerce' ),
+				'useCredit'      => __( 'Use', 'flexacommerce' ),
+				'skipCredit'     => __( "Don't use", 'flexacommerce' ),
+				/* translators: %s: store credit balance */
+				'creditLeft'     => __( '%s available', 'flexacommerce' ),
+				'creditOn'       => __( 'Your store credit is applied.', 'flexacommerce' ),
+				'creditOff'      => __( 'Your store credit will not be used for this order.', 'flexacommerce' ),
 				'due'            => __( 'Left to pay', 'flexacommerce' ),
 			],
 		];

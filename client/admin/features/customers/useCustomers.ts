@@ -1,6 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/shared/lib/api";
+import type { GiftCardActivityRow } from "../giftcards/useGiftCards";
 
 export interface Customer {
     customer_id: number;
@@ -18,6 +19,15 @@ export interface Customer {
     tax_exempt: boolean;
     /** The current user may change `tax_exempt` (an account and the store manager capability). */
     can_exempt: boolean;
+    /** Store credit balance in minor units (ADR-072); null for guests. */
+    credit: number | null;
+}
+
+export interface CustomerCredit {
+    customer_id: number;
+    balance: number;
+    currency: string;
+    activity: GiftCardActivityRow[];
 }
 
 export type CustomerType = "" | "registered" | "guest";
@@ -53,5 +63,24 @@ export function useSetTaxExempt() {
         mutationFn: ({ id, exempt }: { id: number; exempt: boolean }) =>
             api.patch<{ customer_id: number; tax_exempt: boolean }>(`admin/customers/${id}`, { tax_exempt: exempt }),
         onSettled: () => qc.invalidateQueries({ queryKey: ["customers"] }),
+    });
+}
+
+export function useCustomerCredit(id: number | null) {
+    return useQuery({
+        queryKey: ["customers", "credit", id],
+        queryFn: () => api.get<CustomerCredit>(`admin/customers/${id}/credit`),
+        enabled: id !== null,
+    });
+}
+
+export function useAdjustCredit(id: number) {
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: (input: { amount: number; note: string }) => api.post<CustomerCredit>(`admin/customers/${id}/credit`, input),
+        onSuccess: (data) => {
+            qc.setQueryData(["customers", "credit", id], data);
+            void qc.invalidateQueries({ queryKey: ["customers", "list"] });
+        },
     });
 }

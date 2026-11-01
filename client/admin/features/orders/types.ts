@@ -153,6 +153,8 @@ export interface OrderDetail extends OrderSummary {
     items: OrderItem[];
     transitions: OrderStatus[];
     gateway: { id: string; title: string; refunds: boolean };
+    /** The order has a customer account, so a refund can go to store credit (ADR-072). */
+    credit_refunds: boolean;
     /** Unpaid and pending, on hold or failed: lines and prices can change (ADR-061). */
     editable: boolean;
     can: { edit: boolean; refund: boolean };

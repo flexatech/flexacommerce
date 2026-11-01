@@ -16,6 +16,8 @@ defined( 'ABSPATH' ) || exit;
  * The resolved cart returned by CartService: items, subtotal, notices.
  * `discounts` is null while the cart holds no coupon code; the subtotal is
  * before discounts. `fees` are the charges of the fee rules (ADR-043).
+ * `credit` is the code behind the shopper's store credit while it has a
+ * balance, whether or not the cart uses it (ADR-072).
  */
 final class CartState {
 	/**
@@ -31,7 +33,23 @@ final class CartState {
 		public readonly bool $has_session,
 		public readonly ?Discounts $discounts = null,
 		public readonly array $fees = [],
+		public readonly ?string $credit = null,
 	) {}
+
+	/**
+	 * The gift card codes that pay for the cart: those entered, then the
+	 * store credit unless the shopper turned it off (ADR-072).
+	 *
+	 * @return list<string>
+	 */
+	public function gift_card_codes(): array {
+		return $this->credit !== null && ! $this->cart->skip_credit ? [ ...$this->cart->gift_cards, $this->credit ] : $this->cart->gift_cards;
+	}
+
+	/** Whether the cart and checkout show gift card rows: a code entered, or store credit to use. */
+	public function has_gift_cards(): bool {
+		return $this->cart->gift_cards !== [] || $this->credit !== null;
+	}
 
 	/** All fees together; they carry no tax. */
 	public function fee_total(): Money {

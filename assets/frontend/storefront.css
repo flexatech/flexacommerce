@@ -220,6 +220,8 @@
 .fxc-cart__coupon-message:empty { display: none; }
 .fxc-cart__remove-coupon { padding: 0 .3em; border: 0; background: none; color: inherit; cursor: pointer; }
 .fxc-cart__remove-coupon[hidden] { display: none; }
+.fxc-cart__credit-toggle { padding: 0 .3em; border: 0; background: none; color: inherit; font: inherit; text-decoration: underline; cursor: pointer; }
+.fxc-cart__credit-toggle[hidden] { display: none; }
 .fxc-cart__next { margin-block: 1rem; margin-inline-start: auto; max-width: 24rem; }
 .fxc-cart__next[hidden] { display: none; }
 .fxc-cart__next p { margin: 0 0 .4rem; }
@@ -281,6 +283,7 @@
 .fxc-checkout__coupon-message .fxc-notice { margin: .5rem 0 0; }
 .fxc-checkout__gift-card-message { display: block; font-weight: normal; font-size: .875em; }
 .fxc-checkout__remove-coupon { padding: 0 .3em; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+.fxc-checkout__credit-toggle { padding: 0 .3em; border: 0; background: none; color: inherit; font: inherit; text-decoration: underline; cursor: pointer; }
 .fxc-checkout__step[hidden], .fxc-checkout__next[hidden], .fxc-checkout__recap[hidden], .fxc-checkout__steps[hidden] { display: none; }
 .fxc-checkout__steps ol { list-style: none; counter-reset: fxc-step; display: flex; flex-wrap: wrap; gap: .5rem 1.5rem; margin: 0 0 1.5rem; padding: 0; }
 .fxc-checkout__steps li { counter-increment: fxc-step; }

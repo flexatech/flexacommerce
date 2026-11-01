@@ -23,7 +23,7 @@ defined( 'ABSPATH' ) || exit;
 
 /**
  * The account page (doc 02 §6.3): dashboard, orders, one order, the saved
- * addresses and the account details. Sub-pages are rewrite endpoints on
+ * addresses, the account details and the store credit (ADR-072). Sub-pages are rewrite endpoints on
  * the page (PostTypes::ACCOUNT_ENDPOINTS). Forms post to the page itself:
  * template_redirect checks the nonce and the origin, saves, and redirects
  * with a notice; on errors the page renders again with the posted values.
@@ -145,6 +145,7 @@ final class AccountPage {
 			'edit-address' => $view->addresses( $user, $value, $this->posted, $this->errors ),
 			'edit-account' => $view->details( $user, $this->posted, $this->errors ),
 			'wishlist' => $this->wishlist_content( $user ),
+			'store-credit' => $view->credit( $user ),
 			default => $view->dashboard( $user ),
 		};
 		return $view->page( $endpoint, $saved, $content );

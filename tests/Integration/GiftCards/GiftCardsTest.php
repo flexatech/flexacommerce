@@ -148,6 +148,18 @@ final class GiftCardsTest extends OrderTestCase {
 		self::assertSame( 0, $this->cards()->repository()->find( $card->id )?->balance );
 	}
 
+	public function test_one_card_pays_two_orders_and_refunds_each_back(): void {
+		$card   = $this->card( 5000 );
+		$first  = $this->paid_by_card( $card, 1000 );
+		$second = $this->paid_by_card( $card, 1000 );
+		self::assertSame( 2000, $this->cards()->repository()->find( $card->id )?->balance );
+		self::assertSame( OrderStatus::PROCESSING, $second->status );
+
+		Plugin::instance()->payments()->service()->refund( $second->id, 300, [], '', true, TransitionContext::admin() );
+		Plugin::instance()->payments()->service()->refund( $first->id, 200, [], '', true, TransitionContext::admin() );
+		self::assertSame( 2500, $this->cards()->repository()->find( $card->id )?->balance );
+	}
+
 	public function test_a_card_spent_since_the_quote_is_not_charged_twice(): void {
 		$card     = $this->card( 5000 );
 		$browser  = $this->shopper();

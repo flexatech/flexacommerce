@@ -117,6 +117,10 @@ final class FormHandler {
 			}
 			if ( $operation === 'coupon' ) {
 				$remove = isset( $_POST['remove_coupon'] ) ? sanitize_text_field( wp_unslash( $_POST['remove_coupon'] ) ) : '';
+				if ( isset( $_POST['use_credit'] ) || $remove === CartService::CREDIT_CODE ) {
+					$service->use_credit( $user, $remove === '' );
+					self::redirect( $back, $remove === '' ? 'credit_on' : 'credit_off' );
+				}
 				if ( $remove !== '' ) {
 					$card = in_array( CartService::gift_card_code( $remove ), $service->saved( $user )->gift_cards, true );
 					$service->remove_coupon( $user, $remove );
@@ -146,7 +150,7 @@ final class FormHandler {
 		if ( $message === null || str_starts_with( $code, 'wishlist_' ) !== ( $scope === self::SCOPE_WISHLIST ) ) {
 			return '';
 		}
-		$error = ! in_array( $code, [ 'added', 'updated', 'removed', 'coupon_applied', 'coupon_removed', 'gift_card_applied', 'gift_card_removed', 'alert_added', 'alert_in_stock', 'wishlist_added', 'wishlist_removed' ], true );
+		$error = ! in_array( $code, [ 'added', 'updated', 'removed', 'coupon_applied', 'coupon_removed', 'gift_card_applied', 'gift_card_removed', 'credit_on', 'credit_off', 'alert_added', 'alert_in_stock', 'wishlist_added', 'wishlist_removed' ], true );
 		$link  = match ( $code ) {
 			'added' => ' <a href="' . esc_url( Assets::cart_url() ) . '">' . esc_html__( 'View cart', 'flexacommerce' ) . '</a>',
 			'wishlist_added' => ' <a href="' . esc_url( AccountPage::url( 'wishlist' ) ) . '">' . esc_html__( 'View wishlist', 'flexacommerce' ) . '</a>',
@@ -183,6 +187,8 @@ final class FormHandler {
 			'gift_card_applied'  => __( 'Gift card applied.', 'flexacommerce' ),
 			'gift_card_removed'  => __( 'Gift card removed.', 'flexacommerce' ),
 			'gift_card_invalid'  => __( 'That gift card cannot be used. Check the code, its balance and its expiry date.', 'flexacommerce' ),
+			'credit_on'          => __( 'Your store credit is applied.', 'flexacommerce' ),
+			'credit_off'         => __( 'Your store credit will not be used for this order.', 'flexacommerce' ),
 			'alert_added'        => SignupMessages::text( SignupMessages::ADDED ),
 			'alert_off'          => SignupMessages::text( 'off' ),
 			'alert_login'        => SignupMessages::text( 'login' ),

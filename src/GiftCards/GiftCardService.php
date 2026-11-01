@@ -34,9 +34,19 @@ defined( 'ABSPATH' ) || exit;
  * order gets a `fxc_gift_card` payment per card, so refunds go back to the
  * card through the gift card gateway. A cancelled order gets its gift card
  * payments back, and the cards it sold stop working.
+ *
+ * Store credit (ADR-072) is a card owned by one customer: refunds and the
+ * merchant add to it, and it pays for that customer's carts by itself,
+ * after any codes entered. User meta `CREDIT_META` holds its id, so a cart
+ * of a customer who never had credit reads no table.
  */
 final class GiftCardService {
 	public const GATEWAY = 'fxc_gift_card';
+
+	public const CREDIT_META = '_fxc_store_credit';
+
+	/** The code the cart rows and buttons use for store credit; the real code is never sent. */
+	public const CREDIT_CODE = 'store-credit';
 
 	/** Emails sent at most per cron run. */
 	public const BATCH = 50;
@@ -102,17 +112,20 @@ final class GiftCardService {
 
 	/**
 	 * What the cart and checkout show for each code: the share of `$limit`
-	 * it pays, or why it cannot pay.
+	 * it pays, or why it cannot pay. Store credit (ADR-072) comes last as
+	 * `store-credit`, with `credit` set and `used` false while the shopper
+	 * turned it off.
 	 *
 	 * @param list<string> $codes
-	 * @return list<array{code:string,label:string,amount:int,balance:int,message:string}>
+	 * @return list<array{code:string,label:string,amount:int,balance:int,message:string,credit:bool,used:bool}>
 	 */
-	public function rows( array $codes, int $limit, string $currency ): array {
+	public function rows( array $codes, int $limit, string $currency, ?string $credit = null, bool $use_credit = true ): array {
 		$paying = [];
-		foreach ( $this->allocate( $codes, $limit, $currency ) as $entry ) {
+		$all    = $credit !== null && $use_credit ? [ ...$codes, $credit ] : $codes;
+		foreach ( $this->allocate( $all, $limit, $currency ) as $entry ) {
 			$paying[ $entry->code ] = $entry;
 		}
-		$found = $this->cards->by_codes( $codes );
+		$found = $this->cards->by_codes( $credit !== null ? [ ...$codes, $credit ] : $codes );
 		$rows  = [];
 		foreach ( $codes as $code ) {
 			$card   = $found[ $code ] ?? null;
@@ -123,6 +136,20 @@ final class GiftCardService {
 				'amount'  => $entry->amount ?? 0,
 				'balance' => $card->balance ?? 0,
 				'message' => $card === null ? __( 'This gift card does not exist.', 'flexacommerce' ) : (string) $card->problem( $this->clock->db_now(), $currency ),
+				'credit'  => false,
+				'used'    => true,
+			];
+		}
+		$card = $credit !== null ? $found[ $credit ] ?? null : null;
+		if ( $card !== null ) {
+			$rows[] = [
+				'code'    => self::CREDIT_CODE,
+				'label'   => __( 'Store credit', 'flexacommerce' ),
+				'amount'  => $paying[ $credit ]->amount ?? 0,
+				'balance' => $card->balance,
+				'message' => '',
+				'credit'  => true,
+				'used'    => $use_credit,
 			];
 		}
 		return $rows;
@@ -144,13 +171,18 @@ final class GiftCardService {
 				continue;
 			}
 			$card = $this->cards->find( $entry->id, true );
+			if ( $card !== null && $card->is_credit() && $card->user_id !== $order->customer_id ) {
+				$card = null;
+			}
 			if ( $card === null || ! $this->can_pay( $card, $order->currency ) || $card->balance < $entry->amount ) {
 				throw new GiftCardUnusable(
-					sprintf(
-						/* translators: %s: last characters of the gift card code. */
-						__( 'The balance of gift card %s changed. Check your order and place it again.', 'flexacommerce' ),
-						$entry->masked()
-					)
+					$card?->is_credit() === true
+						? __( 'Your store credit changed. Check your order and place it again.', 'flexacommerce' )
+						: sprintf(
+							/* translators: %s: last characters of the gift card code. */
+							__( 'The balance of gift card %s changed. Check your order and place it again.', 'flexacommerce' ),
+							$entry->masked()
+						)
 				);
 			}
 			$balance = $card->balance - $entry->amount;
@@ -166,9 +198,10 @@ final class GiftCardService {
 				wp_generate_uuid4(),
 				$now,
 				null,
-				(string) $card->id,
+				// Unique per order, so one card can pay several; the gateway reads the card id from the front.
+				$card->id . '-' . $order->id,
 				[],
-				[ 'gift_card' => GiftCard::mask( $card->code ) ]
+				$card->is_credit() ? [ 'store_credit' => true ] : [ 'gift_card' => GiftCard::mask( $card->code ) ]
 			);
 			$this->cards->add_activity( $card->id, GiftCardActivity::REDEEMED, -$entry->amount, $balance, $order->id, $txn_id, '', $ctx->actor_type === 'customer' ? $ctx->actor_id : null, $now );
 			$txn = $this->transactions->find( $txn_id );
@@ -176,11 +209,13 @@ final class GiftCardService {
 				$order->id,
 				$entry->amount,
 				$ctx->with_message(
-					sprintf(
-						/* translators: %s: last characters of the gift card code. */
-						__( 'Paid with gift card %s.', 'flexacommerce' ),
-						GiftCard::mask( $card->code )
-					)
+					$card->is_credit()
+						? __( 'Paid with store credit.', 'flexacommerce' )
+						: sprintf(
+							/* translators: %s: last characters of the gift card code. */
+							__( 'Paid with gift card %s.', 'flexacommerce' ),
+							GiftCard::mask( $card->code )
+						)
 				),
 				$txn?->view()
 			);
@@ -211,6 +246,116 @@ final class GiftCardService {
 				$this->cards->add_activity( $card->id, GiftCardActivity::CREDITED, $amount, $balance, $this->transactions->find( $refund_id )?->order_id, $refund_id, '', null, $now );
 			}
 		);
+	}
+
+	/**
+	 * The store credit of a customer (ADR-072), made with a zero balance
+	 * when `$create` is set and there is none yet.
+	 */
+	public function credit_account( int $user_id, bool $create = false ): ?GiftCard {
+		if ( $user_id <= 0 ) {
+			return null;
+		}
+		$card = $this->cards->for_user( $user_id );
+		if ( $card !== null || ! $create ) {
+			return $card;
+		}
+		$user = get_userdata( $user_id );
+		if ( $user === false ) {
+			return null;
+		}
+		$card = $this->db->run(
+			function () use ( $user_id, $user ): GiftCard {
+				$have = $this->cards->for_user( $user_id, true );
+				if ( $have !== null ) {
+					return $have;
+				}
+				return $this->insert(
+					[
+						'initial_amount'  => 0,
+						'balance'         => 0,
+						'currency'        => Settings::string( 'currency' ),
+						'status'          => GiftCard::ACTIVE,
+						'recipient_email' => strtolower( $user->user_email ),
+						'recipient_name'  => self::text( $user->display_name ),
+						'user_id'         => $user_id,
+					],
+					GiftCardActivity::ISSUED,
+					null,
+					null,
+					''
+				);
+			}
+		);
+		update_user_meta( $user_id, self::CREDIT_META, $card->id );
+		return $card;
+	}
+
+	/**
+	 * Adds to or takes from a customer's store credit, with the reason the
+	 * customer sees (ADR-072).
+	 *
+	 * @throws \InvalidArgumentException when the change is zero or takes more than the balance
+	 */
+	public function adjust_credit( int $user_id, int $amount, string $note, int $actor_id ): GiftCard {
+		$card = $this->credit_account( $user_id, $amount > 0 );
+		if ( $card === null ) {
+			throw new \InvalidArgumentException( __( 'This customer has no store credit to take from.', 'flexacommerce' ) );
+		}
+		return $this->adjust( $card->id, $amount, $note, $actor_id ) ?? $card;
+	}
+
+	/**
+	 * Pays a refund into the customer's store credit (ADR-072): a succeeded
+	 * refund row on the order and a credit on the account, together.
+	 *
+	 * @param list<\Flexa\Commerce\Orders\RefundLine> $lines
+	 * @throws InvalidRefund
+	 */
+	public function refund_to_credit( int $order_id, int $amount, array $lines, string $reason, TransitionContext $ctx ): Transaction {
+		$order = $this->orders->find( $order_id );
+		if ( $order === null || (int) $order->customer_id <= 0 ) {
+			throw new InvalidRefund( __( 'Only an order placed by a customer account can be refunded to store credit.', 'flexacommerce' ) );
+		}
+		$card = $this->credit_account( (int) $order->customer_id, true );
+		if ( $card === null ) {
+			throw new InvalidRefund( __( 'The customer account of this order no longer exists.', 'flexacommerce' ) );
+		}
+		if ( strtoupper( $card->currency ) !== strtoupper( $order->currency ) ) {
+			throw new InvalidRefund( __( 'The store credit of this customer is in another currency.', 'flexacommerce' ) );
+		}
+		$txn = ( $this->payments )()->refund_as(
+			$order_id,
+			$amount,
+			$lines,
+			$reason,
+			self::GATEWAY,
+			function ( Transaction $refund, Order $order ) use ( $card, $amount, $ctx ): void {
+				$locked  = $this->cards->find( $card->id, true ) ?? $card;
+				$now     = $this->clock->db_now();
+				$balance = $locked->balance + $amount;
+				$this->cards->update( $locked->id, [ 'balance' => $balance ], $now );
+				$this->cards->add_activity(
+					$locked->id,
+					GiftCardActivity::CREDITED,
+					$amount,
+					$balance,
+					$order->id,
+					$refund->id,
+					sprintf(
+						/* translators: %s: order number. */
+						__( 'Refund of order #%s', 'flexacommerce' ),
+						$order->order_number
+					),
+					$ctx->actor_type === 'admin' ? $ctx->actor_id : null,
+					$now
+				);
+				$this->transactions->update_status( $refund->id, Transaction::SUCCEEDED, $now, 'store-credit-' . $locked->id . '-' . $refund->id, '', '', [ 'store_credit' => true ] );
+			},
+			$ctx
+		);
+		$this->orders->payment_note( $order_id, __( 'The refund was added to the customer\'s store credit.', 'flexacommerce' ), $ctx );
+		return $txn;
 	}
 
 	/**

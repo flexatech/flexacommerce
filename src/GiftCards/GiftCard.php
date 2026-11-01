@@ -11,7 +11,10 @@ defined( 'ABSPATH' ) || exit;
  * upper case, no spaces or dashes. Amounts are in minor units of
  * `currency`. A card bought in an order keeps the order and item ids; a
  * card the merchant made has none. `deliver_at` holds the email back until
- * that moment, `delivered_at` says when it went out.
+ * that moment, `delivered_at` says when it went out. A card with a
+ * `user_id` is that customer's store credit (ADR-072): it never expires,
+ * its code is never shown or accepted in the code box, and it pays on its
+ * own for the customer's carts.
  */
 final class GiftCard {
 	public const ACTIVE   = 'active';
@@ -42,6 +45,7 @@ final class GiftCard {
 		public readonly ?string $expires_at,
 		public readonly string $created_at,
 		public readonly string $updated_at,
+		public readonly ?int $user_id = null,
 	) {}
 
 	/** @param array<string,mixed> $row */
@@ -66,6 +70,7 @@ final class GiftCard {
 			expires_at: $at( $row['expires_at'] ?? null ),
 			created_at: (string) ( $row['created_at'] ?? '' ),
 			updated_at: (string) ( $row['updated_at'] ?? '' ),
+			user_id: $id( $row['user_id'] ?? null ),
 		);
 	}
 
@@ -96,6 +101,11 @@ final class GiftCard {
 	/** The last four characters, as the cart and the order show them. */
 	public static function mask( string $normalized ): string {
 		return '••••' . substr( $normalized, -4 );
+	}
+
+	/** Whether this is a customer's store credit (ADR-072). */
+	public function is_credit(): bool {
+		return $this->user_id !== null;
 	}
 
 	public function is_expired( string $now ): bool {
@@ -145,6 +155,7 @@ final class GiftCard {
 			'expires_at'      => $this->expires_at,
 			'created_at'      => $this->created_at,
 			'updated_at'      => $this->updated_at,
+			'user_id'         => $this->user_id,
 		];
 	}
 }

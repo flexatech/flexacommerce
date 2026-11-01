@@ -405,16 +405,38 @@ final class Privacy {
 	}
 
 	/**
-	 * Gift cards sent to the address (ADR-069). The code shows masked: an
+	 * Gift cards sent to the address (ADR-069) and the account's store
+	 * credit (ADR-072). The code shows masked: an
 	 * export file travels, and the full code spends like cash.
 	 *
 	 * @return array{data:list<array<string,mixed>>,done:bool}
 	 */
 	public function export_gift_cards( string $email, int $page = 1 ): array {
 		unset( $page );
-		$money = Plugin::instance()->services()->money();
-		$data  = [];
-		foreach ( Plugin::instance()->gift_cards()->repository()->for_email( strtolower( $email ) ) as $card ) {
+		$money  = Plugin::instance()->services()->money();
+		$data   = [];
+		$cards  = Plugin::instance()->gift_cards()->repository()->for_email( strtolower( $email ) );
+		$user   = get_user_by( 'email', $email );
+		$credit = $user instanceof \WP_User ? Plugin::instance()->gift_cards()->repository()->for_user( $user->ID ) : null;
+		// The store credit of the account, also after its email changed (ADR-072).
+		if ( $credit !== null && ! in_array( $credit->id, array_map( static fn ( GiftCard $card ): int => $card->id, $cards ), true ) ) {
+			$cards[] = $credit;
+		}
+		foreach ( $cards as $card ) {
+			if ( $card->is_credit() ) {
+				$data[] = [
+					'group_id'    => 'flexacommerce-store-credit',
+					'group_label' => __( 'Store credit', 'flexacommerce' ),
+					'item_id'     => 'fxc-store-credit-' . $card->id,
+					'data'        => [
+						[
+							'name'  => __( 'Balance', 'flexacommerce' ),
+							'value' => $money->format( $money->from_minor( $card->balance, $card->currency ) ),
+						],
+					],
+				];
+				continue;
+			}
 			$fields = [
 				[
 					'name'  => __( 'Card', 'flexacommerce' ),
@@ -458,7 +480,8 @@ final class Privacy {
 
 	/**
 	 * Clears the recipient details. The cards stay: a balance is money the
-	 * holder can still spend, so deleting it would take that away.
+	 * holder can still spend, so deleting it would take that away. Store
+	 * credit stays tied to the account by user id.
 	 *
 	 * @return array{items_removed:bool,items_retained:bool,messages:list<string>,done:bool}
 	 */

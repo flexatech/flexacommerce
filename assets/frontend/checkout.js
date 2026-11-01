@@ -342,8 +342,24 @@ function setup( root ) {
 		};
 		for ( const card of cards ) {
 			const row = el( 'tr', { class: 'fxc-checkout__gift-card', 'data-fxc-gift-card-row': true } );
-			const label = el( 'th', { scope: 'row' }, ( i18n.giftCard || '%s' ).replace( '%s', card.label ) );
-			if ( couponForm ) {
+			const label = el( 'th', { scope: 'row' }, card.credit ? card.label : ( i18n.giftCard || '%s' ).replace( '%s', card.label ) );
+			if ( couponForm && card.credit ) {
+				// Store credit pays on its own; the shopper can turn it off (ADR-072).
+				label.append(
+					' ',
+					el(
+						'button',
+						{
+							type: 'submit',
+							class: 'fxc-checkout__credit-toggle',
+							form: couponForm.id,
+							name: card.used ? 'remove_coupon' : 'use_credit',
+							value: card.used ? card.code : '1',
+						},
+						card.used ? i18n.skipCredit || '' : i18n.useCredit || ''
+					)
+				);
+			} else if ( couponForm ) {
 				label.append(
 					' ',
 					el(
@@ -363,7 +379,8 @@ function setup( root ) {
 			if ( card.message ) {
 				label.append( el( 'span', { class: 'fxc-checkout__gift-card-message' }, card.message ) );
 			}
-			row.append( label, el( 'td', {}, card.message ? '' : '-' + card.amount.formatted ) );
+			const amount = card.credit && ! card.used ? ( i18n.creditLeft || '%s' ).replace( '%s', card.balance.formatted ) : '-' + card.amount.formatted;
+			row.append( label, el( 'td', {}, card.message ? '' : amount ) );
 			add( row );
 		}
 		const due = el( 'tr', { class: 'fxc-checkout__due' } );
@@ -698,8 +715,8 @@ function setup( root ) {
 			)
 		);
 	}
-	async function changeCoupon( remove ) {
-		const code = remove || couponCode.value.trim();
+	async function changeCoupon( remove, apply = '' ) {
+		const code = remove || apply || couponCode.value.trim();
 		if ( ! code ) {
 			couponSays( i18n.couponEmpty || '', true );
 			couponCode.focus();
@@ -717,7 +734,9 @@ function setup( root ) {
 			if ( ! ( await requote() ) ) {
 				renderTotals( cart );
 			}
-			if ( remove ) {
+			if ( code === 'store-credit' ) {
+				couponSays( remove ? i18n.creditOff || '' : i18n.creditOn || '', false );
+			} else if ( remove ) {
 				couponSays( i18n.couponRemoved || '', false );
 				couponCode.closest( 'details' ).open = true;
 				couponCode.focus();
@@ -737,7 +756,7 @@ function setup( root ) {
 		event.preventDefault();
 		const remove =
 			event.submitter?.name === 'remove_coupon' ? event.submitter.value : '';
-		changeCoupon( remove );
+		changeCoupon( remove, event.submitter?.name === 'use_credit' ? 'store-credit' : '' );
 	} );
 
 	/*

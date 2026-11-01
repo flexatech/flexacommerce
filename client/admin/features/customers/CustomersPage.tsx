@@ -14,6 +14,7 @@ import { useDebounced } from "@/shared/lib/useDebounced";
 import { PageTitle } from "../../components/PageTitle";
 import { Tabs } from "../../components/Tabs";
 import { formatDate, orderMoney } from "../orders/format";
+import { CreditDialog } from "./CreditDialog";
 import { useCustomers, useSetTaxExempt, type Customer, type CustomerListParams, type CustomerOrderBy, type CustomerType } from "./useCustomers";
 
 /** Accounts link by user id so orders placed under an old email are included; guests link by email. */
@@ -33,6 +34,7 @@ export function CustomersPage() {
     const list = useCustomers(params);
     const setExempt = useSetTaxExempt();
     const [pending, setPending] = useState<Record<number, boolean>>({});
+    const [creditFor, setCreditFor] = useState<Customer | null>(null);
 
     const toggleExempt = (customer: Customer, exempt: boolean) => {
         setPending((p) => ({ ...p, [customer.customer_id]: exempt }));
@@ -62,7 +64,7 @@ export function CustomersPage() {
         <div className="fxc:space-y-4">
             <PageTitle
                 title={__("Customers")}
-                description={__("Everyone who has placed an order: accounts and guest emails. Spent is paid less refunds. An account marked tax exempt pays no tax at checkout.")}
+                description={__("Everyone who has placed an order: accounts and guest emails. Spent is paid less refunds. An account marked tax exempt pays no tax at checkout. Click a store credit balance to change it or see its history.")}
             />
 
             <div className="fxc:flex fxc:flex-wrap fxc:items-end fxc:justify-between fxc:gap-3">
@@ -116,6 +118,7 @@ export function CustomersPage() {
                                 <th className="fxc:px-3 fxc:py-2 fxc:font-medium">{__("Type")}</th>
                                 <th className="fxc:px-3 fxc:py-2 fxc:text-right fxc:font-medium">{__("Orders")}</th>
                                 <th className="fxc:px-3 fxc:py-2 fxc:text-right fxc:font-medium">{__("Spent")}</th>
+                                <th className="fxc:px-3 fxc:py-2 fxc:text-right fxc:font-medium">{__("Store credit")}</th>
                                 <th className="fxc:px-3 fxc:py-2 fxc:font-medium">{__("First order")}</th>
                                 <th className="fxc:px-3 fxc:py-2 fxc:font-medium">{__("Latest order")}</th>
                                 <th className="fxc:px-5 fxc:py-2 fxc:font-medium">{__("Tax exempt")}</th>
@@ -152,6 +155,20 @@ export function CustomersPage() {
                                     <td className="fxc:px-3 fxc:py-3 fxc:text-right fxc:font-medium fxc:tabular-nums fxc:whitespace-nowrap">
                                         {orderMoney(customer.spent, customer.currency)}
                                     </td>
+                                    <td className="fxc:px-3 fxc:py-3 fxc:text-right fxc:tabular-nums fxc:whitespace-nowrap">
+                                        {customer.credit === null ? (
+                                            <span className="fxc:text-muted-foreground">{"\u2013"}</span>
+                                        ) : (
+                                            <button
+                                                type="button"
+                                                className="fxc:text-primary fxc:cursor-pointer fxc:bg-transparent fxc:hover:underline"
+                                                aria-label={sprintf(__("Store credit of %1$s: %2$s"), customer.name || customer.email, orderMoney(customer.credit, customer.currency))}
+                                                onClick={() => setCreditFor(customer)}
+                                            >
+                                                {orderMoney(customer.credit, customer.currency)}
+                                            </button>
+                                        )}
+                                    </td>
                                     <td className="fxc:text-muted-foreground fxc:px-3 fxc:py-3 fxc:whitespace-nowrap">
                                         {formatDate(customer.first_order, false)}
                                     </td>
@@ -178,6 +195,8 @@ export function CustomersPage() {
                     </table>
                 )}
             </Card>
+
+            <CreditDialog customer={creditFor} onClose={() => setCreditFor(null)} />
 
             {pages > 1 && (
                 <div className="fxc:flex fxc:items-center fxc:justify-end fxc:gap-3 fxc:text-sm">
