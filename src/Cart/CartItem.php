@@ -9,6 +9,7 @@ use Flexa\Commerce\Catalog\Variant;
 use Flexa\Commerce\Contracts\Money;
 use Flexa\Commerce\Contracts\Pricing\PriceResolution;
 use Flexa\Commerce\Inventory\Availability;
+use Flexa\Commerce\Support\Settings;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -63,6 +64,26 @@ final class CartItem {
 		}
 		$owner = $this->product->stock_owner( $this->variant );
 		return $owner->manage_stock ? $owner->id : 0;
+	}
+
+	/**
+	 * The shipping class slug (ADR-068); '' for none and for a class the
+	 * store has since removed, so the line ships at the no-class cost.
+	 */
+	public function shipping_class(): string {
+		if ( $this->product === null || $this->variant === null ) {
+			return '';
+		}
+		$slug = $this->product->shipping_class_of( $this->variant );
+		if ( $slug === '' ) {
+			return '';
+		}
+		foreach ( (array) Settings::get( 'shipping_classes' ) as $class ) {
+			if ( is_array( $class ) && ( $class['slug'] ?? null ) === $slug ) {
+				return $slug;
+			}
+		}
+		return '';
 	}
 
 	/** Unit weight in grams; a variation without its own weight uses the product's. */

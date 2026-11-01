@@ -13,6 +13,8 @@ import { ApiError } from "@/shared/lib/api";
 import { cn } from "@/shared/lib/cn";
 import { __, sprintf } from "@/shared/lib/i18n";
 import { FieldRow, type FieldValues } from "../../components/FieldControl";
+import { ClassCostsField, RateTableField } from "./RateFields";
+import { ShippingClassesCard } from "./ShippingClassesCard";
 import { useSaveZones, useShipping, type Country, type MethodInstance, type MethodType, type Zone } from "./useShipping";
 
 /** A zone in the editor; `key` is local so new zones (id 0) have a stable identity. */
@@ -53,7 +55,7 @@ export function ShippingPanel() {
         return <p className="fxc:text-destructive">{query.error.message}</p>;
     }
 
-    const { methods, countries } = query.data;
+    const { methods, countries, classes } = query.data;
     // The server always returns "everywhere else" last.
     const zones = draft.slice(0, -1);
     const rest = draft[draft.length - 1];
@@ -128,6 +130,8 @@ export function ShippingPanel() {
                 error={invalid?.index === draft.length - 1 ? invalid.message : ""}
                 onChange={(patch) => update(rest.key, patch)}
             />
+
+            <ShippingClassesCard classes={classes} />
         </div>
     );
 }
@@ -336,6 +340,7 @@ interface MethodRowProps {
 }
 
 function MethodRow({ method, type, idPrefix, onChange, onRemove }: MethodRowProps) {
+    const classes = useShipping().data?.classes ?? [];
     const [open, setOpen] = useState(method.instance_id === 0);
     const title = typeof method.settings.title === "string" && method.settings.title !== "" ? method.settings.title : (type?.title ?? method.type);
 
@@ -360,15 +365,25 @@ function MethodRow({ method, type, idPrefix, onChange, onRemove }: MethodRowProp
             </div>
             {open && type && (
                 <div className="fxc:bg-muted/30 fxc:space-y-4 fxc:border-t fxc:px-4 fxc:py-4">
-                    {type.fields.map((field) => (
-                        <FieldRow
-                            key={field.id}
-                            field={field}
-                            id={`${idPrefix}-${field.id}`}
-                            value={method.settings[field.id]}
-                            onChange={(value) => onChange({ settings: { ...method.settings, [field.id]: value } })}
-                        />
-                    ))}
+                    {type.fields.map((field) => {
+                        const id = `${idPrefix}-${field.id}`;
+                        const set = (value: unknown) => onChange({ settings: { ...method.settings, [field.id]: value } });
+                        if (field.type === "class_costs" || field.type === "rate_table") {
+                            const unit = typeof method.settings.weight_unit === "string" ? method.settings.weight_unit : "kg";
+                            return (
+                                <fieldset key={field.id} className="fxc:space-y-2">
+                                    <legend className="fxc:text-foreground fxc:mb-1.5 fxc:text-sm fxc:font-medium">{field.label}</legend>
+                                    {field.description !== "" && <p className="fxc:text-muted-foreground fxc:text-xs">{field.description}</p>}
+                                    {field.type === "class_costs" ? (
+                                        <ClassCostsField id={id} value={method.settings[field.id]} classes={classes} onChange={set} />
+                                    ) : (
+                                        <RateTableField value={method.settings[field.id]} classes={classes} unit={unit} onChange={set} />
+                                    )}
+                                </fieldset>
+                            );
+                        }
+                        return <FieldRow key={field.id} field={field} id={id} value={method.settings[field.id]} onChange={set} />;
+                    })}
                 </div>
             )}
         </li>

@@ -8,6 +8,7 @@ use Flexa\Commerce\Catalog\PostTypes;
 use Flexa\Commerce\Concerns\HasInstance;
 use Flexa\Commerce\Contracts\CommerceException;
 use Flexa\Commerce\Plugin;
+use Flexa\Commerce\Shipping\ShippingClasses;
 use Flexa\Commerce\Support\Capabilities;
 use Flexa\Commerce\Support\Settings;
 
@@ -84,10 +85,12 @@ final class ProductEditor {
 			self::ENTRY,
 			'product-editor',
 			[
-				'productId'          => $post instanceof \WP_Post ? (int) $post->ID : 0,
-				'canManageTerms'     => Capabilities::can_manage_product_terms(),
-				'attributesAdminUrl' => esc_url_raw( admin_url( 'admin.php?page=' . Menu::SLUG . '-attributes' ) ),
-				'taxClasses'         => self::tax_classes(),
+				'productId'           => $post instanceof \WP_Post ? (int) $post->ID : 0,
+				'canManageTerms'      => Capabilities::can_manage_product_terms(),
+				'attributesAdminUrl'  => esc_url_raw( admin_url( 'admin.php?page=' . Menu::SLUG . '-attributes' ) ),
+				'taxClasses'          => self::tax_classes(),
+				'shippingClasses'     => ShippingClasses::all(),
+				'shippingSettingsUrl' => esc_url_raw( admin_url( 'admin.php?page=' . Menu::SLUG . '-settings&tab=shipping' ) ),
 			]
 		);
 	}

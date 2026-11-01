@@ -45,6 +45,7 @@ final class VariantRepository {
 		'height'              => '%s',
 		'image_id'            => '%d',
 		'tax_class'           => '%s',
+		'shipping_class'      => '%s',
 		'tax_status'          => '%s',
 		'description'         => '%s',
 		'is_virtual'          => '%d',
@@ -89,7 +90,7 @@ final class VariantRepository {
 		$missing = [];
 		$cached  = wp_cache_get_multiple( $product_ids, self::CACHE_GROUP );
 		foreach ( $product_ids as $id ) {
-			if ( isset( $cached[ $id ] ) && is_array( $cached[ $id ] ) ) {
+			if ( isset( $cached[ $id ]['keys'], $cached[ $id ]['rows'] ) && is_array( $cached[ $id ]['rows'] ) ) {
 				$rows[ $id ] = $cached[ $id ];
 			} else {
 				$missing[] = $id;
@@ -105,21 +106,43 @@ final class VariantRepository {
 					Schema::table( 'variants' ),
 					...$missing
 				),
-				ARRAY_A
+				ARRAY_N
 			);
+			$keys = array_values( array_map( 'strval', (array) $this->wpdb->get_col_info( 'name' ) ) );
+			$this->wpdb->flush();
+			$product = array_search( 'product_id', $keys, true );
 			$grouped = array_fill_keys( $missing, [] );
 			foreach ( is_array( $found ) ? $found : [] as $row ) {
-				$grouped[ (int) $row['product_id'] ][] = $row;
+				$grouped[ (int) $row[ (int) $product ] ][] = $row;
 			}
+			// Rows are cached as lists with the column names once: a keyed
+			// row of 33 columns is a 64-slot hash, ~1.3 KB more a variant.
 			foreach ( $grouped as $id => $group ) {
-				wp_cache_set( $id, $group, self::CACHE_GROUP );
-				$rows[ $id ] = $group;
+				$rows[ $id ] = [
+					'keys' => $keys,
+					'rows' => $group,
+				];
+				wp_cache_set( $id, $rows[ $id ], self::CACHE_GROUP );
 			}
 		}
 
 		$out = [];
 		foreach ( $product_ids as $id ) {
-			$out[ $id ] = array_map( [ Variant::class, 'from_row' ], array_values( $rows[ $id ] ?? [] ) );
+			$keys       = (array) ( $rows[ $id ]['keys'] ?? [] );
+			$out[ $id ] = array_map( static fn ( array $row ): Variant => Variant::from_row( (array) array_combine( $keys, $row ) ), array_values( (array) ( $rows[ $id ]['rows'] ?? [] ) ) );
+		}
+		return $out;
+	}
+
+	/** @return array<string,int> products per shipping class slug, variations counted with their product */
+	public function shipping_class_counts(): array {
+		$rows = $this->wpdb->get_results(
+			$this->wpdb->prepare( "SELECT shipping_class, COUNT(DISTINCT product_id) AS products FROM %i WHERE shipping_class <> '' GROUP BY shipping_class", Schema::table( 'variants' ) ),
+			ARRAY_A
+		);
+		$out  = [];
+		foreach ( is_array( $rows ) ? $rows : [] as $row ) {
+			$out[ (string) $row['shipping_class'] ] = (int) $row['products'];
 		}
 		return $out;
 	}

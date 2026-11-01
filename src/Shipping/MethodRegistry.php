@@ -12,7 +12,7 @@ defined( 'ABSPATH' ) || exit;
 
 /** Shipping method types, built on first use (doc 04 §2). */
 final class MethodRegistry implements ShippingMethodRegistry {
-	public const CORE = [ 'flat_rate', 'free_shipping', 'local_pickup' ];
+	public const CORE = [ 'flat_rate', 'free_shipping', 'local_pickup', 'table_rate' ];
 
 	/** @var array<string,callable():ShippingMethod> */
 	private array $factories;
@@ -25,6 +25,7 @@ final class MethodRegistry implements ShippingMethodRegistry {
 			'flat_rate'     => static fn (): ShippingMethod => new Methods\FlatRate(),
 			'free_shipping' => static fn (): ShippingMethod => new Methods\FreeShipping(),
 			'local_pickup'  => static fn (): ShippingMethod => new Methods\LocalPickup(),
+			'table_rate'    => static fn (): ShippingMethod => new Methods\TableRate(),
 		];
 	}
 

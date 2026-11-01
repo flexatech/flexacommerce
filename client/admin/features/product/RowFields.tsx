@@ -185,8 +185,33 @@ export function InventoryFields({
 }
 
 export function ShippingFields({ row, onChange, errors, path }: { row: VariantRow; onChange: RowChange; errors: FieldErrors; path: string }) {
+    const classes = (window.flexaCommerce?.shippingClasses ?? []).map((c) => ({ value: c.slug, label: c.name }));
+    const options = [{ value: "", label: row.is_base ? __("No shipping class") : __("Same as product") }, ...classes];
+    // A class removed in the shipping settings still shows, so saving does not change it silently.
+    if (!options.some((o) => o.value === row.shipping_class)) {
+        options.push({ value: row.shipping_class, label: row.shipping_class });
+    }
+    const settingsUrl = window.flexaCommerce?.shippingSettingsUrl;
+
     return (
         <div className="fxc:space-y-4">
+            <Field
+                label={__("Shipping class")}
+                error={errors[`${path}.shipping_class`]}
+                className="fxc:sm:max-w-[50%]"
+                help={classes.length === 0 ? __("Add shipping classes under Settings, Shipping to charge more for some products.") : __("Flat rate and table rate methods can charge by class.")}
+            >
+                {(id) => (
+                    <Select id={id} className="fxc:w-full" options={options} value={row.shipping_class} onChange={(event) => onChange({ shipping_class: event.target.value })} />
+                )}
+            </Field>
+            {classes.length === 0 && settingsUrl && (
+                <p className="fxc:-mt-2 fxc:text-xs">
+                    <a href={settingsUrl} className="fxc:text-primary fxc:underline">
+                        {__("Open shipping settings")}
+                    </a>
+                </p>
+            )}
             <Field label={__("Weight")} error={errors[`${path}.weight`]} className="fxc:sm:max-w-[50%]">
                 {(id) => <WeightInput id={id} value={row.weight} onChange={(weight) => onChange({ weight })} />}
             </Field>

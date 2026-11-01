@@ -27,6 +27,7 @@ use Flexa\Commerce\Migration\Canonical\Ref;
 use Flexa\Commerce\Migration\Canonical\Rejected;
 use Flexa\Commerce\Migration\Job;
 use Flexa\Commerce\Migration\Mapping;
+use Flexa\Commerce\Shipping\ShippingClasses;
 use Flexa\Commerce\Support\Currency;
 use Flexa\Commerce\Support\Settings;
 
@@ -576,6 +577,10 @@ final class FxcCatalogWriter {
 				$fields[ $key ] = $row[ $key ];
 			}
 		}
+		if ( is_string( $row['shipping_class'] ?? null ) ) {
+			$fields['shipping_class'] = substr( sanitize_title( $row['shipping_class'] ), 0, 50 );
+			self::ensure_class( $fields['shipping_class'] );
+		}
 		foreach ( [
 			'backorders'   => Variant::BACKORDERS,
 			'stock_status' => Variant::STOCK_STATUSES,
@@ -623,6 +628,22 @@ final class FxcCatalogWriter {
 		} catch ( InvalidProduct $e ) {
 			throw new Rejected( 'invalid_product', $e->getMessage(), [ 'field' => $e->field ] );
 		}
+	}
+
+	/**
+	 * A class the shipping stage did not bring (it was left out of the job)
+	 * is added under a name made from its slug, so the product keeps it.
+	 */
+	private static function ensure_class( string $slug ): void {
+		$classes = ShippingClasses::all();
+		if ( $slug === '' || in_array( $slug, array_column( $classes, 'slug' ), true ) ) {
+			return;
+		}
+		$classes[] = [
+			'slug' => $slug,
+			'name' => ucwords( str_replace( '-', ' ', $slug ) ),
+		];
+		Settings::update( [ 'shipping_classes' => $classes ] );
 	}
 
 	/**

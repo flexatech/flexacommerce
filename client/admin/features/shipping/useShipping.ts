@@ -32,10 +32,18 @@ export interface Country {
     states: { code: string; name: string }[];
 }
 
+export interface ShippingClass {
+    slug: string;
+    name: string;
+    /** Products that use the class. */
+    products: number;
+}
+
 export interface ShippingPayload {
     zones: Zone[];
     methods: MethodType[];
     countries: Country[];
+    classes: ShippingClass[];
 }
 
 const SHIPPING_KEY = ["shipping", "zones"] as const;

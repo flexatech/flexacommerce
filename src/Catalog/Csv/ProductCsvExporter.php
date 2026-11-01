@@ -281,6 +281,7 @@ final class ProductCsvExporter {
 			'date_on_sale_to'   => self::local_date( $row->sale_to ),
 			'tax_status'        => $row->tax_status,
 			'tax_class'         => $row->tax_class,
+			'shipping_class_id' => $row->shipping_class === '' ? '' : ( CsvColumns::shipping_classes()[ $row->shipping_class ] ?? $row->shipping_class ),
 			'stock_status'      => self::STOCK[ $row->stock_status ] ?? '1',
 			'stock_quantity'    => $stock,
 			'low_stock_amount'  => $row->low_stock_threshold !== null ? (string) $row->low_stock_threshold : '',

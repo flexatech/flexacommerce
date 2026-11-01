@@ -47,7 +47,7 @@ final class ShippingPackage {
 
 	/** Stable hash for caching remote quotes. */
 	public function hash(): string {
-		$lines = array_map( static fn ( PackageLine $l ): array => [ $l->variant_id, $l->qty, $l->line_total->amount ], $this->lines );
+		$lines = array_map( static fn ( PackageLine $l ): array => [ $l->variant_id, $l->qty, $l->line_total->amount, $l->weight_g, $l->shipping_class ], $this->lines );
 		return md5( (string) wp_json_encode( [ $this->destination->to_array(), $lines, $this->contents_total->amount, $this->currency(), $this->free_shipping, $this->subtotal?->amount ] ) );
 	}
 }

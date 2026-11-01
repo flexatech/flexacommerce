@@ -58,6 +58,7 @@ final class ShippingMigrationTest extends \WP_UnitTestCase {
 		$europe->set_zone_order( 3 );
 		$europe->add_location( 'EU', 'continent' );
 		$europe->save();
+		$bulky = wp_insert_term( 'Bulky', 'product_shipping_class' );
 		GoldenStore::method(
 			$europe,
 			'flat_rate',
@@ -70,9 +71,9 @@ final class ShippingMigrationTest extends \WP_UnitTestCase {
 			$europe,
 			'flat_rate',
 			[
-				'title'         => 'By class',
-				'cost'          => '4',
-				'class_cost_12' => '2',
+				'title'                           => 'By class',
+				'cost'                            => '4',
+				'class_cost_' . $bulky['term_id'] => '2 + [fee percent="5"]',
 			]
 		);
 		GoldenStore::method(

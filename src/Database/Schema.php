@@ -17,7 +17,7 @@ defined( 'ABSPATH' ) || exit;
  */
 // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- schema DDL on plugin-owned tables, no user input.
 final class Schema {
-	public const DB_VERSION        = '14';
+	public const DB_VERSION        = '15';
 	public const DB_VERSION_OPTION = 'flexacommerce_db_version';
 	public const OPTION_PREFIX     = 'flexacommerce_';
 
@@ -78,6 +78,7 @@ final class Schema {
 				image_id bigint(20) unsigned NULL,
 				tax_status varchar(10) NOT NULL DEFAULT 'taxable',
 				tax_class varchar(50) NOT NULL DEFAULT '',
+				shipping_class varchar(50) NOT NULL DEFAULT '',
 				description text NULL,
 				is_virtual tinyint(1) NOT NULL DEFAULT 0,
 				is_downloadable tinyint(1) NOT NULL DEFAULT 0,

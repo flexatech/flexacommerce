@@ -248,6 +248,7 @@ CREATE TABLE fxc_variants (
   image_id bigint(20) unsigned NULL,
   tax_status varchar(10) NOT NULL DEFAULT 'taxable',
   tax_class varchar(50) NOT NULL DEFAULT '',
+  shipping_class varchar(50) NOT NULL DEFAULT '',
   description text NULL,
   is_virtual tinyint(1) NOT NULL DEFAULT 0,
   is_downloadable tinyint(1) NOT NULL DEFAULT 0,
@@ -270,6 +271,7 @@ CREATE TABLE fxc_variants (
 | `stock_quantity` | NULL when `manage_stock = 0`. |
 | `tax_status` | `taxable` \| `shipping` \| `none`. Read from the base row only (doc 02 §7.12.2). Added in `DB_VERSION` 2. |
 | `tax_class` | Class slug, `''` = Standard. On variation rows `parent` takes the base row's class; the `DB_VERSION` 2 upgrade step sets every variation row to `parent` (no store had taxes before). |
+| `shipping_class` | Slug from the setting `shipping_classes`, `''` = no class on the base row; on variation rows `''` takes the base row's class. A slug no longer in the setting counts as no class. Added in `DB_VERSION` 15 (ADR-068). |
 | `is_virtual`, `is_downloadable` | Nothing to ship; sells files. Added in `DB_VERSION` 10 (ADR-058). |
 | `downloads` | JSON `{files: [{id, name, file}], limit, expiry_days}`, up to 50 files. A file id never changes once saved, because `fxc_downloads.file_id` points at it. NULL when the variant sells no files. |
 | `meta` | JSON, extension and import data for this variant. Not queryable. |
@@ -701,6 +703,8 @@ ORDER BY r.priority, r.rate_order
 
 The `IN` list for postcodes holds the exact code and its prefixes with `*` (`90210`, `9021*`, `902*`, `90*`, `9*`, `*`). A rate with both postcode and city rows must match one of each; that last check runs in PHP over the few candidate rows. Rows read stay proportional to the rates of one country and state, not to the table: a US table with 40,000 ZIP rows reads only the rows for that ZIP and state (verified with `EXPLAIN` and a T1 rows-read check on a 50,000-row fixture in phase 4.5).
 
+Shipping classes are not a table either; they live in `flexacommerce_settings.shipping_classes` (`{slug, name}`, ADR-068), written by Settings > Shipping, the product CSV import and migration. Products keep the slug in `fxc_variants.shipping_class`; deleting a class leaves the slug, which then counts as no class.
+
 Tax classes are not a table; they live in `flexacommerce_settings.tax_classes` (doc 02 §7.12.1). Lifecycle: written by the Taxes screen, CSV import, presets and migration through `TaxRateRepository`; never by checkout.
 
 ### 4.14 `fxc_coupons` and `fxc_coupon_uses`
@@ -995,6 +999,7 @@ CREATE TABLE fxc_shipments (
 | Stock reservations table | Not built | The order is the reservation (ADR-005). Revisit only if online gateways show long payment windows causing complaints about stock held by abandoned pending orders, which `hold_minutes` already bounds. |
 | Separate refunds table | Merged into `fxc_transactions` | §4.7. |
 | Separate status history table | Merged into `fxc_order_history` | §4.5. |
+| Shipping classes table | `flexacommerce_settings.shipping_classes` | A handful of `{slug, name}` per store, read with the settings; products keep the slug on `fxc_variants` (ADR-068). |
 | Shipping zones / methods tables | `wp_options` JSON | A store has tens of zones at most. One option read per rate calculation, cached. Revisit above 200 zones. |
 | Migration job items table (one row per migrated entity) | Replaced by `fxc_id_map` (success) + `fxc_migration_log` (problems) | A 500,000-order migration would write 500,000+ job item rows that duplicate the id map. |
 | Customer table | Not built | §7. |

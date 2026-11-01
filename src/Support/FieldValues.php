@@ -71,6 +71,12 @@ final class FieldValues {
 	}
 
 	private static function value( SettingField $field, mixed $value ): mixed {
+		if ( $field->type === 'class_costs' ) {
+			return RateTables::class_costs( $value );
+		}
+		if ( $field->type === 'rate_table' ) {
+			return RateTables::rows( $value );
+		}
 		if ( $field->type === 'checkbox' ) {
 			return in_array( $value, [ true, 1, '1', 'yes', 'true', 'on' ], true );
 		}

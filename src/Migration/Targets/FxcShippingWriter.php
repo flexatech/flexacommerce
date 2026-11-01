@@ -9,6 +9,7 @@ use Flexa\Commerce\Migration\Canonical\Problem;
 use Flexa\Commerce\Migration\Canonical\Record;
 use Flexa\Commerce\Migration\Mapping;
 use Flexa\Commerce\Shipping\MethodInstance;
+use Flexa\Commerce\Shipping\ShippingClasses;
 use Flexa\Commerce\Shipping\ShippingService;
 use Flexa\Commerce\Shipping\Zone;
 use Flexa\Commerce\Support\Countries;
@@ -43,6 +44,8 @@ final class FxcShippingWriter {
 		if ( $source !== '' && $source !== $this->currency ) {
 			$this->problems[] = Problem::warning( 'shipping_currency', sprintf( 'Shipping amounts are in %1$s and the store uses %2$s. The numbers are copied as they are.', $source, $this->currency ) );
 		}
+
+		$this->classes( (array) ( $data['classes'] ?? [] ) );
 
 		// A rolled back write leaves the cached zones ahead of the option.
 		$this->shipping->zones()->flush();
@@ -171,6 +174,9 @@ final class FxcShippingWriter {
 			if ( $type === 'free_shipping' ) {
 				$input['ignore_discounts'] = ! empty( $row['ignore_discounts'] );
 			}
+			if ( $type === 'flat_rate' && isset( $row['class_costs'] ) ) {
+				$input['class_costs'] = $this->class_costs( $row );
+			}
 			foreach ( [ 'cost', 'cost_per_item', 'min_amount' ] as $key ) {
 				if ( isset( $row[ $key ] ) ) {
 					$input[ $key ] = $this->minor( (string) $row[ $key ], $key );
@@ -195,6 +201,52 @@ final class FxcShippingWriter {
 			}
 		}
 		return [ $methods, $sources ];
+	}
+
+	/**
+	 * Shipping classes the source has and the store lacks are added; a
+	 * class with the same slug keeps the name it has here.
+	 *
+	 * @param array<array-key,mixed> $rows
+	 */
+	private function classes( array $rows ): void {
+		$classes = ShippingClasses::all();
+		$known   = array_column( $classes, 'slug' );
+		foreach ( $rows as $row ) {
+			$slug = is_array( $row ) ? substr( sanitize_title( (string) ( $row['slug'] ?? '' ) ), 0, 50 ) : '';
+			if ( $slug === '' || in_array( $slug, $known, true ) ) {
+				continue;
+			}
+			$name      = sanitize_text_field( (string) ( $row['name'] ?? '' ) );
+			$classes[] = [
+				'slug' => $slug,
+				'name' => $name === '' ? $slug : $name,
+			];
+			$known[]   = $slug;
+		}
+		if ( count( $classes ) !== count( ShippingClasses::all() ) ) {
+			Settings::update( [ 'shipping_classes' => $classes ] );
+		}
+	}
+
+	/**
+	 * @param array<array-key,mixed> $row
+	 * @return array{calculation:string,costs:array<string,array{cost:int,per_item:int}>}
+	 */
+	private function class_costs( array $row ): array {
+		$costs = [];
+		foreach ( (array) $row['class_costs'] as $cost ) {
+			if ( is_array( $cost ) ) {
+				$costs[ (string) ( $cost['class'] ?? '' ) ] = [
+					'cost'     => $this->minor( (string) ( $cost['cost'] ?? '0' ), 'class_costs' ),
+					'per_item' => $this->minor( (string) ( $cost['cost_per_item'] ?? '0' ), 'class_costs' ),
+				];
+			}
+		}
+		return [
+			'calculation' => ( $row['class_calculation'] ?? '' ) === 'per_order' ? 'per_order' : 'per_class',
+			'costs'       => $costs,
+		];
 	}
 
 	private function minor( string $value, string $field ): int {

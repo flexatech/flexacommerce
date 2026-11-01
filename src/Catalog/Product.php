@@ -131,6 +131,11 @@ final class Product {
 		return $class === Variant::PARENT_CLASS ? '' : $class;
 	}
 
+	/** A variation with no class of its own ships as the product does (ADR-068). */
+	public function shipping_class_of( Variant $variant ): string {
+		return $variant->is_base || $variant->shipping_class === '' ? $this->base->shipping_class : $variant->shipping_class;
+	}
+
 	/** Read from the base row only, as WooCommerce does for variations. */
 	public function tax_status_of( Variant $variant ): string {
 		unset( $variant );

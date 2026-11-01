@@ -603,6 +603,42 @@ final class ProductCsvImporter {
 		return $ids;
 	}
 
+	/**
+	 * The slug of a shipping class named in the file, by name or slug; a
+	 * class the store lacks is added, as WooCommerce's importer does.
+	 *
+	 * @param list<string> $warnings
+	 */
+	private static function shipping_class( string $value, array &$warnings ): string {
+		$value = trim( $value );
+		if ( $value === '' ) {
+			return '';
+		}
+		$classes = CsvColumns::shipping_classes();
+		foreach ( $classes as $slug => $name ) {
+			if ( mb_strtolower( $name ) === mb_strtolower( $value ) || (string) $slug === $value ) {
+				return (string) $slug;
+			}
+		}
+		$slug = substr( sanitize_title( $value ), 0, 50 );
+		if ( $slug === '' || in_array( $slug, [ 'parent', 'inherit' ], true ) ) {
+			/* translators: %s: shipping class name */
+			$warnings[] = sprintf( __( 'The shipping class %s cannot be used, so the product has no class.', 'flexacommerce' ), $value );
+			return '';
+		}
+		if ( ! isset( $classes[ $slug ] ) ) {
+			$list = [];
+			foreach ( $classes + [ $slug => sanitize_text_field( $value ) ] as $key => $name ) {
+				$list[] = [
+					'slug' => (string) $key,
+					'name' => $name,
+				];
+			}
+			Settings::update( [ 'shipping_classes' => $list ] );
+		}
+		return $slug;
+	}
+
 	/** @throws InvalidProduct when an earlier line of the file used the SKU */
 	private function claim_sku( ?string $sku, int $line ): void {
 		if ( $sku === null ) {
@@ -647,6 +683,9 @@ final class ProductCsvImporter {
 		if ( array_key_exists( 'tax_class', $record ) ) {
 			$class               = trim( $record['tax_class'] );
 			$fields['tax_class'] = strtolower( $class ) === 'parent' ? Variant::PARENT_CLASS : $class;
+		}
+		if ( array_key_exists( 'shipping_class_id', $record ) ) {
+			$fields['shipping_class'] = self::shipping_class( $record['shipping_class_id'], $warnings );
 		}
 		$stock_status = strtolower( trim( $record['stock_status'] ?? '' ) );
 		if ( $stock_status !== '' ) {

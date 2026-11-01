@@ -11,6 +11,8 @@ use Flexa\Commerce\Catalog\Csv\ProductCsvExporter;
 use Flexa\Commerce\Catalog\PostTypes;
 use Flexa\Commerce\Catalog\Product;
 use Flexa\Commerce\Plugin;
+use Flexa\Commerce\Shipping\ShippingClasses;
+use Flexa\Commerce\Support\Settings;
 
 final class ProductCsvTest extends CatalogTestCase {
 	/** @var list<array{int,string}> */
@@ -191,6 +193,48 @@ final class ProductCsvTest extends CatalogTestCase {
 		self::assertSame( [ $mug, $plain ], $this->get( $group )->children );
 		self::assertSame( 'https://partner.example/lamp', $this->get( $lamp )->product_url );
 		self::assertSame( 8000, $this->get( $lamp )->base->regular_price );
+	}
+
+	public function test_shipping_class_exports_its_name_and_import_matches_or_creates_one(): void {
+		Settings::update(
+			[
+				'shipping_classes' => [
+					[
+						'slug' => 'bulky',
+						'name' => 'Bulky',
+					],
+				],
+			]
+		);
+		try {
+			$id = $this->product( 'Sofa' );
+			$this->save(
+				$id,
+				[
+					'base' => [
+						'sku'            => $this->sku( 'SOFA' ),
+						'shipping_class' => 'bulky',
+					],
+				]
+			);
+			[ $headers, $rows ] = $this->export_rows( [ $this->sku( 'SOFA' ) ] );
+			self::assertSame( 'Bulky', $rows[0][ (int) array_search( 'Shipping class', $headers, true ) ] );
+
+			$results = $this->import(
+				[ 'Type', 'SKU', 'Name', 'Shipping class' ],
+				[
+					[ 'simple', $this->sku( 'BED' ), 'Bed', 'bulky' ],
+					[ 'simple', $this->sku( 'VASE' ), 'Vase', 'Fragile items' ],
+					[ 'simple', $this->sku( 'PEN' ), 'Pen', '' ],
+				],
+				false
+			);
+			self::assertSame( [ 'create', 'create', 'create' ], array_column( $results, 'action' ), wp_json_encode( $results ) );
+			self::assertSame( [ 'bulky', 'fragile-items', '' ], array_map( fn ( array $r ): string => $this->get( (int) $r['id'] )->base->shipping_class, $results ) );
+			self::assertSame( [ 'Bulky', 'Fragile items' ], array_column( ShippingClasses::all(), 'name' ), 'A class the store lacks is created.' );
+		} finally {
+			Settings::update( [ 'shipping_classes' => [] ] );
+		}
 	}
 
 	public function test_an_unknown_type_is_an_error(): void {

@@ -11,7 +11,7 @@ import type { TaxClassSummary } from "./useTaxes";
 type TaxClass = { slug: string; name: string };
 
 /** Same rule as sanitize_title for the plain names people type here. */
-function slugify(name: string): string {
+export function slugify(name: string): string {
     return name
         .toLowerCase()
         .normalize("NFKD")

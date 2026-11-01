@@ -532,7 +532,7 @@ final class CartService {
 			if ( $item->total === null || $item->variant?->virtual === true ) {
 				continue;
 			}
-			$lines[] = new PackageLine( $item->line->variant_id, $item->line->quantity, $item->weight_g(), $item->dimensions_mm(), $item->total );
+			$lines[] = new PackageLine( $item->line->variant_id, $item->line->quantity, $item->weight_g(), $item->dimensions_mm(), $item->total, $item->shipping_class() );
 		}
 		return new ShippingPackage(
 			$destination,

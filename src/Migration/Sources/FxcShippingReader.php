@@ -8,9 +8,11 @@ use Flexa\Commerce\Migration\Canonical\Decimal;
 use Flexa\Commerce\Migration\Canonical\Record;
 use Flexa\Commerce\Migration\Canonical\Ref;
 use Flexa\Commerce\Shipping\MethodInstance;
+use Flexa\Commerce\Shipping\ShippingClasses;
 use Flexa\Commerce\Shipping\ShippingService;
 use Flexa\Commerce\Shipping\Zone;
 use Flexa\Commerce\Support\Currency;
+use Flexa\Commerce\Support\RateTables;
 use Flexa\Commerce\Support\Settings;
 
 defined( 'ABSPATH' ) || exit;
@@ -43,6 +45,7 @@ final class FxcShippingReader {
 			Ref::make( 'fxc', Record::SHIPPING, 1 ),
 			[
 				'currency' => $currency,
+				'classes'  => ShippingClasses::all(),
 				'zones'    => $zones,
 				'rest'     => $rest,
 			]
@@ -66,6 +69,18 @@ final class FxcShippingReader {
 		foreach ( [ 'cost', 'cost_per_item', 'min_amount' ] as $key ) {
 			if ( array_key_exists( $key, $settings ) ) {
 				$out[ $key ] = Decimal::trim( Decimal::from_minor( max( 0, (int) $settings[ $key ] ), $currency, $exponent ) );
+			}
+		}
+		if ( $method->type === 'flat_rate' ) {
+			$classes                  = RateTables::class_costs( $settings['class_costs'] ?? null );
+			$out['class_costs']       = [];
+			$out['class_calculation'] = $classes['calculation'];
+			foreach ( $classes['costs'] as $slug => $cost ) {
+				$out['class_costs'][] = [
+					'class'         => (string) $slug,
+					'cost'          => Decimal::trim( Decimal::from_minor( $cost['cost'], $currency, $exponent ) ),
+					'cost_per_item' => Decimal::trim( Decimal::from_minor( $cost['per_item'], $currency, $exponent ) ),
+				];
 			}
 		}
 		if ( $method->type === 'free_shipping' ) {

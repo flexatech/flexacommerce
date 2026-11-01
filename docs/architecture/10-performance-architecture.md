@@ -145,7 +145,7 @@ The context is decided once in `Plugin::boot()` from cheap signals: `is_admin()`
 | Layer | What | Invalidation | Without a persistent cache |
 |---|---|---|---|
 | Request memo | Repository results within a request | end of request | works |
-| Object cache group `flexacommerce_variants` | variant rows by product id | delete on product save (single owner: `ProductService`) | request-local only, still saves repeated reads |
+| Object cache group `flexacommerce_variants` | variant rows by product id, as `{keys, rows}` with each row a plain list (ADR-068: a keyed row of 33 columns costs twice the memory) | delete on product save (single owner: `ProductService`) | request-local only, still saves repeated reads |
 | Object cache, `last_changed` per group | list results (e.g. attribute terms with values) | bump `last_changed` on any write to the group | request-local only |
 | Not cached | stock availability at add to cart and checkout, totals at checkout, order state | | |
 
@@ -382,6 +382,8 @@ Open items: C1 and every latency budget need the reference machine (Q18); at 25 
 | P3 | Related products first read the product's categories and tags with `wp_get_post_terms()`, 2 queries per product page that the term cache could answer. Now `get_the_terms()`: back to −2 queries, 1 own | T1 |
 
 P3 memory was re-recorded once in phase 5, from 1,048,848 B to 1,316,960 B at 250 variants. The phase 4 template measures 1,295,800 B on the same code, so the new product blocks (gallery, SKU, stock, attributes, breadcrumbs, related products) add about 21 KB; the rest came in between phases 3 and 5 and is not attributed yet. The P3b inlined state grew from 37,211 B to 40,211 B at 250 variants, which leaves 1.8 % under the budget. The next field added to the variant state will need the budget re-recorded or the state trimmed.
+
+ADR-068 added the 33rd variant column, which pushed every keyed row into a larger PHP hash table and P3 memory at 250 variants to 1,740,320 B. The variants cache now keeps each product's rows as plain lists with the column names once (`VariantRepository::for_products()`), which measures 1,420,752 B against 1,419,040 B before the column; the budget is unchanged.
 
 The Playwright pass with axe on Twenty Twenty-Five, Astra and Twenty Twenty-One is green (doc 07 phase 5 notes).
 

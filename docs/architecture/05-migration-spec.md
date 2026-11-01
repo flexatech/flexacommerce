@@ -398,11 +398,14 @@ Reverse mapping is the inverse. FXC → WC never produces custom statuses.
 The `shipping` stage runs after `taxes` and, like `settings`, is one record (id 1) that holds every zone in match order plus the methods of "everywhere else". Amounts are decimals in the store currency, converted to minor units on the FlexaCommerce side. Zone and method ids go through the id map as `shipping_zone` and `shipping_method`.
 
 - Locations: countries and states are copied; a continent becomes its countries; postcodes are copied as patterns. A zone left with no known country or state is skipped with a warning.
-- `flat_rate`: the cost formula must be a number, `N * [qty]`, or the two added. Any other formula (`[fee]`, `[cost]`, more terms) and any shipping class cost make the method import **turned off** with a warning, so checkout never charges an amount the old store did not.
+- Shipping classes (ADR-068): the `product_shipping_class` terms become the record's `classes` (`{slug, name}`), merged into the setting `shipping_classes` by slug; FXC→WC finds or creates a term per class.
+- `flat_rate`: the cost formula must be a number, `N * [qty]`, or the two added. Any other formula (`[fee]`, `[cost]`, more terms) makes the method import **turned off** with a warning, so checkout never charges an amount the old store did not. Class costs (`class_cost_{term id}`, the older `class_cost_{slug}`, and `no_class_cost`) follow the same formula rule and become canonical `class_costs` (`{class, cost, cost_per_item}`, `class: ''` for no class); `type` `class`/`order` becomes `class_calculation` `per_class`/`per_order`. A cost for a class term that no longer exists is dropped, as WooCommerce never charges it. FXC→WC writes them back, with every other class cost cleared.
 - `free_shipping`: `requires` and the minimum map directly. WooCommerce's `min_amount` becomes FlexaCommerce's empty value (the minimum when set), and back again when a minimum is set; `coupon`, `either` and `both` are the same on both sides (doc 02 §7.13.8). WooCommerce's `ignore_discounts` (`yes`/`no`) becomes the boolean `ignore_discounts` and back.
 - `local_pickup`: title, cost and tax status. FlexaCommerce's pickup address has no WooCommerce field, so it is dropped with a warning on FXC→WC.
 - Tax status (`taxable` / `none`) is kept on flat rate and local pickup.
-- Other method types have no equivalent and are skipped with a warning.
+- Other method types have no equivalent and are skipped with a warning; on FXC→WC that includes `table_rate`.
+
+Products carry `shipping_class` (a slug; on a variation `''` follows the product). A slug that the shipping stage did not bring, because it was left out of the job, is added to `shipping_classes` with a name made from the slug.
 
 A second run replaces the zones and methods it created, in place; zones and methods made in the target by hand stay, and new zones are added after the existing ones, before "everywhere else". A method deleted in the source since the last run stays in the target.
 

@@ -221,6 +221,9 @@ final class ProductInput {
 		if ( array_key_exists( 'tax_class', $data ) ) {
 			$out['tax_class'] = is_scalar( $data['tax_class'] ) ? substr( sanitize_title( (string) $data['tax_class'] ), 0, 50 ) : '';
 		}
+		if ( array_key_exists( 'shipping_class', $data ) ) {
+			$out['shipping_class'] = is_scalar( $data['shipping_class'] ) ? substr( sanitize_title( (string) $data['shipping_class'] ), 0, 50 ) : '';
+		}
 		if ( array_key_exists( 'tax_status', $data ) ) {
 			$out['tax_status'] = self::one_of( $data['tax_status'], Variant::TAX_STATUSES, $path . '.tax_status' );
 		}

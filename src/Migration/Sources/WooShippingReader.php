@@ -17,11 +17,28 @@ defined( 'ABSPATH' ) || exit;
  * different amount than the old store did.
  */
 final class WooShippingReader {
+	/** @var array<int,array{slug:string,name:string}> shipping class terms by id */
+	private array $classes = [];
+
 	public function shipping(): ?Record {
 		if ( ! class_exists( \WC_Shipping_Zones::class ) ) {
 			return null;
 		}
-		$zones = [];
+		$classes = [];
+		$terms   = get_terms(
+			[
+				'taxonomy'   => 'product_shipping_class',
+				'hide_empty' => false,
+			]
+		);
+		foreach ( is_array( $terms ) ? $terms : [] as $term ) {
+			$classes[ $term->term_id ] = [
+				'slug' => $term->slug,
+				'name' => $term->name,
+			];
+		}
+		$this->classes = $classes;
+		$zones         = [];
 		foreach ( \WC_Shipping_Zones::get_shipping_zones() as $zone ) {
 			$zones[] = $this->zone( $zone );
 		}
@@ -30,6 +47,7 @@ final class WooShippingReader {
 			Ref::make( 'wc', Record::SHIPPING, 1 ),
 			[
 				'currency' => (string) get_option( 'woocommerce_currency', 'USD' ),
+				'classes'  => array_values( $classes ),
 				'zones'    => $zones,
 				'rest'     => [ 'methods' => $this->methods( new \WC_Shipping_Zone( 0 ) ) ],
 			]
@@ -64,7 +82,7 @@ final class WooShippingReader {
 	private function methods( \WC_Shipping_Zone $zone ): array {
 		$out = [];
 		foreach ( $zone->get_shipping_methods( false, 'json' ) as $method ) {
-			$out[] = self::method( $method );
+			$out[] = self::method( $method, $this->classes );
 		}
 		return $out;
 	}
@@ -73,9 +91,10 @@ final class WooShippingReader {
 	 * Canonical form of one zone method, from the public properties of a
 	 * WC_Shipping_Method (the "json" context of get_shipping_methods).
 	 *
+	 * @param array<int,array{slug:string,name:string}> $classes shipping class terms by id
 	 * @return array<string,mixed>
 	 */
-	public static function method( object $method ): array {
+	public static function method( object $method, array $classes = [] ): array {
 		$type     = (string) ( $method->id ?? '' );
 		$settings = is_array( $method->instance_settings ?? null ) ? $method->instance_settings : [];
 		$text     = static fn ( string $key ): string => is_scalar( $settings[ $key ] ?? null ) ? trim( (string) $settings[ $key ] ) : '';
@@ -98,13 +117,7 @@ final class WooShippingReader {
 			$out['cost'] = $cost[0];
 			if ( $type === 'flat_rate' ) {
 				$out['cost_per_item'] = $cost[1];
-				foreach ( $settings as $key => $value ) {
-					if ( ( str_starts_with( (string) $key, 'class_cost_' ) || $key === 'no_class_cost' ) && is_scalar( $value ) && trim( (string) $value ) !== '' ) {
-						$out['supported'] = false;
-						$out['notes'][]   = 'Shipping class costs are not supported.';
-						break;
-					}
-				}
+				$out                  = self::class_costs( $out, $settings, $classes );
 			} elseif ( $cost[1] !== '0' ) {
 				$out['supported'] = false;
 				$out['notes'][]   = 'Local pickup has no cost per item in FlexaCommerce.';
@@ -119,6 +132,53 @@ final class WooShippingReader {
 		} else {
 			$out['settings'] = $settings;
 		}
+		return $out;
+	}
+
+	/**
+	 * Flat rate class costs: `class_cost_{term id}` (or the older
+	 * `class_cost_{slug}`) and `no_class_cost`, each a cost formula where
+	 * [qty] counts the items of that class. A cost for a class that no
+	 * longer exists is dropped, as WooCommerce never charges it.
+	 *
+	 * @param array<string,mixed>                       $out
+	 * @param array<array-key,mixed>                    $settings
+	 * @param array<int,array{slug:string,name:string}> $classes
+	 * @return array<string,mixed>
+	 */
+	private static function class_costs( array $out, array $settings, array $classes ): array {
+		$by_slug = array_column( $classes, 'slug', 'slug' );
+		$rows    = [];
+		foreach ( $settings as $key => $value ) {
+			$key = (string) $key;
+			if ( ! is_scalar( $value ) || trim( (string) $value ) === '' ) {
+				continue;
+			}
+			if ( $key === 'no_class_cost' ) {
+				$slug = '';
+			} elseif ( str_starts_with( $key, 'class_cost_' ) ) {
+				$suffix = substr( $key, strlen( 'class_cost_' ) );
+				$slug   = ctype_digit( $suffix ) && isset( $classes[ (int) $suffix ] ) ? $classes[ (int) $suffix ]['slug'] : ( $by_slug[ $suffix ] ?? null );
+				if ( $slug === null || isset( $rows[ $slug ] ) ) {
+					continue;
+				}
+			} else {
+				continue;
+			}
+			$cost = self::cost( (string) $value );
+			if ( $cost === null ) {
+				$out['supported'] = false;
+				$out['notes'][]   = sprintf( 'The class cost formula "%s" cannot be converted; only a fixed cost plus a cost per item is supported.', trim( (string) $value ) );
+				continue;
+			}
+			$rows[ $slug ] = [
+				'class'         => $slug,
+				'cost'          => $cost[0],
+				'cost_per_item' => $cost[1],
+			];
+		}
+		$out['class_costs']       = array_values( $rows );
+		$out['class_calculation'] = ( $settings['type'] ?? 'class' ) === 'order' ? 'per_order' : 'per_class';
 		return $out;
 	}
 

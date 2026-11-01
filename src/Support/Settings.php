@@ -20,7 +20,7 @@ final class Settings {
 	 * be empty) | enum:a|b|c | int:min:max | country (ISO alpha-2) |
 	 * countries (list of ISO alpha-2, empty means all) | state (up to 20
 	 * upper-case characters) | tax_class (a class slug or `inherit`) |
-	 * tax_classes | tax_markets | tax_rates (internal, see INTERNAL).
+	 * tax_classes | shipping_classes | tax_markets | tax_rates (internal, see INTERNAL).
 	 *
 	 * @var array<string,array{0:string,1:mixed}>
 	 */
@@ -103,6 +103,8 @@ final class Settings {
 		'price_display_suffix'     => [ 'string', '' ],
 		'tax_total_display'        => [ 'enum:itemized|single', 'itemized' ],
 		'tax_markets'              => [ 'tax_markets', [] ],
+		// Products pick one; flat rate and table rate price by it (ADR-068).
+		'shipping_classes'         => [ 'shipping_classes', [] ],
 		'tax_base_rates'           => [ 'tax_rates', [] ],
 		'cutover_redirects'        => [ 'bool', false ],
 	];
@@ -286,7 +288,7 @@ final class Settings {
 			$slug = is_scalar( $value ) ? sanitize_title( (string) $value ) : '';
 			return $slug === '' && $value !== '' ? $default : $slug;
 		}
-		if ( $type === 'tax_classes' ) {
+		if ( $type === 'tax_classes' || $type === 'shipping_classes' ) {
 			return TaxSettings::classes( $value, $default );
 		}
 		if ( $type === 'tax_markets' ) {

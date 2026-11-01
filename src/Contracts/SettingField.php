@@ -14,7 +14,11 @@ defined( 'ABSPATH' ) || exit;
  * @api
  */
 final class SettingField {
-	public const TYPES = [ 'text', 'textarea', 'secret', 'checkbox', 'select', 'number', 'money' ];
+	/**
+	 * `class_costs` and `rate_table` hold the shipping class costs and the
+	 * rows of a table rate (ADR-068); core renders and sanitizes them.
+	 */
+	public const TYPES = [ 'text', 'textarea', 'secret', 'checkbox', 'select', 'number', 'money', 'class_costs', 'rate_table' ];
 
 	/** @param array<string,string> $options value => label, for `select` */
 	public function __construct(

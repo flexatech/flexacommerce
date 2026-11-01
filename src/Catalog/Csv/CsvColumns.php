@@ -20,7 +20,6 @@ final class CsvColumns {
 		'global_unique_id'  => 'GTIN, UPC, EAN, or ISBN',
 		'sold_individually' => 'Sold individually?',
 		'purchase_note'     => 'Purchase note',
-		'shipping_class_id' => 'Shipping class',
 		'upsell_ids'        => 'Upsells',
 		'cross_sell_ids'    => 'Cross-sells',
 		'brand_ids'         => 'Brands',
@@ -64,6 +63,7 @@ final class CsvColumns {
 			'date_on_sale_to'    => 'Date sale price ends',
 			'tax_status'         => 'Tax status',
 			'tax_class'          => 'Tax class',
+			'shipping_class_id'  => 'Shipping class',
 			'stock_status'       => 'In stock?',
 			'stock_quantity'     => 'Stock',
 			'low_stock_amount'   => 'Low stock amount',
@@ -109,6 +109,7 @@ final class CsvColumns {
 			'date_on_sale_to'    => __( 'Sale ends', 'flexacommerce' ),
 			'tax_status'         => __( 'Tax status', 'flexacommerce' ),
 			'tax_class'          => __( 'Tax class', 'flexacommerce' ),
+			'shipping_class_id'  => __( 'Shipping class', 'flexacommerce' ),
 			'stock_status'       => __( 'Stock status', 'flexacommerce' ),
 			'stock_quantity'     => __( 'Stock quantity', 'flexacommerce' ),
 			'low_stock_amount'   => __( 'Low stock threshold', 'flexacommerce' ),
@@ -131,6 +132,22 @@ final class CsvColumns {
 			'button_text'        => __( 'Button text', 'flexacommerce' ),
 			'menu_order'         => __( 'Position', 'flexacommerce' ),
 		];
+	}
+
+	/**
+	 * The store's shipping classes, slug => name (ADR-068). The CSV holds
+	 * the name, as WooCommerce writes it.
+	 *
+	 * @return array<string,string>
+	 */
+	public static function shipping_classes(): array {
+		$out = [];
+		foreach ( (array) Settings::get( 'shipping_classes' ) as $class ) {
+			if ( is_array( $class ) && is_string( $class['slug'] ?? null ) ) {
+				$out[ $class['slug'] ] = (string) ( $class['name'] ?? $class['slug'] );
+			}
+		}
+		return $out;
 	}
 
 	/** The English header of a numbered or custom-field key. */

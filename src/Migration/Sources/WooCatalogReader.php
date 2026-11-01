@@ -411,6 +411,7 @@ final class WooCatalogReader {
 			'width_mm'            => Decimal::to_base( Decimal::clean( $product->get_width( 'edit' ) ), $dimension ),
 			'height_mm'           => Decimal::to_base( Decimal::clean( $product->get_height( 'edit' ) ), $dimension ),
 			'tax_class'           => $product->get_tax_class( 'edit' ),
+			'shipping_class'      => self::shipping_class( $product ),
 			'tax_status'          => $product->get_tax_status( 'edit' ),
 			'image'               => $image > 0 ? Ref::make( 'wp', 'attachment', $image ) : null,
 			'description'         => $variation ? $product->get_description( 'edit' ) : null,
@@ -418,6 +419,13 @@ final class WooCatalogReader {
 			'downloadable'        => $product->get_downloadable( 'edit' ),
 			'downloads'           => self::downloads( $product ),
 		];
+	}
+
+	/** The class slug; '' is no class, or on a variation the parent's class (ADR-068). */
+	private static function shipping_class( \WC_Product $product ): string {
+		$id   = (int) $product->get_shipping_class_id( 'edit' );
+		$term = $id > 0 ? get_term( $id, 'product_shipping_class' ) : null;
+		return $term instanceof \WP_Term ? $term->slug : '';
 	}
 
 	/**

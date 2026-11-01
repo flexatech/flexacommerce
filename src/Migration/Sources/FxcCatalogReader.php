@@ -281,6 +281,7 @@ final class FxcCatalogReader {
 			'width_mm'            => $size( $row->width ),
 			'height_mm'           => $size( $row->height ),
 			'tax_class'           => $row->tax_class,
+			'shipping_class'      => $row->shipping_class,
 			'tax_status'          => $row->tax_status,
 			'image'               => $row->image_id !== null && $row->image_id > 0 ? Ref::make( 'wp', 'attachment', $row->image_id ) : null,
 			'description'         => $base ? null : (string) $row->description,

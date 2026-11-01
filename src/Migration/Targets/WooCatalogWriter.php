@@ -14,6 +14,7 @@ use Flexa\Commerce\Migration\Canonical\Rejected;
 use Flexa\Commerce\Migration\Job;
 use Flexa\Commerce\Migration\Mapping;
 use Flexa\Commerce\Migration\Sources\WooCatalogReader;
+use Flexa\Commerce\Shipping\ShippingClasses;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -367,6 +368,9 @@ final class WooCatalogWriter {
 		if ( array_key_exists( 'tax_class', $row ) ) {
 			$product->set_tax_class( (string) $row['tax_class'] );
 		}
+		if ( is_string( $row['shipping_class'] ?? null ) ) {
+			$product->set_shipping_class_id( self::shipping_class_id( $row['shipping_class'] ) );
+		}
 		if ( in_array( $row['tax_status'] ?? null, [ 'taxable', 'shipping', 'none' ], true ) ) {
 			$product->set_tax_status( (string) $row['tax_status'] );
 		}
@@ -546,6 +550,26 @@ final class WooCatalogWriter {
 			}
 		}
 		return $ids;
+	}
+
+	/** The term id of a shipping class slug, made when WooCommerce lacks it; 0 for no class. */
+	private static function shipping_class_id( string $slug ): int {
+		$slug = sanitize_title( $slug );
+		if ( $slug === '' ) {
+			return 0;
+		}
+		$term = get_term_by( 'slug', $slug, 'product_shipping_class' );
+		if ( $term instanceof \WP_Term ) {
+			return $term->term_id;
+		}
+		$name = $slug;
+		foreach ( ShippingClasses::all() as $class ) {
+			if ( $class['slug'] === $slug ) {
+				$name = $class['name'];
+			}
+		}
+		$created = wp_insert_term( $name, 'product_shipping_class', [ 'slug' => $slug ] );
+		return is_wp_error( $created ) ? 0 : (int) $created['term_id'];
 	}
 
 	private static function amount( mixed $money ): string {

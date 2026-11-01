@@ -9,7 +9,7 @@ import { MoneyInput } from "./MoneyInput";
 /** A setting declared by a gateway or shipping method (PHP SettingField::to_array). */
 export interface SettingField {
     id: string;
-    type: "text" | "textarea" | "secret" | "checkbox" | "select" | "number" | "money";
+    type: "text" | "textarea" | "secret" | "checkbox" | "select" | "number" | "money" | "class_costs" | "rate_table";
     label: string;
     default: unknown;
     description: string;

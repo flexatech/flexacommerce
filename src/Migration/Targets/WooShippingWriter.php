@@ -22,6 +22,9 @@ final class WooShippingWriter {
 	/** @var list<Problem> */
 	private array $problems = [];
 
+	/** @var array<string,int> shipping class term ids by slug */
+	private array $classes = [];
+
 	public function __construct( private readonly WooShippingRepository $repository ) {}
 
 	public function shipping( Record $record, Mapping $map ): WriteResult {
@@ -31,7 +34,8 @@ final class WooShippingWriter {
 		if ( $source !== '' && $source !== get_woocommerce_currency() ) {
 			$this->problems[] = Problem::warning( 'shipping_currency', sprintf( 'Shipping amounts are in %1$s and WooCommerce uses %2$s. The numbers are copied as they are.', $source, get_woocommerce_currency() ) );
 		}
-		$order = 0;
+		$this->classes = $this->classes( (array) ( $data['classes'] ?? [] ) );
+		$order         = 0;
 		foreach ( \WC_Shipping_Zones::get_shipping_zones() as $zone ) {
 			$order = max( $order, (int) $zone->get_zone_order( 'edit' ) );
 		}
@@ -119,13 +123,65 @@ final class WooShippingWriter {
 		$out['tax_status'] = array_key_exists( 'taxable', $row ) && ! $row['taxable'] ? 'none' : 'taxable';
 		$fixed             = $amount( 'cost' );
 		$item              = $type === 'flat_rate' ? $amount( 'cost_per_item' ) : '0';
-		$out['cost']       = match ( true ) {
+		$out['cost']       = self::formula( $fixed, $item );
+		if ( $type === 'flat_rate' && isset( $row['class_costs'] ) ) {
+			$out['type']          = ( $row['class_calculation'] ?? '' ) === 'per_order' ? 'order' : 'class';
+			$out['no_class_cost'] = '';
+			foreach ( array_keys( $this->classes ) as $slug ) {
+				$out[ 'class_cost_' . $this->classes[ $slug ] ] = '';
+			}
+			foreach ( (array) $row['class_costs'] as $cost ) {
+				if ( ! is_array( $cost ) ) {
+					continue;
+				}
+				$slug    = (string) ( $cost['class'] ?? '' );
+				$formula = self::formula( Decimal::clean( $cost['cost'] ?? null ) ?? '0', Decimal::clean( $cost['cost_per_item'] ?? null ) ?? '0' );
+				if ( $slug === '' ) {
+					$out['no_class_cost'] = $formula;
+				} elseif ( isset( $this->classes[ $slug ] ) ) {
+					$out[ 'class_cost_' . $this->classes[ $slug ] ] = $formula;
+				}
+			}
+		}
+		if ( $type === 'local_pickup' && trim( (string) ( $row['location'] ?? '' ) ) !== '' ) {
+			$this->problems[] = Problem::warning( 'pickup_location', sprintf( 'WooCommerce local pickup has no address field; the pickup address of "%s" was not copied.', $title ), [ 'method' => (string) ( $row['id'] ?? '' ) ] );
+		}
+		return $out;
+	}
+
+	private static function formula( string $fixed, string $item ): string {
+		return match ( true ) {
 			$item === '0'  => wc_format_localized_price( $fixed ),
 			$fixed === '0' => wc_format_localized_price( $item ) . ' * [qty]',
 			default        => wc_format_localized_price( $fixed ) . ' + ' . wc_format_localized_price( $item ) . ' * [qty]',
 		};
-		if ( $type === 'local_pickup' && trim( (string) ( $row['location'] ?? '' ) ) !== '' ) {
-			$this->problems[] = Problem::warning( 'pickup_location', sprintf( 'WooCommerce local pickup has no address field; the pickup address of "%s" was not copied.', $title ), [ 'method' => (string) ( $row['id'] ?? '' ) ] );
+	}
+
+	/**
+	 * The shipping class terms, made for the classes WooCommerce lacks.
+	 *
+	 * @param array<array-key,mixed> $rows
+	 * @return array<string,int> term ids by slug
+	 */
+	private function classes( array $rows ): array {
+		$out = [];
+		foreach ( $rows as $row ) {
+			$slug = is_array( $row ) ? sanitize_title( (string) ( $row['slug'] ?? '' ) ) : '';
+			if ( $slug === '' ) {
+				continue;
+			}
+			$term = get_term_by( 'slug', $slug, 'product_shipping_class' );
+			if ( $term instanceof \WP_Term ) {
+				$out[ $slug ] = $term->term_id;
+				continue;
+			}
+			$name    = sanitize_text_field( (string) ( $row['name'] ?? '' ) );
+			$created = wp_insert_term( $name === '' ? $slug : $name, 'product_shipping_class', [ 'slug' => $slug ] );
+			if ( is_wp_error( $created ) ) {
+				$this->problems[] = Problem::warning( 'shipping_class_failed', sprintf( 'The shipping class "%1$s" could not be created: %2$s', $slug, $created->get_error_message() ) );
+				continue;
+			}
+			$out[ $slug ] = (int) $created['term_id'];
 		}
 		return $out;
 	}

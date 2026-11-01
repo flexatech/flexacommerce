@@ -38,6 +38,9 @@ export interface FlexaCommerceGlobal {
     attributesAdminUrl?: string;
     /** Standard (slug "") first, then the store's classes. */
     taxClasses?: { slug: string; name: string }[];
+    /** The store's shipping classes (ADR-068), without "No shipping class". */
+    shippingClasses?: { slug: string; name: string }[];
+    shippingSettingsUrl?: string;
 }
 
 declare global {

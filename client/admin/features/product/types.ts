@@ -53,6 +53,8 @@ export interface VariantRow {
     tax_class: string;
     /** Only the base row's value is used; WooCommerce reads it from the parent too. */
     tax_status: TaxStatus;
+    /** '' is no class on the product and "same as product" on a variation (ADR-068). */
+    shipping_class: string;
     description: string | null;
     /** Nothing to ship: no shipping address or rate at checkout. */
     virtual: boolean;

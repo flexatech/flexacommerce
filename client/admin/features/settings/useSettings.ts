@@ -28,6 +28,8 @@ export interface Settings {
     shipping_tax_class: string;
     tax_round_at_subtotal: boolean;
     tax_classes: { slug: string; name: string }[];
+    /** Products pick one; flat rate and table rate price by it (ADR-068). */
+    shipping_classes: { slug: string; name: string }[];
     tax_display_shop: "excl" | "incl";
     tax_display_cart: "excl" | "incl";
     price_display_suffix: string;

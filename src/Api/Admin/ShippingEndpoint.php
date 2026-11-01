@@ -8,6 +8,7 @@ use Flexa\Commerce\Api\Endpoint;
 use Flexa\Commerce\Contracts\SettingField;
 use Flexa\Commerce\Plugin;
 use Flexa\Commerce\Shipping\MethodInstance;
+use Flexa\Commerce\Shipping\ShippingClasses;
 use Flexa\Commerce\Shipping\Zone;
 use Flexa\Commerce\Support\Countries;
 use Flexa\Commerce\Support\FieldValues;
@@ -148,7 +149,20 @@ final class ShippingEndpoint extends Endpoint {
 			'zones'     => $zones,
 			'methods'   => $types,
 			'countries' => self::countries(),
+			'classes'   => self::classes(),
 		];
+	}
+
+	/** @return list<array{slug:string,name:string,products:int}> the store's shipping classes and how many products use each */
+	private static function classes(): array {
+		$counts = Plugin::instance()->catalog()->variants()->shipping_class_counts();
+		return array_map(
+			static fn ( array $class ): array => [
+				...$class,
+				'products' => $counts[ $class['slug'] ] ?? 0,
+			],
+			ShippingClasses::all()
+		);
 	}
 
 	/** @return list<array{code:string,name:string,states:list<array{code:string,name:string}>}> */
