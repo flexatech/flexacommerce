@@ -13,6 +13,9 @@ defined( 'ABSPATH' ) || exit;
  * A row of fxc_subscriptions (ADR-073). Dates are UTC `Y-m-d H:i:s`.
  * `billed` counts the periods paid for, the first order's included unless
  * it only started a trial; `anchor_day` keeps a monthly plan on its day.
+ * `payment_token` is the saved method renewals charge (ADR-074): null
+ * until it is looked up, '' when the payment saved none. `retry_count`
+ * and `retry_at` follow a failed automatic charge.
  */
 final class Subscription {
 	public function __construct(
@@ -28,6 +31,11 @@ final class Subscription {
 		public readonly ?int $parent_order_id,
 		public readonly string $payment_method,
 		public readonly string $payment_method_title,
+		public readonly string $payment_customer,
+		public readonly ?string $payment_token,
+		public readonly string $payment_label,
+		public readonly int $retry_count,
+		public readonly ?string $retry_at,
 		public readonly ?Snapshot $snapshot,
 		public readonly ?AddressView $billing,
 		public readonly ?AddressView $shipping,
@@ -63,6 +71,11 @@ final class Subscription {
 			parent_order_id: isset( $row['parent_order_id'] ) ? (int) $row['parent_order_id'] : null,
 			payment_method: (string) ( $row['payment_method'] ?? '' ),
 			payment_method_title: (string) ( $row['payment_method_title'] ?? '' ),
+			payment_customer: (string) ( $row['payment_customer'] ?? '' ),
+			payment_token: isset( $row['payment_token'] ) ? (string) $row['payment_token'] : null,
+			payment_label: (string) ( $row['payment_label'] ?? '' ),
+			retry_count: (int) ( $row['retry_count'] ?? 0 ),
+			retry_at: $at( $row['retry_at'] ?? null ),
 			snapshot: $snapshot,
 			billing: self::address( 'billing', $row['billing'] ?? null ),
 			shipping: self::address( 'shipping', $row['shipping'] ?? null ),
@@ -102,6 +115,11 @@ final class Subscription {
 		return $this->trial_end_at !== null && $now < $this->trial_end_at;
 	}
 
+	/** Whether renewals charge a saved method by themselves. */
+	public function is_automatic(): bool {
+		return $this->payment_token !== null && $this->payment_token !== '';
+	}
+
 	public function title(): string {
 		return $this->snapshot?->title() ?? '';
 	}
@@ -123,6 +141,10 @@ final class Subscription {
 			'parent_order_id'      => $this->parent_order_id,
 			'payment_method'       => $this->payment_method,
 			'payment_method_title' => $this->payment_method_title,
+			'payment_label'        => $this->payment_label,
+			'automatic'            => $this->is_automatic(),
+			'retry_count'          => $this->retry_count,
+			'retry_at'             => $iso( $this->retry_at ),
 			'start_at'             => $iso( $this->start_at ),
 			'trial_end_at'         => $iso( $this->trial_end_at ),
 			'next_payment_at'      => $iso( $this->next_payment_at ),

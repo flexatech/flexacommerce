@@ -27,6 +27,9 @@ use Flexa\Commerce\Subscriptions\Subscription;
 use Flexa\Commerce\Subscriptions\SubscriptionService;
 use Flexa\Commerce\Subscriptions\SubscriptionStatus;
 use Flexa\Commerce\Tests\Integration\Orders\OrderTestCase;
+use Flexa\Commerce\Tests\Integration\Payments\FakeStripe;
+use Flexa\Commerce\Payments\Gateways\Stripe\StripeGateway;
+use Flexa\Commerce\Notifications\Emails\CustomerRenewalInvoice;
 
 /**
  * Subscriptions with manual renewals (ADR-073): checkout makes a pending
@@ -52,6 +55,8 @@ final class SubscriptionTest extends OrderTestCase {
 	private int $user = 0;
 
 	private int $last_user = 0;
+
+	private bool $stripe = false;
 
 	public function set_up(): void {
 		parent::set_up();
@@ -80,6 +85,13 @@ final class SubscriptionTest extends OrderTestCase {
 		global $wpdb;
 		delete_option( GatewaySettings::PREFIX . 'cod' );
 		delete_option( GatewaySettings::PREFIX . 'bacs' );
+		if ( $this->stripe ) {
+			FakeStripe::uninstall();
+			delete_option( GatewaySettings::PREFIX . StripeGateway::ID );
+			delete_option( StripeGateway::STATUS_OPTION );
+			\Flexa\Commerce\Support\WalletPlaces::put( StripeGateway::ID, [] );
+			FakeStripe::forget( StripeGateway::ID );
+		}
 		wp_set_current_user( 0 );
 		$_POST = [];
 		$_GET  = [];
@@ -352,6 +364,188 @@ final class SubscriptionTest extends OrderTestCase {
 		unset( $_SERVER['HTTP_REFERER'] );
 	}
 
+	public function test_stripe_saves_the_card_on_the_first_order_and_charges_renewals_with_it(): void {
+		$this->stripe();
+		FakeStripe::$routes['POST payment_intents'] = [ 200, self::intent( 'pi_first', 'succeeded', 1500 ) ];
+		$order                                      = $this->buy( $this->user, $this->plan_product( 1000, [ 'period' => 'month' ] ), 1, [], StripeGateway::ID, self::CARD );
+		$first                                      = FakeStripe::calls_to( 'POST', 'payment_intents' )[0]['body'];
+		self::assertSame( [ 'cus_ada', 'off_session' ], [ $first['customer'], $first['setup_future_usage'] ] );
+		self::assertSame( 'cus_ada', get_user_option( StripeGateway::CUSTOMER_OPTION . 'test', $this->user ), 'The customer is kept for the next order.' );
+		$row = $this->only( $order );
+		self::assertSame( SubscriptionStatus::ACTIVE, $row->status );
+
+		// The cron reads the card the first payment saved.
+		FakeStripe::$calls = [];
+		self::assertSame( 0, $this->subs()->run() );
+		$row = $this->subs()->find( $row->id );
+		self::assertSame( [ 'cus_ada', 'pm_visa', 'Visa ending in 4242', true ], [ $row?->payment_customer, $row?->payment_token, $row?->payment_label, $row?->is_automatic() ] );
+		self::assertSame( [ 'payment_method' ], FakeStripe::calls_to( 'GET', 'payment_intents/pi_first' )[0]['query']['expand'] );
+
+		self::assertNotNull( $row );
+		$this->due( $row );
+		FakeStripe::$routes['POST payment_intents'] = [ 200, self::intent( 'pi_renew', 'succeeded', 1500 ) ];
+		$sent                                       = $this->watch( CustomerRenewalInvoice::DUE );
+		self::assertSame( 1, $this->subs()->run() );
+		$charge = array_slice( FakeStripe::calls_to( 'POST', 'payment_intents' ), -1 )[0]['body'];
+		self::assertSame( [ 'cus_ada', 'pm_visa', 'true', 'true', '1' ], [ $charge['customer'], $charge['payment_method'], $charge['off_session'], $charge['confirm'], $charge['metadata']['fxc_renewal'] ] );
+		$row = $this->subs()->find( $row->id );
+		self::assertSame( [ SubscriptionStatus::ACTIVE, 2, 'pm_visa' ], [ $row?->status, $row?->billed, $row?->payment_token ] );
+		self::assertNotNull( $row );
+		self::assertNull( $this->subs()->unpaid_renewal( $row ) );
+		self::assertSame( [], $sent(), 'No invoice for a renewal the card paid.' );
+	}
+
+	public function test_a_declined_renewal_is_tried_again_then_left_to_the_customer(): void {
+		$row                                        = $this->automatic();
+		$sent                                       = $this->watch( CustomerRenewalInvoice::DUE );
+		FakeStripe::$routes['POST payment_intents'] = [ 402, self::declined() ];
+		$this->due( $row );
+		reset_phpmailer_instance();
+		self::assertSame( 1, $this->subs()->run() );
+		$mails = array_values( array_filter( tests_retrieve_phpmailer_instance()->mock_sent, static fn ( array $m ): bool => str_contains( (string) $m['subject'], 'subscription payment failed' ) ) );
+		self::assertCount( 1, $mails );
+		self::assertSame( 'ada@example.com', $mails[0]['to'][0][0] );
+		self::assertStringContainsString( 'Your card was declined', (string) $mails[0]['body'] );
+		self::assertStringContainsString( 'Change the payment method', (string) $mails[0]['body'] );
+		$row = $this->subs()->find( $row->id );
+		self::assertNotNull( $row );
+		self::assertSame( [ SubscriptionStatus::ON_HOLD, 1 ], [ $row->status, $row->retry_count ] );
+		self::assertNotNull( $row->retry_at );
+		self::assertSame( 1, $sent()[0]['attempt'] );
+		self::assertStringContainsString( 'Your card was declined', (string) $sent()[0]['failed'] );
+		self::assertFalse( $sent()[0]['final'] );
+		$renewal = $this->subs()->unpaid_renewal( $row );
+		self::assertNotNull( $renewal );
+
+		// The second and third tries fail quietly; the fourth is the last and says so.
+		foreach ( [ 2, 3, 4 ] as $attempt ) {
+			$this->subs()->repository()->update( $row->id, [ 'retry_at' => '2020-01-01 00:00:00' ], '2020-01-01 00:00:00' );
+			self::assertSame( 1, $this->subs()->run() );
+			$row = $this->subs()->find( $row->id );
+			self::assertNotNull( $row );
+			self::assertSame( $attempt, $row->retry_count );
+		}
+		self::assertNull( $row->retry_at, 'No more tries.' );
+		self::assertSame( [ 1, 4 ], array_column( $sent(), 'attempt' ) );
+		self::assertTrue( $sent()[1]['final'] );
+		self::assertSame( 0, $this->subs()->run(), 'Nothing left to try.' );
+
+		// The merchant charges it again from the screen, and the card goes through this time.
+		FakeStripe::$routes['POST payment_intents'] = [ 200, self::intent( 'pi_late', 'succeeded', 1500 ) ];
+		wp_set_current_user( self::factory()->user->create( [ 'role' => 'administrator' ] ) );
+		$done = $this->send( 'POST', '/admin/subscriptions/' . $row->id . '/actions', [ 'action' => 'retry' ] );
+		self::assertSame( 200, $done->get_status() );
+		$body = (array) $done->get_data();
+		self::assertSame( [ 'succeeded', 'active', 0, null ], [ $body['charge']['result'], $body['status'], $body['retry_count'], $body['retry_at'] ] );
+		self::assertSame( OrderStatus::PROCESSING, $this->orders()->find( $renewal->id )?->status );
+	}
+
+	public function test_a_charge_cut_off_before_its_answer_is_sent_again_with_the_same_key(): void {
+		global $wpdb;
+		$row                                        = $this->automatic();
+		FakeStripe::$routes['POST payment_intents'] = [ 402, self::declined() ];
+		$this->due( $row );
+		$this->subs()->run();
+		$renewal = $this->subs()->unpaid_renewal( $this->subs()->find( $row->id ) ?? $row );
+		self::assertNotNull( $renewal );
+		$payments = Plugin::instance()->payments()->transactions();
+		$cut      = array_slice( $payments->for_order( $renewal->id ), -1 )[0];
+		// As if the request died after Stripe took the money: the row stays pending, no reference.
+		$wpdb->update( Schema::table( 'transactions' ), [ 'status' => 'pending' ], [ 'id' => $cut->id ] ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+
+		FakeStripe::$routes['POST payment_intents'] = [ 200, self::intent( 'pi_late', 'succeeded', 1500 ) ];
+		self::assertSame( 'succeeded', $this->subs()->retry_now( $row->id, new TransitionContext( 'admin', 1 ) )->type );
+		self::assertSame( $cut->idempotency_key, array_slice( FakeStripe::calls_to( 'POST', 'payment_intents' ), -1 )[0]['headers']['Idempotency-Key'] );
+		$rows = $payments->for_order( $renewal->id );
+		self::assertCount( count( $rows ), array_filter( $rows, static fn ( $t ): bool => $t->id <= $cut->id ), 'No new payment row.' );
+		self::assertSame( [ 'succeeded', 'pi_late' ], [ $payments->find( $cut->id )?->status, $payments->find( $cut->id )?->gateway_reference ] );
+	}
+
+	public function test_a_retry_that_goes_through_puts_the_subscription_back(): void {
+		$row                                        = $this->automatic();
+		FakeStripe::$routes['POST payment_intents'] = [ [ 402, self::declined() ], [ 200, self::intent( 'pi_ok', 'succeeded', 1500 ) ] ];
+		$this->due( $row );
+		$this->subs()->run();
+		$this->subs()->repository()->update( $row->id, [ 'retry_at' => '2020-01-01 00:00:00' ], '2020-01-01 00:00:00' );
+		self::assertSame( 1, $this->subs()->run() );
+		$row = $this->subs()->find( $row->id );
+		self::assertSame( [ SubscriptionStatus::ACTIVE, 0, null, 'pm_visa' ], [ $row?->status, $row?->retry_count, $row?->retry_at, $row?->payment_token ] );
+		$types = array_column( $this->subs()->repository()->events( (int) $row?->id, 20 ), 'type' );
+		self::assertContains( 'payment-failed', $types );
+		self::assertSame( 'renewal-paid', $types[0] );
+	}
+
+	public function test_the_customer_saves_a_new_card_and_the_unpaid_renewal_is_charged_to_it(): void {
+		Pages::install();
+		$row                                        = $this->automatic();
+		FakeStripe::$routes['POST payment_intents'] = [ 402, self::declined() ];
+		$this->due( $row );
+		$this->subs()->run();
+
+		wp_set_current_user( $this->user );
+		$_GET = [ 'fxc_view_subscription' => (string) $row->id ];
+		$html = $this->account()->render();
+		self::assertStringContainsString( 'Visa ending in 4242, charged automatically', $html );
+		self::assertStringContainsString( 'The automatic payment for your renewal failed. We will try again on', $html );
+		self::assertStringContainsString( 'Change payment method', $html );
+
+		FakeStripe::$routes['POST checkout/sessions'] = [
+			200,
+			[
+				'id'  => 'cs_setup',
+				'url' => 'https://checkout.stripe.com/c/pay/cs_setup',
+			],
+		];
+		$_POST                                        = [
+			AccountPage::ACTION => 'subscription',
+			AccountPage::NONCE  => wp_create_nonce( AccountPage::ACTION . '_subscription' ),
+			'subscription_id'   => (string) $row->id,
+			'subscription_do'   => 'card',
+		];
+		$_SERVER['HTTP_REFERER']                      = home_url( '/my-account/' );
+		self::assertSame( 'https://checkout.stripe.com/c/pay/cs_setup', $this->redirected() );
+		$setup = FakeStripe::calls_to( 'POST', 'checkout/sessions' )[0]['body'];
+		self::assertSame( [ 'setup', 'cus_ada', 'subscription-' . $row->id ], [ $setup['mode'], $setup['customer'], $setup['client_reference_id'] ] );
+		self::assertStringContainsString( 'fxc_setup={CHECKOUT_SESSION_ID}', $setup['success_url'] );
+
+		FakeStripe::$routes['GET checkout/sessions/cs_setup'] = [
+			200,
+			[
+				'id'                  => 'cs_setup',
+				'mode'                => 'setup',
+				'status'              => 'complete',
+				'client_reference_id' => 'subscription-' . $row->id,
+				'customer'            => 'cus_ada',
+				'setup_intent'        => [
+					'id'             => 'seti_1',
+					'status'         => 'succeeded',
+					'payment_method' => self::method( 'pm_master', 'mastercard', '4444' ),
+				],
+			],
+		];
+		FakeStripe::$routes['POST payment_intents']           = [ 200, self::intent( 'pi_new_card', 'succeeded', 1500 ) ];
+		$_POST = [];
+		$_GET  = [
+			'fxc_view_subscription' => (string) $row->id,
+			'fxc_setup'             => 'cs_setup',
+		];
+		self::assertStringContainsString( 'subscription_card_paid', $this->redirected() );
+		$row = $this->subs()->find( $row->id );
+		self::assertSame( [ SubscriptionStatus::ACTIVE, 'pm_master', 'Mastercard ending in 4444', 0 ], [ $row?->status, $row?->payment_token, $row?->payment_label, $row?->retry_count ] );
+		self::assertSame( 'pm_master', array_slice( FakeStripe::calls_to( 'POST', 'payment_intents' ), -1 )[0]['body']['payment_method'] );
+
+		// A session for another subscription is refused.
+		$_GET = [
+			'fxc_view_subscription' => (string) $row?->id,
+			'fxc_setup'             => 'cs_other',
+		];
+		FakeStripe::$routes['GET checkout/sessions/cs_other'] = [ 200, [ 'client_reference_id' => 'subscription-999' ] + FakeStripe::$routes['GET checkout/sessions/cs_setup'][1] ];
+		$this->account()->handle();
+		self::assertSame( 'pm_master', $this->subs()->find( (int) $row?->id )?->payment_token );
+		$_GET = [];
+		unset( $_SERVER['HTTP_REFERER'] );
+	}
+
 	public function test_privacy_exports_and_erases_only_ended_subscriptions(): void {
 		$order = $this->buy( $this->user, $this->plan_product( 1000, [ 'period' => 'month' ] ), 1 );
 		$this->orders()->record_payment( $order->id, $order->total, TransitionContext::system() );
@@ -374,6 +568,131 @@ final class SubscriptionTest extends OrderTestCase {
 		self::assertSame( [ true, false ], [ $gone['items_removed'], $gone['items_retained'] ] );
 		$row = $this->subs()->find( $row->id );
 		self::assertSame( [ '', null ], [ $row?->customer_email, $row?->billing ] );
+	}
+
+	private const CARD = [
+		'payment_method'      => 'pm_visa',
+		'payment_method_type' => 'card',
+	];
+
+	/** Stripe in test mode against FakeStripe, with a customer to make and the card the first payment saved. */
+	private function stripe(): void {
+		$this->stripe = true;
+		FakeStripe::install();
+		FakeStripe::connectable();
+		Plugin::instance()->payments()->gateways()->settings()->save(
+			Plugin::instance()->payments()->gateways()->get( StripeGateway::ID ) ?? throw new \LogicException( 'No Stripe.' ),
+			[
+				'enabled'              => true,
+				'mode'                 => 'test',
+				'test_publishable_key' => 'pk_test_abc123',
+				'test_secret_key'      => 'sk_test_abc123',
+			]
+		);
+		FakeStripe::$routes['POST customers']               = [ 200, [ 'id' => 'cus_ada' ] ];
+		FakeStripe::$routes['GET payment_intents/pi_first'] = [
+			200,
+			self::intent(
+				'pi_first',
+				'succeeded',
+				1500,
+				[
+					'customer'       => 'cus_ada',
+					'payment_method' => self::method( 'pm_visa', 'visa', '4242' ),
+				]
+			),
+		];
+	}
+
+	/** An active row paid by Stripe, its card read by the cron. */
+	private function automatic(): Subscription {
+		$this->stripe();
+		FakeStripe::$routes['POST payment_intents'] = [ 200, self::intent( 'pi_first', 'succeeded', 1500 ) ];
+		$order                                      = $this->buy( $this->user, $this->plan_product( 1000, [ 'period' => 'month' ] ), 1, [], StripeGateway::ID, self::CARD );
+		$this->subs()->run();
+		$row = $this->subs()->find( $this->only( $order )->id );
+		self::assertNotNull( $row );
+		self::assertTrue( $row->is_automatic() );
+		return $row;
+	}
+
+	/**
+	 * @param array<string,mixed> $extra
+	 * @return array<string,mixed>
+	 */
+	private static function intent( string $id, string $status, int $amount, array $extra = [] ): array {
+		return $extra + [
+			'id'              => $id,
+			'object'          => 'payment_intent',
+			'status'          => $status,
+			'amount'          => $amount,
+			'amount_received' => $status === 'succeeded' ? $amount : 0,
+			'currency'        => 'usd',
+			'livemode'        => false,
+		];
+	}
+
+	/** @return array<string,mixed> */
+	private static function method( string $id, string $brand, string $last4 ): array {
+		return [
+			'id'       => $id,
+			'object'   => 'payment_method',
+			'type'     => 'card',
+			'customer' => 'cus_ada',
+			'card'     => [
+				'brand' => $brand,
+				'last4' => $last4,
+			],
+		];
+	}
+
+	/** @return array<string,mixed> */
+	private static function declined(): array {
+		return [
+			'error' => [
+				'type'         => 'card_error',
+				'code'         => 'card_declined',
+				'decline_code' => 'insufficient_funds',
+				'message'      => 'Your card was declined.',
+			],
+		];
+	}
+
+	/**
+	 * Collects the context of each call to a hook.
+	 *
+	 * @return \Closure(): list<array<string,mixed>>
+	 */
+	private function watch( string $hook ): \Closure {
+		$seen = [];
+		add_action(
+			$hook,
+			static function ( mixed $order, array $context ) use ( &$seen ): void {
+				unset( $order );
+				$seen[] = $context;
+			},
+			10,
+			2
+		);
+		return static function () use ( &$seen ): array {
+			return $seen;
+		};
+	}
+
+	/** Where AccountPage::handle() sends the browser. */
+	private function redirected(): string {
+		$stop = static function ( string $location ): never {
+			throw new \RuntimeException( $location );
+		};
+		add_filter( 'wp_redirect', $stop );
+		try {
+			$this->account()->handle();
+		} catch ( \RuntimeException $e ) {
+			return $e->getMessage();
+		} finally {
+			remove_filter( 'wp_redirect', $stop );
+		}
+		self::fail( 'No redirect.' );
 	}
 
 	private function account(): AccountPage {
@@ -414,8 +733,11 @@ final class SubscriptionTest extends OrderTestCase {
 		$this->subs()->repository()->update( $row->id, [ 'next_payment_at' => '2020-01-01 00:00:00' ], '2020-01-01 00:00:00' );
 	}
 
-	/** @param array<string,string> $billing */
-	private function buy( int $user_id, int $product_id, int $qty, array $billing = [], string $method = 'bacs' ): Order {
+	/**
+	 * @param array<string,string> $billing
+	 * @param array<string,string> $input
+	 */
+	private function buy( int $user_id, int $product_id, int $qty, array $billing = [], string $method = 'bacs', array $input = [] ): Order {
 		$plugin  = Plugin::instance();
 		$browser = new CartServices( $plugin->services(), $plugin->catalog(), new MemoryTokenStore() );
 		$browser->cart()->add( $user_id, $product_id, $this->service()->get( $product_id )->base->id, $qty );
@@ -428,6 +750,7 @@ final class SubscriptionTest extends OrderTestCase {
 					'billing'        => $billing + self::BILLING,
 					'shipping_rate'  => $this->rate_id,
 					'payment_method' => $method,
+					'gateway_input'  => $input,
 				],
 				$user_id,
 				'203.0.113.9'

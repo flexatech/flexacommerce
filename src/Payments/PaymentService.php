@@ -131,6 +131,55 @@ final class PaymentService {
 	}
 
 	/**
+	 * Charge a saved method for what a renewal order owes, with nobody at
+	 * the screen (ADR-074). A redirect or a bank asking the customer to
+	 * confirm counts as a failure: the customer pays from the invoice email.
+	 * A pending result (a bank debit) settles later by webhook.
+	 */
+	public function charge_saved( Order $order, RecurringGateway $gateway, SavedMethod $method ): PaymentResult {
+		// A saved-method charge that died before the answer was stored goes
+		// out again under its own key, so the provider charges it once.
+		$open    = array_values(
+			array_filter(
+				$this->transactions->for_order( $order->id ),
+				static fn ( Transaction $t ): bool => ! empty( $t->data['saved'] ) && $t->status === Transaction::PENDING && $t->gateway === $gateway->id() && (string) $t->gateway_reference === '' && $t->amount === $order->balance_due()
+			)
+		);
+		$txn     = $open[0] ?? $this->db->run(
+			fn (): Transaction => $this->must_find(
+				$this->transactions->insert( $order->id, Transaction::PAYMENT, Transaction::PENDING, Transaction::GATEWAY, $gateway->id(), $order->balance_due(), $order->currency, self::key(), $this->clock->db_now(), data: [ 'saved' => true ] )
+			)
+		);
+		$request = new PaymentRequest(
+			$txn->id,
+			$txn->idempotency_key,
+			$order->view(),
+			$txn->money(),
+			'',
+			'',
+			rest_url( 'flexacommerce/v1/webhooks/' . $gateway->id() ),
+		);
+		try {
+			$result = $gateway->charge_saved( $request, $method );
+		} catch ( \Throwable $e ) {
+			$this->log->error(
+				'Gateway {gateway} threw while charging a saved method for order {order_id}',
+				[
+					'gateway'   => $gateway->id(),
+					'order_id'  => $order->id,
+					'exception' => $e,
+				]
+			);
+			$result = PaymentResult::failed( 'gateway_error', __( 'The payment provider could not be reached.', 'flexacommerce' ) );
+		}
+		if ( $result->type === PaymentResult::REDIRECT || $result->type === PaymentResult::REQUIRES_ACTION ) {
+			$result = PaymentResult::failed( 'authentication_required', __( 'The bank asked the customer to confirm the payment.', 'flexacommerce' ) );
+		}
+		$this->apply_result( $txn, $gateway, $result );
+		return $result;
+	}
+
+	/**
 	 * Apply one event to the transaction it names. Returns what happened:
 	 * `applied`, `ignored` (terminal, not allowed, duplicate), `unknown`
 	 * (no such transaction) or `amount_mismatch`.

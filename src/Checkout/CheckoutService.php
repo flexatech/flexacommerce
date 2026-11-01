@@ -582,6 +582,7 @@ final class CheckoutService {
 			null,
 			$order->customer_id,
 			$this->item_count( $order ),
+			self::recurring( $order ),
 		);
 		$gateways = $this->payments->gateways()->available( $context );
 		$gateway  = $gateways[ $gateway_id ] ?? null;
@@ -636,6 +637,7 @@ final class CheckoutService {
 			null,
 			$order->customer_id,
 			$this->item_count( $order ),
+			self::recurring( $order ),
 		);
 		return $this->methods_view( $context );
 	}
@@ -867,6 +869,7 @@ final class CheckoutService {
 			$quote->rate?->id,
 			$user_id > 0 ? $user_id : null,
 			$quote->state->item_count(),
+			$this->subscriptions !== null && self::plan_groups( $quote->state ) !== [],
 		);
 	}
 
@@ -1302,6 +1305,19 @@ final class CheckoutService {
 			return $this->pages->pay_url( $order );
 		}
 		return $this->pages->confirmation_url( $order );
+	}
+
+	/** Whether paying the order should keep the payment method for renewals (ADR-074). */
+	private static function recurring( Order $order ): bool {
+		if ( $order->created_via === 'subscription' ) {
+			return true;
+		}
+		foreach ( $order->items as $item ) {
+			if ( isset( $item->meta['subscription'] ) ) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private function item_count( Order $order ): int {

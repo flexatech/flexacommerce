@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Flexa\Commerce\Payments\Gateways\Stripe;
 
+use Flexa\Commerce\Contracts\Orders\OrderView;
 use Flexa\Commerce\Contracts\Payments\AbstractPaymentGateway;
 use Flexa\Commerce\Contracts\Payments\CheckoutContext;
 use Flexa\Commerce\Contracts\Payments\CheckoutFields;
@@ -17,6 +18,8 @@ use Flexa\Commerce\Contracts\SettingField;
 use Flexa\Commerce\Contracts\ValidationResult;
 use Flexa\Commerce\Payments\ConnectedGateway;
 use Flexa\Commerce\Payments\ExpressGateway;
+use Flexa\Commerce\Payments\RecurringGateway;
+use Flexa\Commerce\Payments\SavedMethod;
 use Flexa\Commerce\Support\ClientIp;
 use Flexa\Commerce\Support\Currency;
 use Flexa\Commerce\Support\Settings;
@@ -31,9 +34,11 @@ defined( 'ABSPATH' ) || exit;
  * Stripe Checkout page instead. Returns are checked with the secret key,
  * so a forged return URL cannot mark an order paid. Apple Pay and Google
  * Pay buttons on the product page, the cart and the checkout use the
- * Express Checkout Element (ADR-053).
+ * Express Checkout Element (ADR-053). An order with a subscription saves
+ * the method on a Stripe customer, and renewals charge it off-session
+ * (ADR-074).
  */
-final class StripeGateway extends AbstractPaymentGateway implements ConnectedGateway, ExpressGateway {
+final class StripeGateway extends AbstractPaymentGateway implements ConnectedGateway, ExpressGateway, RecurringGateway {
 	public const ID = 'stripe';
 
 	/** What the last save learned from Stripe, per mode. Erased with the store's options. */
@@ -43,6 +48,9 @@ final class StripeGateway extends AbstractPaymentGateway implements ConnectedGat
 
 	/** Methods that need the shopper's agreement to a debit mandate. */
 	private const MANDATE = [ 'acss_debit', 'au_becs_debit', 'bacs_debit', 'sepa_debit', 'us_bank_account' ];
+
+	/** User option with the user's Stripe customer, per mode (ADR-074). */
+	public const CUSTOMER_OPTION = '_fxc_stripe_customer_';
 
 	public function __construct( private readonly string $api_base = StripeClient::BASE ) {}
 
@@ -155,13 +163,15 @@ final class StripeGateway extends AbstractPaymentGateway implements ConnectedGat
 			[],
 			FLEXACOMMERCE_URL . 'assets/frontend/stripe.js?ver=' . FLEXACOMMERCE_VERSION,
 			[
-				'key'      => $this->key( 'publishable_key' ),
-				'currency' => strtolower( $currency ),
-				'amount'   => (int) StripeAmount::to_stripe( $checkout->total ),
+				'key'       => $this->key( 'publishable_key' ),
+				'currency'  => strtolower( $currency ),
+				'amount'    => (int) StripeAmount::to_stripe( $checkout->total ),
 				// Store minor units to Stripe's, for the total the form holds.
-				'shift'    => StripeAmount::exponent( $currency ) - Currency::exponent( $currency ),
-				'locale'   => str_replace( '_', '-', determine_locale() ),
-				'fallback' => __( 'You will enter your payment details on a secure Stripe page after placing the order.', 'flexacommerce' ),
+				'shift'     => StripeAmount::exponent( $currency ) - Currency::exponent( $currency ),
+				'locale'    => str_replace( '_', '-', determine_locale() ),
+				// The form must ask for a method Stripe can charge again (ADR-074).
+				'recurring' => $checkout->recurring,
+				'fallback'  => __( 'You will enter your payment details on a secure Stripe page after placing the order.', 'flexacommerce' ),
 			]
 		);
 	}
@@ -189,8 +199,9 @@ final class StripeGateway extends AbstractPaymentGateway implements ConnectedGat
 			'transaction_id' => (string) $request->transaction_id,
 		];
 		$method   = is_string( $request->gateway_input['payment_method'] ?? null ) ? $request->gateway_input['payment_method'] : '';
+		$customer = self::recurring( $request->order ) ? $this->customer( $request->order, $request->idempotency_key ) : '';
 		if ( $method === '' ) {
-			return $this->checkout_session( $request, $amount, $metadata );
+			return $this->checkout_session( $request, $amount, $metadata, $customer );
 		}
 		$params = [
 			'amount'                    => $amount,
@@ -214,8 +225,22 @@ final class StripeGateway extends AbstractPaymentGateway implements ConnectedGat
 				],
 			];
 		}
+		if ( $customer !== '' ) {
+			$params['customer']           = $customer;
+			$params['setup_future_usage'] = 'off_session';
+		}
 		try {
-			$intent = $this->client()->post( 'payment_intents', $params, $request->idempotency_key );
+			try {
+				$intent = $this->client()->post( 'payment_intents', $params, $request->idempotency_key );
+			} catch ( StripeError $e ) {
+				if ( $customer === '' || ! self::missing_customer( $e ) ) {
+					throw $e;
+				}
+				// The customer was deleted in the Stripe Dashboard: make a new one.
+				$this->forget_customer( $request->order );
+				$params['customer'] = $this->customer( $request->order, $request->idempotency_key . '-again' );
+				$intent             = $this->client()->post( 'payment_intents', $params, $request->idempotency_key . '-again' );
+			}
 		} catch ( StripeError $e ) {
 			// A declined card, or an amount under Stripe's minimum: the shopper can act on these.
 			if ( $e->is_card_error() || in_array( $e->error['code'] ?? '', [ 'amount_too_small', 'amount_too_large' ], true ) ) {
@@ -244,6 +269,135 @@ final class StripeGateway extends AbstractPaymentGateway implements ConnectedGat
 			$error !== [] ? StripeEvents::reason( $error ) : 'canceled',
 			is_string( $error['message'] ?? null ) && $error['message'] !== '' ? $error['message'] : __( 'The payment did not go through. Try again or use another payment method.', 'flexacommerce' )
 		);
+	}
+
+	public function saved_method( string $reference ): ?SavedMethod {
+		$client = $this->client();
+		if ( str_starts_with( $reference, 'cs_' ) ) {
+			$session = $client->get( 'checkout/sessions/' . $reference, [ 'expand' => [ 'payment_intent.payment_method' ] ] );
+			$intent  = is_array( $session['payment_intent'] ?? null ) ? $session['payment_intent'] : [];
+		} elseif ( str_starts_with( $reference, 'pi_' ) ) {
+			$intent = $client->get( 'payment_intents/' . $reference, [ 'expand' => [ 'payment_method' ] ] );
+		} else {
+			return null;
+		}
+		return self::saved( $intent['customer'] ?? null, $intent['payment_method'] ?? null );
+	}
+
+	public function charge_saved( PaymentRequest $request, SavedMethod $method ): PaymentResult {
+		$amount = StripeAmount::to_stripe( $request->amount );
+		if ( $amount === null ) {
+			return PaymentResult::failed( 'currency', __( 'Stripe cannot take this amount in this currency.', 'flexacommerce' ) );
+		}
+		$params = [
+			'amount'         => $amount,
+			'currency'       => strtolower( $request->amount->currency ),
+			'customer'       => $method->customer,
+			'payment_method' => $method->token,
+			'off_session'    => true,
+			'confirm'        => true,
+			'description'    => $this->description( $request ),
+			'metadata'       => [
+				'order_id'       => (string) $request->order->id,
+				'order_number'   => $request->order->number,
+				'transaction_id' => (string) $request->transaction_id,
+				'fxc_renewal'    => '1',
+			],
+		];
+		try {
+			$intent = $this->client()->post( 'payment_intents', $params, $request->idempotency_key );
+		} catch ( StripeError $e ) {
+			// A decline, a bank asking for 3-D Secure, or a method removed in the Dashboard.
+			if ( $e->is_card_error() || ( $e->status >= 400 && $e->status < 500 && $e->status !== 429 ) ) {
+				return PaymentResult::failed( $e->reason(), $e->getMessage() );
+			}
+			throw $e;
+		}
+		$result = self::intent_result( $intent );
+		return $result->type === PaymentResult::REQUIRES_ACTION
+			? PaymentResult::failed( 'authentication_required', __( 'The bank asked the customer to confirm the payment.', 'flexacommerce' ) )
+			: $result;
+	}
+
+	public function setup_url( string $customer, string $email, string $name, int $user_id, string $tag, string $return_url, string $cancel_url ): string {
+		$client = $this->client();
+		if ( $customer === '' && $user_id > 0 ) {
+			$customer = (string) get_user_option( self::CUSTOMER_OPTION . $this->mode(), $user_id );
+		}
+		if ( $customer === '' ) {
+			$customer = $this->new_customer( $client, $email, $name, $user_id, '' );
+		}
+		$params = [
+			'mode'                => 'setup',
+			'currency'            => strtolower( Settings::string( 'currency' ) ),
+			'customer'            => $customer,
+			'success_url'         => $return_url . ( str_contains( $return_url, '?' ) ? '&' : '?' ) . self::SETUP_ARG . '={CHECKOUT_SESSION_ID}',
+			'cancel_url'          => $cancel_url,
+			'client_reference_id' => $tag,
+			'metadata'            => [ 'fxc_tag' => $tag ],
+		];
+		try {
+			$session = $client->post( 'checkout/sessions', $params );
+		} catch ( StripeError $e ) {
+			if ( ! self::missing_customer( $e ) ) {
+				throw $e;
+			}
+			// The customer was deleted in the Stripe Dashboard: save the method under a new one.
+			if ( $user_id > 0 ) {
+				delete_user_option( $user_id, self::CUSTOMER_OPTION . $this->mode() );
+			}
+			$params['customer'] = $this->new_customer( $client, $email, $name, $user_id, '' );
+			$session            = $client->post( 'checkout/sessions', $params );
+		}
+		return (string) ( $session['url'] ?? '' );
+	}
+
+	public function finish_setup( string $reference, string $tag ): ?SavedMethod {
+		if ( preg_match( '/^cs_[A-Za-z0-9_]{1,250}$/', $reference ) !== 1 ) {
+			return null;
+		}
+		$session = $this->client()->get( 'checkout/sessions/' . $reference, [ 'expand' => [ 'setup_intent.payment_method' ] ] );
+		$setup   = is_array( $session['setup_intent'] ?? null ) ? $session['setup_intent'] : [];
+		if ( ( $session['client_reference_id'] ?? '' ) !== $tag || ( $session['mode'] ?? '' ) !== 'setup' || ( $session['status'] ?? '' ) !== 'complete' || ( $setup['status'] ?? '' ) !== 'succeeded' ) {
+			return null;
+		}
+		return self::saved( $setup['customer'] ?? $session['customer'] ?? null, $setup['payment_method'] ?? null );
+	}
+
+	/**
+	 * What the customer sees for a payment method: "Visa ending in 4242".
+	 *
+	 * @param array<string,mixed> $method a Stripe PaymentMethod
+	 */
+	public static function label( array $method ): string {
+		$type    = is_string( $method['type'] ?? null ) ? $method['type'] : '';
+		$details = is_array( $method[ $type ] ?? null ) ? $method[ $type ] : [];
+		$brands  = [
+			'amex'       => 'American Express',
+			'diners'     => 'Diners Club',
+			'discover'   => 'Discover',
+			'jcb'        => 'JCB',
+			'mastercard' => 'Mastercard',
+			'unionpay'   => 'UnionPay',
+			'visa'       => 'Visa',
+		];
+		$names   = [
+			'acss_debit'      => __( 'Pre-authorized debit', 'flexacommerce' ),
+			'au_becs_debit'   => 'BECS Direct Debit',
+			'bacs_debit'      => 'Bacs Direct Debit',
+			'link'            => 'Link',
+			'sepa_debit'      => 'SEPA Direct Debit',
+			'us_bank_account' => __( 'Bank account', 'flexacommerce' ),
+		];
+		$brand   = is_string( $details['brand'] ?? null ) ? $details['brand'] : '';
+		$name    = match ( true ) {
+			$type === 'card'                                                => $brands[ $brand ] ?? ( $brand !== '' ? ucfirst( $brand ) : __( 'Card', 'flexacommerce' ) ),
+			is_string( $details['bank_name'] ?? null ) && $details['bank_name'] !== '' => $details['bank_name'],
+			default                                                         => $names[ $type ] ?? ucwords( str_replace( '_', ' ', $type ) ),
+		};
+		$last4 = is_string( $details['last4'] ?? null ) ? $details['last4'] : '';
+		/* translators: 1: card brand or bank, like Visa; 2: the last four digits */
+		return $last4 !== '' ? sprintf( __( '%1$s ending in %2$s', 'flexacommerce' ), $name, $last4 ) : $name;
 	}
 
 	/**
@@ -505,8 +659,9 @@ final class StripeGateway extends AbstractPaymentGateway implements ConnectedGat
 	 * The Stripe Checkout page, for a shopper without the card form.
 	 *
 	 * @param array<string,string> $metadata
+	 * @param string               $customer the Stripe customer to save the method under, '' to save none
 	 */
-	private function checkout_session( PaymentRequest $request, int $amount, array $metadata ): PaymentResult {
+	private function checkout_session( PaymentRequest $request, int $amount, array $metadata, string $customer ): PaymentResult {
 		$params = [
 			'mode'                => 'payment',
 			'line_items'          => [
@@ -532,11 +687,80 @@ final class StripeGateway extends AbstractPaymentGateway implements ConnectedGat
 				'metadata'    => $metadata + [ 'fxc_session' => '1' ],
 			],
 		];
-		if ( is_email( $request->order->customer_email ) ) {
+		if ( $customer !== '' ) {
+			$params['customer']                                  = $customer;
+			$params['payment_intent_data']['setup_future_usage'] = 'off_session';
+		} elseif ( is_email( $request->order->customer_email ) ) {
 			$params['customer_email'] = $request->order->customer_email;
 		}
 		$session = $this->client()->post( 'checkout/sessions', $params, $request->idempotency_key );
 		return PaymentResult::redirect( (string) ( $session['url'] ?? '' ), (string) ( $session['id'] ?? '' ) );
+	}
+
+	/** A saved method when the method belongs to the customer; Stripe attaches it once the payment saved it. */
+	private static function saved( mixed $customer, mixed $method ): ?SavedMethod {
+		$customer = is_array( $customer ) ? ( $customer['id'] ?? '' ) : $customer;
+		if ( ! is_string( $customer ) || $customer === '' || ! is_array( $method ) || ! is_string( $method['id'] ?? null ) ) {
+			return null;
+		}
+		$owner = is_array( $method['customer'] ?? null ) ? ( $method['customer']['id'] ?? '' ) : ( $method['customer'] ?? '' );
+		return $owner === $customer ? new SavedMethod( $customer, $method['id'], self::label( $method ) ) : null;
+	}
+
+	private static function recurring( OrderView $order ): bool {
+		if ( $order->created_via === 'subscription' ) {
+			return true;
+		}
+		foreach ( $order->items as $item ) {
+			if ( $item->subscription ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** The order's Stripe customer: the user's own, kept per mode, or a new one for a guest. */
+	private function customer( OrderView $order, string $idempotency_key ): string {
+		$user = (int) $order->customer_id;
+		if ( $user > 0 ) {
+			$stored = (string) get_user_option( self::CUSTOMER_OPTION . $this->mode(), $user );
+			if ( $stored !== '' ) {
+				return $stored;
+			}
+		}
+		$name = $order->billing !== null ? trim( $order->billing->first_name . ' ' . $order->billing->last_name ) : '';
+		return $this->new_customer( $this->client(), $order->customer_email, $name !== '' ? $name : $order->customer_name, $user, $idempotency_key . '-customer' );
+	}
+
+	private function new_customer( StripeClient $client, string $email, string $name, int $user_id, string $idempotency_key ): string {
+		$params = [ 'metadata' => [ 'site' => home_url() ] ];
+		if ( is_email( $email ) ) {
+			$params['email'] = $email;
+		}
+		if ( $name !== '' ) {
+			$params['name'] = $name;
+		}
+		if ( $user_id > 0 ) {
+			$params['metadata']['user_id'] = (string) $user_id;
+		}
+		$id = (string) ( $client->post( 'customers', $params, $idempotency_key )['id'] ?? '' );
+		if ( $id === '' ) {
+			throw new StripeError( 'Stripe did not return the customer.' );
+		}
+		if ( $user_id > 0 ) {
+			update_user_option( $user_id, self::CUSTOMER_OPTION . $this->mode(), $id );
+		}
+		return $id;
+	}
+
+	private function forget_customer( OrderView $order ): void {
+		if ( (int) $order->customer_id > 0 ) {
+			delete_user_option( (int) $order->customer_id, self::CUSTOMER_OPTION . $this->mode() );
+		}
+	}
+
+	private static function missing_customer( StripeError $e ): bool {
+		return ( $e->error['code'] ?? '' ) === 'resource_missing' && ( $e->error['param'] ?? '' ) === 'customer';
 	}
 
 	private function description( PaymentRequest $request ): string {

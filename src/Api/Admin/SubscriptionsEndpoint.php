@@ -23,10 +23,11 @@ defined( 'ABSPATH' ) || exit;
  * The Subscriptions screen (ADR-073): the list, one subscription with its
  * orders and history, the merchant's actions, and a new next payment day.
  * The day comes in store-local (YYYY-MM-DD) and keeps the time of day the
- * payment had.
+ * payment had. `retry` charges the unpaid renewal to the saved method now
+ * (ADR-074); the answer then carries `charge` with how it went.
  */
 final class SubscriptionsEndpoint extends Endpoint {
-	private const ACTIONS = [ 'cancel', 'cancel_end', 'reactivate', 'hold', 'resume', 'renew' ];
+	private const ACTIONS = [ 'cancel', 'cancel_end', 'reactivate', 'hold', 'resume', 'renew', 'retry' ];
 
 	public function register_routes(): void {
 		register_rest_route(
@@ -168,7 +169,8 @@ final class SubscriptionsEndpoint extends Endpoint {
 		if ( $service->find( $id ) === null ) {
 			return self::not_found();
 		}
-		$ctx = TransitionContext::admin();
+		$ctx    = TransitionContext::admin();
+		$charge = null;
 		try {
 			match ( (string) $request->get_param( 'action' ) ) {
 				'cancel'     => $service->cancel( $id, false, $ctx ),
@@ -176,6 +178,7 @@ final class SubscriptionsEndpoint extends Endpoint {
 				'reactivate' => $service->reactivate( $id, $ctx ),
 				'hold'       => $service->set_hold( $id, true, $ctx ),
 				'resume'     => $service->set_hold( $id, false, $ctx ),
+				'retry'      => $charge = $service->retry_now( $id, $ctx ),
 				default      => $service->renew( $id, $ctx ),
 			};
 		} catch ( \InvalidArgumentException $e ) {
@@ -183,7 +186,17 @@ final class SubscriptionsEndpoint extends Endpoint {
 		}
 		// Read again: the action changed the row.
 		$row = $service->repository()->find( $id );
-		return $row !== null ? new WP_REST_Response( $this->detail( $row ), 200 ) : self::not_found();
+		if ( $row === null ) {
+			return self::not_found();
+		}
+		$body = $this->detail( $row );
+		if ( $charge !== null ) {
+			$body['charge'] = [
+				'result'  => $charge->type,
+				'message' => $charge->failure_message,
+			];
+		}
+		return new WP_REST_Response( $body, 200 );
 	}
 
 	private function service(): SubscriptionService {

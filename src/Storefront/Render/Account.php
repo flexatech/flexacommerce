@@ -133,6 +133,9 @@ final class Account {
 			'account' => __( 'Account details saved.', 'flexacommerce' ),
 			'subscription_cancel' => __( 'Your subscription is cancelled. It ends when the period you paid for does.', 'flexacommerce' ),
 			'subscription_reactivate' => __( 'Your subscription is active again.', 'flexacommerce' ),
+			'subscription_card' => __( 'Payment method saved. Renewals are charged to it.', 'flexacommerce' ),
+			'subscription_card_paid' => __( 'Payment method saved, and the renewal is paid.', 'flexacommerce' ),
+			'subscription_card_failed' => __( 'Payment method saved, but the renewal payment did not go through. Pay it with the button below.', 'flexacommerce' ),
 			default => '',
 		};
 		$notice = $notice !== '' ? '<p class="fxc-notice" role="status">' . esc_html( $notice ) . '</p>' : '';
@@ -277,6 +280,13 @@ final class Account {
 			/* translators: 1: payments made, 2: payments in the plan. */
 			$terms[ __( 'Payments', 'flexacommerce' ) ] = sprintf( __( '%1$d of %2$d', 'flexacommerce' ), $row->billed, $row->plan->length );
 		}
+		$method = $row->payment_label !== '' ? $row->payment_label : $row->payment_method_title;
+		if ( $method !== '' && ! $row->is_ended() ) {
+			$terms[ __( 'Payment method', 'flexacommerce' ) ] = $row->is_automatic()
+				/* translators: %s: a payment method, like "Visa ending in 4242". */
+				? sprintf( __( '%s, charged automatically', 'flexacommerce' ), $method )
+				: $method;
+		}
 		foreach ( $terms as $label => $value ) {
 			$html .= '<dt>' . esc_html( $label ) . '</dt><dd>' . esc_html( $value ) . '</dd>';
 		}
@@ -284,8 +294,20 @@ final class Account {
 
 		$unpaid = $row->status === SubscriptionStatus::ON_HOLD ? $service->unpaid_renewal( $row ) : null;
 		if ( $unpaid !== null ) {
-			$html .= '<p class="fxc-notice" role="status">' . esc_html__( 'Your renewal is waiting for payment. The subscription continues once it is paid.', 'flexacommerce' ) . '</p>'
+			$wait = $row->retry_at !== null
+				/* translators: %s: date of the next try. */
+				? sprintf( __( 'The automatic payment for your renewal failed. We will try again on %s, or you can pay now or change the payment method.', 'flexacommerce' ), self::day( $row->retry_at ) )
+				: __( 'Your renewal is waiting for payment. The subscription continues once it is paid.', 'flexacommerce' );
+			$html .= '<p class="fxc-notice" role="status">' . esc_html( $wait ) . '</p>'
 				. '<p><a class="fxc-button" href="' . esc_url( $this->checkout->pages()->pay_url( $unpaid ) ) . '">' . esc_html__( 'Pay renewal', 'flexacommerce' ) . '</a></p>';
+		}
+		if ( $service->can_update_method( $row ) ) {
+			$html .= '<form method="post" class="fxc-account__subscription-action">' . self::hidden( 'subscription' )
+				. '<input type="hidden" name="subscription_id" value="' . esc_attr( (string) $row->id ) . '">'
+				. '<input type="hidden" name="subscription_do" value="card">'
+				. '<p><button type="submit" class="fxc-button fxc-button--secondary">'
+				. ( $row->is_automatic() ? esc_html__( 'Change payment method', 'flexacommerce' ) : esc_html__( 'Pay renewals automatically', 'flexacommerce' ) )
+				. '</button></p></form>';
 		}
 		$do = match ( true ) {
 			$row->status === SubscriptionStatus::PENDING_CANCEL => [ 'reactivate', __( 'Keep my subscription', 'flexacommerce' ) ],

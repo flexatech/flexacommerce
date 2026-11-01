@@ -88,6 +88,8 @@ async function mount( method ) {
 		amount: Math.max( 1, config.amount ),
 		currency: config.currency,
 		paymentMethodCreation: 'manual',
+		// A subscription keeps the method for renewals, so the form offers only methods Stripe can charge again.
+		...( config.recurring ? { setupFutureUsage: 'off_session' } : {} ),
 		appearance: appearance( form ),
 	} );
 	elements.create( 'payment' ).mount( box );

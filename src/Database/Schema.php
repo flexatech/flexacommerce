@@ -17,7 +17,7 @@ defined( 'ABSPATH' ) || exit;
  */
 // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- schema DDL on plugin-owned tables, no user input.
 final class Schema {
-	public const DB_VERSION        = '18';
+	public const DB_VERSION        = '19';
 	public const DB_VERSION_OPTION = 'flexacommerce_db_version';
 	public const OPTION_PREFIX     = 'flexacommerce_';
 
@@ -399,6 +399,11 @@ final class Schema {
 				parent_order_id bigint(20) unsigned NULL,
 				payment_method varchar(100) NOT NULL DEFAULT '',
 				payment_method_title varchar(200) NOT NULL DEFAULT '',
+				payment_customer varchar(255) NOT NULL DEFAULT '',
+				payment_token varchar(255) NULL,
+				payment_label varchar(200) NOT NULL DEFAULT '',
+				retry_count tinyint(3) unsigned NOT NULL DEFAULT 0,
+				retry_at datetime NULL,
 				snapshot longtext NOT NULL,
 				billing longtext NULL,
 				shipping longtext NULL,
@@ -412,6 +417,7 @@ final class Schema {
 				PRIMARY KEY  (id),
 				KEY status_next (status,next_payment_at),
 				KEY status_end (status,end_at),
+				KEY status_retry (status,retry_at),
 				KEY customer_id (customer_id),
 				KEY parent_order_id (parent_order_id)
 			) {$charset};",

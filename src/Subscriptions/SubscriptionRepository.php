@@ -62,6 +62,33 @@ final class SubscriptionRepository {
 		);
 	}
 
+	/** @return list<Subscription> live rows whose saved payment method was not looked up yet (ADR-074) */
+	public function uncaptured( int $limit ): array {
+		return $this->many(
+			$this->wpdb->prepare(
+				'SELECT * FROM %i WHERE status IN (%s, %s, %s) AND payment_token IS NULL AND parent_order_id IS NOT NULL ORDER BY updated_at, id LIMIT %d',
+				Schema::table( 'subscriptions' ),
+				SubscriptionStatus::ACTIVE,
+				SubscriptionStatus::ON_HOLD,
+				SubscriptionStatus::PENDING_CANCEL,
+				$limit
+			)
+		);
+	}
+
+	/** @return list<Subscription> on-hold rows whose failed automatic charge is due again */
+	public function retry_due( string $now, int $limit ): array {
+		return $this->many(
+			$this->wpdb->prepare(
+				'SELECT * FROM %i WHERE status = %s AND retry_at IS NOT NULL AND retry_at <= %s ORDER BY retry_at, id LIMIT %d',
+				Schema::table( 'subscriptions' ),
+				SubscriptionStatus::ON_HOLD,
+				$now,
+				$limit
+			)
+		);
+	}
+
 	/** @return list<Subscription> rows whose last paid period is over */
 	public function ending( string $now, int $limit ): array {
 		return $this->many(
@@ -223,7 +250,7 @@ final class SubscriptionRepository {
 	public function anonymize_email( string $email, string $now ): int {
 		return (int) $this->wpdb->query(
 			$this->wpdb->prepare(
-				"UPDATE %i SET customer_email = '', billing = NULL, shipping = NULL, updated_at = %s WHERE customer_email = %s AND status IN (%s, %s)",
+				"UPDATE %i SET customer_email = '', billing = NULL, shipping = NULL, payment_customer = '', payment_token = '', payment_label = '', updated_at = %s WHERE customer_email = %s AND status IN (%s, %s)",
 				Schema::table( 'subscriptions' ),
 				$now,
 				$email,
@@ -238,7 +265,7 @@ final class SubscriptionRepository {
 	 * @return list<string>
 	 */
 	private static function formats( array $row ): array {
-		$ints = [ 'customer_id', 'interval_count', 'length', 'trial_days', 'anchor_day', 'billed', 'total', 'parent_order_id' ];
+		$ints = [ 'customer_id', 'interval_count', 'length', 'trial_days', 'anchor_day', 'billed', 'total', 'parent_order_id', 'retry_count' ];
 		return array_map( static fn ( string $key ): string => in_array( $key, $ints, true ) ? '%d' : '%s', array_keys( $row ) );
 	}
 

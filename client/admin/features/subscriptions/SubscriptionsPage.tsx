@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { getPluginGlobal } from "@/shared/lib/api";
-import { __, sprintf } from "@/shared/lib/i18n";
+import { __, _n, sprintf } from "@/shared/lib/i18n";
 import { PageTitle } from "../../components/PageTitle";
 import { Tabs } from "../../components/Tabs";
 import { formatDate, orderMoney } from "../orders/format";
@@ -51,6 +51,7 @@ const DONE: Record<SubscriptionAction, string> = {
     hold: __("Subscription put on hold. No renewals are made until you resume it."),
     resume: __("Subscription resumed."),
     renew: __("Renewal order made."),
+    retry: __("Renewal paid."),
 };
 
 function orderUrl(id: number): string {
@@ -155,9 +156,15 @@ function SubscriptionView({ row, onClose }: { row: SubscriptionDetail; onClose: 
 
     const run = (what: SubscriptionAction) =>
         action.mutate(what, {
-            onSuccess: () => {
+            onSuccess: (done) => {
                 setConfirm(false);
-                showToast.success(DONE[what]);
+                if (done.charge === undefined || done.charge.result === "succeeded") {
+                    showToast.success(DONE[what]);
+                } else if (done.charge.result === "failed") {
+                    showToast.error(done.charge.message || __("The payment did not go through."));
+                } else {
+                    showToast.success(__("The payment is processing. The renewal is marked paid once the provider confirms it."));
+                }
             },
             onError: (failure) => showToast.error(failure.message),
         });
@@ -190,7 +197,12 @@ function SubscriptionView({ row, onClose }: { row: SubscriptionDetail; onClose: 
                     {row.trial_end_at !== null && <Term label={__("Trial ends")}>{formatDate(row.trial_end_at, false)}</Term>}
                     <Term label={__("Next payment")}>{row.next_payment_at !== null ? formatDate(row.next_payment_at) : "—"}</Term>
                     {row.end_at !== null && <Term label={ended ? __("Ended") : __("Ends")}>{formatDate(row.end_at, false)}</Term>}
-                    <Term label={__("Payment method")}>{row.payment_method_title || row.payment_method || "—"}</Term>
+                    <Term label={__("Payment method")}>
+                        <span className="fxc:block">{row.payment_label || row.payment_method_title || row.payment_method || "—"}</span>
+                        <span className="fxc:text-muted-foreground fxc:block fxc:text-xs">
+                            {row.automatic ? __("Renewals are charged automatically") : __("The customer pays each renewal")}
+                        </span>
+                    </Term>
                     {row.parent_order_id !== null && (
                         <Term label={__("First order")}>
                             <a href={orderUrl(row.parent_order_id)} className="fxc:text-primary fxc:no-underline fxc:hover:underline">
@@ -202,7 +214,9 @@ function SubscriptionView({ row, onClose }: { row: SubscriptionDetail; onClose: 
 
                 {row.unpaid_order_id !== null && (
                     <p className="fxc:bg-muted fxc:rounded-md fxc:px-3 fxc:py-2 fxc:text-sm">
-                        {__("A renewal is waiting for payment.")}{" "}
+                        {row.retry_at !== null
+                            ? sprintf(_n("The automatic payment failed %1$d time. Next try: %2$s.", "The automatic payment failed %1$d times. Next try: %2$s.", row.retry_count), row.retry_count, formatDate(row.retry_at))
+                            : __("A renewal is waiting for payment.")}{" "}
                         <a href={orderUrl(row.unpaid_order_id)} className="fxc:text-primary fxc:no-underline fxc:hover:underline">
                             {sprintf(__("Open order #%d"), row.unpaid_order_id)}
                         </a>
@@ -270,6 +284,11 @@ function SubscriptionView({ row, onClose }: { row: SubscriptionDetail; onClose: 
                         {running && row.next_payment_at !== null && (
                             <Button variant="outline" size="sm" disabled={busy} onClick={() => run("renew")}>
                                 {__("Make the renewal order now")}
+                            </Button>
+                        )}
+                        {row.unpaid_order_id !== null && row.automatic && (
+                            <Button variant="outline" size="sm" disabled={busy} onClick={() => run("retry")}>
+                                {__("Charge the saved method now")}
                             </Button>
                         )}
                         {row.status === "active" && (

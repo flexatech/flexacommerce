@@ -624,6 +624,49 @@ final class StripeGatewayTest extends OrderTestCase {
 			$refund = $gateway->refund( new \Flexa\Commerce\Contracts\Payments\RefundRequest( 2, $ref, $money, 'Test', wp_generate_uuid4() ) );
 			self::assertNotSame( 'failed', $refund->type, $refund->failure_message );
 		}
+
+		// Subscriptions (ADR-074): the saved card is read back, charged off-session, and replaced on a setup page.
+		$user    = self::factory()->user->create();
+		$renewal = $this->place( [ $this->simple( 1500, 5 ) => 1 ], 0, null, OrderStatus::PENDING, StripeGateway::ID );
+		global $wpdb;
+		$wpdb->update(
+			\Flexa\Commerce\Database\Schema::table( 'orders' ),
+			[
+				'created_via' => 'subscription',
+				'customer_id' => $user,
+			],
+			[ 'id' => $renewal->id ]
+		); // phpcs:ignore WordPress.DB
+		$recurring = $gateway->process_payment(
+			new \Flexa\Commerce\Contracts\Payments\PaymentRequest(
+				3,
+				wp_generate_uuid4(),
+				$this->orders()->get( $renewal->id )->view(),
+				$money,
+				'https://shop.test/r',
+				'https://shop.test/c',
+				'https://shop.test/w',
+				[
+					'payment_method'      => 'pm_card_visa',
+					'payment_method_type' => 'card',
+				]
+			)
+		);
+		self::assertNotSame( 'gateway_error', $recurring->failure_code, $recurring->failure_message );
+		self::assertNotSame( '', (string) get_user_option( StripeGateway::CUSTOMER_OPTION . 'test', $user ) );
+		foreach ( [ 'pi_123', 'cs_123' ] as $ref ) {
+			$gateway->saved_method( $ref );
+		}
+		$charge = $gateway->charge_saved(
+			new \Flexa\Commerce\Contracts\Payments\PaymentRequest( 4, wp_generate_uuid4(), $this->orders()->get( $renewal->id )->view(), $money, '', '', '' ),
+			new \Flexa\Commerce\Payments\SavedMethod( 'cus_123', 'pm_123', 'Visa ending in 4242' )
+		);
+		// The fixture intent needs a payment method, so it fails by its status; a refused request would fail as invalid_request_error.
+		self::assertSame( 'failed', $charge->failure_code, $charge->failure_message );
+		$url = $gateway->setup_url( '', 'ada@example.com', 'Ada', $user, 'subscription-1', 'https://shop.test/a', 'https://shop.test/a' );
+		self::assertNotSame( '', $url );
+		$gateway->finish_setup( 'cs_123', 'subscription-1' );
+		delete_user_option( $user, StripeGateway::CUSTOMER_OPTION . 'test' );
 	}
 
 	private function payments(): PaymentService {

@@ -11,6 +11,8 @@ use Flexa\Commerce\Customers\CustomerProfile;
 use Flexa\Commerce\Orders\Order;
 use Flexa\Commerce\Orders\OrderAccess;
 use Flexa\Commerce\Orders\TransitionContext;
+use Flexa\Commerce\Payments\RecurringGateway;
+use Flexa\Commerce\Contracts\Payments\PaymentResult;
 use Flexa\Commerce\Plugin;
 use Flexa\Commerce\Storefront\Render\Account;
 use Flexa\Commerce\Storefront\Render\Component;
@@ -99,6 +101,11 @@ final class AccountPage {
 			// A signed-in customer is never refused: only a new guest list is.
 			Plugin::instance()->wishlist()->current( get_current_user_id() );
 		}
+		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- the payment provider confirms the reference, and it must name this subscription (ADR-074).
+		if ( is_user_logged_in() && isset( $_GET[ RecurringGateway::SETUP_ARG ] ) ) {
+			$this->finish_card( get_current_user_id(), sanitize_text_field( wp_unslash( (string) $_GET[ RecurringGateway::SETUP_ARG ] ) ) );
+		}
+		// phpcs:enable WordPress.Security.NonceVerification.Recommended
 		// phpcs:disable WordPress.Security.NonceVerification.Missing -- verified() checks the nonce before anything changes.
 		if ( ! is_user_logged_in() || ! isset( $_POST[ self::ACTION ] ) ) {
 			return;
@@ -297,12 +304,35 @@ final class AccountPage {
 		self::redirect( add_query_arg( self::SAVED, 'account', self::url( 'edit-account' ) ) );
 	}
 
-	/** Cancel or reactivate a subscription of the account (ADR-073). */
+	/** Back from the payment provider's page with a new method for a subscription (ADR-074). */
+	private function finish_card( int $user, string $reference ): void {
+		[ $endpoint, $value ] = self::current();
+		$service              = Plugin::instance()->subscriptions();
+		$row                  = $endpoint === 'view-subscription' ? $service->owned( absint( $value ), $user ) : null;
+		if ( $row === null ) {
+			return;
+		}
+		try {
+			$result = $service->finish_update( $row, $reference, new TransitionContext( 'customer', $user ) );
+		} catch ( \InvalidArgumentException $e ) {
+			$this->errors = [ 'form' => $e->getMessage() ];
+			return;
+		}
+		$saved = match ( true ) {
+			$result === null => 'subscription_card',
+			$result->type === PaymentResult::FAILED => 'subscription_card_failed',
+			default => 'subscription_card_paid',
+		};
+		self::redirect( add_query_arg( self::SAVED, $saved, self::url( 'view-subscription', (string) $row->id ) ) );
+	}
+
+	/** Cancel or reactivate a subscription of the account (ADR-073), or go save a new payment method (ADR-074). */
 	private function change_subscription( int $user ): void {
 		$service = Plugin::instance()->subscriptions();
 		$id      = absint( is_scalar( $this->posted['subscription_id'] ?? null ) ? $this->posted['subscription_id'] : 0 );
 		$do      = sanitize_key( is_scalar( $this->posted['subscription_do'] ?? null ) ? (string) $this->posted['subscription_do'] : '' );
-		if ( $service->owned( $id, $user ) === null ) {
+		$row     = $service->owned( $id, $user );
+		if ( $row === null ) {
 			$this->errors = [ 'form' => __( 'Subscription not found.', 'flexacommerce' ) ];
 			return;
 		}
@@ -312,6 +342,10 @@ final class AccountPage {
 				$service->reactivate( $id, $ctx );
 			} elseif ( $do === 'cancel' ) {
 				$service->cancel( $id, true, $ctx );
+			} elseif ( $do === 'card' ) {
+				// The provider's own page, on its own host.
+				wp_redirect( $service->update_url( $row, self::url( 'view-subscription', (string) $id ) ), 303 ); // phpcs:ignore WordPress.Security.SafeRedirect.wp_redirect_wp_redirect -- the gateway's hosted page.
+				exit;
 			} else {
 				return;
 			}

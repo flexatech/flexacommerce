@@ -24,6 +24,8 @@ final class CheckoutContext {
 		public readonly ?string $shipping_rate_id,
 		public readonly ?int $customer_id,
 		public readonly int $item_count,
+		/** True when the order starts or renews a subscription, so the gateway should keep the method for later charges (ADR-074). */
+		public readonly bool $recurring = false,
 	) {}
 
 	public function currency(): string {

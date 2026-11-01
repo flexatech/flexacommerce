@@ -4,7 +4,7 @@ import { api } from "@/shared/lib/api";
 
 export type SubscriptionStatus = "pending" | "active" | "on-hold" | "pending-cancel" | "cancelled" | "expired";
 
-export type SubscriptionAction = "cancel" | "cancel_end" | "reactivate" | "hold" | "resume" | "renew";
+export type SubscriptionAction = "cancel" | "cancel_end" | "reactivate" | "hold" | "resume" | "renew" | "retry";
 
 export interface SubscriptionPlan {
     period: "day" | "week" | "month" | "year";
@@ -35,6 +35,14 @@ export interface SubscriptionItem {
     parent_order_id: number | null;
     payment_method: string;
     payment_method_title: string;
+    /** The saved method renewals are charged to, like "Visa ending in 4242"; empty when there is none. */
+    payment_label: string;
+    /** Renewals are charged to the saved method with nobody at the screen. */
+    automatic: boolean;
+    /** Failed charges of the unpaid renewal so far. */
+    retry_count: number;
+    /** When the failed charge is tried again; null when no try is planned. */
+    retry_at: string | null;
     start_at: string | null;
     trial_end_at: string | null;
     next_payment_at: string | null;
@@ -91,6 +99,8 @@ export interface SubscriptionDetail extends SubscriptionItem {
     unpaid_order_id: number | null;
     /** Store-local YYYY-MM-DD; empty when no payment is due. */
     next_payment_on: string;
+    /** Only after a "retry": how the charge went. */
+    charge?: { result: string; message: string };
 }
 
 export interface SubscriptionList {

@@ -271,7 +271,7 @@ final class Plugin {
 		);
 	}
 
-	/** @internal Subscriptions with manual renewals (ADR-073). */
+	/** @internal Subscriptions (ADR-073), with automatic renewal charges (ADR-074). */
 	public function subscriptions(): Subscriptions\SubscriptionService {
 		return $this->subscriptions ??= new Subscriptions\SubscriptionService(
 			new Subscriptions\SubscriptionRepository( $this->services()->wpdb() ),
@@ -281,7 +281,9 @@ final class Plugin {
 			$this->notifications()->templates(),
 			$this->services()->money(),
 			$this->services()->clock(),
-			$this->services()->logger( 'subscriptions' )
+			$this->services()->logger( 'subscriptions' ),
+			fn (): Payments\PaymentService => $this->payments()->service(),
+			static fn ( int $id ): string => Storefront\AccountPage::url( 'view-subscription', (string) $id )
 		);
 	}
 
