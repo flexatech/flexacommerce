@@ -31,6 +31,7 @@ final class Menu {
 		self::SLUG . '-orders',
 		self::SLUG . '-customers',
 		self::SLUG . '-recovery',
+		self::SLUG . '-stock-alerts',
 		'edit.php?post_type=' . PostTypes::PRODUCT,
 		'edit-tags.php?taxonomy=' . PostTypes::CATEGORY . '&post_type=' . PostTypes::PRODUCT,
 		'edit-tags.php?taxonomy=' . PostTypes::TAG . '&post_type=' . PostTypes::PRODUCT,
@@ -116,6 +117,17 @@ final class Menu {
 				__( 'Abandoned carts', 'flexacommerce' ),
 				Capabilities::VIEW_ORDERS,
 				self::SLUG . '-recovery',
+				[ $this, 'render_page' ]
+			)
+		);
+		$this->add(
+			self::SLUG . '-stock-alerts',
+			(string) add_submenu_page(
+				self::SLUG,
+				__( 'Stock alerts', 'flexacommerce' ),
+				__( 'Stock alerts', 'flexacommerce' ),
+				Capabilities::VIEW_ORDERS,
+				self::SLUG . '-stock-alerts',
 				[ $this, 'render_page' ]
 			)
 		);

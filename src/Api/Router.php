@@ -41,6 +41,7 @@ final class Router {
 			( new Admin\EmailsEndpoint() )->register_routes();
 			( new Admin\InvoicesEndpoint() )->register_routes();
 			( new Admin\RecoveryEndpoint() )->register_routes();
+			( new Admin\StockAlertsEndpoint() )->register_routes();
 			( new Admin\MigrationsEndpoint() )->register_routes();
 			( new Admin\CutoverEndpoint() )->register_routes();
 			( new WebhooksEndpoint() )->register_routes();
@@ -50,6 +51,7 @@ final class Router {
 			( new Store\CheckoutEndpoint() )->register_routes();
 			( new Store\ExpressEndpoint() )->register_routes();
 			( new Store\ProductsEndpoint() )->register_routes();
+			( new Store\StockAlertsEndpoint() )->register_routes();
 			add_filter( 'rest_authentication_errors', [ $this, 'keep_cookie_user_on_store' ], 50 );
 		}
 

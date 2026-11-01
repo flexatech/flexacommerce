@@ -52,3 +52,57 @@ if ( $e2e_recovery !== '' ) {
 		30
 	);
 }
+
+// Back-in-stock emails (ADR-065) wait for a restock and the cron. A request
+// with `X-FXC-E2E-Restock: <product id>` adds five to every variant of the
+// product that has none, runs the cron with mail accepted unsent, and
+// answers with who was emailed and the stop link key of each. The stock
+// goes back to none after, so the next theme's run finds it sold out again.
+$e2e_restock = absint( $_SERVER['HTTP_X_FXC_E2E_RESTOCK'] ?? 0 );
+if ( $e2e_restock > 0 ) {
+	add_action(
+		'init',
+		static function () use ( $e2e_restock ): void {
+			$plugin  = \Flexa\Commerce\Plugin::instance();
+			$product = $plugin->catalog()->products()->find( $e2e_restock );
+			if ( $product === null ) {
+				wp_send_json( [ 'sent' => [] ], 404 );
+			}
+			$restocked = [];
+			foreach ( $product->sellable_rows() as $row ) {
+				if ( $row->manage_stock && (int) $row->stock_quantity <= 0 ) {
+					$plugin->cart()->stock()->adjust( $product, $row, 5, 'e2e' );
+					$restocked[] = $row;
+				}
+			}
+			$mails = [];
+			add_filter(
+				'pre_wp_mail',
+				static function ( $result, array $atts ) use ( &$mails ) {
+					$mails[] = (string) $atts['subject'];
+					return true;
+				},
+				10,
+				2
+			);
+			$plugin->stock_alerts()->run();
+			foreach ( $restocked as $row ) {
+				$plugin->cart()->stock()->adjust( $product, $row, -5, 'e2e' );
+			}
+			$sent = [];
+			foreach ( $plugin->stock_alerts()->repository()->page( 'sent', $product->id, 1, 50 )['rows'] as $alert ) {
+				$sent[] = [
+					'email' => $alert->email,
+					'key'   => $alert->key(),
+				];
+			}
+			wp_send_json(
+				[
+					'sent'     => $sent,
+					'subjects' => $mails,
+				]
+			);
+		},
+		30
+	);
+}

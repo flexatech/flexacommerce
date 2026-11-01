@@ -20,6 +20,7 @@ defined( 'ABSPATH' ) || exit;
  * `$rules` the pricing rules, called only when the store has some;
  * `$product_options` the product options, called only when the store has option sets;
  * `$history` the customer's past orders, called only when a condition reads them.
+ * `$restocked` hears of stock that went up, for the back-in-stock emails.
  */
 final class CartServices {
 	private ?PricingService $pricing  = null;
@@ -42,6 +43,7 @@ final class CartServices {
 		private readonly ?\Closure $rules = null,
 		private readonly ?\Closure $product_options = null,
 		private readonly ?\Closure $history = null,
+		private readonly ?\Closure $restocked = null,
 	) {
 		$this->token_store = $tokens;
 	}
@@ -58,6 +60,7 @@ final class CartServices {
 			$this->services->after_commit(),
 			$this->services->logger( 'stock' ),
 			$this->services->clock(),
+			$this->restocked,
 		);
 	}
 

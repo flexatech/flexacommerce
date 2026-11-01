@@ -31,25 +31,29 @@ final class Privacy {
 	 * @return array<string,array<string,mixed>>
 	 */
 	public function exporters( array $exporters ): array {
-		$exporters['flexacommerce-orders']    = [
+		$exporters['flexacommerce-orders']       = [
 			'exporter_friendly_name' => __( 'FlexaCommerce orders', 'flexacommerce' ),
 			'callback'               => [ $this, 'export_orders' ],
 		];
-		$exporters['flexacommerce-cart']      = [
+		$exporters['flexacommerce-cart']         = [
 			'exporter_friendly_name' => __( 'FlexaCommerce cart', 'flexacommerce' ),
 			'callback'               => [ $this, 'export_cart' ],
 		];
-		$exporters['flexacommerce-addresses'] = [
+		$exporters['flexacommerce-addresses']    = [
 			'exporter_friendly_name' => __( 'FlexaCommerce saved addresses', 'flexacommerce' ),
 			'callback'               => [ $this, 'export_addresses' ],
 		];
-		$exporters['flexacommerce-downloads'] = [
+		$exporters['flexacommerce-downloads']    = [
 			'exporter_friendly_name' => __( 'FlexaCommerce downloads', 'flexacommerce' ),
 			'callback'               => [ $this, 'export_downloads' ],
 		];
-		$exporters['flexacommerce-reminders'] = [
+		$exporters['flexacommerce-reminders']    = [
 			'exporter_friendly_name' => __( 'FlexaCommerce cart reminders', 'flexacommerce' ),
 			'callback'               => [ $this, 'export_reminders' ],
+		];
+		$exporters['flexacommerce-stock-alerts'] = [
+			'exporter_friendly_name' => __( 'FlexaCommerce back-in-stock emails', 'flexacommerce' ),
+			'callback'               => [ $this, 'export_stock_alerts' ],
 		];
 		return $exporters;
 	}
@@ -59,25 +63,29 @@ final class Privacy {
 	 * @return array<string,array<string,mixed>>
 	 */
 	public function erasers( array $erasers ): array {
-		$erasers['flexacommerce-orders']    = [
+		$erasers['flexacommerce-orders']       = [
 			'eraser_friendly_name' => __( 'FlexaCommerce orders', 'flexacommerce' ),
 			'callback'             => [ $this, 'erase_orders' ],
 		];
-		$erasers['flexacommerce-cart']      = [
+		$erasers['flexacommerce-cart']         = [
 			'eraser_friendly_name' => __( 'FlexaCommerce cart', 'flexacommerce' ),
 			'callback'             => [ $this, 'erase_cart' ],
 		];
-		$erasers['flexacommerce-addresses'] = [
+		$erasers['flexacommerce-addresses']    = [
 			'eraser_friendly_name' => __( 'FlexaCommerce saved addresses', 'flexacommerce' ),
 			'callback'             => [ $this, 'erase_addresses' ],
 		];
-		$erasers['flexacommerce-downloads'] = [
+		$erasers['flexacommerce-downloads']    = [
 			'eraser_friendly_name' => __( 'FlexaCommerce downloads', 'flexacommerce' ),
 			'callback'             => [ $this, 'erase_downloads' ],
 		];
-		$erasers['flexacommerce-reminders'] = [
+		$erasers['flexacommerce-reminders']    = [
 			'eraser_friendly_name' => __( 'FlexaCommerce cart reminders', 'flexacommerce' ),
 			'callback'             => [ $this, 'erase_reminders' ],
+		];
+		$erasers['flexacommerce-stock-alerts'] = [
+			'eraser_friendly_name' => __( 'FlexaCommerce back-in-stock emails', 'flexacommerce' ),
+			'callback'             => [ $this, 'erase_stock_alerts' ],
 		];
 		return $erasers;
 	}
@@ -200,6 +208,61 @@ final class Privacy {
 		];
 	}
 
+	/**
+	 * Back-in-stock signups (ADR-065).
+	 *
+	 * @return array{data:list<array<string,mixed>>,done:bool}
+	 */
+	public function export_stock_alerts( string $email, int $page = 1 ): array {
+		unset( $page );
+		$service = Plugin::instance()->stock_alerts();
+		$data    = [];
+		foreach ( $service->repository()->for_email( strtolower( $email ) ) as $alert ) {
+			$product = Plugin::instance()->catalog()->products()->find( $alert->product_id );
+			$fields  = [
+				[
+					'name'  => __( 'Product', 'flexacommerce' ),
+					'value' => $product !== null ? $service->label( $product, $alert->variant_id ) : '#' . $alert->product_id,
+				],
+				[
+					'name'  => __( 'Signed up on', 'flexacommerce' ),
+					'value' => get_date_from_gmt( $alert->created_at ),
+				],
+				[
+					'name'  => __( 'Status', 'flexacommerce' ),
+					'value' => $alert->status,
+				],
+			];
+			if ( $alert->sent_at !== null ) {
+				$fields[] = [
+					'name'  => __( 'Emailed on', 'flexacommerce' ),
+					'value' => get_date_from_gmt( $alert->sent_at ),
+				];
+			}
+			$data[] = [
+				'group_id'    => 'flexacommerce-stock-alerts',
+				'group_label' => __( 'Back-in-stock emails', 'flexacommerce' ),
+				'item_id'     => 'fxc-stock-alert-' . $alert->id,
+				'data'        => $fields,
+			];
+		}
+		return [
+			'data' => $data,
+			'done' => true,
+		];
+	}
+
+	/** @return array{items_removed:bool,items_retained:bool,messages:list<string>,done:bool} */
+	public function erase_stock_alerts( string $email, int $page = 1 ): array {
+		unset( $page );
+		return [
+			'items_removed'  => Plugin::instance()->stock_alerts()->repository()->erase_email( strtolower( $email ) ) > 0,
+			'items_retained' => false,
+			'messages'       => [],
+			'done'           => true,
+		];
+	}
+
 	/** @return array{data:list<array<string,mixed>>,done:bool} */
 	public function export_orders( string $email, int $page = 1 ): array {
 		return $this->data()->export_orders( $email, $page );
@@ -254,6 +317,7 @@ final class Privacy {
 			. '<p>' . esc_html( $collect ) . '</p>'
 			. '<p>' . esc_html( $cart ) . '</p>'
 			. '<p>' . esc_html__( 'If you are signed in, or typed your email at checkout, and leave items in your cart without ordering, we may email you up to three reminders about it. Each email has a link to stop them. We keep the record of a left cart for up to 90 days.', 'flexacommerce' ) . '</p>'
+			. '<p>' . esc_html__( 'If you ask to hear when a product is back in stock, we keep your email address and the product until we send that one email, or until you use the link in it to stop. We delete the record 90 days after it is sent or stopped.', 'flexacommerce' ) . '</p>'
 			. '<h2>' . esc_html__( 'How long we keep it', 'flexacommerce' ) . '</h2>'
 			. '<p>' . esc_html__( 'We keep order records for as long as tax and accounting rules require. If you ask us to erase your data, we remove your name, addresses, email, phone, IP address and order notes from your orders and keep the amounts and products for our accounts. Orders that are still being processed are erased once they are completed or cancelled.', 'flexacommerce' ) . '</p>'
 			. '<h2>' . esc_html__( 'Who we share it with', 'flexacommerce' ) . '</h2>'

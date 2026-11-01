@@ -33,6 +33,7 @@ final class StockService {
 		private readonly AfterCommit $after_commit,
 		private readonly Logger $ledger,
 		private readonly Clock $clock,
+		private readonly ?\Closure $restocked = null,
 	) {}
 
 	/** From data already loaded with the product: no query. */
@@ -242,6 +243,9 @@ final class StockService {
 						$this->products->sync_denormalized( $change->product_id, $this->clock->db_now() );
 					}
 					do_action( 'flexacommerce.stock.changed', $change->variant_id, $change->old_quantity, $change->new_quantity, $change->reason );
+					if ( $this->restocked !== null && $change->new_quantity > 0 && $change->new_quantity > $change->old_quantity ) {
+						( $this->restocked )( $change->variant_id );
+					}
 					if ( $change->ran_out() ) {
 						do_action( 'flexacommerce.stock.out', $change->variant_id, $change->product_id );
 						$this->notify( $change, true );

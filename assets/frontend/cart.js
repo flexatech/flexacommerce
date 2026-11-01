@@ -92,6 +92,18 @@ async function request( path, method = 'GET', body = undefined, retried = false 
 	);
 }
 
+/** Whether no variant has `value` with the rest of the selection, or none in stock when `stocked`. */
+function optionMissing( context, value, stocked ) {
+	const matrix = state.products[ context.productId ];
+	if ( ! value || ! matrix || ! context.attribute ) {
+		return false;
+	}
+	const selection = { ...context.selection, [ context.attribute ]: value };
+	return ! matrix.variants.some(
+		( variant ) => ( ! stocked || variant.in_stock ) && fits( variant, selection, matrix.attributes ) >= 0
+	);
+}
+
 function fits( variant, selection, keys ) {
 	let wildcards = 0;
 	for ( const key of keys ) {
@@ -517,16 +529,13 @@ const { state, actions } = store( 'flexacommerce/cart', {
 			return value && labels ? labels[ value ] ?? '' : '';
 		},
 		get optionUnavailable() {
+			// With back-in-stock signups (ADR-065) a sold-out value stays
+			// pickable, so the shopper can ask for an email about it.
+			return optionMissing( getContext(), getElement().attributes.value, getContext().alertId === undefined );
+		},
+		get optionSoldOut() {
 			const context = getContext();
-			const value = getElement().attributes.value;
-			const matrix = state.products[ context.productId ];
-			if ( ! value || ! matrix || ! context.attribute ) {
-				return false;
-			}
-			const selection = { ...context.selection, [ context.attribute ]: value };
-			return ! matrix.variants.some(
-				( variant ) => variant.in_stock && fits( variant, selection, matrix.attributes ) >= 0
-			);
+			return context.alertId !== undefined && optionMissing( context, getElement().attributes.value, true );
 		},
 	},
 	actions: {
@@ -534,6 +543,11 @@ const { state, actions } = store( 'flexacommerce/cart', {
 			event.preventDefault();
 			const context = getContext();
 			if ( context.busy ) {
+				return;
+			}
+			if ( context.alertId ) {
+				// Enter in the email box of the back-in-stock block (ADR-065).
+				yield actions.notify();
 				return;
 			}
 			if ( state.cannotAdd ) {
@@ -608,6 +622,32 @@ const { state, actions } = store( 'flexacommerce/cart', {
 				context.busy = false;
 			}
 		} ),
+		setAlertEmail( event ) {
+			getContext().alertEmail = event.target.value;
+		},
+		/** Back-in-stock signup for the variation picked (ADR-065). */
+		*notify() {
+			const context = getContext();
+			if ( context.busy || ! context.alertId ) {
+				return;
+			}
+			context.busy = true;
+			context.alertMessage = '';
+			try {
+				const data = yield request( 'stock-alerts', 'POST', {
+					product_id: context.productId,
+					variant_id: context.alertId,
+					email: context.alertEmail,
+				} );
+				context.alertMessage = data?.message || i18n.alerted;
+				context.alertFailed = false;
+			} catch ( error ) {
+				context.alertMessage = error.message || i18n.failed;
+				context.alertFailed = true;
+			} finally {
+				context.busy = false;
+			}
+		},
 		*choose( event ) {
 			const context = getContext();
 			context.selection[ context.attribute ] = event.target.value;
@@ -631,6 +671,10 @@ const { state, actions } = store( 'flexacommerce/cart', {
 		refresh() {
 			const context = getContext();
 			const matrix = state.products[ context.productId ];
+			if ( context.alertId !== undefined ) {
+				context.alertId = 0;
+				context.alertMessage = '';
+			}
 			if ( ! matrix || ! complete( matrix, context.selection ) ) {
 				context.ready = false;
 				context.variantId = 0;
@@ -648,6 +692,9 @@ const { state, actions } = store( 'flexacommerce/cart', {
 			}
 			actions.pick( context.productId, variant );
 			context.variantId = variant.in_stock ? variant.id : 0;
+			if ( context.alertId !== undefined && ! variant.in_stock ) {
+				context.alertId = variant.id;
+			}
 			context.price = variant.price;
 			context.regular = variant.regular;
 			context.suffix = variant.suffix;

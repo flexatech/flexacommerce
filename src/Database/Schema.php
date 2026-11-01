@@ -17,7 +17,7 @@ defined( 'ABSPATH' ) || exit;
  */
 // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- schema DDL on plugin-owned tables, no user input.
 final class Schema {
-	public const DB_VERSION        = '11';
+	public const DB_VERSION        = '12';
 	public const DB_VERSION_OPTION = 'flexacommerce_db_version';
 	public const OPTION_PREFIX     = 'flexacommerce_';
 
@@ -287,6 +287,24 @@ final class Schema {
 				KEY email (email),
 				KEY status_created (status,created_at),
 				KEY next_send_at (next_send_at)
+			) {$charset};",
+			'stock_alerts'       => "CREATE TABLE {$p}stock_alerts (
+				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+				product_id bigint(20) unsigned NOT NULL,
+				variant_id bigint(20) unsigned NOT NULL DEFAULT 0,
+				user_id bigint(20) unsigned NULL,
+				email varchar(190) NOT NULL,
+				locale varchar(20) NOT NULL DEFAULT '',
+				status varchar(10) NOT NULL DEFAULT 'waiting',
+				due tinyint(1) NOT NULL DEFAULT 0,
+				token char(32) NOT NULL,
+				created_at datetime NOT NULL,
+				sent_at datetime NULL,
+				updated_at datetime NOT NULL,
+				PRIMARY KEY  (id),
+				KEY product_status (product_id,status),
+				KEY status_due (status,due),
+				KEY email (email)
 			) {$charset};",
 			'sequences'          => "CREATE TABLE {$p}sequences (
 				name varchar(32) NOT NULL,

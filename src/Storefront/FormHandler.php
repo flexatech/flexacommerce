@@ -12,6 +12,10 @@ use Flexa\Commerce\Contracts\Exceptions\NotPurchasable;
 use Flexa\Commerce\Contracts\Exceptions\RateLimited;
 use Flexa\Commerce\Options\ProductOptions;
 use Flexa\Commerce\Plugin;
+use Flexa\Commerce\StockAlerts\SignupMessages;
+use Flexa\Commerce\StockAlerts\SignupRefused;
+use Flexa\Commerce\Support\ClientIp;
+use Flexa\Commerce\Support\RateLimiter;
 use Flexa\Commerce\Support\SameSite;
 
 defined( 'ABSPATH' ) || exit;
@@ -55,6 +59,9 @@ final class FormHandler {
 		$user      = get_current_user_id();
 		$service   = $cart->cart();
 		$product   = isset( $_POST['product_id'] ) ? absint( $_POST['product_id'] ) : 0;
+		if ( $operation === 'stock_alert' ) {
+			self::stock_alert( $back, $product );
+		}
 		try {
 			if ( $operation === 'add' ) {
 				$attributes = [];
@@ -128,7 +135,7 @@ final class FormHandler {
 		if ( $message === null ) {
 			return '';
 		}
-		$error = ! in_array( $code, [ 'added', 'updated', 'removed', 'coupon_applied', 'coupon_removed' ], true );
+		$error = ! in_array( $code, [ 'added', 'updated', 'removed', 'coupon_applied', 'coupon_removed', 'alert_added', 'alert_in_stock' ], true );
 		$link  = $code === 'added' ? ' <a href="' . esc_url( Assets::cart_url() ) . '">' . esc_html__( 'View cart', 'flexacommerce' ) . '</a>' : '';
 		return sprintf(
 			'<p class="fxc-notice%1$s" role="%2$s">%3$s%4$s</p>',
@@ -158,7 +165,33 @@ final class FormHandler {
 			'coupon_duplicate'   => __( 'That coupon is already applied.', 'flexacommerce' ),
 			'coupon_invalid'     => __( 'That coupon cannot be used with this cart.', 'flexacommerce' ),
 			'coupon_limit'       => __( 'No more coupons can be added to this cart.', 'flexacommerce' ),
+			'alert_added'        => SignupMessages::text( SignupMessages::ADDED ),
+			'alert_off'          => SignupMessages::text( 'off' ),
+			'alert_login'        => SignupMessages::text( 'login' ),
+			'alert_email'        => SignupMessages::text( 'email' ),
+			'alert_in_stock'     => SignupMessages::text( 'in_stock' ),
+			'alert_limit'        => SignupMessages::text( 'limit' ),
+			'alert_product'      => SignupMessages::text( 'product' ),
 		];
+	}
+
+	/** The back-in-stock form under "Out of stock" (ADR-065). */
+	private static function stock_alert( string $back, int $product ): never {
+		// phpcs:disable WordPress.Security.NonceVerification.Missing -- verified in handle().
+		$variant = isset( $_POST['variant_id'] ) ? absint( $_POST['variant_id'] ) : 0;
+		$email   = isset( $_POST['email'] ) ? sanitize_email( wp_unslash( $_POST['email'] ) ) : '';
+		// phpcs:enable
+		try {
+			( new RateLimiter() )->hit( 'stock_alert_ip', ClientIp::get() );
+		} catch ( RateLimited ) {
+			self::redirect( $back, 'alert_limit', $product );
+		}
+		try {
+			Plugin::instance()->stock_alerts()->subscribe( $product, $variant, $email, get_current_user_id() );
+		} catch ( SignupRefused $e ) {
+			self::redirect( $back, 'alert_' . $e->reason, $product );
+		}
+		self::redirect( $back, 'alert_added', $product );
 	}
 
 	private static function code_for( CommerceException $e ): string {

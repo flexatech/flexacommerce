@@ -244,6 +244,21 @@ $products->save(
 	)
 );
 
+// A simple product with no stock, for the back-in-stock form (ADR-065).
+$vase_id = $make( 'Sold out vase', 'sold-out-vase' );
+$products->save(
+	$vase_id,
+	ProductInput::from_array(
+		[
+			'base' => [
+				'regular_price'  => 3000,
+				'manage_stock'   => true,
+				'stock_quantity' => 0,
+			],
+		]
+	)
+);
+
 $category = get_term_by( 'slug', (string) $simple['categories'][0], PostTypes::CATEGORY );
 
 $out = [
@@ -289,6 +304,11 @@ $out = [
 		'url'  => (string) get_permalink( $lamp_id ),
 		'link' => 'https://partner.example/lamp',
 		'text' => 'Buy at Partner',
+	],
+	'soldout'  => [
+		'id'   => $vase_id,
+		'name' => 'Sold out vase',
+		'url'  => (string) get_permalink( $vase_id ),
 	],
 	'category' => [
 		'slug' => $category instanceof WP_Term ? $category->slug : '',

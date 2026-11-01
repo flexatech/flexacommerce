@@ -13,6 +13,7 @@ use Flexa\Commerce\Options\OptionSet;
 use Flexa\Commerce\Options\ProductOptions;
 use Flexa\Commerce\Plugin;
 use Flexa\Commerce\Pricing\PricingService;
+use Flexa\Commerce\StockAlerts\StockAlertSettings;
 use Flexa\Commerce\Storefront\Assets;
 use Flexa\Commerce\Storefront\FormHandler;
 use Flexa\Commerce\Support\Currency;
@@ -88,7 +89,8 @@ final class AddToCartForm {
 			return '';
 		}
 		if ( ! $options['in_stock'] ) {
-			return '<p class="fxc-stock fxc-stock--out">' . esc_html__( 'Out of stock', 'flexacommerce' ) . '</p>';
+			$out = '<p class="fxc-stock fxc-stock--out">' . esc_html__( 'Out of stock', 'flexacommerce' ) . '</p>';
+			return $mode === self::SINGLE ? $out . StockAlertForm::standalone( $product, $product->is_variable() ? 0 : $product->base->id, $user_id ) : $out;
 		}
 
 		Assets::use_store();
@@ -151,6 +153,15 @@ final class AddToCartForm {
 			'message'   => '',
 			'failed'    => false,
 		];
+		$alerts  = $variable && $mode === self::SINGLE && $editing === null && StockAlertSettings::enabled();
+		if ( $alerts ) {
+			// The back-in-stock block for a variation that ran out (ADR-065);
+			// sold-out values stay pickable while it is on.
+			$context['alertId']      = 0;
+			$context['alertEmail']   = '';
+			$context['alertMessage'] = '';
+			$context['alertFailed']  = false;
+		}
 		if ( $editing !== null ) {
 			$context['replace']  = $editing->key;
 			$context['quantity'] = max( 1, min( $editing->quantity, $max ) );
@@ -202,6 +213,9 @@ final class AddToCartForm {
 			$html .= '<p class="fxc-price"><del data-wp-bind--hidden="!context.regular" data-wp-text="context.regular" hidden></del> <span class="fxc-price__amount" data-wp-text="context.price"></span> <small class="fxc-price__suffix" data-wp-bind--hidden="!context.suffix" data-wp-text="context.suffix" hidden></small></p>';
 			$html .= '<p class="fxc-stock" data-wp-text="context.stock"></p>';
 			$html .= '</div>';
+			if ( $alerts ) {
+				$html .= StockAlertForm::inline( $product, $user_id );
+			}
 		}
 
 		if ( $sets !== [] && $this->pricing !== null ) {
@@ -499,7 +513,7 @@ final class AddToCartForm {
 				$kind = 'button';
 			}
 			$html .= sprintf(
-				'<label class="fxc-swatch fxc-swatch--%1$s"%2$s><input class="fxc-swatch__input" type="radio" name="attributes[%3$s]" value="%4$s"%8$s required data-wp-on--change="actions.choose" data-wp-bind--disabled="state.optionUnavailable"><span class="fxc-swatch__face"%5$s>%6$s</span>%7$s</label>',
+				'<label class="fxc-swatch fxc-swatch--%1$s"%2$s><input class="fxc-swatch__input" type="radio" name="attributes[%3$s]" value="%4$s"%8$s required data-wp-on--change="actions.choose" data-wp-bind--disabled="state.optionUnavailable" data-wp-class--is-unavailable="state.optionSoldOut"><span class="fxc-swatch__face"%5$s>%6$s</span>%7$s</label>',
 				esc_attr( $kind ),
 				$kind !== 'button' ? ' title="' . esc_attr( $option['label'] ) . '"' : '',
 				esc_attr( $attribute['key'] ),

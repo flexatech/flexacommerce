@@ -62,6 +62,8 @@ final class Plugin {
 
 	private ?Recovery\RecoveryService $recovery = null;
 
+	private ?StockAlerts\StockAlertService $stock_alerts = null;
+
 	private bool $blocks = false;
 
 	public function boot(): void {
@@ -128,6 +130,10 @@ final class Plugin {
 			// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- routing only; the handler checks the key and the stop form's nonce (ADR-063).
 			if ( isset( $_GET['fxc_recover'] ) || isset( $_GET['fxc_recover_stop'] ) ) {
 				add_action( 'init', [ $this, 'on_recover' ], 20 );
+			}
+			// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- routing only; the handler checks the key and the stop form's nonce (ADR-065).
+			if ( isset( $_GET['fxc_stock_stop'] ) ) {
+				add_action( 'init', [ $this, 'on_stock_stop' ], 20 );
 			}
 			// A posted comment form: the review hooks, for this request only (ADR-056).
 			if ( ( $GLOBALS['pagenow'] ?? '' ) === 'wp-comments-post.php' ) {
@@ -204,6 +210,7 @@ final class Plugin {
 	/** @internal */
 	public function on_product_data_saved( int $product_id, Catalog\Product $before ): void {
 		$this->downloads()->sync_product( $product_id, $before );
+		$this->on_stock_alert_product( $product_id );
 	}
 
 	/**
@@ -227,6 +234,7 @@ final class Plugin {
 			rules: fn (): Pricing\Rules\PriceRules => $this->price_rules(),
 			product_options: fn (): Options\ProductOptions => $this->product_options(),
 			history: fn (): Contracts\Orders\CustomerHistory => $this->customer_history(),
+			restocked: fn ( int $variant_id ) => $this->on_restocked( $variant_id ),
 		);
 	}
 
@@ -340,6 +348,20 @@ final class Plugin {
 		);
 	}
 
+	/** @internal Back-in-stock alerts (ADR-065). */
+	public function stock_alerts(): StockAlerts\StockAlertService {
+		return $this->stock_alerts ??= new StockAlerts\StockAlertService(
+			new StockAlerts\StockAlertRepository( $this->services()->wpdb() ),
+			$this->catalog()->products(),
+			$this->cart()->stock(),
+			fn ( Catalog\Product $product, Catalog\Variant $variant ): bool => $this->cart()->cart()->is_purchasable( $product, $variant ),
+			$this->notifications()->mailer(),
+			$this->notifications()->templates(),
+			$this->services()->clock(),
+			$this->services()->logger( 'stock-alerts' )
+		);
+	}
+
 	/**
 	 * @internal The invoice on the emails chosen in the invoice settings,
 	 * and the credit note on the refund email (ADR-064).
@@ -407,6 +429,23 @@ final class Plugin {
 			return;
 		}
 		$this->catalog()->product_service()->ensure_base( $post_id );
+		$this->on_stock_alert_product( $post_id );
+	}
+
+	/**
+	 * Stock that went up marks the waiting back-in-stock rows (ADR-065). A
+	 * closure of the stock service, so no hook is added on every request.
+	 */
+	private function on_restocked( int $variant_id ): void {
+		if ( StockAlerts\StockAlertSettings::enabled() ) {
+			$this->stock_alerts()->restocked( $variant_id );
+		}
+	}
+
+	private function on_stock_alert_product( int $product_id ): void {
+		if ( StockAlerts\StockAlertSettings::enabled() ) {
+			$this->stock_alerts()->product_saved( $product_id );
+		}
 	}
 
 	public function on_post_deleted( int $post_id, \WP_Post $post ): void {
@@ -589,6 +628,11 @@ final class Plugin {
 	/** @internal A cart reminder link (ADR-063). */
 	public function on_recover(): void {
 		Storefront\RecoveryHandler::instance()->handle();
+	}
+
+	/** @internal The stop link of a back-in-stock email (ADR-065). */
+	public function on_stock_stop(): void {
+		Storefront\StockAlertHandler::instance()->handle();
 	}
 
 	public function on_logout(): void {

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Activity, ArrowLeftRight, ClipboardList, ListPlus, Receipt, Settings, ShoppingCart, Store, Tags, TicketPercent, Users } from "lucide-react";
+import { Activity, ArrowLeftRight, Bell, ClipboardList, ListPlus, Receipt, Settings, ShoppingCart, Store, Tags, TicketPercent, Users } from "lucide-react";
 
 import { cn } from "@/shared/lib/cn";
 import { __ } from "@/shared/lib/i18n";
@@ -10,6 +10,7 @@ const NAV: { page: AdminPage; label: string; icon: typeof Activity }[] = [
     { page: "flexacommerce-orders", label: __("Orders"), icon: Receipt },
     { page: "flexacommerce-customers", label: __("Customers"), icon: Users },
     { page: "flexacommerce-recovery", label: __("Abandoned carts"), icon: ShoppingCart },
+    { page: "flexacommerce-stock-alerts", label: __("Stock alerts"), icon: Bell },
     { page: "flexacommerce-attributes", label: __("Attributes"), icon: Tags },
     { page: "flexacommerce-product-options", label: __("Product options"), icon: ListPlus },
     { page: "flexacommerce-promotions", label: __("Promotions"), icon: TicketPercent },

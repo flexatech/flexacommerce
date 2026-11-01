@@ -17,6 +17,7 @@ type Store = {
 	formula: { name: string; url: string; price: number };
 	grouped: { url: string; mug: string };
 	external: { url: string; link: string; text: string };
+	soldout: { id: number; name: string; url: string };
 	category: { slug: string; url: string };
 };
 

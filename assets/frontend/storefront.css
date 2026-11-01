@@ -25,6 +25,14 @@
 .fxc-option__required { color: #b32d2e; }
 .fxc-options__total { margin: 0; font-weight: 600; }
 .fxc-add-to-cart__quantity { width: 4.5rem; padding: .5rem; }
+.fxc-stock-alert { display: grid; gap: .5rem; margin-block: .75rem 1rem; }
+.fxc-stock-alert--inline { flex-basis: 100%; margin: 0; }
+.fxc-stock-alert[hidden] { display: none; }
+.fxc-stock-alert p { margin: 0; }
+.fxc-stock-alert__title { font-weight: 600; }
+.fxc-stock-alert__row { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.fxc-stock-alert__email { flex: 1 1 14rem; max-width: 22rem; padding: .5rem; box-sizing: border-box; font: inherit; }
+.fxc-stock-alert__message:empty { display: none; }
 .fxc-add-to-cart--group { flex-direction: column; align-items: flex-start; }
 .fxc-group { width: 100%; border-collapse: collapse; }
 .fxc-group th, .fxc-group td { padding: .5rem .75rem .5rem 0; text-align: start; vertical-align: middle; border-block-end: 1px solid color-mix(in srgb, currentcolor 15%, transparent); }
@@ -72,8 +80,8 @@
 .fxc-swatch__input:checked + .fxc-swatch__face { box-shadow: 0 0 0 2px Canvas, 0 0 0 4px currentColor; }
 .fxc-swatch__input:focus-visible + .fxc-swatch__face { outline: 2px solid currentColor; outline-offset: 5px; }
 .fxc-swatch__input:disabled { cursor: not-allowed; }
-.fxc-swatch__input:disabled + .fxc-swatch__face, .fxc-swatch.is-unavailable .fxc-swatch__face { opacity: .4; background-image: linear-gradient(to top right, transparent calc(50% - 1px), currentColor, transparent calc(50% + 1px)); }
-.fxc-swatches--hide-unavailable .fxc-swatch:has(.fxc-swatch__input:disabled) { display: none; }
+.fxc-swatch__input:disabled + .fxc-swatch__face, .fxc-swatch__input.is-unavailable + .fxc-swatch__face, .fxc-swatch.is-unavailable .fxc-swatch__face { opacity: .4; background-image: linear-gradient(to top right, transparent calc(50% - 1px), currentColor, transparent calc(50% + 1px)); }
+.fxc-swatches--hide-unavailable .fxc-swatch:has(.fxc-swatch__input:disabled), .fxc-swatches--hide-unavailable .fxc-swatch:has(.fxc-swatch__input.is-unavailable:not(:checked)) { display: none; }
 .fxc-swatches--list { margin-block: .5rem; }
 .fxc-swatches--list .fxc-swatches__list { gap: .375rem; align-items: center; }
 .fxc-swatches--list .fxc-swatch { color: inherit; text-decoration: none; }

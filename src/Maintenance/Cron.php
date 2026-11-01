@@ -7,6 +7,7 @@ namespace Flexa\Commerce\Maintenance;
 use Flexa\Commerce\Concerns\HasInstance;
 use Flexa\Commerce\Plugin;
 use Flexa\Commerce\Recovery\RecoverySettings;
+use Flexa\Commerce\StockAlerts\StockAlertSettings;
 use Flexa\Commerce\Support\Settings;
 
 defined( 'ABSPATH' ) || exit;
@@ -14,7 +15,7 @@ defined( 'ABSPATH' ) || exit;
 /**
  * WP-Cron jobs (doc 02 §6.6): unpaid order expiry every five minutes, the
  * hourly sale schedule refresh, and the daily log, session and webhook
- * purges. The five-minute run also sends cart reminders (ADR-063). Every handler is bounded per run. Deferred emails get one
+ * purges. The five-minute run also sends cart reminders (ADR-063) and back-in-stock emails (ADR-065). Every handler is bounded per run. Deferred emails get one
  * single event each (SEND_EMAIL).
  */
 final class Cron {
@@ -97,6 +98,7 @@ final class Cron {
 		$sessions = Plugin::instance()->cart()->sessions()->purge_expired();
 		$webhooks = Plugin::instance()->payments()->service()->purge_webhooks();
 		Plugin::instance()->recovery()->daily();
+		Plugin::instance()->stock_alerts()->daily();
 
 		do_action( 'flexacommerce.cron.daily_done', $deleted, $sessions, $webhooks );
 	}
@@ -114,6 +116,9 @@ final class Cron {
 		// Read first so a shop without reminders builds no recovery services.
 		if ( RecoverySettings::enabled() ) {
 			Plugin::instance()->recovery()->run();
+		}
+		if ( StockAlertSettings::enabled() ) {
+			Plugin::instance()->stock_alerts()->run();
 		}
 
 		do_action( 'flexacommerce.cron.expire_done', $cancelled );

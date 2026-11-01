@@ -16,6 +16,7 @@ Status: **Approved 2026-10-24**. All table names below are shown without `{$wpdb
 | Webhook dedupe | `fxc_webhook_events` | DB-level replay protection. |
 | Cart sessions | `fxc_sessions` | Server-side, lazily created (ADR-008). |
 | Left carts | `fxc_recoveries` | One row per cart a known shopper left, with the reminder progress and the outcome (§4.17, ADR-063). |
+| Back-in-stock signups | `fxc_stock_alerts` | One row per address, product and variant waiting for stock, with a due flag the cron reads (§4.18, ADR-065). |
 | Order number allocation | `fxc_sequences` | Atomic counter. |
 | Download permissions | `fxc_downloads` | One row per order line and file with a token and counters that change on every download (§4.16, ADR-058). |
 | Option choice stock | `fxc_option_stock` | Counts change on every order, so they need atomic updates outside the autoloaded option sets (§4.15, ADR-040). |
@@ -23,7 +24,7 @@ Status: **Approved 2026-10-24**. All table names below are shown without `{$wpdb
 | Plugin log | `fxc_logs` | Filterable by channel and level, pruned by cron (§4.12). |
 | Migration | `fxc_id_map`, `fxc_migration_jobs`, `fxc_migration_log` | Idempotency and resumability (doc 05). |
 | Customers | `wp_users` + user options `fxc_billing`, `fxc_shipping` (JSON, site-prefixed meta keys) | No separate customer table (§7). |
-| Settings | `wp_options`: `flexacommerce_settings` (autoload), `flexacommerce_badges` (autoload, ordered list of up to 50 badges, ADR-023, each with `customers` and `roles`, ADR-049), `flexacommerce_price_rules` (autoload, ordered list of up to 100 rules, ADR-024, type `adjust`, `bulk`, `graduated` (ADR-042) or `fee` (ADR-043, with `cap`), each with its `conditions`, ADR-041), `flexacommerce_product_options` (autoload, ordered list of up to 200 option sets, ADR-025, ADR-029), `flexacommerce_shipping_zones`, `flexacommerce_gateway_{id}`, `flexacommerce_email_{id}`, `flexacommerce_recovery` (ADR-063) (no autoload) | Small configuration data. |
+| Settings | `wp_options`: `flexacommerce_settings` (autoload), `flexacommerce_badges` (autoload, ordered list of up to 50 badges, ADR-023, each with `customers` and `roles`, ADR-049), `flexacommerce_price_rules` (autoload, ordered list of up to 100 rules, ADR-024, type `adjust`, `bulk`, `graduated` (ADR-042) or `fee` (ADR-043, with `cap`), each with its `conditions`, ADR-041), `flexacommerce_product_options` (autoload, ordered list of up to 200 option sets, ADR-025, ADR-029), `flexacommerce_shipping_zones`, `flexacommerce_gateway_{id}`, `flexacommerce_email_{id}`, `flexacommerce_recovery` (ADR-063), `flexacommerce_stock_alerts` (ADR-065) (no autoload) | Small configuration data. |
 | Media | Media Library attachments | Product meta and variants store attachment IDs only. |
 
 ## 2. Cross-cutting rules
@@ -854,6 +855,35 @@ CREATE TABLE fxc_recoveries (
 - **Writes.** The cron inserts a row for a quiet cart with no open row for its session or email, and refreshes the open row when the cart changed. A send moves `reminder` and `next_send_at` and counts `emails_sent`; the link sets `clicked_at`; an order sets `recovered`, `order_id` and `recovered_at`. The stop link sets `unsubscribed_at` on every row of the email, and the cron writes nothing new for such an address. The daily cron marks rows quiet for 7 days `lost` and deletes settled rows older than 90 days, except unsubscribed ones, which keep the address quiet.
 - **Reads.** Due reminders by `next_send_at`; the cron's lookup by `session_id`, then `email`; the admin list by status, newest activity first, joined to `fxc_orders` for the order number; the 30 day numbers by `status_created`; privacy by `email`. Uninstall drops the table.
 
+### 4.18 `fxc_stock_alerts`
+
+Added with back-in-stock emails (ADR-065), `DB_VERSION` 12.
+
+```sql
+CREATE TABLE fxc_stock_alerts (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  product_id bigint(20) unsigned NOT NULL,
+  variant_id bigint(20) unsigned NOT NULL DEFAULT 0,
+  user_id bigint(20) unsigned NULL,
+  email varchar(190) NOT NULL,
+  locale varchar(20) NOT NULL DEFAULT '',
+  status varchar(10) NOT NULL DEFAULT 'waiting',
+  due tinyint(1) NOT NULL DEFAULT 0,
+  token char(32) NOT NULL,
+  created_at datetime NOT NULL,
+  sent_at datetime NULL,
+  updated_at datetime NOT NULL,
+  PRIMARY KEY  (id),
+  KEY product_status (product_id,status),
+  KEY status_due (status,due),
+  KEY email (email)
+) {charset_collate};
+```
+
+- **Columns.** `variant_id` is the variant the shopper picked, the base row for a simple product, or 0 for any variation. `user_id` is set for a signed-in shopper, whose locale is then read from the account; `locale` holds a guest's. `status` is `waiting`, `sent` or `cancelled`. `due` is 1 when the cron should look at the row. `token` is the secret half of the stop link `<id>.<token>`.
+- **Writes.** A signup inserts a row unless the same address already waits for the same product and variant. Stock that goes up and a product save set `due` on the product's waiting rows; the daily cron sets it on every waiting row. The cron sets `sent` and `sent_at`, or clears `due` when the variant is still sold out or the send failed. The stop link sets `cancelled` on every waiting row of the email. The daily cron deletes sent and cancelled rows older than 90 days, and rows whose product is gone; the admin deletes single rows.
+- **Reads.** Due rows by `status_due`, oldest first, 50 a run; the signup's duplicate check and the admin filter by `product_status`; the most wanted products by grouping waiting rows on `product_id`; the stop link by `id`; privacy by `email`. Uninstall drops the table.
+
 ## 5. Query patterns and indexes
 
 | Query | Index used |
@@ -871,6 +901,7 @@ CREATE TABLE fxc_recoveries (
 | Transaction by gateway reference | `gateway_reference` |
 | Session lookup | `token_hash`, `user_id` |
 | Quiet carts for recovery | `fxc_sessions.updated_at` range; due reminders `fxc_recoveries.next_send_at` (ADR-063) |
+| Due stock alerts | `fxc_stock_alerts.status_due`; a product's rows and the waiting count per product `product_status`; stop link and privacy `email` (ADR-065) |
 | Download link | `fxc_downloads.token`; an order's links `order_id`, a customer's `customer_id`, privacy `email`, a product edit `variant_file` |
 | Tax rate match for one address | `class_country_state`, then `rate_type` for the join; `type_code` and `type_range` for rates found by postcode (§4.13) |
 | Shop sort by price | `wp_postmeta` `meta_key/meta_value` on `_fxc_price_min` (core index on `meta_key`). See revisit condition below. |

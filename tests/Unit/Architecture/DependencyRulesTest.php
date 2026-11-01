@@ -25,31 +25,33 @@ final class DependencyRulesTest extends TestCase {
 	 * @var array<string,list<string>>
 	 */
 	private const ALLOW = [
-		'Contracts' => [],
-		'Concerns'  => [],
-		'Support'   => [ 'Database' ],
-		'Database'  => [ 'Support' ],
-		'Catalog'   => [ 'Support', 'Database' ],
-		'Orders'    => [ 'Support', 'Database', 'Inventory' ],
-		'Downloads' => [ 'Support', 'Database', 'Catalog', 'Orders' ],
-		'Invoices'  => [ 'Support', 'Database', 'Orders', 'Payments' ],
-		'Inventory' => [ 'Catalog', 'Database', 'Support' ],
-		'Pricing'   => [ 'Catalog', 'Tax', 'Support' ],
-		'Shipping'  => [ 'Support' ],
-		'Tax'       => [ 'Support', 'Database' ],
-		'Payments'  => [ 'Orders', 'Database', 'Support' ],
-		'Cart'      => [ 'Catalog', 'Pricing', 'Inventory', 'Shipping', 'Coupons', 'Options', 'Support', 'Database' ],
+		'Contracts'   => [],
+		'Concerns'    => [],
+		'Support'     => [ 'Database' ],
+		'Database'    => [ 'Support' ],
+		'Catalog'     => [ 'Support', 'Database' ],
+		'Orders'      => [ 'Support', 'Database', 'Inventory' ],
+		'Downloads'   => [ 'Support', 'Database', 'Catalog', 'Orders' ],
+		'Invoices'    => [ 'Support', 'Database', 'Orders', 'Payments' ],
+		'Inventory'   => [ 'Catalog', 'Database', 'Support' ],
+		'Pricing'     => [ 'Catalog', 'Tax', 'Support' ],
+		'Shipping'    => [ 'Support' ],
+		'Tax'         => [ 'Support', 'Database' ],
+		'Payments'    => [ 'Orders', 'Database', 'Support' ],
+		'Cart'        => [ 'Catalog', 'Pricing', 'Inventory', 'Shipping', 'Coupons', 'Options', 'Support', 'Database' ],
 		// Coupons reads cart lines (CartItem) to price a discount; Cart asks
 		// Coupons for the discount. CartItem is a plain value, so the cycle
 		// is only in types.
-		'Coupons'   => [ 'Cart', 'Catalog', 'Pricing', 'Support', 'Database' ],
-		'Options'   => [ 'Catalog', 'Inventory', 'Support' ],
-		'Customers' => [ 'Support' ],
-		'Reviews'   => [ 'Catalog', 'Support', 'Database' ],
+		'Coupons'     => [ 'Cart', 'Catalog', 'Pricing', 'Support', 'Database' ],
+		'Options'     => [ 'Catalog', 'Inventory', 'Support' ],
+		'Customers'   => [ 'Support' ],
+		'Reviews'     => [ 'Catalog', 'Support', 'Database' ],
 		// Reminders copy carts, make coupons, look for the order and send the email (ADR-063).
-		'Recovery'  => [ 'Cart', 'Coupons', 'Orders', 'Notifications', 'Support', 'Database' ],
+		'Recovery'    => [ 'Cart', 'Coupons', 'Orders', 'Notifications', 'Support', 'Database' ],
+		// Back-in-stock emails read stock and send through the mailer (ADR-065).
+		'StockAlerts' => [ 'Catalog', 'Inventory', 'Notifications', 'Support', 'Database' ],
 		// The admin order editor reads variants (Catalog) and posted options (Options), ADR-061.
-		'Checkout'  => [ 'Cart', 'Catalog', 'Coupons', 'Options', 'Pricing', 'Inventory', 'Shipping', 'Tax', 'Orders', 'Payments', 'Customers', 'Support', 'Database' ],
+		'Checkout'    => [ 'Cart', 'Catalog', 'Coupons', 'Options', 'Pricing', 'Inventory', 'Shipping', 'Tax', 'Orders', 'Payments', 'Customers', 'Support', 'Database' ],
 	];
 
 	/**
