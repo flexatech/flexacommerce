@@ -11,7 +11,8 @@ defined( 'ABSPATH' ) || exit;
 /**
  * One option per email, `flexacommerce_email_{id}`, not autoloaded: it is
  * read only when that email is about to send. An empty subject, heading or
- * recipient list means the email's own default.
+ * recipient list means the email's own default, and so does 0 days (only
+ * an email sent ahead of a date has days, ADR-075).
  */
 final class EmailSettings {
 	public const PREFIX = 'flexacommerce_email_';
@@ -21,7 +22,11 @@ final class EmailSettings {
 		'recipients' => '',
 		'subject'    => '',
 		'heading'    => '',
+		'days'       => 0,
 	];
+
+	/** Most days ahead an email may go out. */
+	public const MAX_DAYS = 60;
 
 	/**
 	 * Load the options of these emails with one query.
@@ -35,7 +40,7 @@ final class EmailSettings {
 		}
 	}
 
-	/** @return array{enabled:bool,recipients:string,subject:string,heading:string} */
+	/** @return array{enabled:bool,recipients:string,subject:string,heading:string,days:int} */
 	public function get( string $id ): array {
 		$stored = get_option( self::PREFIX . $id, [] );
 		return self::clean( is_array( $stored ) ? $stored : [] );
@@ -45,7 +50,7 @@ final class EmailSettings {
 	 * Merges a partial update over the stored values.
 	 *
 	 * @param array<string,mixed> $partial
-	 * @return array{enabled:bool,recipients:string,subject:string,heading:string}
+	 * @return array{enabled:bool,recipients:string,subject:string,heading:string,days:int}
 	 */
 	public function update( string $id, array $partial ): array {
 		$values = self::clean( array_merge( $this->get( $id ), array_intersect_key( $partial, self::DEFAULTS ) ) );
@@ -67,7 +72,7 @@ final class EmailSettings {
 
 	/**
 	 * @param array<mixed> $values
-	 * @return array{enabled:bool,recipients:string,subject:string,heading:string}
+	 * @return array{enabled:bool,recipients:string,subject:string,heading:string,days:int}
 	 */
 	private static function clean( array $values ): array {
 		return [
@@ -75,6 +80,7 @@ final class EmailSettings {
 			'recipients' => implode( ', ', self::addresses( is_string( $values['recipients'] ?? null ) ? $values['recipients'] : '' ) ),
 			'subject'    => is_string( $values['subject'] ?? null ) ? sanitize_text_field( $values['subject'] ) : '',
 			'heading'    => is_string( $values['heading'] ?? null ) ? sanitize_text_field( $values['heading'] ) : '',
+			'days'       => is_numeric( $values['days'] ?? null ) ? max( 0, min( self::MAX_DAYS, (int) $values['days'] ) ) : 0,
 		];
 	}
 }

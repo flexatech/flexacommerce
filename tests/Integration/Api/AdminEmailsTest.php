@@ -19,7 +19,7 @@ final class AdminEmailsTest extends \WP_UnitTestCase {
 		self::assertSame( 200, $response->get_status() );
 		$data   = $response->get_data();
 		$emails = array_column( $data['emails'], null, 'id' );
-		self::assertCount( 12, $emails );
+		self::assertCount( 13, $emails );
 		self::assertTrue( $emails['customer_invoice']['manual'] );
 		self::assertFalse( $emails['new_order']['manual'] );
 		self::assertFalse( $emails['new_order']['to_customer'] );
@@ -30,6 +30,7 @@ final class AdminEmailsTest extends \WP_UnitTestCase {
 				'recipients' => '',
 				'subject'    => '',
 				'heading'    => '',
+				'days'       => null,
 			],
 			array_diff_key( $emails['new_order'], array_flip( [ 'id', 'title', 'to_customer', 'manual' ] ) )
 		);

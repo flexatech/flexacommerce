@@ -11,10 +11,10 @@ import { cn } from "@/shared/lib/cn";
 import { __, sprintf } from "@/shared/lib/i18n";
 import { useEmails, useSaveEmail, type EmailValues, type OrderEmail } from "./useEmails";
 
-const KEYS = ["enabled", "recipients", "subject", "heading"] as const;
+const KEYS = ["enabled", "recipients", "subject", "heading", "days"] as const;
 
 function pick(email: OrderEmail): EmailValues {
-    return { enabled: email.enabled, recipients: email.recipients, subject: email.subject, heading: email.heading };
+    return { enabled: email.enabled, recipients: email.recipients, subject: email.subject, heading: email.heading, days: email.days };
 }
 
 export function EmailsPanel() {
@@ -118,6 +118,25 @@ function EmailCard({ email, adminEmail, open, onToggle }: CardProps) {
                                 {__("Send this email")}
                             </label>
                             <Switch id={field("enabled")} checked={draft.enabled} onCheckedChange={(v) => set("enabled", v)} />
+                        </div>
+                    )}
+                    {draft.days !== null && (
+                        <div className="fxc:space-y-1.5">
+                            <label htmlFor={field("days")} className="fxc:text-foreground fxc:block fxc:text-sm fxc:font-medium">
+                                {__("Days before the renewal")}
+                            </label>
+                            <Input
+                                id={field("days")}
+                                type="number"
+                                min={1}
+                                max={60}
+                                className="fxc:w-28"
+                                value={String(draft.days)}
+                                onChange={(e) => set("days", Math.max(1, Math.min(60, Number(e.target.value) || 1)))}
+                            />
+                            <p className="fxc:text-muted-foreground fxc:text-xs">
+                                {__("Plans whose billing period is this many days or shorter get no reminder.")}
+                            </p>
                         </div>
                     )}
                     {!email.to_customer && (

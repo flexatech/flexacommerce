@@ -72,3 +72,24 @@ test( 'a guest subscribes and the admin manages the subscription', async ( { pag
 	await expect( view.getByText( 'Active' ).first() ).toBeVisible();
 	await view.getByRole( 'button', { name: 'Close' } ).first().click();
 } );
+
+test( 'the admin sets how many days ahead the renewal reminder goes out', async ( { page }, info ) => {
+	test.skip( info.project.name !== 'tt5', 'one project changes the setting' );
+	await logInAsAdmin( page );
+	const open = async (): Promise< void > => {
+		await page.goto( '/wp-admin/admin.php?page=flexacommerce-settings&tab=emails' );
+		await page.getByRole( 'button', { name: /Subscription renewal reminder/ } ).click();
+	};
+	const save = async ( days: string ): Promise< void > => {
+		await page.getByLabel( 'Days before the renewal' ).fill( days );
+		await page.getByRole( 'button', { name: 'Save', exact: true } ).click();
+		await expect( page.getByText( 'Email settings saved.' ) ).toBeVisible();
+	};
+	await open();
+	await expect( page.getByLabel( 'Days before the renewal' ) ).toHaveValue( '3' );
+	await expectAccessible( page, info, 'renewal reminder settings' );
+	await save( '5' );
+	await open();
+	await expect( page.getByLabel( 'Days before the renewal' ) ).toHaveValue( '5' );
+	await save( '3' );
+} );

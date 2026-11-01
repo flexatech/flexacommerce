@@ -7,6 +7,7 @@ namespace Flexa\Commerce\Api\Admin;
 use Flexa\Commerce\Api\Endpoint;
 use Flexa\Commerce\Contracts\Email\Email;
 use Flexa\Commerce\Notifications\EmailSettings;
+use Flexa\Commerce\Notifications\SentAhead;
 use Flexa\Commerce\Plugin;
 use WP_Error;
 use WP_REST_Request;
@@ -18,7 +19,8 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Order email settings (doc 02 §7.9): on or off, extra recipients for the
  * store emails, and a subject and heading that replace the defaults. An
- * empty value means the email's own default.
+ * empty value means the email's own default. An email sent ahead of a
+ * date also takes its days (ADR-075).
  */
 final class EmailsEndpoint extends Endpoint {
 	public function register_routes(): void {
@@ -60,6 +62,11 @@ final class EmailsEndpoint extends Endpoint {
 							'type'      => 'string',
 							'maxLength' => 255,
 						],
+						'days'       => [
+							'type'    => 'integer',
+							'minimum' => 1,
+							'maximum' => EmailSettings::MAX_DAYS,
+						],
 					],
 				],
 			]
@@ -90,10 +97,13 @@ final class EmailsEndpoint extends Endpoint {
 			return new WP_Error( 'flexacommerce_email_not_found', __( 'Email not found.', 'flexacommerce' ), [ 'status' => 404 ] );
 		}
 		$partial = [];
-		foreach ( [ 'enabled', 'recipients', 'subject', 'heading' ] as $key ) {
+		foreach ( [ 'enabled', 'recipients', 'subject', 'heading', 'days' ] as $key ) {
 			if ( $request->has_param( $key ) ) {
 				$partial[ $key ] = $request->get_param( $key );
 			}
+		}
+		if ( ! $email instanceof SentAhead ) {
+			unset( $partial['days'] );
 		}
 		if ( isset( $partial['recipients'] ) ) {
 			if ( $email->to_customer() ) {
@@ -117,14 +127,21 @@ final class EmailsEndpoint extends Endpoint {
 		return new WP_REST_Response( $this->email_data( $email ), 200 );
 	}
 
-	/** @return array<string,mixed> */
+	/**
+	 * `days` is null for an email not sent ahead of a date, else the days
+	 * it goes out ahead, the default when none is stored (ADR-075).
+	 *
+	 * @return array<string,mixed>
+	 */
 	private function email_data( Email $email ): array {
+		$settings         = Plugin::instance()->notifications()->settings()->get( $email->id() );
+		$settings['days'] = $email instanceof SentAhead ? ( $settings['days'] > 0 ? $settings['days'] : $email->default_days() ) : null;
 		return [
 			'id'          => $email->id(),
 			'title'       => $email->title(),
 			'to_customer' => $email->to_customer(),
 			'manual'      => $email->trigger_hooks() === [],
-		] + Plugin::instance()->notifications()->settings()->get( $email->id() );
+		] + $settings;
 	}
 
 	/** @return list<string> */

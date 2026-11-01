@@ -60,6 +60,15 @@ final class SubscriptionService {
 	 */
 	public const RENEWAL_DUE = 'flexacommerce.subscription.renewal_due';
 
+	/**
+	 * Fired some days before an active row renews (ADR-075). Args: the
+	 * first order's OrderView, and a context with `subscription_id`,
+	 * `title`, `price`, `renews_at` (UTC), `trial`, `automatic`,
+	 * `payment_label` and `subscription_url`. The renewal reminder email
+	 * listens to it.
+	 */
+	public const RENEWAL_REMINDER = 'flexacommerce.subscription.renewal_reminder';
+
 	/** Paid linked orders capture() looks through, newest first. */
 	private const CAPTURE_ORDERS = 3;
 
@@ -69,6 +78,7 @@ final class SubscriptionService {
 	/**
 	 * @param (\Closure(): PaymentService)|null $payments    lazy, so the cron builds payments only when it charges
 	 * @param (\Closure(int): string)|null      $account_url the subscription's page in the account
+	 * @param (\Closure(): int)|null            $reminder_days days before a renewal the reminder goes out, 0 when it is off
 	 */
 	public function __construct(
 		private readonly SubscriptionRepository $rows,
@@ -81,6 +91,7 @@ final class SubscriptionService {
 		private readonly Logger $log,
 		private readonly ?\Closure $payments = null,
 		private readonly ?\Closure $account_url = null,
+		private readonly ?\Closure $reminder_days = null,
 	) {}
 
 	public function repository(): SubscriptionRepository {
@@ -206,7 +217,62 @@ final class SubscriptionService {
 			);
 			++$done;
 		}
+		// Not counted either: a reminder changes nothing the customer has.
+		$this->remind( $now );
 		return $done;
+	}
+
+	/**
+	 * Emails the customers of active rows that renew within the reminder
+	 * days, once per renewal date (ADR-075). The date is claimed before the
+	 * hook fires, so a request that dies sends nothing rather than twice.
+	 * A period no longer than the notice gets no reminder: it would land
+	 * before the payment it follows.
+	 */
+	private function remind( string $now ): void {
+		$days = $this->reminder_days !== null ? (int) ( $this->reminder_days )() : 0;
+		if ( $days < 1 ) {
+			return;
+		}
+		$notice = $days * DAY_IN_SECONDS;
+		$until  = gmdate( 'Y-m-d H:i:s', (int) strtotime( $now . ' UTC' ) + $notice );
+		foreach ( $this->rows->to_remind( $now, $until, self::BATCH ) as $row ) {
+			$next = (string) $row->next_payment_at;
+			$this->rows->update( $row->id, [ 'reminded_for' => $next ], $now );
+			$trial = $row->in_trial( $now );
+			$since = $trial ? (string) $row->start_at : $next;
+			$after = $trial ? $next : $row->plan->after( $next, 1, $row->anchor_day );
+			if ( (int) strtotime( $after . ' UTC' ) - (int) strtotime( $since . ' UTC' ) <= $notice ) {
+				continue;
+			}
+			$order = $row->parent_order_id !== null ? $this->orders->find( $row->parent_order_id ) : null;
+			if ( $order === null ) {
+				continue;
+			}
+			$date = (string) wp_date( (string) get_option( 'date_format' ), (int) strtotime( $next . ' UTC' ) );
+			/* translators: %s: renewal date. */
+			$this->rows->add_event( $row->id, 'reminder', sprintf( __( 'Reminder of the renewal on %s emailed.', 'flexacommerce' ), $date ), null, 'system', null, $now );
+			/**
+			 * An active subscription renews soon (ADR-075).
+			 *
+			 * @param OrderView           $order   the subscription's first order
+			 * @param array<string,mixed> $context subscription_id, title, price, renews_at, trial, automatic, payment_label, subscription_url
+			 */
+			do_action(
+				self::RENEWAL_REMINDER,
+				$order->view(),
+				[
+					'subscription_id'  => $row->id,
+					'title'            => $row->title(),
+					'price'            => $this->price_text( $row ),
+					'renews_at'        => $next,
+					'trial'            => $trial,
+					'automatic'        => $row->is_automatic(),
+					'payment_label'    => $row->payment_label !== '' ? $row->payment_label : $row->payment_method_title,
+					'subscription_url' => $row->customer_id > 0 && $this->account_url !== null ? (string) ( $this->account_url )( $row->id ) : '',
+				]
+			);
+		}
 	}
 
 	/**

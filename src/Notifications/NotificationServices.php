@@ -80,6 +80,7 @@ final class NotificationServices {
 			new Emails\NeedsAttention( $templates, $data ),
 			new Emails\CustomerInvoice( $templates, $data ),
 			new Emails\CustomerRenewalInvoice( $templates, $data ),
+			new Emails\CustomerRenewalReminder( $templates, $data ),
 		];
 		$all       = apply_filters( 'flexacommerce.emails.register', $core );
 		$byid      = [];
@@ -99,6 +100,16 @@ final class NotificationServices {
 			}
 		}
 		return null;
+	}
+
+	/** How many days ahead an email sent ahead of a date goes out; 0 when it is off or not such an email. */
+	public function days_before( string $id ): int {
+		$email = $this->email( $id );
+		if ( ! $email instanceof SentAhead ) {
+			return 0;
+		}
+		$settings = $this->settings()->get( $id );
+		return $settings['enabled'] ? ( $settings['days'] > 0 ? $settings['days'] : $email->default_days() ) : 0;
 	}
 
 	public function data(): OrderData {

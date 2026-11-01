@@ -46,6 +46,7 @@ final class Subscription {
 		public readonly ?string $cancelled_at,
 		public readonly string $created_at,
 		public readonly string $updated_at,
+		public readonly ?string $reminded_for = null,
 	) {}
 
 	/** @param array<string,mixed> $row */
@@ -86,6 +87,7 @@ final class Subscription {
 			cancelled_at: $at( $row['cancelled_at'] ?? null ),
 			created_at: (string) ( $row['created_at'] ?? '' ),
 			updated_at: (string) ( $row['updated_at'] ?? '' ),
+			reminded_for: $at( $row['reminded_for'] ?? null ),
 		);
 	}
 

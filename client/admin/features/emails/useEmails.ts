@@ -7,6 +7,8 @@ export interface EmailValues {
     recipients: string;
     subject: string;
     heading: string;
+    /** Days ahead of the date it is about; null for an email not sent ahead. */
+    days: number | null;
 }
 
 export interface OrderEmail extends EmailValues {

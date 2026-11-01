@@ -62,6 +62,20 @@ final class SubscriptionRepository {
 		);
 	}
 
+	/** @return list<Subscription> active rows renewing after $now and by $until that were not reminded of that date (ADR-075) */
+	public function to_remind( string $now, string $until, int $limit ): array {
+		return $this->many(
+			$this->wpdb->prepare(
+				'SELECT * FROM %i WHERE status = %s AND next_payment_at > %s AND next_payment_at <= %s AND ( reminded_for IS NULL OR reminded_for <> next_payment_at ) ORDER BY next_payment_at, id LIMIT %d',
+				Schema::table( 'subscriptions' ),
+				SubscriptionStatus::ACTIVE,
+				$now,
+				$until,
+				$limit
+			)
+		);
+	}
+
 	/** @return list<Subscription> live rows whose saved payment method was not looked up yet (ADR-074) */
 	public function uncaptured( int $limit ): array {
 		return $this->many(

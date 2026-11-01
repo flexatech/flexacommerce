@@ -30,6 +30,8 @@ use Flexa\Commerce\Tests\Integration\Orders\OrderTestCase;
 use Flexa\Commerce\Tests\Integration\Payments\FakeStripe;
 use Flexa\Commerce\Payments\Gateways\Stripe\StripeGateway;
 use Flexa\Commerce\Notifications\Emails\CustomerRenewalInvoice;
+use Flexa\Commerce\Notifications\Emails\CustomerRenewalReminder;
+use Flexa\Commerce\Notifications\EmailSettings;
 
 /**
  * Subscriptions with manual renewals (ADR-073): checkout makes a pending
@@ -576,6 +578,124 @@ final class SubscriptionTest extends OrderTestCase {
 	];
 
 	/** Stripe in test mode against FakeStripe, with a customer to make and the card the first payment saved. */
+	public function test_a_reminder_goes_out_days_before_each_renewal_once(): void {
+		$order = $this->buy( $this->user, $this->plan_product( 1000, [ 'period' => 'month' ] ), 1 );
+		$this->orders()->record_payment( $order->id, $order->total, TransitionContext::system() );
+		$row = $this->only( $order );
+		$this->renews_in( $row, 2 );
+		reset_phpmailer_instance();
+		$this->subs()->run();
+		$mails = $this->mails( 'subscription renews on' );
+		self::assertCount( 1, $mails );
+		self::assertSame( 'ada@example.com', $mails[0]['to'][0][0] );
+		self::assertStringContainsString( 'email you a link to pay', (string) $mails[0]['body'] );
+		self::assertStringContainsString( 'Manage your subscription', (string) $mails[0]['body'] );
+		$types = array_column( $this->subs()->repository()->events( $row->id, 20 ), 'type' );
+		self::assertContains( 'reminder', $types );
+
+		reset_phpmailer_instance();
+		$this->subs()->run();
+		self::assertSame( [], $this->mails( 'subscription renews on' ), 'Once per renewal date.' );
+
+		// A new date is a new reminder; one past the notice waits for its turn.
+		$this->renews_in( $row, 1 );
+		$this->subs()->run();
+		self::assertCount( 1, $this->mails( 'subscription renews on' ) );
+		reset_phpmailer_instance();
+		$this->renews_in( $row, 5 );
+		$this->subs()->run();
+		self::assertSame( [], $this->mails( 'subscription renews on' ) );
+	}
+
+	public function test_the_reminder_names_the_card_and_follows_the_email_settings(): void {
+		$row      = $this->automatic();
+		$settings = Plugin::instance()->notifications()->settings();
+		$settings->update( CustomerRenewalReminder::ID, [ 'days' => 10 ] );
+		$this->renews_in( $row, 8 );
+		reset_phpmailer_instance();
+		$this->subs()->run();
+		$mails = $this->mails( 'subscription renews on' );
+		self::assertCount( 1, $mails, 'Ten days ahead, as set.' );
+		self::assertStringContainsString( 'We will charge Visa ending in 4242 on that day', (string) $mails[0]['body'] );
+
+		$settings->update( CustomerRenewalReminder::ID, [ 'enabled' => false ] );
+		$this->renews_in( $row, 7 );
+		reset_phpmailer_instance();
+		$this->subs()->run();
+		self::assertSame( [], $this->mails( 'subscription renews on' ), 'Off.' );
+		$row = $this->subs()->find( $row->id );
+		self::assertNotSame( $row?->next_payment_at, $row?->reminded_for, 'Nothing claimed while off.' );
+		delete_option( EmailSettings::PREFIX . CustomerRenewalReminder::ID );
+	}
+
+	public function test_a_trial_end_is_reminded_and_short_periods_are_not(): void {
+		$order = $this->buy(
+			$this->user,
+			$this->plan_product(
+				1000,
+				[
+					'period'     => 'month',
+					'trial_days' => 14,
+				]
+			),
+			1
+		);
+		$this->orders()->record_payment( $order->id, $order->total, TransitionContext::system() );
+		$trial = $this->only( $order );
+		$this->renews_in( $trial, 2 );
+		$ends = $this->subs()->find( $trial->id )?->next_payment_at;
+		$this->subs()->repository()->update(
+			$trial->id,
+			[
+				'start_at'     => gmdate( 'Y-m-d H:i:s', time() - 12 * DAY_IN_SECONDS ),
+				'trial_end_at' => $ends,
+			],
+			gmdate( 'Y-m-d H:i:s' )
+		);
+		reset_phpmailer_instance();
+		$this->subs()->run();
+		$mails = $this->mails( 'free trial ends on' );
+		self::assertCount( 1, $mails );
+		self::assertStringContainsString( 'First payment', (string) $mails[0]['body'] );
+
+		$daily = $this->buy( $this->user, $this->plan_product( 300, [ 'period' => 'day' ] ), 1 );
+		$this->orders()->record_payment( $daily->id, $daily->total, TransitionContext::system() );
+		$row = $this->only( $daily );
+		self::assertNotNull( $row->next_payment_at );
+		reset_phpmailer_instance();
+		$this->subs()->run();
+		self::assertSame( [], $this->mails( 'subscription renews on' ), 'A one-day period is shorter than the notice.' );
+		self::assertSame( $row->next_payment_at, $this->subs()->find( $row->id )?->reminded_for, 'Claimed, so it is not read again.' );
+	}
+
+	public function test_the_emails_screen_shows_and_saves_the_reminder_days(): void {
+		wp_set_current_user( self::factory()->user->create( [ 'role' => 'administrator' ] ) );
+		$list = (array) $this->send( 'GET', '/admin/emails' )->get_data();
+		$days = array_column( (array) $list['emails'], 'days', 'id' );
+		self::assertSame( [ 3, null ], [ $days[ CustomerRenewalReminder::ID ], $days['customer_renewal_invoice'] ] );
+		self::assertTrue( array_key_exists( 'customer_renewal_invoice', $days ) );
+
+		$saved = $this->send( 'PATCH', '/admin/emails/' . CustomerRenewalReminder::ID, [ 'days' => 7 ] );
+		self::assertSame( 7, ( (array) $saved->get_data() )['days'] );
+		self::assertSame( 7, Plugin::instance()->notifications()->days_before( CustomerRenewalReminder::ID ) );
+		self::assertSame( 400, $this->send( 'PATCH', '/admin/emails/' . CustomerRenewalReminder::ID, [ 'days' => 0 ] )->get_status() );
+		$other = $this->send( 'PATCH', '/admin/emails/customer_renewal_invoice', [ 'days' => 7 ] );
+		self::assertNull( ( (array) $other->get_data() )['days'] );
+		self::assertSame( 0, Plugin::instance()->notifications()->settings()->get( 'customer_renewal_invoice' )['days'] );
+		delete_option( EmailSettings::PREFIX . CustomerRenewalReminder::ID );
+		delete_option( EmailSettings::PREFIX . 'customer_renewal_invoice' );
+	}
+
+	/** Moves the next payment to this many days from now, less an hour. */
+	private function renews_in( Subscription $row, int $days ): void {
+		$this->subs()->repository()->update( $row->id, [ 'next_payment_at' => gmdate( 'Y-m-d H:i:s', time() + $days * DAY_IN_SECONDS - HOUR_IN_SECONDS ) ], gmdate( 'Y-m-d H:i:s' ) );
+	}
+
+	/** @return list<array<string,mixed>> sent mails whose subject has this text */
+	private function mails( string $subject ): array {
+		return array_values( array_filter( tests_retrieve_phpmailer_instance()->mock_sent, static fn ( array $m ): bool => str_contains( (string) $m['subject'], $subject ) ) );
+	}
+
 	private function stripe(): void {
 		$this->stripe = true;
 		FakeStripe::install();
