@@ -15,7 +15,9 @@ defined( 'ABSPATH' ) || exit;
  * it only started a trial; `anchor_day` keeps a monthly plan on its day.
  * `payment_token` is the saved method renewals charge (ADR-074): null
  * until it is looked up, '' when the payment saved none. `retry_count`
- * and `retry_at` follow a failed automatic charge.
+ * and `retry_at` follow a failed automatic charge. `paused_at` is set
+ * while the customer paused it (ADR-076); a merchant's hold leaves it
+ * null.
  */
 final class Subscription {
 	public function __construct(
@@ -47,6 +49,7 @@ final class Subscription {
 		public readonly string $created_at,
 		public readonly string $updated_at,
 		public readonly ?string $reminded_for = null,
+		public readonly ?string $paused_at = null,
 	) {}
 
 	/** @param array<string,mixed> $row */
@@ -88,6 +91,7 @@ final class Subscription {
 			created_at: (string) ( $row['created_at'] ?? '' ),
 			updated_at: (string) ( $row['updated_at'] ?? '' ),
 			reminded_for: $at( $row['reminded_for'] ?? null ),
+			paused_at: $at( $row['paused_at'] ?? null ),
 		);
 	}
 
@@ -111,6 +115,11 @@ final class Subscription {
 	/** Whether the plan has run all its payments: no renewal follows. */
 	public function is_last_period(): bool {
 		return $this->plan->length > 0 && $this->billed >= $this->plan->length;
+	}
+
+	/** Whether the customer paused it and may resume it (ADR-076). */
+	public function is_paused(): bool {
+		return $this->status === SubscriptionStatus::ON_HOLD && $this->paused_at !== null;
 	}
 
 	public function in_trial( string $now ): bool {
@@ -152,6 +161,7 @@ final class Subscription {
 			'next_payment_at'      => $iso( $this->next_payment_at ),
 			'end_at'               => $iso( $this->end_at ),
 			'cancelled_at'         => $iso( $this->cancelled_at ),
+			'paused_at'            => $iso( $this->paused_at ),
 			'created_at'           => $iso( $this->created_at ),
 		];
 	}

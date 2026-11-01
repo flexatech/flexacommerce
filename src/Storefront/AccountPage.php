@@ -12,10 +12,13 @@ use Flexa\Commerce\Orders\Order;
 use Flexa\Commerce\Orders\OrderAccess;
 use Flexa\Commerce\Orders\TransitionContext;
 use Flexa\Commerce\Payments\RecurringGateway;
+use Flexa\Commerce\Contracts\Orders\AddressView;
 use Flexa\Commerce\Contracts\Payments\PaymentResult;
 use Flexa\Commerce\Plugin;
 use Flexa\Commerce\Storefront\Render\Account;
 use Flexa\Commerce\Storefront\Render\Component;
+use Flexa\Commerce\Subscriptions\Snapshot;
+use Flexa\Commerce\Subscriptions\Subscription;
 use Flexa\Commerce\Support\SameSite;
 use Flexa\Commerce\Support\Settings;
 use Flexa\Commerce\Wishlist\WishlistCookies;
@@ -50,6 +53,9 @@ final class AccountPage {
 	private array $errors = [];
 
 	private ?CustomerProfile $profile = null;
+
+	/** A subscription change priced for the customer to confirm (ADR-076). */
+	private ?Snapshot $preview = null;
 
 	/**
 	 * The account page, or one of its sub-pages. With plain permalinks the
@@ -158,7 +164,7 @@ final class AccountPage {
 			'wishlist' => $this->wishlist_content( $user ),
 			'store-credit' => $view->credit( $user ),
 			'subscriptions' => $view->subscriptions( $user ),
-			'view-subscription' => $view->subscription( Plugin::instance()->subscriptions()->owned( absint( $value ), $user ), $this->errors ),
+			'view-subscription' => $view->subscription( Plugin::instance()->subscriptions()->owned( absint( $value ), $user ), $this->errors, $this->posted, $this->preview ),
 			default => $view->dashboard( $user ),
 		};
 		return $view->page( $endpoint, $saved, $content );
@@ -326,7 +332,11 @@ final class AccountPage {
 		self::redirect( add_query_arg( self::SAVED, $saved, self::url( 'view-subscription', (string) $row->id ) ) );
 	}
 
-	/** Cancel or reactivate a subscription of the account (ADR-073), or go save a new payment method (ADR-074). */
+	/**
+	 * Cancel or reactivate a subscription of the account (ADR-073), go save
+	 * a new payment method (ADR-074), pause or resume it, or change its
+	 * quantities or address (ADR-076).
+	 */
 	private function change_subscription( int $user ): void {
 		$service = Plugin::instance()->subscriptions();
 		$id      = absint( is_scalar( $this->posted['subscription_id'] ?? null ) ? $this->posted['subscription_id'] : 0 );
@@ -338,7 +348,16 @@ final class AccountPage {
 		}
 		$ctx = new TransitionContext( 'customer', $user );
 		try {
-			if ( $do === 'reactivate' ) {
+			if ( $do === 'change' ) {
+				if ( ! $this->change_items( $row, $ctx ) ) {
+					return;
+				}
+			} elseif ( $do === 'pause' ) {
+				$service->pause( $id, $ctx );
+			} elseif ( $do === 'resume' ) {
+				$order = $service->resume( $id, $ctx );
+				$do    = $order === null ? 'resume' : ( $service->unpaid_renewal( $service->find( $id ) ?? $row ) !== null ? 'resume_due' : 'resume_paid' );
+			} elseif ( $do === 'reactivate' ) {
 				$service->reactivate( $id, $ctx );
 			} elseif ( $do === 'cancel' ) {
 				$service->cancel( $id, true, $ctx );
@@ -354,6 +373,55 @@ final class AccountPage {
 			return;
 		}
 		self::redirect( add_query_arg( self::SAVED, 'subscription_' . $do, self::url( 'view-subscription', (string) $id ) ) );
+	}
+
+	/**
+	 * New quantities or a new address, priced again. A change that moves
+	 * the price is shown first and saved when the customer confirms the
+	 * same total; one that does not is saved at once. Returns whether it
+	 * was saved.
+	 *
+	 * @throws \InvalidArgumentException
+	 */
+	private function change_items( Subscription $row, TransitionContext $ctx ): bool {
+		$quantities = [];
+		foreach ( is_array( $this->posted['subscription_qty'] ?? null ) ? $this->posted['subscription_qty'] : [] as $index => $quantity ) {
+			if ( is_int( $index ) && is_scalar( $quantity ) ) {
+				$quantities[ $index ] = min( 9999, absint( $quantity ) );
+			}
+		}
+		$address = null;
+		if ( ! empty( $this->posted['subscription_address'] ) ) {
+			if ( isset( $this->posted[ CheckoutPage::REFRESH ] ) ) {
+				// Country changed without scripts: show the fields of the new country.
+				return false;
+			}
+			$type  = $row->shipping !== null ? 'shipping' : 'billing';
+			$input = [];
+			foreach ( is_array( $this->posted[ $type ] ?? null ) ? $this->posted[ $type ] : [] as $key => $value ) {
+				if ( is_string( $key ) && is_scalar( $value ) ) {
+					$input[ $key ] = (string) $value;
+				}
+			}
+			[ $address, $errors ] = ( new CheckoutValidator() )->single_address( $type, $input );
+			if ( $errors !== [] ) {
+				$this->errors = $errors;
+				return false;
+			}
+		}
+		if ( $quantities === [] && ! $address instanceof AddressView ) {
+			return false;
+		}
+		$service  = Plugin::instance()->subscriptions();
+		$snapshot = $service->quote_change( $row, $quantities, $address );
+		$expected = is_scalar( $this->posted['subscription_total'] ?? null ) ? (string) $this->posted['subscription_total'] : '';
+		$confirm  = ! empty( $this->posted['subscription_confirm'] ) && $expected === (string) $snapshot->total;
+		if ( ! $confirm && $snapshot->total !== $row->total ) {
+			$this->preview = $snapshot;
+			return false;
+		}
+		$service->apply_change( $row, $snapshot, $address, $ctx );
+		return true;
 	}
 
 	private function verified( string $action ): bool {

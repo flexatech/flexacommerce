@@ -1108,7 +1108,7 @@ final class CheckoutService {
 	 *
 	 * @param list<\Flexa\Commerce\Cart\CartLine> $lines
 	 */
-	private function snapshot( array $lines, Destination $destination, string $rate_id, AddressView $billing, int $customer_id ): Snapshot {
+	private function snapshot( array $lines, Destination $destination, string $rate_id, AddressView $billing, int $customer_id, bool $strict = false ): Snapshot {
 		$cart  = ( new Cart( lines: $lines ) )->with_shipping(
 			[
 				'country'  => $destination->country,
@@ -1122,7 +1122,14 @@ final class CheckoutService {
 		$quote = $this->quote( $state, $destination, $rate_id, $billing, $customer_id );
 		$plan  = null;
 		foreach ( $state->items as $item ) {
+			if ( $strict && ( $item->unit === null || $item->plan === null ) ) {
+				/* translators: %s: product name. */
+				throw new \InvalidArgumentException( sprintf( __( '%s is no longer sold on this subscription. Contact the store to change it.', 'flexacommerce' ), $item->name() ) );
+			}
 			$plan ??= $item->plan;
+		}
+		if ( $strict && $quote->needs_shipping && $quote->rate === null ) {
+			throw new \InvalidArgumentException( __( 'We cannot ship this subscription to that address.', 'flexacommerce' ) );
 		}
 		[ 'items' => $items, 'discount' => $discount, 'fees' => $fees ] = $this->order_items( $quote );
 		return new Snapshot(
@@ -1136,6 +1143,62 @@ final class CheckoutService {
 			$discount,
 			$fees
 		);
+	}
+
+	/**
+	 * A subscription's snapshot priced again with other quantities or
+	 * addresses (ADR-076): the product lines rebuilt from the stored
+	 * choices, at today's prices, shipped and taxed to the new address
+	 * with the rate chosen at checkout when it is still offered.
+	 * `$quantities` maps an index of `$old->items` to its new quantity;
+	 * 0 drops the line, and bundle parts follow their bundle.
+	 *
+	 * @param array<int,int> $quantities
+	 * @throws \InvalidArgumentException the change cannot be made, with a message for the customer
+	 */
+	public function resnapshot( Snapshot $old, array $quantities, AddressView $billing, ?AddressView $shipping, int $customer_id ): Snapshot {
+		$lines = [];
+		$rate  = '';
+		foreach ( $old->items as $index => $item ) {
+			if ( $item->type === OrderItem::SHIPPING && $rate === '' ) {
+				$rate = $item->code;
+			}
+			if ( $item->type !== OrderItem::PRODUCT || isset( $item->meta['bundled_by'] ) || $item->product_id === null ) {
+				continue;
+			}
+			$quantity = max( 0, $quantities[ $index ] ?? $item->quantity );
+			if ( $quantity === 0 ) {
+				continue;
+			}
+			$attributes = [];
+			foreach ( is_array( $item->meta['selection'] ?? null ) ? $item->meta['selection'] : [] as $key => $value ) {
+				if ( is_string( $key ) && is_scalar( $value ) ) {
+					$attributes[ $key ] = (string) $value;
+				}
+			}
+			try {
+				$lines[] = $this->cart->admin_line( $item->product_id, (int) $item->variant_id, $quantity, $attributes, is_array( $item->meta['options'] ?? null ) ? $item->meta['options'] : [] );
+			} catch ( \Flexa\Commerce\Contracts\CommerceException $e ) {
+				/* translators: 1: product name, 2: why it cannot be ordered. */
+				throw new \InvalidArgumentException( sprintf( __( '%1$s: %2$s', 'flexacommerce' ), $item->name, $e->getMessage() ), 0, $e );
+			}
+		}
+		if ( $lines === [] ) {
+			throw new \InvalidArgumentException( __( 'Keep at least one item, or cancel the subscription instead.', 'flexacommerce' ) );
+		}
+		$to          = $shipping ?? $billing;
+		$destination = new Destination( $to->country, $to->state, $to->postcode, $to->city );
+		try {
+			$new = $this->snapshot( $lines, $destination, $rate, $billing, $customer_id, true );
+		} catch ( InvalidCheckout $e ) {
+			throw new \InvalidArgumentException( (string) ( array_values( $e->errors )[0] ?? __( 'This change cannot be made.', 'flexacommerce' ) ), 0, $e );
+		}
+		// The schedule stays: only lines sold on the same plan fit it.
+		$same = $new->plan->period === $old->plan->period && $new->plan->interval === $old->plan->interval && $new->plan->length === $old->plan->length;
+		if ( ! $same ) {
+			throw new \InvalidArgumentException( __( 'The plan of this product changed since you subscribed. Contact the store to change the subscription.', 'flexacommerce' ) );
+		}
+		return $new;
 	}
 
 	/**

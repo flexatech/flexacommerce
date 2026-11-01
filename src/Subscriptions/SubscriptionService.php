@@ -7,6 +7,7 @@ namespace Flexa\Commerce\Subscriptions;
 use Flexa\Commerce\Contracts\Email\EmailMessage;
 use Flexa\Commerce\Contracts\Exceptions\InsufficientStock;
 use Flexa\Commerce\Contracts\Logger;
+use Flexa\Commerce\Contracts\Orders\AddressView;
 use Flexa\Commerce\Contracts\MoneyFactory;
 use Flexa\Commerce\Contracts\Orders\OrderView;
 use Flexa\Commerce\Contracts\Payments\PaymentResult;
@@ -79,6 +80,7 @@ final class SubscriptionService {
 	 * @param (\Closure(): PaymentService)|null $payments    lazy, so the cron builds payments only when it charges
 	 * @param (\Closure(int): string)|null      $account_url the subscription's page in the account
 	 * @param (\Closure(): int)|null            $reminder_days days before a renewal the reminder goes out, 0 when it is off
+	 * @param (\Closure(Snapshot, array<int,int>, AddressView, ?AddressView, int): Snapshot)|null $reprice the snapshot priced again with new quantities and addresses (ADR-076)
 	 */
 	public function __construct(
 		private readonly SubscriptionRepository $rows,
@@ -92,6 +94,7 @@ final class SubscriptionService {
 		private readonly ?\Closure $payments = null,
 		private readonly ?\Closure $account_url = null,
 		private readonly ?\Closure $reminder_days = null,
+		private readonly ?\Closure $reprice = null,
 	) {}
 
 	public function repository(): SubscriptionRepository {
@@ -662,7 +665,8 @@ final class SubscriptionService {
 			throw new \InvalidArgumentException( __( 'This subscription has already ended.', 'flexacommerce' ) );
 		}
 		$until = $row->next_payment_at ?? $row->end_at;
-		if ( $at_end && $row->status === SubscriptionStatus::ACTIVE && $until !== null && $until > $this->clock->db_now() ) {
+		// A paused row also keeps the period it paid for (ADR-076).
+		if ( $at_end && ( $row->status === SubscriptionStatus::ACTIVE || $row->is_paused() ) && $until !== null && $until > $this->clock->db_now() ) {
 			$now = $this->clock->db_now();
 			$this->rows->update(
 				$id,
@@ -670,6 +674,7 @@ final class SubscriptionService {
 					'status'          => SubscriptionStatus::PENDING_CANCEL,
 					'next_payment_at' => null,
 					'end_at'          => $until,
+					'paused_at'       => null,
 				],
 				$now
 			);
@@ -715,19 +720,160 @@ final class SubscriptionService {
 			if ( $row->status !== SubscriptionStatus::ON_HOLD ) {
 				throw new \InvalidArgumentException( __( 'Only a subscription on hold can be resumed.', 'flexacommerce' ) );
 			}
-			$now = $this->clock->db_now();
-			$this->rows->update(
-				$id,
-				[
-					'status'      => SubscriptionStatus::ACTIVE,
-					'retry_count' => 0,
-					'retry_at'    => null,
-				],
-				$now
-			);
-			$this->rows->add_event( $id, 'resumed', __( 'Resumed.', 'flexacommerce' ), null, $ctx->actor_type, $ctx->actor_id, $now );
+			$this->unpause( $row, $ctx );
 		}
 		return $this->rows->find( $id ) ?? $row;
+	}
+
+	/** Whether the customer can pause renewals from the account page (ADR-076). */
+	public function can_pause( Subscription $row ): bool {
+		return $row->status === SubscriptionStatus::ACTIVE && $row->next_payment_at !== null;
+	}
+
+	/**
+	 * The customer pauses renewals (ADR-076). Nothing is charged or
+	 * shipped until they resume; the merchant sees the row on hold.
+	 *
+	 * @throws \InvalidArgumentException
+	 */
+	public function pause( int $id, TransitionContext $ctx ): Subscription {
+		$row = $this->rows->find( $id ) ?? throw new \InvalidArgumentException( __( 'Subscription not found.', 'flexacommerce' ) );
+		if ( ! $this->can_pause( $row ) ) {
+			throw new \InvalidArgumentException( __( 'Only an active subscription can be paused.', 'flexacommerce' ) );
+		}
+		$now = $this->clock->db_now();
+		$this->rows->update(
+			$id,
+			[
+				'status'    => SubscriptionStatus::ON_HOLD,
+				'paused_at' => $now,
+			],
+			$now
+		);
+		$this->rows->add_event( $id, 'paused', __( 'Paused by the customer.', 'flexacommerce' ), null, $ctx->actor_type, $ctx->actor_id, $now );
+		return $this->rows->find( $id ) ?? $row;
+	}
+
+	/**
+	 * The customer resumes a row they paused (ADR-076). When its payment
+	 * day passed meanwhile, it renews now and the next periods count from
+	 * today. Returns that renewal order, or null when none was due.
+	 *
+	 * @throws \InvalidArgumentException
+	 */
+	public function resume( int $id, TransitionContext $ctx ): ?Order {
+		$row = $this->rows->find( $id ) ?? throw new \InvalidArgumentException( __( 'Subscription not found.', 'flexacommerce' ) );
+		if ( ! $row->is_paused() ) {
+			throw new \InvalidArgumentException( __( 'Only a subscription you paused can be resumed.', 'flexacommerce' ) );
+		}
+		return $this->unpause( $row, $ctx ) ? $this->renew( $id, $ctx ) : null;
+	}
+
+	/**
+	 * Active again. A row whose payment day passed while it waited, with no
+	 * renewal left unpaid, renews from today instead of catching up one
+	 * missed period per cron run. Returns whether it is due now.
+	 */
+	private function unpause( Subscription $row, TransitionContext $ctx ): bool {
+		$now    = $this->clock->db_now();
+		$fields = [
+			'status'      => SubscriptionStatus::ACTIVE,
+			'retry_count' => 0,
+			'retry_at'    => null,
+			'paused_at'   => null,
+		];
+		$due    = $row->next_payment_at !== null && $row->next_payment_at <= $now && $this->unpaid_renewal( $row ) === null;
+		if ( $due ) {
+			$fields += [
+				'next_payment_at' => $now,
+				'anchor_day'      => (int) substr( $now, 8, 2 ),
+			];
+		}
+		$this->rows->update( $row->id, $fields, $now );
+		$this->rows->add_event( $row->id, 'resumed', __( 'Resumed.', 'flexacommerce' ), null, $ctx->actor_type, $ctx->actor_id, $now );
+		return $due;
+	}
+
+	/** Whether the customer can change the items or the address of the renewals (ADR-076). */
+	public function can_change( Subscription $row ): bool {
+		return $this->reprice !== null && $row->snapshot !== null && $row->next_payment_at !== null
+			&& ( $row->status === SubscriptionStatus::ACTIVE || $row->is_paused() );
+	}
+
+	/**
+	 * What the renewals would hold with other quantities or another
+	 * address (ADR-076): priced again at today's prices, shipped and taxed
+	 * to the address. `$quantities` maps an index of the snapshot's items
+	 * to its new quantity. `$address` replaces the shipping address, or the
+	 * billing one when nothing is shipped.
+	 *
+	 * @param array<int,int> $quantities
+	 * @throws \InvalidArgumentException the change cannot be made, with a message for the customer
+	 */
+	public function quote_change( Subscription $row, array $quantities, ?AddressView $address ): Snapshot {
+		if ( ! $this->can_change( $row ) || $row->snapshot === null || $this->reprice === null ) {
+			throw new \InvalidArgumentException( __( 'This subscription cannot be changed now.', 'flexacommerce' ) );
+		}
+		[ $billing, $shipping ] = $this->addresses( $row, $address );
+		if ( $billing === null ) {
+			throw new \InvalidArgumentException( __( 'This subscription has no address to price it with. Contact the store to change it.', 'flexacommerce' ) );
+		}
+		return ( $this->reprice )( $row->snapshot, $quantities, $billing, $shipping, $row->customer_id );
+	}
+
+	/**
+	 * Store a change quote_change() priced. The next renewal bills it; a
+	 * renewal already waiting for payment keeps what it holds.
+	 */
+	public function apply_change( Subscription $row, Snapshot $snapshot, ?AddressView $address, TransitionContext $ctx ): Subscription {
+		[ $billing, $shipping ] = $this->addresses( $row, $address );
+		$now                    = $this->clock->db_now();
+		$this->rows->update(
+			$row->id,
+			[
+				'snapshot' => $snapshot->to_json(),
+				'total'    => $snapshot->total,
+				'billing'  => Subscription::address_json( $billing ),
+				'shipping' => Subscription::address_json( $shipping ),
+			],
+			$now
+		);
+		$changed = $this->rows->find( $row->id ) ?? $row;
+		$parts   = [];
+		if ( $snapshot->title() !== $row->title() ) {
+			/* translators: %s: what the subscription is for, like "Coffee beans × 2". */
+			$parts[] = sprintf( __( 'Items changed to %s.', 'flexacommerce' ), $snapshot->title() );
+		}
+		if ( $address !== null ) {
+			$parts[] = $row->shipping !== null ? __( 'Shipping address changed.', 'flexacommerce' ) : __( 'Billing address changed.', 'flexacommerce' );
+		}
+		/* translators: %s: the renewal price, like "$10.00 / month". */
+		$parts[] = sprintf( __( 'Renewal price %s.', 'flexacommerce' ), $this->price_text( $changed ) );
+		$this->rows->add_event( $row->id, 'changed', implode( ' ', $parts ), null, $ctx->actor_type, $ctx->actor_id, $now );
+		return $changed;
+	}
+
+	/**
+	 * The billing and shipping addresses with `$address` put in place. A
+	 * new billing address keeps the email and phone of the old one when
+	 * the form left them out.
+	 *
+	 * @return array{0:?AddressView,1:?AddressView}
+	 */
+	private function addresses( Subscription $row, ?AddressView $address ): array {
+		if ( $address === null ) {
+			return [ $row->billing, $row->shipping ];
+		}
+		if ( $row->shipping !== null ) {
+			return [ $row->billing ?? new AddressView( 'billing', email: $row->customer_email ), self::typed( $address, 'shipping' ) ];
+		}
+		$email = $address->email !== '' ? $address->email : ( $row->billing->email ?? $row->customer_email );
+		$phone = $address->phone !== '' ? $address->phone : ( $row->billing->phone ?? '' );
+		return [ self::typed( $address, 'billing', $email, $phone ), null ];
+	}
+
+	private static function typed( AddressView $a, string $type, ?string $email = null, ?string $phone = null ): AddressView {
+		return new AddressView( $type, $a->first_name, $a->last_name, $a->company, $a->address_1, $a->address_2, $a->city, $a->state, $a->postcode, $a->country, $email ?? $a->email, $phone ?? $a->phone );
 	}
 
 	/**
@@ -867,6 +1013,7 @@ final class SubscriptionService {
 				'next_payment_at' => null,
 				'end_at'          => $row->end_at !== null && $row->end_at <= $now ? $row->end_at : $now,
 				'cancelled_at'    => $status === SubscriptionStatus::CANCELLED ? $now : null,
+				'paused_at'       => null,
 			],
 			$now
 		);

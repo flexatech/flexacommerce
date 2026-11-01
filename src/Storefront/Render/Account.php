@@ -10,12 +10,14 @@ use Flexa\Commerce\Customers\CustomerProfile;
 use Flexa\Commerce\GiftCards\GiftCardActivity;
 use Flexa\Commerce\GiftCards\GiftCardService;
 use Flexa\Commerce\Orders\Order;
+use Flexa\Commerce\Orders\OrderItem;
 use Flexa\Commerce\Orders\OrderQuery;
 use Flexa\Commerce\Orders\OrderStatus;
 use Flexa\Commerce\Plugin;
 use Flexa\Commerce\Storefront\AccountPage;
 use Flexa\Commerce\Storefront\CheckoutPage;
 use Flexa\Commerce\Storefront\OrderLookup;
+use Flexa\Commerce\Subscriptions\Snapshot;
 use Flexa\Commerce\Subscriptions\Subscription;
 use Flexa\Commerce\Subscriptions\SubscriptionService;
 use Flexa\Commerce\Subscriptions\SubscriptionStatus;
@@ -136,6 +138,11 @@ final class Account {
 			'subscription_card' => __( 'Payment method saved. Renewals are charged to it.', 'flexacommerce' ),
 			'subscription_card_paid' => __( 'Payment method saved, and the renewal is paid.', 'flexacommerce' ),
 			'subscription_card_failed' => __( 'Payment method saved, but the renewal payment did not go through. Pay it with the button below.', 'flexacommerce' ),
+			'subscription_change' => __( 'Subscription updated. The next renewal bills the change.', 'flexacommerce' ),
+			'subscription_pause' => __( 'Your subscription is paused. Nothing is charged or sent until you resume it.', 'flexacommerce' ),
+			'subscription_resume' => __( 'Your subscription is active again.', 'flexacommerce' ),
+			'subscription_resume_paid' => __( 'Your subscription is active again, and the renewal is paid.', 'flexacommerce' ),
+			'subscription_resume_due' => __( 'Your subscription is active again. Pay the renewal with the button below.', 'flexacommerce' ),
 			default => '',
 		};
 		$notice = $notice !== '' ? '<p class="fxc-notice" role="status">' . esc_html( $notice ) . '</p>' : '';
@@ -253,15 +260,17 @@ final class Account {
 	 * shopper can do with it.
 	 *
 	 * @param array<string,string> $errors
+	 * @param array<string,mixed>  $posted  the last post, to fill the forms again
+	 * @param ?Snapshot            $preview a change priced for the customer to confirm (ADR-076)
 	 */
-	public function subscription( ?Subscription $row, array $errors = [] ): string {
+	public function subscription( ?Subscription $row, array $errors = [], array $posted = [], ?Snapshot $preview = null ): string {
 		if ( $row === null ) {
 			return '<p class="fxc-notice fxc-notice--error" role="alert">' . esc_html__( 'Subscription not found.', 'flexacommerce' ) . '</p>';
 		}
 		$service = Plugin::instance()->subscriptions();
 		$html    = self::summary( $errors ) . '<h2>' . esc_html( '#' . $row->id . ' ' . $row->title() ) . '</h2><dl class="fxc-account__terms">';
 		$terms   = [
-			__( 'Status', 'flexacommerce' ) => SubscriptionStatus::label( $row->status ),
+			__( 'Status', 'flexacommerce' ) => $row->is_paused() ? __( 'Paused', 'flexacommerce' ) : SubscriptionStatus::label( $row->status ),
 			__( 'Price', 'flexacommerce' )  => $service->price_text( $row ),
 		];
 		if ( $row->start_at !== null ) {
@@ -270,7 +279,7 @@ final class Account {
 		if ( $row->trial_end_at !== null && $row->in_trial( gmdate( 'Y-m-d H:i:s' ) ) ) {
 			$terms[ __( 'Free trial until', 'flexacommerce' ) ] = self::day( $row->trial_end_at );
 		}
-		if ( $row->next_payment_at !== null ) {
+		if ( $row->next_payment_at !== null && ! $row->is_paused() ) {
 			$terms[ __( 'Next payment', 'flexacommerce' ) ] = self::day( $row->next_payment_at );
 		}
 		if ( $row->end_at !== null ) {
@@ -301,6 +310,20 @@ final class Account {
 			$html .= '<p class="fxc-notice" role="status">' . esc_html( $wait ) . '</p>'
 				. '<p><a class="fxc-button" href="' . esc_url( $this->checkout->pages()->pay_url( $unpaid ) ) . '">' . esc_html__( 'Pay renewal', 'flexacommerce' ) . '</a></p>';
 		}
+		if ( $preview !== null ) {
+			$html .= $this->preview( $row, $preview, $posted );
+		}
+		if ( $row->is_paused() ) {
+			$html .= '<form method="post" class="fxc-account__subscription-action">' . self::hidden( 'subscription' ) . self::subscription_fields( $row, 'resume' )
+				. '<p class="fxc-notice" role="status">' . esc_html__( 'Your subscription is paused. Nothing is charged or sent until you resume it.', 'flexacommerce' ) . '</p>'
+				. ( $row->next_payment_at !== null && $row->next_payment_at <= gmdate( 'Y-m-d H:i:s' )
+					? '<p>' . esc_html__( 'The payment day passed while it was paused, so resuming renews it today.', 'flexacommerce' ) . '</p>'
+					: '' )
+				. '<p><button type="submit" class="fxc-button">' . esc_html__( 'Resume subscription', 'flexacommerce' ) . '</button></p></form>';
+		}
+		if ( $service->can_change( $row ) && $row->snapshot !== null ) {
+			$html .= $this->items_form( $row, $row->snapshot, $posted );
+		}
 		if ( $service->can_update_method( $row ) ) {
 			$html .= '<form method="post" class="fxc-account__subscription-action">' . self::hidden( 'subscription' )
 				. '<input type="hidden" name="subscription_id" value="' . esc_attr( (string) $row->id ) . '">'
@@ -318,7 +341,7 @@ final class Account {
 			$html .= '<form method="post" class="fxc-account__subscription-action">' . self::hidden( 'subscription' )
 				. '<input type="hidden" name="subscription_id" value="' . esc_attr( (string) $row->id ) . '">'
 				. '<input type="hidden" name="subscription_do" value="' . esc_attr( $do[0] ) . '">';
-			if ( $do[0] === 'cancel' && $row->status === SubscriptionStatus::ACTIVE && $row->next_payment_at !== null ) {
+			if ( $do[0] === 'cancel' && ( $row->status === SubscriptionStatus::ACTIVE || $row->is_paused() ) && $row->next_payment_at !== null ) {
 				$html .= '<p>' . sprintf(
 					/* translators: %s: date the paid period ends. */
 					esc_html__( 'If you cancel, nothing more is charged and the subscription ends on %s.', 'flexacommerce' ),
@@ -326,6 +349,11 @@ final class Account {
 				) . '</p>';
 			}
 			$html .= '<p><button type="submit" class="fxc-button">' . esc_html( $do[1] ) . '</button></p></form>';
+		}
+		if ( $service->can_pause( $row ) ) {
+			$html .= '<form method="post" class="fxc-account__subscription-action">' . self::hidden( 'subscription' ) . self::subscription_fields( $row, 'pause' )
+				. '<p>' . esc_html__( 'Away for a while? Pause the subscription: nothing is charged or sent until you resume it.', 'flexacommerce' ) . '</p>'
+				. '<p><button type="submit" class="fxc-button fxc-button--secondary">' . esc_html__( 'Pause subscription', 'flexacommerce' ) . '</button></p></form>';
 		}
 
 		$orders = '';
@@ -353,10 +381,139 @@ final class Account {
 				. '<th scope="col">' . esc_html__( 'Total', 'flexacommerce' ) . '</th>'
 				. '</tr></thead><tbody>' . $orders . '</tbody></table>';
 		}
-		return $html . '<div class="fxc-order__addresses">'
+		$html .= '<div class="fxc-order__addresses">'
 			. OrderConfirmation::address( __( 'Billing address', 'flexacommerce' ), $row->billing )
 			. OrderConfirmation::address( __( 'Shipping address', 'flexacommerce' ), $row->shipping )
 			. '</div>';
+		if ( $service->can_change( $row ) && ( $row->shipping ?? $row->billing ) !== null ) {
+			$html .= $this->address_form( $row, $posted, $errors );
+		}
+		return $html;
+	}
+
+	/**
+	 * The quantities of the renewals, one field per product line; a line
+	 * can be set to 0 while another stays (ADR-076).
+	 *
+	 * @param array<string,mixed> $posted
+	 */
+	private function items_form( Subscription $row, Snapshot $snapshot, array $posted ): string {
+		$lines  = self::lines( $snapshot );
+		$values = is_array( $posted['subscription_qty'] ?? null ) ? $posted['subscription_qty'] : [];
+		$rows   = '';
+		foreach ( $lines as $index => $item ) {
+			$id    = 'fxc-subscription-qty-' . $index;
+			$value = is_scalar( $values[ $index ] ?? null ) ? (string) $values[ $index ] : (string) $item->quantity;
+			$rows .= sprintf(
+				'<tr><th scope="row"><label for="%1$s">%2$s</label></th><td>%3$s</td><td><input type="number" class="fxc-input fxc-account__qty" id="%1$s" name="subscription_qty[%4$d]" value="%5$s" min="%6$d" max="9999" step="1" inputmode="numeric"></td></tr>',
+				esc_attr( $id ),
+				esc_html( $item->name ),
+				esc_html( $this->checkout->format( $item->unit_price, $row->currency ) ),
+				$index,
+				esc_attr( $value ),
+				count( $lines ) > 1 ? 0 : 1
+			);
+		}
+		return '<form method="post" class="fxc-account__subscription-items">' . self::hidden( 'subscription' ) . self::subscription_fields( $row, 'change' )
+			. '<table class="fxc-account__orders"><caption>' . esc_html__( 'Items in each renewal', 'flexacommerce' ) . '</caption><thead><tr>'
+			. '<th scope="col">' . esc_html__( 'Item', 'flexacommerce' ) . '</th>'
+			. '<th scope="col">' . esc_html__( 'Price', 'flexacommerce' ) . '</th>'
+			. '<th scope="col">' . esc_html__( 'Quantity', 'flexacommerce' ) . '</th>'
+			. '</tr></thead><tbody>' . $rows . '</tbody></table>'
+			. '<p>' . esc_html__( 'Changes apply from the next renewal. You see the new price before anything is saved.', 'flexacommerce' ) . '</p>'
+			. '<p><button type="submit" class="fxc-button fxc-button--secondary">' . esc_html__( 'Update quantities', 'flexacommerce' ) . '</button></p></form>';
+	}
+
+	/**
+	 * The renewals' shipping address, or the billing one when nothing is
+	 * shipped, in a collapsed section that opens on the customer's own
+	 * submission (ADR-076).
+	 *
+	 * @param array<string,mixed>  $posted
+	 * @param array<string,string> $errors
+	 */
+	private function address_form( Subscription $row, array $posted, array $errors ): string {
+		$type    = $row->shipping !== null ? 'shipping' : 'billing';
+		$current = $row->shipping ?? $row->billing;
+		$mine    = ! empty( $posted['subscription_address'] );
+		$values  = $mine && is_array( $posted[ $type ] ?? null ) ? $posted[ $type ] : ( $current !== null ? $current->to_array() : [] );
+		$country = is_string( $values['country'] ?? null ) && $values['country'] !== '' ? strtoupper( $values['country'] ) : Settings::string( 'store_country' );
+		$fields  = FieldSchema::for_address( $type, $country )->core()->to_array();
+		$title   = $type === 'shipping' ? __( 'Change the shipping address', 'flexacommerce' ) : __( 'Change the billing address', 'flexacommerce' );
+		return '<details class="fxc-account__subscription-address"' . ( $mine ? ' open' : '' ) . '><summary>' . esc_html( $title ) . '</summary>'
+			. '<form method="post" class="fxc-account__form" novalidate>' . self::hidden( 'subscription' ) . self::subscription_fields( $row, 'change' )
+			. '<input type="hidden" name="subscription_address" value="1">'
+			. '<fieldset><legend>' . esc_html( $type === 'shipping' ? __( 'Shipping address', 'flexacommerce' ) : __( 'Billing address', 'flexacommerce' ) ) . '</legend>'
+			. CheckoutForm::fields( $type, $fields, $values, Countries::allowed(), $mine ? $errors : [] )
+			. '<p><button type="submit" name="' . esc_attr( CheckoutPage::REFRESH ) . '" value="1" formnovalidate>' . esc_html__( 'Update the fields for this country', 'flexacommerce' ) . '</button></p>'
+			. '</fieldset><p>' . esc_html__( 'Only this subscription changes. Your saved addresses stay as they are.', 'flexacommerce' ) . '</p>'
+			. '<p><button type="submit" class="fxc-button fxc-button--secondary">' . esc_html__( 'Save address', 'flexacommerce' ) . '</button></p></form></details>';
+	}
+
+	/**
+	 * A change that moves the price, with the new lines and price and a
+	 * button that posts it again to confirm (ADR-076).
+	 *
+	 * @param array<string,mixed> $posted
+	 */
+	private function preview( Subscription $row, Snapshot $preview, array $posted ): string {
+		$items = '';
+		foreach ( self::lines( $preview ) as $item ) {
+			$items .= '<li>' . esc_html( $item->quantity > 1 ? sprintf( '%1$s × %2$d', $item->name, $item->quantity ) : $item->name ) . '</li>';
+		}
+		$hidden = '';
+		foreach ( is_array( $posted['subscription_qty'] ?? null ) ? $posted['subscription_qty'] : [] as $index => $quantity ) {
+			if ( is_int( $index ) && is_scalar( $quantity ) ) {
+				$hidden .= '<input type="hidden" name="subscription_qty[' . $index . ']" value="' . esc_attr( (string) absint( $quantity ) ) . '">';
+			}
+		}
+		if ( ! empty( $posted['subscription_address'] ) ) {
+			$type    = $row->shipping !== null ? 'shipping' : 'billing';
+			$hidden .= '<input type="hidden" name="subscription_address" value="1">';
+			foreach ( is_array( $posted[ $type ] ?? null ) ? $posted[ $type ] : [] as $key => $value ) {
+				if ( is_string( $key ) && is_scalar( $value ) ) {
+					$hidden .= '<input type="hidden" name="' . esc_attr( $type . '[' . $key . ']' ) . '" value="' . esc_attr( (string) $value ) . '">';
+				}
+			}
+		}
+		$service = Plugin::instance()->subscriptions();
+		return '<section class="fxc-account__subscription-preview" aria-labelledby="fxc-subscription-preview"><h3 id="fxc-subscription-preview" tabindex="-1">' . esc_html__( 'Review your change', 'flexacommerce' ) . '</h3>'
+			. '<ul>' . $items . '</ul><p>' . sprintf(
+				/* translators: 1: new renewal price, 2: current renewal price. */
+				esc_html__( 'New renewal price: %1$s (now %2$s).', 'flexacommerce' ),
+				'<strong>' . esc_html( $preview->plan->per( $this->checkout->format( $preview->total, $row->currency ) ) ) . '</strong>',
+				esc_html( $service->price_text( $row ) )
+			) . '</p>'
+			. ( $row->next_payment_at !== null && ! $row->is_paused()
+				/* translators: %s: date of the next renewal. */
+				? '<p>' . esc_html( sprintf( __( 'It applies from the renewal on %s.', 'flexacommerce' ), self::day( $row->next_payment_at ) ) ) . '</p>'
+				: '' )
+			. '<form method="post">' . self::hidden( 'subscription' ) . self::subscription_fields( $row, 'change' ) . $hidden
+			. '<input type="hidden" name="subscription_total" value="' . esc_attr( (string) $preview->total ) . '">'
+			. '<input type="hidden" name="subscription_confirm" value="1">'
+			. '<p><button type="submit" class="fxc-button">' . esc_html__( 'Confirm the change', 'flexacommerce' ) . '</button> '
+			. '<a href="' . esc_url( AccountPage::url( 'view-subscription', (string) $row->id ) ) . '">' . esc_html__( 'Keep it as it is', 'flexacommerce' ) . '</a></p></form></section>';
+	}
+
+	/**
+	 * The product lines a customer can change, by their index in the
+	 * snapshot; bundle parts follow their bundle.
+	 *
+	 * @return array<int,\Flexa\Commerce\Orders\NewOrderItem>
+	 */
+	private static function lines( Snapshot $snapshot ): array {
+		$out = [];
+		foreach ( $snapshot->items as $index => $item ) {
+			if ( $item->type === OrderItem::PRODUCT && ! isset( $item->meta['bundled_by'] ) ) {
+				$out[ $index ] = $item;
+			}
+		}
+		return $out;
+	}
+
+	private static function subscription_fields( Subscription $row, string $do ): string {
+		return '<input type="hidden" name="subscription_id" value="' . esc_attr( (string) $row->id ) . '">'
+			. '<input type="hidden" name="subscription_do" value="' . esc_attr( $do ) . '">';
 	}
 
 	public function orders( int $user_id, int $page ): string {

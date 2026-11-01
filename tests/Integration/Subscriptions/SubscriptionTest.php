@@ -687,6 +687,234 @@ final class SubscriptionTest extends OrderTestCase {
 	}
 
 	/** Moves the next payment to this many days from now, less an hour. */
+	public function test_the_customer_changes_quantities_priced_at_todays_prices(): void {
+		$coffee = $this->plan_product( 1000, [ 'period' => 'month' ] );
+		$filter = $this->plan_product( 500, [ 'period' => 'month' ] );
+		$order  = $this->buy( $this->user, $coffee, 1, more: [ $filter => 1 ] );
+		$this->orders()->record_payment( $order->id, $order->total, TransitionContext::system() );
+		$row = $this->only( $order );
+		self::assertSame( 2000, $row->total, 'Ten and five, shipping five.' );
+		self::assertTrue( $this->subs()->can_change( $row ) );
+		$at = self::indexes( $row );
+
+		$quote = $this->subs()->quote_change( $row, [ $at[ $coffee ] => 2, $at[ $filter ] => 0 ], null );
+		self::assertSame( 2500, $quote->total, 'The filter is dropped.' );
+		$row = $this->subs()->apply_change( $row, $quote, null, new TransitionContext( 'customer', $this->user ) );
+		self::assertSame( [ 2500, 'Test product × 2' ], [ $row->total, $row->title() ] );
+		$event = $this->subs()->repository()->events( $row->id, 1 )[0];
+		self::assertSame( 'changed', $event['type'] );
+		self::assertStringContainsString( 'Items changed to Test product × 2.', (string) $event['message'] );
+
+		$this->save( $coffee, [ 'base' => [ 'regular_price' => 1200 ] ] );
+		Plugin::instance()->cart()->pricing()->reset(); // Prices are kept for the request; a real change comes in a later one.
+		self::assertSame( 2900, $this->subs()->quote_change( $row, [], null )->total, 'A change bills the price of today.' );
+
+		try {
+			$this->subs()->quote_change( $row, [ 0 => 0 ], null );
+			self::fail( 'No item left.' );
+		} catch ( \InvalidArgumentException $e ) {
+			self::assertStringContainsString( 'Keep at least one item', $e->getMessage() );
+		}
+
+		$this->save( $coffee, [ 'base' => [ 'subscription' => [ 'period' => 'week' ] ] ] );
+		$this->expectExceptionMessage( 'The plan of this product changed' );
+		$this->subs()->quote_change( $row, [ 0 => 3 ], null );
+	}
+
+	public function test_a_renewal_waiting_for_payment_keeps_what_it_holds(): void {
+		$order = $this->buy( $this->user, $this->plan_product( 1000, [ 'period' => 'month' ] ), 1, [], 'cod' );
+		$row   = $this->only( $order );
+		$this->due( $row );
+		$renewal = $this->subs()->renew( $row->id, TransitionContext::admin() );
+		self::assertNotNull( $renewal );
+		$row = $this->subs()->find( $row->id );
+		self::assertNotNull( $row );
+		self::assertFalse( $this->subs()->can_change( $row ), 'On hold for the unpaid renewal.' );
+
+		$this->orders()->record_payment( $renewal->id, $renewal->total, TransitionContext::system() );
+		$row = $this->subs()->find( $row->id );
+		self::assertNotNull( $row );
+		$row = $this->subs()->apply_change( $row, $this->subs()->quote_change( $row, [ 0 => 3 ], null ), null, TransitionContext::admin() );
+		self::assertSame( 3500, $row->total );
+		self::assertSame( 1500, $this->orders()->find( $renewal->id )?->total, 'The paid renewal is left alone.' );
+	}
+
+	public function test_the_account_page_previews_a_new_price_and_saves_on_confirm(): void {
+		Pages::install();
+		$order = $this->buy( $this->user, $this->plan_product( 1000, [ 'period' => 'month' ] ), 1 );
+		$this->orders()->record_payment( $order->id, $order->total, TransitionContext::system() );
+		$row = $this->only( $order );
+		wp_set_current_user( $this->user );
+		$_SERVER['HTTP_REFERER'] = home_url( '/my-account/' );
+		$_GET                    = [ 'fxc_view_subscription' => (string) $row->id ];
+		$html                    = $this->account()->render();
+		self::assertStringContainsString( 'name="subscription_qty[0]"', $html );
+		self::assertStringContainsString( 'Update quantities', $html );
+		self::assertStringContainsString( 'Save address', $html );
+		self::assertStringContainsString( 'Pause subscription', $html );
+
+		$_POST = $this->subscription_post( $row, 'change', [ 'subscription_qty' => [ 0 => '2' ] ] );
+		$page  = $this->account();
+		$page->handle();
+		self::assertSame( [], $page->errors() );
+		$html = $page->render();
+		self::assertStringContainsString( 'Review your change', $html );
+		self::assertStringContainsString( 'name="subscription_total" value="2500"', $html );
+		self::assertSame( 1500, $this->subs()->find( $row->id )?->total, 'Nothing is saved before the confirm.' );
+
+		$_POST = $this->subscription_post(
+			$row,
+			'change',
+			[
+				'subscription_qty'     => [ 0 => '2' ],
+				'subscription_total'   => '2500',
+				'subscription_confirm' => '1',
+			]
+		);
+		self::assertStringContainsString( 'subscription_change', $this->redirected() );
+		self::assertSame( 2500, $this->subs()->find( $row->id )?->total );
+
+		// The same price: saved at once.
+		$address = [
+			'address_1' => '2 Main St',
+			'city'      => 'Austin',
+			'state'     => 'TX',
+			'postcode'  => '73301',
+		] + self::BILLING;
+		$_POST   = $this->subscription_post( $row, 'change', [ 'subscription_address' => '1' ] + [ 'shipping' => $address ] );
+		self::assertStringContainsString( 'subscription_change', $this->redirected() );
+		$row = $this->subs()->find( $row->id );
+		self::assertSame( [ 'Austin', 'Cupertino', 2500 ], [ $row?->shipping?->city, $row?->billing?->city, $row?->total ], 'Only the shipping address moves.' );
+		self::assertStringContainsString( 'Shipping address changed.', (string) $this->subs()->repository()->events( (int) $row?->id, 1 )[0]['message'] );
+
+		$_POST = $this->subscription_post(
+			$row ?? throw new \LogicException(),
+			'change',
+			[
+				'subscription_address' => '1',
+				'shipping'             => [
+					'country'  => 'GB',
+					'city'     => 'London',
+					'postcode' => 'SW1A 1AA',
+				] + $address,
+			]
+		);
+		$page  = $this->account();
+		$page->handle();
+		self::assertSame( 'We cannot ship this subscription to that address.', $page->errors()['form'] ?? '' );
+
+		$_POST = $this->subscription_post( $row, 'pause', [] );
+		self::assertStringContainsString( 'subscription_pause', $this->redirected() );
+		$_POST = [];
+		$html  = $this->account()->render();
+		self::assertStringContainsString( 'Resume subscription', $html );
+		self::assertStringNotContainsString( 'Pause subscription', $html );
+		$_POST = $this->subscription_post( $row, 'resume', [] );
+		self::assertStringContainsString( 'subscription_resume', $this->redirected() );
+		self::assertSame( SubscriptionStatus::ACTIVE, $this->subs()->find( $row->id )?->status );
+		$_GET = [];
+		unset( $_SERVER['HTTP_REFERER'] );
+	}
+
+	public function test_a_paused_subscription_resumes_on_time_or_renews_from_today(): void {
+		$order = $this->buy( $this->user, $this->plan_product( 1000, [ 'period' => 'month' ] ), 1 );
+		$this->orders()->record_payment( $order->id, $order->total, TransitionContext::system() );
+		$row  = $this->only( $order );
+		$next = $row->next_payment_at;
+		$ctx  = new TransitionContext( 'customer', $this->user );
+
+		$row = $this->subs()->pause( $row->id, $ctx );
+		self::assertSame( SubscriptionStatus::ON_HOLD, $row->status );
+		self::assertTrue( $row->is_paused() );
+		self::assertTrue( $this->subs()->can_change( $row ), 'A paused row can still be changed.' );
+		self::assertNull( $this->subs()->resume( $row->id, $ctx ), 'Not due: nothing to bill.' );
+		$row = $this->subs()->find( $row->id );
+		self::assertSame( [ SubscriptionStatus::ACTIVE, $next, null ], [ $row?->status, $row?->next_payment_at, $row?->paused_at ] );
+
+		self::assertNotNull( $row );
+		$this->subs()->pause( $row->id, $ctx );
+		$this->due( $row );
+		self::assertSame( 0, $this->subs()->run(), 'A paused row does not renew.' );
+		$renewal = $this->subs()->resume( $row->id, $ctx );
+		self::assertNotNull( $renewal, 'The payment day passed: it renews now.' );
+		$row = $this->subs()->find( $row->id );
+		self::assertNotNull( $row );
+		self::assertSame( (int) gmdate( 'j' ), $row->anchor_day, 'The next periods count from today.' );
+		self::assertGreaterThan( gmdate( 'Y-m-d H:i:s' ), (string) $row->next_payment_at );
+		self::assertSame( [ 'paused', 'resumed', 'paused', 'resumed', 'renewal' ], array_slice( array_reverse( array_column( $this->subs()->repository()->events( $row->id, 20 ), 'type' ) ), 2 ) );
+	}
+
+	public function test_resuming_a_paused_stripe_row_charges_the_card(): void {
+		$row = $this->automatic();
+		$ctx = new TransitionContext( 'customer', $this->user );
+		$this->subs()->pause( $row->id, $ctx );
+		$this->due( $row );
+		FakeStripe::$routes['POST payment_intents'] = [ 200, self::intent( 'pi_renew', 'succeeded', 1500 ) ];
+		self::assertNotNull( $this->subs()->resume( $row->id, $ctx ) );
+		$row = $this->subs()->find( $row->id );
+		self::assertNotNull( $row );
+		self::assertSame( [ SubscriptionStatus::ACTIVE, 2 ], [ $row->status, $row->billed ] );
+		self::assertNull( $this->subs()->unpaid_renewal( $row ) );
+	}
+
+	public function test_a_merchant_hold_stays_with_the_merchant_and_resumes_once(): void {
+		$order = $this->buy( $this->user, $this->plan_product( 1000, [ 'period' => 'month' ] ), 1, [], 'cod' );
+		$row   = $this->only( $order );
+		$row   = $this->subs()->set_hold( $row->id, true, TransitionContext::admin() );
+		self::assertFalse( $row->is_paused() );
+		self::assertFalse( $this->subs()->can_change( $row ) );
+		try {
+			$this->subs()->resume( $row->id, new TransitionContext( 'customer', $this->user ) );
+			self::fail( 'The customer resumed a merchant hold.' );
+		} catch ( \InvalidArgumentException $e ) {
+			self::assertStringContainsString( 'Only a subscription you paused', $e->getMessage() );
+		}
+
+		$this->due( $row );
+		$this->subs()->set_hold( $row->id, false, TransitionContext::admin() );
+		self::assertSame( 1, $this->subs()->run() );
+		$renewal = $this->subs()->unpaid_renewal( $this->subs()->find( $row->id ) ?? $row );
+		self::assertNotNull( $renewal );
+		$this->orders()->record_payment( $renewal->id, $renewal->total, TransitionContext::system() );
+		self::assertGreaterThan( gmdate( 'Y-m-d H:i:s' ), (string) $this->subs()->find( $row->id )?->next_payment_at, 'No catching up on missed periods.' );
+		self::assertSame( 0, $this->subs()->run() );
+	}
+
+	public function test_cancelling_a_paused_row_keeps_the_period_it_paid_for(): void {
+		$order = $this->buy( $this->user, $this->plan_product( 1000, [ 'period' => 'month' ] ), 1 );
+		$this->orders()->record_payment( $order->id, $order->total, TransitionContext::system() );
+		$row  = $this->only( $order );
+		$next = $row->next_payment_at;
+		$ctx  = new TransitionContext( 'customer', $this->user );
+		$this->subs()->pause( $row->id, $ctx );
+		$row = $this->subs()->cancel( $row->id, true, $ctx );
+		self::assertSame( [ SubscriptionStatus::PENDING_CANCEL, $next, null ], [ $row->status, $row->end_at, $row->paused_at ] );
+	}
+
+	/** @return array<int,int> product id => index of its item in the renewals */
+	private static function indexes( Subscription $row ): array {
+		$out = [];
+		foreach ( $row->snapshot->items ?? [] as $index => $item ) {
+			if ( $item->product_id !== null ) {
+				$out[ $item->product_id ] = $index;
+			}
+		}
+		return $out;
+	}
+
+	/**
+	 * @param array<string,mixed> $fields
+	 * @return array<string,mixed>
+	 */
+	private function subscription_post( Subscription $row, string $do, array $fields ): array {
+		return $fields + [
+			AccountPage::ACTION => 'subscription',
+			AccountPage::NONCE  => wp_create_nonce( AccountPage::ACTION . '_subscription' ),
+			'subscription_id'   => (string) $row->id,
+			'subscription_do'   => $do,
+		];
+	}
+
 	private function renews_in( Subscription $row, int $days ): void {
 		$this->subs()->repository()->update( $row->id, [ 'next_payment_at' => gmdate( 'Y-m-d H:i:s', time() + $days * DAY_IN_SECONDS - HOUR_IN_SECONDS ) ], gmdate( 'Y-m-d H:i:s' ) );
 	}
@@ -856,11 +1084,14 @@ final class SubscriptionTest extends OrderTestCase {
 	/**
 	 * @param array<string,string> $billing
 	 * @param array<string,string> $input
+	 * @param array<int,int>       $more  other products in the cart, id => quantity
 	 */
-	private function buy( int $user_id, int $product_id, int $qty, array $billing = [], string $method = 'bacs', array $input = [] ): Order {
+	private function buy( int $user_id, int $product_id, int $qty, array $billing = [], string $method = 'bacs', array $input = [], array $more = [] ): Order {
 		$plugin  = Plugin::instance();
 		$browser = new CartServices( $plugin->services(), $plugin->catalog(), new MemoryTokenStore() );
-		$browser->cart()->add( $user_id, $product_id, $this->service()->get( $product_id )->base->id, $qty );
+		foreach ( [ $product_id => $qty ] + $more as $id => $quantity ) {
+			$browser->cart()->add( $user_id, $id, $this->service()->get( $id )->base->id, $quantity );
+		}
 		$checkout = $this->checkout( $browser );
 		$token    = $checkout->form_state( $user_id )['checkout_token'];
 		return $checkout->place_order(

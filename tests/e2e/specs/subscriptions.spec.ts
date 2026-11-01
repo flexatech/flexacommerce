@@ -93,3 +93,38 @@ test( 'the admin sets how many days ahead the renewal reminder goes out', async 
 	await expect( page.getByLabel( 'Days before the renewal' ) ).toHaveValue( '5' );
 	await save( '3' );
 } );
+
+test( 'the customer changes the quantity, pauses and resumes from the account', async ( { page }, info ) => {
+	test.skip( info.project.name !== 'tt5', 'one project places the order' );
+	test.setTimeout( 90_000 );
+	await logInAsAdmin( page );
+	await page.goto( store.club.url );
+	const form = page.locator( 'form.fxc-add-to-cart--single' );
+	await form.getByRole( 'button', { name: 'Add to cart' } ).click();
+	await expect( form.locator( '.fxc-add-to-cart__message' ) ).not.toBeEmpty();
+	await page.goto( store.checkout );
+	await fillBilling( page, 'admin@example.test' );
+	await page.locator( '#fxc-payment-method' ).getByLabel( /cash on delivery/i ).check();
+	await page.locator( '#fxc-terms' ).check();
+	await page.getByRole( 'button', { name: 'Place order' } ).click();
+	await expect( page.locator( '.fxc-order' ) ).toBeVisible( { timeout: 15_000 } );
+
+	await page.goto( `${ store.account }?fxc_subscriptions=1` );
+	await page.locator( '.fxc-account__subscriptions' ).getByRole( 'link', { name: /Coffee club/ } ).first().click();
+	await page.getByLabel( 'Coffee club', { exact: true } ).fill( '2' );
+	await page.getByRole( 'button', { name: 'Update quantities' } ).click();
+	// A new price is shown before it is saved.
+	const review = page.getByRole( 'region', { name: 'Review your change' } );
+	await expect( review ).toContainText( 'New renewal price' );
+	await expectAccessible( page, info, 'subscription change review' );
+	await review.getByRole( 'button', { name: 'Confirm the change' } ).click();
+	await expect( page.getByText( 'Subscription updated. The next renewal bills the change.' ) ).toBeVisible();
+	await expect( page.getByLabel( 'Coffee club', { exact: true } ) ).toHaveValue( '2' );
+	await expectAccessible( page, info, 'subscription with change forms' );
+
+	await page.getByRole( 'button', { name: 'Pause subscription' } ).click();
+	await expect( page.getByText( 'Your subscription is paused.' ).first() ).toBeVisible();
+	await page.getByRole( 'button', { name: 'Resume subscription' } ).click();
+	await expect( page.getByText( 'Your subscription is active again.' ) ).toBeVisible();
+	await expect( page.getByRole( 'button', { name: 'Pause subscription' } ) ).toBeVisible();
+} );

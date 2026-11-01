@@ -212,6 +212,12 @@ function SubscriptionView({ row, onClose }: { row: SubscriptionDetail; onClose: 
                     )}
                 </dl>
 
+                {row.paused_at !== null && (
+                    <p className="fxc:bg-muted fxc:rounded-md fxc:px-3 fxc:py-2 fxc:text-sm">
+                        {sprintf(__("Paused by the customer on %s. Resuming it here works too."), formatDate(row.paused_at))}
+                    </p>
+                )}
+
                 {row.unpaid_order_id !== null && (
                     <p className="fxc:bg-muted fxc:rounded-md fxc:px-3 fxc:py-2 fxc:text-sm">
                         {row.retry_at !== null

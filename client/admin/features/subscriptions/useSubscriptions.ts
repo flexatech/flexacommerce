@@ -48,6 +48,8 @@ export interface SubscriptionItem {
     next_payment_at: string | null;
     end_at: string | null;
     cancelled_at: string | null;
+    /** Set while the customer paused the subscription from My Account. */
+    paused_at: string | null;
     created_at: string | null;
 }
 

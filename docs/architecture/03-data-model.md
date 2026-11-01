@@ -1010,7 +1010,7 @@ CREATE TABLE fxc_gift_card_activity (
 
 ### 4.22 `fxc_subscriptions`, `fxc_subscription_orders` and `fxc_subscription_events`
 
-Added with subscriptions (ADR-073), `DB_VERSION` 18. The saved payment method and retry columns came with `DB_VERSION` 19 (ADR-074), `reminded_for` with `DB_VERSION` 20 (ADR-075).
+Added with subscriptions (ADR-073), `DB_VERSION` 18. The saved payment method and retry columns came with `DB_VERSION` 19 (ADR-074), `reminded_for` with `DB_VERSION` 20 (ADR-075), `paused_at` with `DB_VERSION` 21 (ADR-076).
 
 ```sql
 CREATE TABLE fxc_subscriptions (
@@ -1035,6 +1035,7 @@ CREATE TABLE fxc_subscriptions (
   retry_count tinyint(3) unsigned NOT NULL DEFAULT 0,
   retry_at datetime NULL,
   reminded_for datetime NULL,
+  paused_at datetime NULL,
   snapshot longtext NOT NULL,
   billing longtext NULL,
   shipping longtext NULL,
@@ -1076,9 +1077,9 @@ CREATE TABLE fxc_subscription_events (
 ) {charset_collate};
 ```
 
-- **Columns.** `status` is `pending`, `active`, `on-hold`, `pending-cancel`, `cancelled` or `expired`. The plan is copied into `period`, `interval_count`, `length` and `trial_days` when the subscription is made, so a later product edit does not change it; the sign-up fee is only charged once and is not kept. `anchor_day` is the day of the month payments fall on (1 to 31, set at the start), so a short month does not move later payments. `billed` counts the paid periods, the first order included unless it only started a trial. `total` is a renewal's total in minor units of `currency`. `snapshot` is JSON: the plan, the order lines a renewal copies, and its subtotal, shipping, tax, discount and fee totals (`Snapshot`). `billing` and `shipping` are the address JSON of the first order. Dates are UTC. `next_payment_at` is NULL once no payment is left; `end_at` is when the last paid period ends (set ahead for a plan with a length or a cancel at the end of the period). The user meta `_fxc_has_subscriptions` marks customers with at least one row. `payment_customer` and `payment_token` are the gateway's customer and saved method ids (a Stripe `cus_` and `pm_`), `payment_label` what the customer sees ("Visa ending in 4242"); `payment_token` is NULL until the cron has looked for a saved method and '' when there is none, so the renewal is paid by hand. `retry_count` counts failed automatic charges of the waiting renewal and `retry_at` is the next try (NULL after the last one). The Stripe customer of an account is also kept in the user option `_fxc_stripe_customer_<mode>` (ADR-074). `reminded_for` is the renewal date the last reminder was for (ADR-075): a row is reminded again only when `next_payment_at` moves to another date.
+- **Columns.** `status` is `pending`, `active`, `on-hold`, `pending-cancel`, `cancelled` or `expired`. The plan is copied into `period`, `interval_count`, `length` and `trial_days` when the subscription is made, so a later product edit does not change it; the sign-up fee is only charged once and is not kept. `anchor_day` is the day of the month payments fall on (1 to 31, set at the start), so a short month does not move later payments. `billed` counts the paid periods, the first order included unless it only started a trial. `total` is a renewal's total in minor units of `currency`. `snapshot` is JSON: the plan, the order lines a renewal copies, and its subtotal, shipping, tax, discount and fee totals (`Snapshot`). `billing` and `shipping` are the address JSON of the first order. Dates are UTC. `next_payment_at` is NULL once no payment is left; `end_at` is when the last paid period ends (set ahead for a plan with a length or a cancel at the end of the period). The user meta `_fxc_has_subscriptions` marks customers with at least one row. `payment_customer` and `payment_token` are the gateway's customer and saved method ids (a Stripe `cus_` and `pm_`), `payment_label` what the customer sees ("Visa ending in 4242"); `payment_token` is NULL until the cron has looked for a saved method and '' when there is none, so the renewal is paid by hand. `retry_count` counts failed automatic charges of the waiting renewal and `retry_at` is the next try (NULL after the last one). The Stripe customer of an account is also kept in the user option `_fxc_stripe_customer_<mode>` (ADR-074). `reminded_for` is the renewal date the last reminder was for (ADR-075): a row is reminded again only when `next_payment_at` moves to another date. `paused_at` is when the customer paused the row (ADR-076), NULL otherwise; an `on-hold` row with it set is paused, and the customer can resume it from My Account; a row the merchant put on hold has none, so only the merchant resumes it. A customer change rewrites `snapshot`, `total`, `billing` and `shipping`.
 - `fxc_subscription_orders.relation` is `parent` (the first order) or `renewal`.
-- Event `type` is `created`, `active`, `on-hold`, `resumed`, `pending-cancel`, `reactivated`, `renewal`, `renewal-paid`, `rescheduled`, `cancelled` or `expired`, and since ADR-074 `payment-method`, `payment-failed` or `renewal-processing`, and since ADR-075 `reminder`; `actor_type` is `system`, `cron`, `customer` or `admin`, with `actor_id` the user.
+- Event `type` is `created`, `active`, `on-hold`, `resumed`, `pending-cancel`, `reactivated`, `renewal`, `renewal-paid`, `rescheduled`, `cancelled` or `expired`, and since ADR-074 `payment-method`, `payment-failed` or `renewal-processing`, and since ADR-075 `reminder`, and since ADR-076 `paused` or `changed` (`resumed` also follows a customer pause); `actor_type` is `system`, `cron`, `customer` or `admin`, with `actor_id` the user.
 
 ## 5. Query patterns and indexes
 

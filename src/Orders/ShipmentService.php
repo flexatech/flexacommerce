@@ -247,11 +247,13 @@ final class ShipmentService {
 		if ( $day === false || $day->format( 'Y-m-d' ) !== $date ) {
 			throw new InvalidOrderRequest( __( 'The shipping date is not a valid date.', 'flexacommerce' ), 'shipped_at' );
 		}
-		$today = $this->clock->now()->setTimezone( wp_timezone() )->format( 'Y-m-d' );
-		if ( $date > $today ) {
+		$now   = $this->clock->now()->setTimezone( wp_timezone() );
+		$today = $now->format( 'Y-m-d' );
+		// The admin's own today can be the store's tomorrow when their clock is in a zone ahead.
+		if ( $date > $now->modify( '+1 day' )->format( 'Y-m-d' ) ) {
 			throw new InvalidOrderRequest( __( 'The shipping date cannot be in the future.', 'flexacommerce' ), 'shipped_at' );
 		}
-		if ( $date === $today ) {
+		if ( $date >= $today ) {
 			return null;
 		}
 		return $day->setTime( 12, 0 )->setTimezone( new \DateTimeZone( 'UTC' ) )->format( 'Y-m-d H:i:s' );

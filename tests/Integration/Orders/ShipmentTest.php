@@ -236,6 +236,18 @@ final class ShipmentTest extends OrderTestCase {
 			]
 		);
 		self::assertSame( 400, $bad->get_status() );
+		$ahead = $this->send(
+			'POST',
+			'/admin/orders/' . $order->id . '/shipments',
+			[
+				'carrier'    => 'ups',
+				'shipped_at' => wp_date( 'Y-m-d', time() + DAY_IN_SECONDS ),
+			]
+		);
+		self::assertSame( 201, $ahead->get_status(), 'The admin\'s today in a zone ahead of the store counts as today.' );
+		$late = array_values( array_filter( $ahead->get_data()['shipments'], static fn ( array $s ): bool => $s['id'] !== $data['shipments'][0]['id'] ) )[0];
+		self::assertGreaterThanOrEqual( gmdate( 'Y-m-d\TH:i', time() - 60 ), (string) $late['shipped_at'] );
+		$this->send( 'DELETE', '/admin/orders/' . $order->id . '/shipments/' . $late['id'] );
 
 		$removed = $this->send( 'DELETE', '/admin/orders/' . $order->id . '/shipments/' . $data['shipments'][0]['id'] );
 		self::assertSame( 200, $removed->get_status() );
