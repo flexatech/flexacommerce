@@ -64,19 +64,8 @@ final class WooOrderReader {
 			'currency' => $currency,
 		];
 
-		$stock_reduced = (bool) $order->get_order_stock_reduced( 'edit' );
-		$items         = [];
-		$depends       = [];
-		foreach ( $order->get_items( [ 'line_item', 'shipping', 'fee', 'coupon', 'tax' ] ) as $item ) {
-			$line = $this->item( $item, $stock_reduced );
-			if ( $line === null ) {
-				continue;
-			}
-			if ( isset( $line['product'] ) && is_string( $line['product'] ) ) {
-				$depends[] = $line['product'];
-			}
-			$items[] = $line;
-		}
+		$stock_reduced       = (bool) $order->get_order_stock_reduced( 'edit' );
+		[ $items, $depends ] = $this->lines( $order, $stock_reduced );
 
 		$transactions = [];
 		$paid_at      = Dates::from_wc( $order->get_date_paid( 'edit' ) );
@@ -99,25 +88,7 @@ final class WooOrderReader {
 			$transactions[] = $this->refund( $refund, $order, $money );
 		}
 
-		$history = [];
-		foreach ( wc_get_order_notes( [ 'order_id' => $id ] ) as $note ) {
-			$history[] = [
-				'id'               => (int) $note->id,
-				'type'             => 'note',
-				'message'          => (string) $note->content,
-				'customer_visible' => (bool) $note->customer_note,
-				'author'           => (string) $note->added_by,
-				'created_at'       => Dates::from_wc( $note->date_created instanceof \DateTimeInterface ? $note->date_created : null ),
-			];
-		}
-		usort( $history, static fn ( array $a, array $b ): int => [ $a['created_at'], $a['id'] ] <=> [ $b['created_at'], $b['id'] ] );
-		$history = array_map(
-			static function ( array $note ): array {
-				unset( $note['id'] );
-				return $note;
-			},
-			$history
-		);
+		$history = self::history( $id );
 
 		$customer = $order->get_customer_id( 'edit' );
 		$lines    = [];
@@ -167,6 +138,55 @@ final class WooOrderReader {
 				'extra'                => WooCatalogReader::extra( WooCatalogReader::meta_of( $order ), self::MAPPED_META ),
 			],
 			array_values( array_unique( $depends ) )
+		);
+	}
+
+	/**
+	 * The product, shipping, fee, coupon and tax lines of an order or a
+	 * subscription, with the products they need imported first.
+	 *
+	 * @return array{0:list<array<string,mixed>>,1:list<string>}
+	 */
+	public function lines( \WC_Order $order, bool $stock_reduced ): array {
+		$items   = [];
+		$depends = [];
+		foreach ( $order->get_items( [ 'line_item', 'shipping', 'fee', 'coupon', 'tax' ] ) as $item ) {
+			$line = $this->item( $item, $stock_reduced );
+			if ( $line === null ) {
+				continue;
+			}
+			if ( isset( $line['product'] ) && is_string( $line['product'] ) ) {
+				$depends[] = $line['product'];
+			}
+			$items[] = $line;
+		}
+		return [ $items, $depends ];
+	}
+
+	/**
+	 * The notes of an order or a subscription, oldest first.
+	 *
+	 * @return list<array{type:string,message:string,customer_visible:bool,author:string,created_at:?string}>
+	 */
+	public static function history( int $id ): array {
+		$history = [];
+		foreach ( wc_get_order_notes( [ 'order_id' => $id ] ) as $note ) {
+			$history[] = [
+				'id'               => (int) $note->id,
+				'type'             => 'note',
+				'message'          => (string) $note->content,
+				'customer_visible' => (bool) $note->customer_note,
+				'author'           => (string) $note->added_by,
+				'created_at'       => Dates::from_wc( $note->date_created instanceof \DateTimeInterface ? $note->date_created : null ),
+			];
+		}
+		usort( $history, static fn ( array $a, array $b ): int => [ $a['created_at'], $a['id'] ] <=> [ $b['created_at'], $b['id'] ] );
+		return array_map(
+			static function ( array $note ): array {
+				unset( $note['id'] );
+				return $note;
+			},
+			$history
 		);
 	}
 
@@ -418,7 +438,7 @@ final class WooOrderReader {
 		return self::GATEWAYS[ $id ] ?? $id;
 	}
 
-	private static function decimal( mixed $value ): string {
+	public static function decimal( mixed $value ): string {
 		return Decimal::clean( $value ) ?? '0';
 	}
 }

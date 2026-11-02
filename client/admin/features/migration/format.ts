@@ -23,6 +23,7 @@ export const STAGE_LABELS: Record<Stage, string> = {
     orders: __("Orders"),
     coupons: __("Coupons"),
     reviews: __("Reviews"),
+    subscriptions: __("Subscriptions"),
 };
 
 export const STATUS_LABELS: Record<JobStatus, string> = {

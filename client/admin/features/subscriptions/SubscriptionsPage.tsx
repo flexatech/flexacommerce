@@ -16,6 +16,7 @@ import { formatDate, orderMoney } from "../orders/format";
 import {
     useReschedule,
     useSubscription,
+    useStartBilling,
     useSubscriptionAction,
     useSubscriptionList,
     type SubscriptionAction,
@@ -149,7 +150,7 @@ function SubscriptionView({ row, onClose }: { row: SubscriptionDetail; onClose: 
     const reschedule = useReschedule(row.id);
     const [day, setDay] = useState(row.next_payment_on);
     const [confirm, setConfirm] = useState(false);
-    const running = row.status === "active" || row.status === "on-hold";
+    const running = !row.billing_held && (row.status === "active" || row.status === "on-hold");
     const busy = action.isPending || reschedule.isPending;
 
     useEffect(() => setDay(row.next_payment_on), [row.next_payment_on]);
@@ -171,6 +172,7 @@ function SubscriptionView({ row, onClose }: { row: SubscriptionDetail; onClose: 
 
     const plan = row.plan;
     const ended = row.status === "cancelled" || row.status === "expired";
+    const locked = ended || row.billing_held;
 
     return (
         <>
@@ -211,6 +213,12 @@ function SubscriptionView({ row, onClose }: { row: SubscriptionDetail; onClose: 
                         </Term>
                     )}
                 </dl>
+
+                {row.billing_held && (
+                    <p className="fxc:bg-muted fxc:rounded-md fxc:px-3 fxc:py-2 fxc:text-sm">
+                        {__("Imported from WooCommerce Subscriptions. FlexaCommerce does not renew or change it until you start billing at the top of the Subscriptions screen.")}
+                    </p>
+                )}
 
                 {row.paused_at !== null && (
                     <p className="fxc:bg-muted fxc:rounded-md fxc:px-3 fxc:py-2 fxc:text-sm">
@@ -285,7 +293,7 @@ function SubscriptionView({ row, onClose }: { row: SubscriptionDetail; onClose: 
                     </div>
                 )}
 
-                {!ended && (
+                {!locked && (
                     <div className="fxc:flex fxc:flex-wrap fxc:gap-2">
                         {running && row.next_payment_at !== null && (
                             <Button variant="outline" size="sm" disabled={busy} onClick={() => run("renew")}>
@@ -396,6 +404,35 @@ function SubscriptionView({ row, onClose }: { row: SubscriptionDetail; onClose: 
     );
 }
 
+function HeldBanner({ held, woo }: { held: number; woo: boolean }) {
+    const start = useStartBilling();
+    return (
+        <div className="fxc:flex fxc:flex-wrap fxc:items-center fxc:gap-3 fxc:rounded-md fxc:border fxc:border-amber-300 fxc:bg-amber-50 fxc:p-4 fxc:text-sm fxc:text-amber-900 fxc:dark:border-amber-700 fxc:dark:bg-amber-950 fxc:dark:text-amber-100">
+            <div className="fxc:min-w-0 fxc:flex-1 fxc:space-y-1">
+                <p className="fxc:font-semibold">
+                    {sprintf(_n("%d imported subscription waits for billing to start.", "%d imported subscriptions wait for billing to start.", held), held)}
+                </p>
+                <p>
+                    {woo
+                        ? __("WooCommerce Subscriptions is still active and keeps billing them. Deactivate it, then start billing here so each customer is charged once.")
+                        : __("Renewals, reminders and customer changes start here once you start billing. A payment day that already passed renews right away.")}
+                </p>
+            </div>
+            <Button
+                disabled={woo || start.isPending}
+                onClick={() =>
+                    start.mutate(undefined, {
+                        onSuccess: (done) => showToast.success(sprintf(_n("Billing started for %d subscription.", "Billing started for %d subscriptions.", done.started), done.started)),
+                        onError: (failure) => showToast.error(failure.message),
+                    })
+                }
+            >
+                {start.isPending ? __("Starting…") : __("Start billing")}
+            </Button>
+        </div>
+    );
+}
+
 export function SubscriptionsPage() {
     const [search, setSearch] = useState("");
     const [query, setQuery] = useState("");
@@ -425,6 +462,8 @@ export function SubscriptionsPage() {
                 title={__("Subscriptions")}
                 description={__("Products sold with a plan renew on their own: on each payment day the store makes a renewal order and emails the customer a link to pay it.")}
             />
+            {(list.data?.held ?? 0) > 0 && <HeldBanner held={list.data?.held ?? 0} woo={list.data?.woo ?? false} />}
+
             <div className="fxc:relative fxc:w-full fxc:max-w-sm">
                 <Search aria-hidden className="fxc:text-muted-foreground fxc:pointer-events-none fxc:absolute fxc:top-1/2 fxc:left-3 fxc:size-4 fxc:-translate-y-1/2" />
                 <Input

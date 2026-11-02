@@ -59,12 +59,31 @@ final class WooCatalogReader {
 		'_children',
 		'_product_url',
 		'_button_text',
+		'_subscription_period',
+		'_subscription_period_interval',
+		'_subscription_length',
+		'_subscription_trial_length',
+		'_subscription_trial_period',
+		'_subscription_sign_up_fee',
+		'_subscription_price',
+		'_subscription_limit',
+		'_subscription_one_time_shipping',
+		'_subscription_payment_sync_date',
+	];
+
+	/** WooCommerce Subscriptions product types and the kind each imports as (ADR-079). */
+	private const SUBSCRIPTION_TYPES = [
+		'subscription'          => 'simple',
+		'variable-subscription' => 'variable',
 	];
 
 	/** Term meta the term mapping covers. */
 	private const MAPPED_TERM_META = [ 'order', 'thumbnail_id', 'product_count_product_cat', 'product_count_product_tag' ];
 
 	private ?string $currency = null;
+
+	/** Whether the product being read is a WooCommerce Subscriptions type. */
+	private bool $plans = false;
 
 	public function attribute( int $id ): ?Record {
 		$attribute = function_exists( 'wc_get_attribute' ) ? wc_get_attribute( $id ) : null;
@@ -139,6 +158,16 @@ final class WooCatalogReader {
 			return null;
 		}
 		$type = $product->get_type();
+		// With WooCommerce Subscriptions off its classes are gone and the product loads as simple; the stored type still says what it is.
+		$stored      = (string) \WC_Product_Factory::get_product_type( $id );
+		$type        = isset( self::SUBSCRIPTION_TYPES[ $stored ] ) ? $stored : $type;
+		$this->plans = isset( self::SUBSCRIPTION_TYPES[ $type ] );
+		if ( $this->plans ) {
+			$type = self::SUBSCRIPTION_TYPES[ $type ];
+			if ( $type === 'variable' && ! $product instanceof \WC_Product_Variable ) {
+				$product = new \WC_Product_Variable( $id );
+			}
+		}
 		if ( ! in_array( $type, [ 'simple', 'variable', 'grouped', 'external' ], true ) ) {
 			throw new Rejected(
 				'unsupported_type',
@@ -418,6 +447,42 @@ final class WooCatalogReader {
 			'virtual'             => $product->get_virtual( 'edit' ),
 			'downloadable'        => $product->get_downloadable( 'edit' ),
 			'downloads'           => self::downloads( $product ),
+			'subscription'        => $this->plan( $product ),
+		];
+	}
+
+	/**
+	 * The WooCommerce Subscriptions plan in the product meta, or null. WooCommerce
+	 * counts the length in periods and FlexaCommerce in payments; the trial
+	 * becomes days (ADR-079).
+	 *
+	 * @return array{period:string,interval:int,length:int,trial_days:int,signup_fee:?array{amount:string,currency:string}}|null
+	 */
+	private function plan( \WC_Product $product ): ?array {
+		if ( ! $this->plans ) {
+			return null;
+		}
+		$id     = $product->get_id();
+		$period = (string) get_post_meta( $id, '_subscription_period', true );
+		if ( ! in_array( $period, [ 'day', 'week', 'month', 'year' ], true ) ) {
+			return null;
+		}
+		$interval = max( 1, (int) get_post_meta( $id, '_subscription_period_interval', true ) );
+		$length   = max( 0, (int) get_post_meta( $id, '_subscription_length', true ) );
+		$trial    = max( 0, (int) get_post_meta( $id, '_subscription_trial_length', true ) );
+		$days     = match ( (string) get_post_meta( $id, '_subscription_trial_period', true ) ) {
+			'week' => 7,
+			'month' => 30,
+			'year' => 365,
+			default => 1,
+		};
+		$fee = $this->money( get_post_meta( $id, '_subscription_sign_up_fee', true ) );
+		return [
+			'period'     => $period,
+			'interval'   => $interval,
+			'length'     => $length > 0 ? max( 1, intdiv( $length, $interval ) ) : 0,
+			'trial_days' => min( 730, $trial * $days ),
+			'signup_fee' => $fee !== null && Decimal::trim( $fee['amount'] ) !== '0' ? $fee : null,
 		];
 	}
 

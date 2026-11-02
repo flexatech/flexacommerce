@@ -8,23 +8,24 @@ defined( 'ABSPATH' ) || exit;
 
 /** One fxc_migration_jobs row. */
 final class Job {
-	/** Stage order (doc 05 §4.4, plus settings and taxes from ADR-020, shipping zones, coupons, product options from ADR-029 and checkout fields from ADR-036, product reviews from ADR-056). */
-	public const STAGES = [ 'settings', 'taxes', 'shipping', 'attributes', 'terms', 'products', 'options', 'checkout', 'customers', 'orders', 'coupons', 'reviews' ];
+	/** Stage order (doc 05 §4.4, plus settings and taxes from ADR-020, shipping zones, coupons, product options from ADR-029 and checkout fields from ADR-036, product reviews from ADR-056, subscriptions from ADR-079). */
+	public const STAGES = [ 'settings', 'taxes', 'shipping', 'attributes', 'terms', 'products', 'options', 'checkout', 'customers', 'orders', 'coupons', 'reviews', 'subscriptions' ];
 
 	/** Id map entity written by each stage. */
 	public const ENTITIES = [
-		'settings'   => 'settings',
-		'taxes'      => 'tax_rate',
-		'shipping'   => 'shipping',
-		'attributes' => 'attribute',
-		'terms'      => 'term',
-		'products'   => 'product',
-		'options'    => 'option_set',
-		'checkout'   => 'checkout_fields',
-		'customers'  => 'customer',
-		'orders'     => 'order',
-		'coupons'    => 'coupon',
-		'reviews'    => 'review',
+		'settings'      => 'settings',
+		'taxes'         => 'tax_rate',
+		'shipping'      => 'shipping',
+		'attributes'    => 'attribute',
+		'terms'         => 'term',
+		'products'      => 'product',
+		'options'       => 'option_set',
+		'checkout'      => 'checkout_fields',
+		'customers'     => 'customer',
+		'orders'        => 'order',
+		'coupons'       => 'coupon',
+		'reviews'       => 'review',
+		'subscriptions' => 'subscription',
 	];
 
 	public const DEFAULT_OPTIONS = [

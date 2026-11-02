@@ -16,7 +16,7 @@ import { Label } from "@/shared/components/ui/label";
 import { Select } from "@/shared/components/ui/select";
 import { getPluginGlobal } from "@/shared/lib/api";
 import { cn } from "@/shared/lib/cn";
-import { __, sprintf } from "@/shared/lib/i18n";
+import { __, _n, sprintf } from "@/shared/lib/i18n";
 import type { BaseKey, CutoverStatus, CutoverStepKey } from "./types";
 import { useCutover, useCutoverStep, useMigrations, type CutoverAction } from "./useMigrations";
 
@@ -254,7 +254,12 @@ function StepBody({ step, status, run, pending }: { step: CutoverStepKey; status
         case "reopen":
             return (
                 <div className="fxc:space-y-3">
-                    <p className="fxc:text-muted-foreground fxc:text-sm">{__("Opens FlexaCommerce checkout. Turn off the maintenance or catalog mode you used in step 1.")}</p>
+                    <p className="fxc:text-muted-foreground fxc:text-sm">
+                        {__("Opens FlexaCommerce checkout and starts billing the subscriptions imported from WooCommerce Subscriptions. Turn off the maintenance or catalog mode you used in step 1.")}
+                    </p>
+                    {status.billing !== null && status.billing > 0 && (
+                        <p className="fxc:text-sm">{sprintf(_n("Billing started for %d subscription.", "Billing started for %d subscriptions.", status.billing), status.billing)}</p>
+                    )}
                     <Button size="sm" disabled={pending} onClick={() => run("reopen")}>
                         {__("Reopen checkout")}
                     </Button>

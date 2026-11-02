@@ -21,7 +21,7 @@ final class WooSource implements SourceAdapter {
 	/** Statuses with a direct FXC equivalent (doc 05 §5.6). */
 	public const CORE_STATUSES = [ 'wc-pending', 'wc-on-hold', 'wc-processing', 'wc-completed', 'wc-cancelled', 'wc-refunded', 'wc-failed', 'wc-checkout-draft', 'trash', 'auto-draft', 'draft' ];
 
-	private const SUPPORTED_TYPES = [ 'simple', 'variable', 'grouped', 'external' ];
+	private const SUPPORTED_TYPES = [ 'simple', 'variable', 'grouped', 'external', 'subscription', 'variable-subscription' ];
 
 	public function __construct(
 		private readonly WooEnumerationRepository $enumeration,
@@ -33,6 +33,7 @@ final class WooSource implements SourceAdapter {
 		private readonly WooOptionReader $options,
 		private readonly WooCheckoutReader $checkout,
 		private readonly ReviewReader $reviews,
+		private readonly WooSubscriptionReader $subscriptions,
 	) {}
 
 	public static function available(): bool {
@@ -65,6 +66,7 @@ final class WooSource implements SourceAdapter {
 			'options'    => $this->options->option_set( $id ),
 			'checkout'   => $this->checkout->checkout_fields(),
 			'reviews'    => $this->reviews->review( $id ),
+			'subscriptions' => $this->subscriptions->subscription( $id ),
 			default      => null,
 		};
 	}
@@ -173,9 +175,51 @@ final class WooSource implements SourceAdapter {
 			);
 		}
 
+		if ( in_array( 'subscriptions', $stages, true ) && $this->enumeration->count( 'subscriptions' ) > 0 ) {
+			$problems = array_merge( $problems, $this->subscription_problems() );
+		}
+
 		$zones = $this->enumeration->shipping_zones();
 		if ( $zones > 0 && ! in_array( 'shipping', $stages, true ) ) {
 			$problems[] = Problem::info( 'shipping_zones', sprintf( '%d shipping zones are left out because the shipping stage is off. Set up shipping in FlexaCommerce after the import.', $zones ), [ 'zones' => $zones ] );
+		}
+		return $problems;
+	}
+
+	/**
+	 * What the merchant should know before subscriptions move (ADR-079).
+	 *
+	 * @return list<Problem>
+	 */
+	private function subscription_problems(): array {
+		$payments   = $this->enumeration->subscription_payments();
+		$live       = array_sum( $payments['methods'] );
+		$problems   = [];
+		$problems[] = Problem::info(
+			'subscriptions_held',
+			sprintf( '%d live subscriptions come in with billing held. Start billing on the Subscriptions screen once WooCommerce Subscriptions is off; the cutover does it when it opens checkout.', $live ),
+			[ 'subscriptions' => $live ]
+		);
+		$other      = array_diff_key(
+			$payments['methods'],
+			[
+				'stripe'       => true,
+				'ppcp-gateway' => true,
+			]
+		);
+		$other      = array_sum( $other ) - $payments['manual'];
+		if ( $payments['manual'] + max( 0, $other ) > 0 ) {
+			$problems[] = Problem::warning(
+				'manual_renewals',
+				sprintf( '%d subscriptions renew by hand or with a gateway FlexaCommerce cannot charge. Their customers get a renewal order to pay.', $payments['manual'] + max( 0, $other ) ),
+				[ 'methods' => $payments['methods'] ]
+			);
+		}
+		if ( ( $payments['methods']['stripe'] ?? 0 ) + ( $payments['methods']['ppcp-gateway'] ?? 0 ) > 0 ) {
+			$problems[] = Problem::info( 'same_account', 'Saved cards and PayPal accounts keep working only when FlexaCommerce uses the same Stripe and PayPal accounts as WooCommerce.' );
+		}
+		if ( $payments['paypal_plans'] > 0 ) {
+			$problems[] = Problem::warning( 'paypal_plans', sprintf( '%d subscriptions are billed by PayPal plans. PayPal keeps charging them until you cancel the plans in PayPal.', $payments['paypal_plans'] ), [ 'subscriptions' => $payments['paypal_plans'] ] );
 		}
 		return $problems;
 	}

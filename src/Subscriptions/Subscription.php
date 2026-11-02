@@ -17,7 +17,8 @@ defined( 'ABSPATH' ) || exit;
  * until it is looked up, '' when the payment saved none. `retry_count`
  * and `retry_at` follow a failed automatic charge. `paused_at` is set
  * while the customer paused it (ADR-076); a merchant's hold leaves it
- * null.
+ * null. `billing_held` marks a row imported from WooCommerce Subscriptions
+ * that bills nothing until the merchant starts billing (ADR-079).
  */
 final class Subscription {
 	public function __construct(
@@ -50,6 +51,7 @@ final class Subscription {
 		public readonly string $updated_at,
 		public readonly ?string $reminded_for = null,
 		public readonly ?string $paused_at = null,
+		public readonly bool $billing_held = false,
 	) {}
 
 	/** @param array<string,mixed> $row */
@@ -92,6 +94,7 @@ final class Subscription {
 			updated_at: (string) ( $row['updated_at'] ?? '' ),
 			reminded_for: $at( $row['reminded_for'] ?? null ),
 			paused_at: $at( $row['paused_at'] ?? null ),
+			billing_held: (int) ( $row['billing_held'] ?? 0 ) === 1,
 		);
 	}
 
@@ -162,6 +165,7 @@ final class Subscription {
 			'end_at'               => $iso( $this->end_at ),
 			'cancelled_at'         => $iso( $this->cancelled_at ),
 			'paused_at'            => $iso( $this->paused_at ),
+			'billing_held'         => $this->billing_held,
 			'created_at'           => $iso( $this->created_at ),
 		];
 	}

@@ -45,7 +45,7 @@ The canonical format is the contract between adapters. Same-site jobs keep it in
 
 ### 3.2 Record types
 
-`attribute`, `term` (category, tag, attribute value), `product` (with embedded `variants`), `customer`, `order` (with embedded `items`, `addresses`, `transactions`, `history`), `coupon`, `option_set` (WC→FXC only, §5.9), `checkout_fields` (WC→FXC only, §5.10). Terms come first, then products, then option sets, then customers, then orders, then coupons, so references always resolve to already imported records. The checkout fields refer to nothing and come last.
+`attribute`, `term` (category, tag, attribute value), `product` (with embedded `variants`), `customer`, `order` (with embedded `items`, `addresses`, `transactions`, `history`), `coupon`, `option_set` (WC→FXC only, §5.9), `checkout_fields` (WC→FXC only, §5.10), `review` (§5.11), `subscription` (WC→FXC only, §5.12). Terms come first, then products, then option sets, then customers, then orders, then coupons, so references always resolve to already imported records. The checkout fields refer to nothing and come after them; reviews follow, and subscriptions, which refer to products, customers and orders, come last.
 
 ### 3.3 Example: simple product
 
@@ -208,12 +208,13 @@ draft ──preflight ok──► ready ──start──► running ⇄ paused
 
 ### 4.4 Batches, cursors, budgets
 
-- Stage order: settings → tax rates → shipping zones (§5.7) → attributes → terms (categories, tags, attribute values) → products (with variants) → customers → orders (with items, addresses, transactions, notes).
+- Stage order: settings → tax rates → shipping zones (§5.7) → attributes → terms (categories, tags, attribute values) → products (with variants) → customers → orders (with items, addresses, transactions, notes) → coupons, option sets, checkout fields, reviews → subscriptions (§5.12, WC→FXC only, ADR-079).
 - Cursor per stage: `{ "stage": "orders", "table": "wp_wc_orders", "last_id": 50231, "upper_id": 98765 }`. `upper_id` is captured at job start, so orders created during the job are left for the next incremental run instead of moving the target.
 - Enumeration SQL (read-only, the only raw SQL on WooCommerce tables):
   - Products: `SELECT ID FROM {posts} WHERE post_type = 'product' AND post_status <> 'auto-draft' AND ID > %d AND ID <= %d ORDER BY ID LIMIT %d`.
   - Orders HPOS: `SELECT id FROM {wc_orders} WHERE type = 'shop_order' AND status <> 'wc-checkout-draft' AND id > %d AND id <= %d ORDER BY id LIMIT %d`.
   - Orders legacy: same on `{posts}` with `post_type = 'shop_order'`.
+  - Subscriptions: same on `{wc_orders}` with `type = 'shop_subscription'` (HPOS) or `{posts}` with `post_type = 'shop_subscription'` (legacy), trash and auto-drafts left out. The schedule meta, the linked renewal and switch orders (`_subscription_renewal`, `_subscription_switch`) and the preflight counts are read from the same tables, so the stage works with WooCommerce Subscriptions off.
   - FlexaCommerce side: same keyset pattern on `fxc_orders.id` and `fxc_product` posts.
 - Batch sizes (defaults, adjustable): products 50, orders 100 (50 when sync is on). Each batch stops early at **20 s wall time**, when its memory has **grown by 64 MB** since the batch started (`memory_budget`), or when memory in use reaches **80 % of `memory_limit`**, whichever comes first, and persists the cursor after every entity. The checks run after each entity, so a batch always does at least one. The budget counts growth, not total use, because the loaded site alone can be near 128 MB (about 110 MB for WordPress with WooCommerce 11.2.1 in WP-CLI, measured 2026-10-26): as an absolute cap, a site with many plugins would run one entity per batch. P9 (doc 06 §3) is still the batch's peak, `memory_get_peak_usage()` after a reset at batch start, measured on the bench store; the batch result also reports the growth. Preflight warns when `memory_limit` leaves less than the budget above what the site already uses.
 - Between batches: `wp_cache_flush_runtime()` (WP 6.0+) and WooCommerce object cache cleanup to keep memory flat.
@@ -310,7 +311,8 @@ Slug collisions inside a target taxonomy are impossible for a fresh store; on re
 | WooCommerce (`'edit'` context) | FlexaCommerce |
 |---|---|
 | post fields (title, content, excerpt, slug, status, dates, author, menu_order, comment_status) | new `fxc_product` post, same values (`post_name` identical, so URLs can stay identical after cutover) |
-| `get_type()` `simple` / `variable` / `grouped` / `external` | `_fxc_type`. Other types → skipped and reported (§7). |
+| `get_type()` `simple` / `variable` / `grouped` / `external` | `_fxc_type`. Other types → skipped and reported (§7). The type is read from the `product_type` term, since `get_type()` says `simple` while WooCommerce Subscriptions is off. |
+| WooCommerce Subscriptions `subscription` / `variable-subscription` with `_subscription_period`, `_subscription_period_interval`, `_subscription_length`, `_subscription_trial_length` + `_subscription_trial_period`, `_subscription_sign_up_fee` | a simple or variable product with a plan on the variant (ADR-073, ADR-079). The length in periods becomes a number of payments (length ÷ interval), the trial becomes days (a week is 7, a month 30, a year 365; at most 730), and values out of range are clamped with `plan_clamped`. `_subscription_limit`, `_subscription_one_time_shipping` and `_subscription_payment_sync_date` have no match and are dropped. |
 | grouped: `get_children()` | `_fxc_children`, resolved through the mapping in the same order; a child that did not move is left out with `child_skipped` (ADR-062) |
 | external: `get_product_url()`, `get_button_text()` | `_fxc_product_url`, `_fxc_button_text`; an invalid URL becomes empty with `url_skipped`. FXC→WC saves the product with no stock management. |
 | `get_image_id()`, `get_gallery_image_ids()` | `_thumbnail_id`, `_fxc_gallery_ids` (same attachment ids, same site) |
@@ -376,6 +378,7 @@ Same site, so customers are already WordPress users. The stage maps WooCommerce 
 | Tax enabled in the source but not in the target | warning: rates are imported and taxes stay off until the admin enables them |
 | Estimated duration (entity counts × measured rate of a 20-entity sample) | info |
 | `DISABLE_WP_CRON`, max execution time, memory limit | info / warning |
+| Subscriptions stage on and live subscriptions present (§5.12) | info `subscriptions_held` with the count; warning `manual_renewals` for renewals paid by hand or with a gateway other than Stripe or PayPal Payments; info `same_account` (saved cards and PayPal accounts only work with the same Stripe and PayPal accounts); warning `paypal_plans` for subscriptions billed by PayPal plans. FXC→WC: info `subscriptions_stay` |
 
 ### 5.6 Status mapping
 
@@ -462,6 +465,18 @@ The `reviews` stage runs last, in both directions (ADR-056). Both stores keep re
 
 A second run updates the comment it created, in place. Comments are written directly, past the comment form checks, and send no notification.
 
+### 5.12 Subscriptions
+
+The `subscriptions` stage runs last, WC→FXC only (ADR-079). It reads WooCommerce Subscriptions data from the tables, so it works while that plugin is off, as it is at cutover; the order type `shop_subscription` is registered for the read when nothing else did.
+
+- Records: one `subscription` per `shop_subscription` order with a `_billing_period`. It holds the status, currency, tax mode, customer, period and interval, the schedule dates (`_schedule_start`, `_schedule_trial_end`, `_schedule_next_payment`, `_schedule_end`, `_schedule_cancelled`), the lines, totals and addresses as for an order, the notes, the linked orders (the parent and every order with `_subscription_renewal` or `_subscription_switch` naming it, each with whether it was paid) and the payment. It depends on its products, customer and orders.
+- Payment: Stripe (`stripe`) gives `_stripe_customer_id` and `_stripe_source_id`, or the subscription's or the customer's saved Stripe token; the label is built like a Stripe one ("Visa ending in 4242"). PayPal Payments (`ppcp-gateway`) gives the customer's vault token and `_ppcp_target_customer_id` (ADR-078). `_requires_manual_renewal`, any other gateway or no token found means the renewals are paid by hand (`manual_renewals`). A subscription with `ppcp_subscription` is billed by a PayPal plan; it comes over with no method and the warning `paypal_plan`.
+- Target: one `fxc_subscriptions` row (doc 03 §4.22) with `billing_held` 1, its `fxc_subscription_orders` links and the events `note` (one per note) and `imported`. Statuses map one to one; `switched` becomes `cancelled`, and an unknown status `on-hold` with `custom_status`. `billed` counts the paid renewals, plus the parent when it was paid and did not only start a trial. The end date becomes a length: the payments made plus those left before `_schedule_end` (an expired row keeps the payments made). `anchor_day` is the day of the next payment. The snapshot is the subscription's lines and totals, so a renewal costs what it cost in WooCommerce. A product that was not imported rejects the record (`missing_product`); a missing order is left out with `missing_order`.
+- Held billing: a held row does not renew, remind, retry or end, and neither the customer nor the merchant can change it. My Account shows it with a note, and Orders > Subscriptions lists it with a banner. **Start billing** there (REST `POST admin/subscriptions/start-billing`), or the cutover when it reopens checkout (§9.2 step 8), releases all held rows; it is refused while WooCommerce Subscriptions is active, so a renewal is never charged by both. An active row whose payment day passed in between renews on the next cron run, and its later payments fall on that day of the month.
+- A second run updates a held row in place. A row whose billing started is FlexaCommerce's: the record is skipped with `billing_started` and the row is never written again.
+
+FXC→WC: FlexaCommerce subscriptions stay behind (preflight info `subscriptions_stay`); WooCommerce has no subscriptions without the paid plugin, and orders keep their lines.
+
 ## 6. Conflict and validation policies
 
 | Situation | Default | Options |
@@ -486,13 +501,14 @@ Errors reject one entity, never the batch. A job ends `completed_with_warnings` 
 
 | Data | Handling |
 |---|---|
-| Bundles, subscriptions and other product types (grouped and external move since ADR-062) | skipped, listed in report with ids and edit links. FlexaCommerce bundles (ADR-071) stay behind on a copy to WooCommerce, which has no bundle type; preflight warns with `bundles_skipped` and their count, and orders that sold them keep their lines. |
+| Bundles and other product types (grouped and external move since ADR-062, subscription products since ADR-079) | skipped, listed in report with ids and edit links. FlexaCommerce bundles (ADR-071) stay behind on a copy to WooCommerce, which has no bundle type; preflight warns with `bundles_skipped` and their count, and orders that sold them keep their lines. |
 | Downloadable/virtual flags, files, limit and expiry | imported on the variant (§5.2), permissions with the order (§5.4), ADR-058 |
 | Product reviews | imported in the `reviews` stage (§5.11) |
 | Product add-on and SEO plugin meta | `_fxc_import` bucket on the product, round-tripped on FXC→WC; the official Product Add-ons data also becomes option sets (§5.9) |
 | Unknown order and item meta | `fxc_order_meta` (`wc:` prefix) and item `meta` JSON, round-tripped |
 | Payment gateway settings | not migrated in MVP (tax rates and classes are, since ADR-020; shipping zones are, see §5.7; coupons are, see §5.8) |
-| Subscriptions, memberships, bookings | not migrated, warning if their plugins are active. FlexaCommerce subscriptions (ADR-073) and their tables have no migration stage in either direction yet (doc 07 item 7, part 2) |
+| WooCommerce Subscriptions | imported in the `subscriptions` stage with billing held (§5.12, ADR-079). FlexaCommerce subscriptions stay behind on a copy to WooCommerce. |
+| Memberships, bookings | not migrated, warning if their plugins are active |
 | WooCommerce analytics tables, customer lookup, sessions, carts | not migrated (derived or transient data) |
 
 ## 8. Guarantees, side effects and sync
@@ -556,7 +572,7 @@ Re-running a job before cutover gives a near-current copy. Stock and orders plac
 5. Admin deactivates WooCommerce (we never deactivate another plugin automatically).
 6. Flush rewrite rules, run a URL check of 20 sample product and category URLs (HTTP 200, correct product).
 7. Redirects for anything that cannot stay identical (custom bases, `?post_type=product&p=ID`): a small redirect map from the id map, served on `template_redirect` with 301, only while WooCommerce is inactive.
-8. Reopen checkout on FlexaCommerce.
+8. Reopen checkout on FlexaCommerce. This also starts billing for the subscriptions imported with billing held (§5.12); the step reports how many, and leaves them held when WooCommerce Subscriptions is still active.
 
 Rollback before step 5: nothing changed for WooCommerce. After step 5: reactivate WooCommerce and restore the FlexaCommerce bases (`shop-item`/`shop`). Orders placed in FlexaCommerce after cutover can be exported back with an FXC→WC job.
 

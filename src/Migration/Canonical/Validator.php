@@ -28,6 +28,7 @@ final class Validator {
 			Record::OPTION_SET => $this->option_set( $record->data ),
 			Record::CHECKOUT_FIELDS => $this->checkout_fields( $record->data ),
 			Record::REVIEW   => $this->review( $record->data ),
+			Record::SUBSCRIPTION => $this->subscription( $record->data ),
 			Record::SETTINGS, Record::CUSTOMER => [],
 			default          => [ Problem::error( 'unknown_type', sprintf( 'Unknown record type "%s".', $record->type ) ) ],
 		};
@@ -226,6 +227,33 @@ final class Validator {
 		foreach ( is_array( $data['transactions'] ?? null ) ? $data['transactions'] : [] as $i => $transaction ) {
 			if ( ! is_array( $transaction ) || ! self::is_money( $transaction['amount'] ?? null ) ) {
 				$problems[] = Problem::error( 'invalid_money', sprintf( 'transactions.%d has no amount.', $i ) );
+			}
+		}
+		return $problems;
+	}
+
+	/**
+	 * @param array<string,mixed> $data
+	 * @return list<Problem>
+	 */
+	private function subscription( array $data ): array {
+		$problems = [];
+		if ( ! in_array( $data['period'] ?? null, [ 'day', 'week', 'month', 'year' ], true ) ) {
+			$problems[] = Problem::error( 'invalid_period', 'The subscription has no billing period.' );
+		}
+		$currency = is_string( $data['currency'] ?? null ) ? $data['currency'] : '';
+		if ( ! Currency::is_valid( $currency ) ) {
+			$problems[] = Problem::error( 'unknown_currency', sprintf( 'Unknown currency "%s".', $currency ) );
+		}
+		foreach ( [ 'created_at', 'modified_at', 'start_at', 'trial_end_at', 'next_payment_at', 'end_at', 'cancelled_at' ] as $key ) {
+			if ( ! Dates::is_valid( $data[ $key ] ?? null ) ) {
+				$problems[] = Problem::error( 'invalid_date', sprintf( '%s is not an ISO date.', $key ) );
+			}
+		}
+		$totals = is_array( $data['totals'] ?? null ) ? $data['totals'] : [];
+		foreach ( [ 'subtotal', 'discount', 'shipping', 'fees', 'tax', 'total' ] as $key ) {
+			if ( ! Decimal::is_decimal( $totals[ $key ] ?? null, true ) ) {
+				$problems[] = Problem::error( 'invalid_total', sprintf( 'totals.%s is not a decimal.', $key ) );
 			}
 		}
 		return $problems;

@@ -150,6 +150,11 @@ final class FxcEnumerationRepository {
 		return $out;
 	}
 
+	/** Subscriptions stay here on the way back (ADR-079); the preflight says so. */
+	public function subscription_count(): int {
+		return (int) $this->wpdb->get_var( $this->wpdb->prepare( 'SELECT COUNT(*) FROM %i', Schema::table( 'subscriptions' ) ) );
+	}
+
 	/** @return array<string,int> status => orders */
 	public function order_statuses(): array {
 		$rows = $this->wpdb->get_results( $this->wpdb->prepare( 'SELECT status, COUNT(*) AS n FROM %i GROUP BY status', Schema::table( 'orders' ) ), ARRAY_A );

@@ -55,9 +55,13 @@ final class Cutover {
 	/** @var \Closure(string):array{status:int,body:string} */
 	private readonly \Closure $fetch;
 
+	/** @var (\Closure():int)|null */
+	private readonly ?\Closure $start_billing;
+
 	/**
 	 * @param (callable():bool)|null                               $woo_active
 	 * @param (callable(string):array{status:int,body:string})|null $fetch
+	 * @param (callable():int)|null                                 $start_billing hands imported subscriptions to FlexaCommerce (ADR-079)
 	 */
 	public function __construct(
 		private readonly JobRepository $jobs,
@@ -65,9 +69,11 @@ final class Cutover {
 		private readonly Clock $clock,
 		?callable $woo_active = null,
 		?callable $fetch = null,
+		?callable $start_billing = null,
 	) {
-		$this->woo_active = \Closure::fromCallable( $woo_active ?? static fn (): bool => function_exists( 'WC' ) );
-		$this->fetch      = \Closure::fromCallable( $fetch ?? [ self::class, 'fetch' ] );
+		$this->woo_active    = \Closure::fromCallable( $woo_active ?? static fn (): bool => function_exists( 'WC' ) );
+		$this->fetch         = \Closure::fromCallable( $fetch ?? [ self::class, 'fetch' ] );
+		$this->start_billing = $start_billing === null ? null : \Closure::fromCallable( $start_billing );
 	}
 
 	/** @return array<string,mixed> */
@@ -90,6 +96,7 @@ final class Cutover {
 			'pages'       => $state['pages'] ?? null,
 			'urls'        => $state['urls'] ?? null,
 			'finished'    => isset( $state['steps']['reopen'] ),
+			'billing'     => $state['billing_started'] ?? null,
 		];
 	}
 
@@ -263,6 +270,14 @@ final class Cutover {
 	public function reopen(): array {
 		$state = $this->require( 'reopen' );
 		Settings::update( [ 'checkout_paused' => false ] );
+		if ( $this->start_billing !== null ) {
+			try {
+				// WooCommerce is off by now, so the subscriptions it billed renew here.
+				$state['billing_started'] = ( $this->start_billing )();
+			} catch ( \InvalidArgumentException ) {
+				$state['billing_started'] = 0;
+			}
+		}
 		return $this->mark( $state, 'reopen' );
 	}
 

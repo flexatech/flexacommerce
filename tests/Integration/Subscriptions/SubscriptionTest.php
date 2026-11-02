@@ -1303,6 +1303,54 @@ final class SubscriptionTest extends OrderTestCase {
 		self::assertSame( OrderStatus::CANCELLED, $this->orders()->find( $order->id )?->status, 'The new switch replaces the unpaid one.' );
 	}
 
+	public function test_an_imported_row_waits_for_billing_to_start_then_renews_from_today(): void {
+		Pages::install();
+		$order = $this->buy( $this->user, $this->plan_product( 1000, [ 'period' => 'month' ] ), 1, [], 'cod' );
+		$row   = $this->only( $order );
+		$this->subs()->repository()->update( $row->id, [ 'billing_held' => 1 ], gmdate( 'Y-m-d H:i:s' ) );
+		$this->due( $row );
+		$row = $this->subs()->find( $row->id );
+		self::assertNotNull( $row );
+		self::assertTrue( $row->billing_held );
+		self::assertSame( 1, $this->subs()->held_count() );
+
+		self::assertSame( 0, $this->subs()->run(), 'WooCommerce Subscriptions still bills it.' );
+		self::assertFalse( $this->subs()->can_change( $row ) );
+		self::assertFalse( $this->subs()->can_pause( $row ) );
+		foreach ( [ fn () => $this->subs()->cancel( $row->id, false, TransitionContext::admin() ), fn () => $this->subs()->renew( $row->id, TransitionContext::admin() ) ] as $act ) {
+			try {
+				$act();
+				self::fail( 'A held row was changed.' );
+			} catch ( \InvalidArgumentException $e ) {
+				self::assertStringContainsString( 'not billed here yet', $e->getMessage() );
+			}
+		}
+
+		wp_set_current_user( $this->user );
+		$_GET = [ 'fxc_view_subscription' => (string) $row->id ];
+		$html = $this->account()->render();
+		self::assertStringContainsString( 'moving to our new store system', $html );
+		self::assertStringNotContainsString( 'subscription_do', $html, 'No forms while it moves.' );
+		$_POST = $this->subscription_post( $row, 'cancel', [] );
+		$this->account()->handle();
+		self::assertSame( SubscriptionStatus::ACTIVE, $this->subs()->find( $row->id )?->status );
+
+		wp_set_current_user( self::factory()->user->create( [ 'role' => 'administrator' ] ) );
+		$list = $this->send( 'GET', '/admin/subscriptions' )->get_data();
+		self::assertSame( [ 1, false, true ], [ $list['held'], $list['woo'], $list['items'][0]['billing_held'] ] );
+		self::assertSame( [ 'started' => 1 ], $this->send( 'POST', '/admin/subscriptions/start-billing' )->get_data() );
+		$row = $this->subs()->find( $row->id );
+		self::assertNotNull( $row );
+		self::assertFalse( $row->billing_held );
+		self::assertSame( (int) gmdate( 'j' ), $row->anchor_day, 'The missed payment day renews today.' );
+		self::assertSame( 0, $this->subs()->held_count() );
+		self::assertSame( 1, $this->subs()->run() );
+		self::assertSame( 'billing-started', $this->subs()->repository()->events( $row->id, 20 )[1]['type'] ?? null );
+		self::assertSame( 0, $this->subs()->start_billing( TransitionContext::admin() ), 'Nothing left to start.' );
+		$_GET  = [];
+		$_POST = [];
+	}
+
 	/** @return array<int,int> product id => index of its item in the renewals */
 	private static function indexes( Subscription $row ): array {
 		$out = [];

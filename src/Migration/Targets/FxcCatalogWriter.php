@@ -13,6 +13,7 @@ use Flexa\Commerce\Catalog\ProductRepository;
 use Flexa\Commerce\Catalog\ProductService;
 use Flexa\Commerce\Catalog\ProductTypes;
 use Flexa\Commerce\Catalog\ProductVideo;
+use Flexa\Commerce\Catalog\SubscriptionPlan;
 use Flexa\Commerce\Catalog\Variant;
 use Flexa\Commerce\Catalog\VariantRepository;
 use Flexa\Commerce\Contracts\Exceptions\DuplicateSku;
@@ -622,12 +623,52 @@ final class FxcCatalogWriter {
 		if ( is_array( $row['downloads'] ?? null ) ) {
 			$fields['downloads'] = self::downloads( $row['downloads'], $path, $problems );
 		}
+		if ( array_key_exists( 'subscription', $row ) ) {
+			$fields['subscription'] = self::plan( $row['subscription'], $currency, $exponent, $path, $problems );
+		}
 
 		try {
 			return ProductInput::fields( $fields, $path );
 		} catch ( InvalidProduct $e ) {
 			throw new Rejected( 'invalid_product', $e->getMessage(), [ 'field' => $e->field ] );
 		}
+	}
+
+	/**
+	 * A canonical plan as ProductInput takes it: the sign-up fee in minor
+	 * units, values past the FlexaCommerce limits clamped with a warning.
+	 *
+	 * @param list<Problem> $problems
+	 * @return array<string,int|string>|null
+	 */
+	private static function plan( mixed $plan, string $currency, int $exponent, string $path, array &$problems ): ?array {
+		if ( ! is_array( $plan ) || ! in_array( $plan['period'] ?? null, SubscriptionPlan::PERIODS, true ) ) {
+			return null;
+		}
+		$fee   = 0;
+		$money = is_array( $plan['signup_fee'] ?? null ) ? $plan['signup_fee'] : null;
+		if ( $money !== null && is_string( $money['amount'] ?? null ) && Decimal::is_decimal( $money['amount'], false ) ) {
+			$fee = max( 0, Decimal::to_minor( $money['amount'], $currency, $exponent )[0] );
+		}
+		$out = [
+			'period'     => (string) $plan['period'],
+			'interval'   => (int) ( $plan['interval'] ?? 1 ),
+			'length'     => (int) ( $plan['length'] ?? 0 ),
+			'trial_days' => (int) ( $plan['trial_days'] ?? 0 ),
+			'signup_fee' => $fee,
+		];
+		foreach ( [
+			'interval'   => [ 1, SubscriptionPlan::MAX_INTERVAL ],
+			'length'     => [ 0, SubscriptionPlan::MAX_LENGTH ],
+			'trial_days' => [ 0, SubscriptionPlan::MAX_TRIAL ],
+		] as $key => [ $min, $max ] ) {
+			$clamped = max( $min, min( $max, $out[ $key ] ) );
+			if ( $clamped !== $out[ $key ] ) {
+				$problems[]  = Problem::warning( 'plan_clamped', sprintf( 'The subscription %1$s %2$d is out of range; %3$d was used.', $key, $out[ $key ], $clamped ), [ 'field' => $path . '.subscription.' . $key ] );
+				$out[ $key ] = $clamped;
+			}
+		}
+		return $out;
 	}
 
 	/**

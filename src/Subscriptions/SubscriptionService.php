@@ -300,6 +300,7 @@ final class SubscriptionService {
 		if ( $row === null || ! in_array( $row->status, [ SubscriptionStatus::ACTIVE, SubscriptionStatus::ON_HOLD ], true ) || $row->snapshot === null ) {
 			throw new \InvalidArgumentException( __( 'This subscription cannot renew.', 'flexacommerce' ) );
 		}
+		self::not_held( $row );
 		if ( $row->next_payment_at === null ) {
 			throw new \InvalidArgumentException( __( 'This subscription has no payment left.', 'flexacommerce' ) );
 		}
@@ -310,7 +311,7 @@ final class SubscriptionService {
 			$order = $this->db->run(
 				function () use ( $id, $number, $ctx ): ?Order {
 					$row = $this->rows->find( $id, true );
-					if ( $row === null || $row->snapshot === null || $row->next_payment_at === null || ! in_array( $row->status, [ SubscriptionStatus::ACTIVE, SubscriptionStatus::ON_HOLD ], true ) ) {
+					if ( $row === null || $row->billing_held || $row->snapshot === null || $row->next_payment_at === null || ! in_array( $row->status, [ SubscriptionStatus::ACTIVE, SubscriptionStatus::ON_HOLD ], true ) ) {
 						return null;
 					}
 					$now   = $this->clock->db_now();
@@ -404,7 +405,7 @@ final class SubscriptionService {
 
 	/** Whether the customer can save a new payment method for the renewals. */
 	public function can_update_method( Subscription $row ): bool {
-		return in_array( $row->status, [ SubscriptionStatus::ACTIVE, SubscriptionStatus::ON_HOLD, SubscriptionStatus::PENDING_CANCEL ], true ) && $this->setup_gateway( $row ) !== null;
+		return ! $row->billing_held && in_array( $row->status, [ SubscriptionStatus::ACTIVE, SubscriptionStatus::ON_HOLD, SubscriptionStatus::PENDING_CANCEL ], true ) && $this->setup_gateway( $row ) !== null;
 	}
 
 	/**
@@ -488,7 +489,8 @@ final class SubscriptionService {
 	 * @throws \InvalidArgumentException nothing to charge
 	 */
 	public function retry_now( int $id, TransitionContext $ctx ): PaymentResult {
-		$row   = $this->rows->find( $id ) ?? throw new \InvalidArgumentException( __( 'Subscription not found.', 'flexacommerce' ) );
+		$row = $this->rows->find( $id ) ?? throw new \InvalidArgumentException( __( 'Subscription not found.', 'flexacommerce' ) );
+		self::not_held( $row );
 		$order = $this->unpaid_renewal( $row ) ?? throw new \InvalidArgumentException( __( 'This subscription has no unpaid renewal.', 'flexacommerce' ) );
 		return $this->collect( $id, $order, $ctx, 'retry' ) ?? throw new \InvalidArgumentException( __( 'This subscription has no saved payment method to charge.', 'flexacommerce' ) );
 	}
@@ -672,6 +674,7 @@ final class SubscriptionService {
 	 */
 	public function cancel( int $id, bool $at_end, TransitionContext $ctx ): Subscription {
 		$row = $this->rows->find( $id ) ?? throw new \InvalidArgumentException( __( 'Subscription not found.', 'flexacommerce' ) );
+		self::not_held( $row );
 		if ( $row->is_ended() ) {
 			throw new \InvalidArgumentException( __( 'This subscription has already ended.', 'flexacommerce' ) );
 		}
@@ -705,6 +708,7 @@ final class SubscriptionService {
 	 */
 	public function reactivate( int $id, TransitionContext $ctx ): Subscription {
 		$row = $this->rows->find( $id ) ?? throw new \InvalidArgumentException( __( 'Subscription not found.', 'flexacommerce' ) );
+		self::not_held( $row );
 		if ( $row->status !== SubscriptionStatus::PENDING_CANCEL || $row->end_at === null ) {
 			throw new \InvalidArgumentException( __( 'Only a subscription waiting to end can be reactivated.', 'flexacommerce' ) );
 		}
@@ -722,6 +726,7 @@ final class SubscriptionService {
 	 */
 	public function set_hold( int $id, bool $hold, TransitionContext $ctx ): Subscription {
 		$row = $this->rows->find( $id ) ?? throw new \InvalidArgumentException( __( 'Subscription not found.', 'flexacommerce' ) );
+		self::not_held( $row );
 		if ( $hold ) {
 			if ( $row->status !== SubscriptionStatus::ACTIVE ) {
 				throw new \InvalidArgumentException( __( 'Only an active subscription can be put on hold.', 'flexacommerce' ) );
@@ -738,7 +743,7 @@ final class SubscriptionService {
 
 	/** Whether the customer can pause renewals from the account page (ADR-076). */
 	public function can_pause( Subscription $row ): bool {
-		return $row->status === SubscriptionStatus::ACTIVE && $row->next_payment_at !== null;
+		return ! $row->billing_held && $row->status === SubscriptionStatus::ACTIVE && $row->next_payment_at !== null;
 	}
 
 	/**
@@ -749,6 +754,7 @@ final class SubscriptionService {
 	 */
 	public function pause( int $id, TransitionContext $ctx ): Subscription {
 		$row = $this->rows->find( $id ) ?? throw new \InvalidArgumentException( __( 'Subscription not found.', 'flexacommerce' ) );
+		self::not_held( $row );
 		if ( ! $this->can_pause( $row ) ) {
 			throw new \InvalidArgumentException( __( 'Only an active subscription can be paused.', 'flexacommerce' ) );
 		}
@@ -774,6 +780,7 @@ final class SubscriptionService {
 	 */
 	public function resume( int $id, TransitionContext $ctx ): ?Order {
 		$row = $this->rows->find( $id ) ?? throw new \InvalidArgumentException( __( 'Subscription not found.', 'flexacommerce' ) );
+		self::not_held( $row );
 		if ( ! $row->is_paused() ) {
 			throw new \InvalidArgumentException( __( 'Only a subscription you paused can be resumed.', 'flexacommerce' ) );
 		}
@@ -807,7 +814,7 @@ final class SubscriptionService {
 
 	/** Whether the customer can change the items or the address of the renewals (ADR-076). */
 	public function can_change( Subscription $row ): bool {
-		return $this->reprice !== null && $row->snapshot !== null && $row->next_payment_at !== null
+		return $this->reprice !== null && ! $row->billing_held && $row->snapshot !== null && $row->next_payment_at !== null
 			&& ( $row->status === SubscriptionStatus::ACTIVE || $row->is_paused() );
 	}
 
@@ -837,6 +844,7 @@ final class SubscriptionService {
 	 * renewal already waiting for payment keeps what it holds.
 	 */
 	public function apply_change( Subscription $row, Snapshot $snapshot, ?AddressView $address, TransitionContext $ctx ): Subscription {
+		self::not_held( $row );
 		[ $billing, $shipping ] = $this->addresses( $row, $address );
 		$now                    = $this->clock->db_now();
 		$this->rows->update(
@@ -889,7 +897,7 @@ final class SubscriptionService {
 
 	/** Whether the customer can switch the subscription to other variations (ADR-077). */
 	public function can_switch( Subscription $row ): bool {
-		return $this->reprice !== null && $row->snapshot !== null && $row->next_payment_at !== null && $row->status === SubscriptionStatus::ACTIVE;
+		return $this->reprice !== null && ! $row->billing_held && $row->snapshot !== null && $row->next_payment_at !== null && $row->status === SubscriptionStatus::ACTIVE;
 	}
 
 	/**
@@ -941,6 +949,7 @@ final class SubscriptionService {
 	 * is paid. Returns that order, or null when nothing was owed.
 	 */
 	public function apply_switch( Subscription $row, SwitchQuote $quote, TransitionContext $ctx ): ?Order {
+		self::not_held( $row );
 		$this->cancel_switches( $row, $ctx );
 		if ( $quote->charge <= 0 ) {
 			$this->switch_to( $row, $quote->snapshot, $quote->same_schedule ? null : $quote->next_payment_at, null, $ctx );
@@ -1136,6 +1145,7 @@ final class SubscriptionService {
 	 */
 	public function reschedule( int $id, string $next_payment_at, TransitionContext $ctx ): Subscription {
 		$row = $this->rows->find( $id ) ?? throw new \InvalidArgumentException( __( 'Subscription not found.', 'flexacommerce' ) );
+		self::not_held( $row );
 		if ( ! in_array( $row->status, [ SubscriptionStatus::ACTIVE, SubscriptionStatus::ON_HOLD ], true ) || $row->next_payment_at === null ) {
 			throw new \InvalidArgumentException( __( 'This subscription has no payment to move.', 'flexacommerce' ) );
 		}
@@ -1154,6 +1164,60 @@ final class SubscriptionService {
 		);
 		$this->rows->add_event( $id, 'rescheduled', __( 'Next payment date changed.', 'flexacommerce' ), null, $ctx->actor_type, $ctx->actor_id, $now );
 		return $this->rows->find( $id ) ?? $row;
+	}
+
+	/** Rows imported from WooCommerce Subscriptions that wait for start_billing() (ADR-079). */
+	public function held_count(): int {
+		return $this->rows->held_count();
+	}
+
+	/**
+	 * Whether WooCommerce Subscriptions can still charge renewals: it is
+	 * loaded and WooCommerce runs. Billing the imported rows then would
+	 * charge customers twice.
+	 */
+	public static function woo_billing(): bool {
+		return class_exists( 'WC_Subscriptions' ) && function_exists( 'WC' );
+	}
+
+	/**
+	 * FlexaCommerce takes over the renewals of the rows imported from
+	 * WooCommerce Subscriptions (ADR-079). An active row whose payment day
+	 * passed renews on the next cron run, once, and its later periods count
+	 * from today. Returns how many rows it released.
+	 *
+	 * @throws \InvalidArgumentException WooCommerce Subscriptions still bills
+	 */
+	public function start_billing( TransitionContext $ctx ): int {
+		if ( self::woo_billing() ) {
+			throw new \InvalidArgumentException( __( 'Deactivate WooCommerce Subscriptions first, so no renewal is charged twice.', 'flexacommerce' ) );
+		}
+		$count = 0;
+		$rows  = $this->rows->held( self::BATCH * 4 );
+		while ( $rows !== [] ) {
+			foreach ( $rows as $row ) {
+				$now    = $this->clock->db_now();
+				$fields = [ 'billing_held' => 0 ];
+				if ( $row->status === SubscriptionStatus::ACTIVE && $row->next_payment_at !== null && $row->next_payment_at < $now ) {
+					$fields += [
+						'next_payment_at' => $now,
+						'anchor_day'      => (int) substr( $now, 8, 2 ),
+					];
+				}
+				$this->rows->update( $row->id, $fields, $now );
+				$this->rows->add_event( $row->id, 'billing-started', __( 'FlexaCommerce bills the renewals from now on.', 'flexacommerce' ), null, $ctx->actor_type, $ctx->actor_id, $now );
+				++$count;
+			}
+			$rows = $this->rows->held( self::BATCH * 4 );
+		}
+		return $count;
+	}
+
+	/** @throws \InvalidArgumentException the row waits for start_billing() */
+	private static function not_held( Subscription $row ): void {
+		if ( $row->billing_held ) {
+			throw new \InvalidArgumentException( __( 'This subscription was imported and is not billed here yet. Start billing on the Subscriptions screen first.', 'flexacommerce' ) );
+		}
 	}
 
 	/** The unpaid renewal order of a row on hold, which the account page links to. */

@@ -50,6 +50,8 @@ export interface SubscriptionItem {
     cancelled_at: string | null;
     /** Set while the customer paused the subscription from My Account. */
     paused_at: string | null;
+    /** Imported from WooCommerce Subscriptions and not billed here until billing starts (ADR-079). */
+    billing_held: boolean;
     created_at: string | null;
 }
 
@@ -110,6 +112,10 @@ export interface SubscriptionList {
     total: number;
     pages: number;
     counts: Partial<Record<SubscriptionStatus, number>>;
+    /** Imported subscriptions waiting for billing to start. */
+    held: number;
+    /** WooCommerce Subscriptions is active and still bills them. */
+    woo: boolean;
 }
 
 export const SUBSCRIPTIONS_PER_PAGE = 20;
@@ -145,6 +151,14 @@ export function useSubscriptionAction(id: number) {
     return useMutation({
         mutationFn: (action: SubscriptionAction) => api.post<SubscriptionDetail>(`admin/subscriptions/${id}/actions`, { action }),
         onSuccess: settle,
+    });
+}
+
+export function useStartBilling() {
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: () => api.post<{ started: number }>("admin/subscriptions/start-billing", {}),
+        onSettled: () => qc.invalidateQueries({ queryKey: KEY }),
     });
 }
 

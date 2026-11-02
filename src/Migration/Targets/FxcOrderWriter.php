@@ -19,6 +19,7 @@ use Flexa\Commerce\Migration\ImportRepository;
 use Flexa\Commerce\Migration\Job;
 use Flexa\Commerce\Migration\Mapping;
 use Flexa\Commerce\Orders\Carriers;
+use Flexa\Commerce\Orders\NewOrderItem;
 use Flexa\Commerce\Orders\OrderItem;
 use Flexa\Commerce\Orders\OrderStatus;
 use Flexa\Commerce\Payments\Transaction;
@@ -163,6 +164,33 @@ final class FxcOrderWriter {
 
 		$map->remember( Record::ORDER, $record->source_id(), $order_id, $record->checksum );
 		return new WriteResult( $action, $order_id, $this->problems );
+	}
+
+	/**
+	 * A WooCommerce subscription's lines as the items its renewals repeat
+	 * (ADR-079), mapped as an order's are. Each product line names its
+	 * stock owner, so a renewal deducts stock like a checkout does.
+	 *
+	 * @param array<array-key,mixed> $lines canonical order lines
+	 * @return array{0:list<NewOrderItem>,1:list<Problem>}
+	 */
+	public function snapshot_items( array $lines, bool $inclusive, Mapping $map, string $currency ): array {
+		$this->problems = [];
+		$this->currency = strtoupper( $currency );
+		$this->exponent = Currency::exponent( $this->currency );
+		[ $items ]      = $this->items( $lines, $inclusive, $map );
+		$out            = [];
+		foreach ( $items as $item ) {
+			unset( $item['meta']['import'], $item['meta']['stock_id'] );
+			if ( $item['type'] === OrderItem::PRODUCT ) {
+				$item['stock_id'] = $this->stock_owner( (int) $item['product_id'], (int) $item['variant_id'] );
+			}
+			$new = NewOrderItem::from_array( $item );
+			if ( $new !== null ) {
+				$out[] = $new;
+			}
+		}
+		return [ $out, $this->problems ];
 	}
 
 	public function modified_at( int $order_id ): ?string {

@@ -27,6 +27,8 @@ final class CutoverTest extends \WP_UnitTestCase {
 	/** @var array{status:int,body:string}|null fixed response of the URL check, null to echo the expected marker */
 	private ?array $response = null;
 
+	private int $billing = 0;
+
 	public function set_up(): void {
 		parent::set_up();
 		$this->store = GoldenStore::build();
@@ -125,6 +127,7 @@ final class CutoverTest extends \WP_UnitTestCase {
 		$status = $this->cutover()->reopen();
 		$this->assertTrue( $status['finished'] );
 		$this->assertFalse( Settings::bool( 'checkout_paused' ) );
+		$this->assertSame( [ 1, 1 ], [ $this->billing, $status['billing'] ], 'Opening checkout starts billing the imported subscriptions.' );
 
 		$this->cutover()->rollback();
 		$this->assertSame( [], Cutover::state() );
@@ -215,6 +218,7 @@ final class CutoverTest extends \WP_UnitTestCase {
 			Plugin::instance()->services()->clock(),
 			fn (): bool => $this->woo,
 			$fetch,
+			fn (): int => ++$this->billing,
 		);
 	}
 

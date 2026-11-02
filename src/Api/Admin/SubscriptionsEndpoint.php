@@ -25,6 +25,9 @@ defined( 'ABSPATH' ) || exit;
  * The day comes in store-local (YYYY-MM-DD) and keeps the time of day the
  * payment had. `retry` charges the unpaid renewal to the saved method now
  * (ADR-074); the answer then carries `charge` with how it went.
+ * `start-billing` lets FlexaCommerce bill the rows imported from
+ * WooCommerce Subscriptions (ADR-079); the list tells how many wait and
+ * whether WooCommerce Subscriptions still bills.
  */
 final class SubscriptionsEndpoint extends Endpoint {
 	private const ACTIONS = [ 'cancel', 'cancel_end', 'reactivate', 'hold', 'resume', 'renew', 'retry' ];
@@ -95,6 +98,18 @@ final class SubscriptionsEndpoint extends Endpoint {
 
 		register_rest_route(
 			self::NAMESPACE,
+			'/admin/subscriptions/start-billing',
+			[
+				[
+					'methods'             => WP_REST_Server::CREATABLE,
+					'callback'            => [ $this, 'start_billing' ],
+					'permission_callback' => [ $this, 'edit_orders_permission' ],
+				],
+			]
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
 			'/admin/subscriptions/(?P<id>\d+)/actions',
 			[
 				[
@@ -129,9 +144,22 @@ final class SubscriptionsEndpoint extends Endpoint {
 				'total'  => $result['total'],
 				'pages'  => (int) ceil( $result['total'] / max( 1, $per_page ) ),
 				'counts' => (object) $this->service()->repository()->counts(),
+				'held'   => $this->service()->held_count(),
+				'woo'    => SubscriptionService::woo_billing(),
 			],
 			200
 		);
+	}
+
+	/** @param WP_REST_Request<array<string,mixed>> $request */
+	public function start_billing( WP_REST_Request $request ): WP_REST_Response|WP_Error {
+		unset( $request );
+		try {
+			$started = $this->service()->start_billing( TransitionContext::admin() );
+		} catch ( \InvalidArgumentException $e ) {
+			return self::refused( $e->getMessage(), 'woocommerce' );
+		}
+		return new WP_REST_Response( [ 'started' => $started ], 200 );
 	}
 
 	/** @param WP_REST_Request<array<string,mixed>> $request */

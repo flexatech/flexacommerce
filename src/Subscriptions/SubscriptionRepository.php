@@ -55,7 +55,7 @@ final class SubscriptionRepository {
 	public function due( string $now, int $limit ): array {
 		return $this->many(
 			$this->wpdb->prepare(
-				'SELECT * FROM %i WHERE status = %s AND next_payment_at IS NOT NULL AND next_payment_at <= %s ORDER BY next_payment_at, id LIMIT %d',
+				'SELECT * FROM %i WHERE status = %s AND billing_held = 0 AND next_payment_at IS NOT NULL AND next_payment_at <= %s ORDER BY next_payment_at, id LIMIT %d',
 				Schema::table( 'subscriptions' ),
 				SubscriptionStatus::ACTIVE,
 				$now,
@@ -68,7 +68,7 @@ final class SubscriptionRepository {
 	public function to_remind( string $now, string $until, int $limit ): array {
 		return $this->many(
 			$this->wpdb->prepare(
-				'SELECT * FROM %i WHERE status = %s AND next_payment_at > %s AND next_payment_at <= %s AND ( reminded_for IS NULL OR reminded_for <> next_payment_at ) ORDER BY next_payment_at, id LIMIT %d',
+				'SELECT * FROM %i WHERE status = %s AND billing_held = 0 AND next_payment_at > %s AND next_payment_at <= %s AND ( reminded_for IS NULL OR reminded_for <> next_payment_at ) ORDER BY next_payment_at, id LIMIT %d',
 				Schema::table( 'subscriptions' ),
 				SubscriptionStatus::ACTIVE,
 				$now,
@@ -82,7 +82,7 @@ final class SubscriptionRepository {
 	public function uncaptured( int $limit ): array {
 		return $this->many(
 			$this->wpdb->prepare(
-				'SELECT * FROM %i WHERE status IN (%s, %s, %s) AND payment_token IS NULL AND parent_order_id IS NOT NULL ORDER BY updated_at, id LIMIT %d',
+				'SELECT * FROM %i WHERE status IN (%s, %s, %s) AND billing_held = 0 AND payment_token IS NULL AND parent_order_id IS NOT NULL ORDER BY updated_at, id LIMIT %d',
 				Schema::table( 'subscriptions' ),
 				SubscriptionStatus::ACTIVE,
 				SubscriptionStatus::ON_HOLD,
@@ -96,7 +96,7 @@ final class SubscriptionRepository {
 	public function retry_due( string $now, int $limit ): array {
 		return $this->many(
 			$this->wpdb->prepare(
-				'SELECT * FROM %i WHERE status = %s AND retry_at IS NOT NULL AND retry_at <= %s ORDER BY retry_at, id LIMIT %d',
+				'SELECT * FROM %i WHERE status = %s AND billing_held = 0 AND retry_at IS NOT NULL AND retry_at <= %s ORDER BY retry_at, id LIMIT %d',
 				Schema::table( 'subscriptions' ),
 				SubscriptionStatus::ON_HOLD,
 				$now,
@@ -109,7 +109,7 @@ final class SubscriptionRepository {
 	public function ending( string $now, int $limit ): array {
 		return $this->many(
 			$this->wpdb->prepare(
-				'SELECT * FROM %i WHERE status IN (%s, %s) AND next_payment_at IS NULL AND end_at IS NOT NULL AND end_at <= %s ORDER BY end_at, id LIMIT %d',
+				'SELECT * FROM %i WHERE status IN (%s, %s) AND billing_held = 0 AND next_payment_at IS NULL AND end_at IS NOT NULL AND end_at <= %s ORDER BY end_at, id LIMIT %d',
 				Schema::table( 'subscriptions' ),
 				SubscriptionStatus::ACTIVE,
 				SubscriptionStatus::PENDING_CANCEL,
@@ -257,6 +257,28 @@ final class SubscriptionRepository {
 		return $out;
 	}
 
+	/** Rows imported from WooCommerce Subscriptions that bill nothing yet (ADR-079). */
+	public function held_count(): int {
+		return (int) $this->wpdb->get_var( $this->wpdb->prepare( 'SELECT COUNT(*) FROM %i WHERE billing_held = 1', Schema::table( 'subscriptions' ) ) );
+	}
+
+	/** @return list<Subscription> held rows, oldest first */
+	public function held( int $limit ): array {
+		return $this->many( $this->wpdb->prepare( 'SELECT * FROM %i WHERE billing_held = 1 ORDER BY id LIMIT %d', Schema::table( 'subscriptions' ), $limit ) );
+	}
+
+	/** Removes a row with its order links and its events. */
+	public function delete( int $id ): void {
+		foreach ( [ 'subscription_events', 'subscription_orders' ] as $table ) {
+			if ( $this->wpdb->delete( Schema::table( $table ), [ 'subscription_id' => $id ], [ '%d' ] ) === false ) {
+				throw QueryFailed::from_wpdb( $this->wpdb );
+			}
+		}
+		if ( $this->wpdb->delete( Schema::table( 'subscriptions' ), [ 'id' => $id ], [ '%d' ] ) === false ) {
+			throw QueryFailed::from_wpdb( $this->wpdb );
+		}
+	}
+
 	/** @return list<Subscription> rows of an address, for the privacy export */
 	public function for_email( string $email ): array {
 		return $this->many( $this->wpdb->prepare( 'SELECT * FROM %i WHERE customer_email = %s ORDER BY id', Schema::table( 'subscriptions' ), $email ) );
@@ -281,7 +303,7 @@ final class SubscriptionRepository {
 	 * @return list<string>
 	 */
 	private static function formats( array $row ): array {
-		$ints = [ 'customer_id', 'interval_count', 'length', 'trial_days', 'anchor_day', 'billed', 'total', 'parent_order_id', 'retry_count' ];
+		$ints = [ 'customer_id', 'interval_count', 'length', 'trial_days', 'anchor_day', 'billed', 'total', 'parent_order_id', 'retry_count', 'billing_held' ];
 		return array_map( static fn ( string $key ): string => in_array( $key, $ints, true ) ? '%d' : '%s', array_keys( $row ) );
 	}
 

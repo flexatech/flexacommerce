@@ -285,6 +285,7 @@ final class FxcCatalogReader {
 			'currency' => $currency,
 		];
 		$size     = static fn ( ?string $value ): ?string => $value === null ? null : Decimal::to_base( Decimal::clean( $value ), '1' );
+		$plan     = $row->plan();
 		return [
 			'enabled'             => $row->enabled,
 			'menu_order'          => $row->menu_order,
@@ -311,6 +312,7 @@ final class FxcCatalogReader {
 			'virtual'             => $row->virtual,
 			'downloadable'        => $row->downloadable,
 			'downloads'           => $row->downloads->to_array(),
+			'subscription'        => $plan === null ? null : [ 'signup_fee' => $money( $plan->signup_fee ) ] + $plan->to_array(),
 		];
 	}
 

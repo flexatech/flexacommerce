@@ -349,6 +349,10 @@ final class AccountPage {
 			$this->errors = [ 'form' => __( 'Subscription not found.', 'flexacommerce' ) ];
 			return;
 		}
+		if ( $row->billing_held ) {
+			$this->errors = [ 'form' => __( 'This subscription is still moving to our new store system. Changes open once the move is finished.', 'flexacommerce' ) ];
+			return;
+		}
 		$ctx = new TransitionContext( 'customer', $user );
 		try {
 			if ( $do === 'change' ) {

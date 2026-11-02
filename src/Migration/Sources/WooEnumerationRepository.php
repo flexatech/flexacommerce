@@ -58,6 +58,9 @@ final class WooEnumerationRepository {
 			'coupons'    => $this->wpdb->prepare( "SELECT ID FROM %i WHERE post_type = 'shop_coupon' AND post_status NOT IN ('auto-draft', 'trash') AND ID > %d AND ID <= %d ORDER BY ID LIMIT %d", $this->wpdb->posts, $after, $upper, $limit ),
 			'options'    => $this->options_sql( $after, $upper, $limit ),
 			'reviews'    => $this->wpdb->prepare( "SELECT c.comment_ID FROM %i AS c INNER JOIN %i AS p ON p.ID = c.comment_post_ID WHERE p.post_type = 'product' AND c.comment_approved IN ('0', '1') AND c.comment_type IN ('review', 'comment') AND c.comment_ID > %d AND c.comment_ID <= %d ORDER BY c.comment_ID LIMIT %d", $this->wpdb->comments, $this->wpdb->posts, $after, $upper, $limit ),
+			'subscriptions' => self::hpos()
+				? $this->wpdb->prepare( "SELECT id FROM %i WHERE type = 'shop_subscription' AND status NOT IN ('trash', 'auto-draft') AND id > %d AND id <= %d ORDER BY id LIMIT %d", $this->orders_table(), $after, $upper, $limit )
+				: $this->wpdb->prepare( "SELECT ID FROM %i WHERE post_type = 'shop_subscription' AND post_status NOT IN ('trash', 'auto-draft') AND ID > %d AND ID <= %d ORDER BY ID LIMIT %d", $this->wpdb->posts, $after, $upper, $limit ),
 			default      => null,
 		};
 		if ( $sql === null ) {
@@ -90,6 +93,9 @@ final class WooEnumerationRepository {
 			'coupons'    => $this->wpdb->prepare( "SELECT MAX(ID) FROM %i WHERE post_type = 'shop_coupon'", $this->wpdb->posts ),
 			'options'    => $this->wpdb->prepare( "SELECT MAX(ID) FROM %i WHERE post_type IN ('product', 'global_product_addon')", $this->wpdb->posts ),
 			'reviews'    => $this->wpdb->prepare( 'SELECT MAX(comment_ID) FROM %i', $this->wpdb->comments ),
+			'subscriptions' => self::hpos()
+				? $this->wpdb->prepare( "SELECT MAX(id) FROM %i WHERE type = 'shop_subscription'", $this->orders_table() )
+				: $this->wpdb->prepare( "SELECT MAX(ID) FROM %i WHERE post_type = 'shop_subscription'", $this->wpdb->posts ),
 			default      => null,
 		};
 		return $sql === null ? 0 : (int) $this->wpdb->get_var( $sql );
@@ -184,6 +190,96 @@ final class WooEnumerationRepository {
 			$out[ (string) $row['status'] ] = (int) $row['n'];
 		}
 		return $out;
+	}
+
+	/**
+	 * Meta of a WooCommerce Subscriptions subscription, read from the table
+	 * (ADR-079): the plugin keeps its schedule in meta it hides from
+	 * get_meta(), and it may not be active.
+	 *
+	 * @param list<string> $keys
+	 * @return array<string,string> key => value, the first row of each key
+	 */
+	public function subscription_meta( int $id, array $keys ): array {
+		if ( $keys === [] ) {
+			return [];
+		}
+		$in  = implode( ', ', array_fill( 0, count( $keys ), '%s' ) );
+		$sql = self::hpos()
+			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $in is placeholders only.
+			? $this->wpdb->prepare( "SELECT meta_key, meta_value FROM %i WHERE order_id = %d AND meta_key IN ({$in}) ORDER BY id", $this->wpdb->prefix . 'wc_orders_meta', $id, ...$keys )
+			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $in is placeholders only.
+			: $this->wpdb->prepare( "SELECT meta_key, meta_value FROM %i WHERE post_id = %d AND meta_key IN ({$in}) ORDER BY meta_id", $this->wpdb->postmeta, $id, ...$keys );
+		$rows = $this->wpdb->get_results( $sql, ARRAY_A );
+		$out  = [];
+		foreach ( $rows ?: [] as $row ) {
+			$out[ (string) $row['meta_key'] ] ??= (string) $row['meta_value'];
+		}
+		return $out;
+	}
+
+	/**
+	 * The renewal and switch orders WooCommerce Subscriptions made for a
+	 * subscription: the orders whose meta names it.
+	 *
+	 * @return list<array{order_id:int,relation:string}> oldest first
+	 */
+	public function subscription_orders( int $id ): array {
+		$sql  = self::hpos()
+			? $this->wpdb->prepare( "SELECT m.order_id AS order_id, m.meta_key AS meta_key FROM %i m INNER JOIN %i o ON o.id = m.order_id AND o.type = 'shop_order' WHERE m.meta_key IN ('_subscription_renewal', '_subscription_switch') AND m.meta_value = %s ORDER BY m.order_id", $this->wpdb->prefix . 'wc_orders_meta', $this->orders_table(), (string) $id )
+			: $this->wpdb->prepare( "SELECT m.post_id AS order_id, m.meta_key AS meta_key FROM %i m INNER JOIN %i p ON p.ID = m.post_id AND p.post_type = 'shop_order' WHERE m.meta_key IN ('_subscription_renewal', '_subscription_switch') AND m.meta_value = %s ORDER BY m.post_id", $this->wpdb->postmeta, $this->wpdb->posts, (string) $id );
+		$rows = $this->wpdb->get_results( $sql, ARRAY_A );
+		$out  = [];
+		foreach ( $rows ?: [] as $row ) {
+			$out[] = [
+				'order_id' => (int) $row['order_id'],
+				'relation' => $row['meta_key'] === '_subscription_switch' ? 'switch' : 'renewal',
+			];
+		}
+		return $out;
+	}
+
+	/**
+	 * Live subscriptions (not trashed, not ended) for the preflight: per
+	 * payment method, renewed by hand, and billed by PayPal Subscriptions.
+	 *
+	 * @return array{methods:array<string,int>,manual:int,paypal_plans:int}
+	 */
+	public function subscription_payments(): array {
+		$live  = [ 'wc-active', 'wc-on-hold', 'wc-pending', 'wc-pending-cancel' ];
+		$in    = implode( ', ', array_fill( 0, count( $live ), '%s' ) );
+		$hpos  = self::hpos();
+		$meta  = $hpos ? $this->wpdb->prefix . 'wc_orders_meta' : $this->wpdb->postmeta;
+		$owner = $hpos ? 'order_id' : 'post_id';
+		$base  = $hpos
+			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $in is placeholders only.
+			? $this->wpdb->prepare( "SELECT id AS id, payment_method AS method FROM %i WHERE type = 'shop_subscription' AND status IN ({$in})", $this->orders_table(), ...$live )
+			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $in is placeholders only.
+			: $this->wpdb->prepare( "SELECT p.ID AS id, COALESCE(m.meta_value, '') AS method FROM %i p LEFT JOIN %i m ON m.post_id = p.ID AND m.meta_key = '_payment_method' WHERE p.post_type = 'shop_subscription' AND p.post_status IN ({$in})", $this->wpdb->posts, $this->wpdb->postmeta, ...$live );
+		$rows    = $this->wpdb->get_results( $base, ARRAY_A );
+		$methods = [];
+		$ids     = [];
+		foreach ( $rows ?: [] as $row ) {
+			$method             = (string) $row['method'];
+			$methods[ $method ] = ( $methods[ $method ] ?? 0 ) + 1;
+			$ids[]              = (int) $row['id'];
+		}
+		$flag = function ( string $key, string $value ) use ( $ids, $meta, $owner ): int {
+			$total = 0;
+			foreach ( array_chunk( $ids, 1000 ) as $chunk ) {
+				$in     = implode( ', ', array_fill( 0, count( $chunk ), '%d' ) );
+				$total += (int) $this->wpdb->get_var(
+					// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $in is placeholders only.
+					$this->wpdb->prepare( "SELECT COUNT(DISTINCT %i) FROM %i WHERE meta_key = %s AND meta_value LIKE %s AND %i IN ({$in})", $owner, $meta, $key, $value, $owner, ...$chunk )
+				);
+			}
+			return $total;
+		};
+		return [
+			'methods'      => $methods,
+			'manual'       => $flag( '_requires_manual_renewal', 'true' ),
+			'paypal_plans' => $flag( 'ppcp_subscription', '_%' ),
+		];
 	}
 
 	/** @return array<string,int> currency => orders */

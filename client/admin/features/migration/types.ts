@@ -1,6 +1,6 @@
 export type Direction = "wc_to_fxc" | "fxc_to_wc";
 
-export type Stage = "settings" | "taxes" | "shipping" | "attributes" | "terms" | "products" | "options" | "checkout" | "customers" | "orders" | "coupons" | "reviews";
+export type Stage = "settings" | "taxes" | "shipping" | "attributes" | "terms" | "products" | "options" | "checkout" | "customers" | "orders" | "coupons" | "reviews" | "subscriptions";
 
 export type JobStatus =
     | "draft"
@@ -130,4 +130,6 @@ export interface CutoverStatus {
         results: { type: "product" | "category"; id: number; url: string; status: number; ok: boolean }[];
     } | null;
     finished: boolean;
+    /** Imported subscriptions that started billing when checkout reopened; null before that. */
+    billing: number | null;
 }

@@ -304,6 +304,10 @@ final class Account {
 		}
 		$html .= '</dl>';
 
+		if ( $row->billing_held ) {
+			// Imported from WooCommerce Subscriptions, which still bills it until the store starts billing here (ADR-079).
+			$html .= '<p class="fxc-notice" role="status">' . esc_html__( 'This subscription is moving to our new store system. You can see it here, and changes open once the move is finished. Nothing about your plan or payments changes.', 'flexacommerce' ) . '</p>';
+		}
 		$unpaid = $row->status === SubscriptionStatus::ON_HOLD ? $service->unpaid_renewal( $row ) : null;
 		if ( $unpaid !== null ) {
 			$wait = $row->retry_at !== null
@@ -345,7 +349,7 @@ final class Account {
 				. ( $row->is_automatic() ? esc_html__( 'Change payment method', 'flexacommerce' ) : esc_html__( 'Pay renewals automatically', 'flexacommerce' ) )
 				. '</button></p></form>';
 		}
-		$do = match ( true ) {
+		$do = $row->billing_held ? null : match ( true ) {
 			$row->status === SubscriptionStatus::PENDING_CANCEL => [ 'reactivate', __( 'Keep my subscription', 'flexacommerce' ) ],
 			in_array( $row->status, [ SubscriptionStatus::ACTIVE, SubscriptionStatus::ON_HOLD ], true ) => [ 'cancel', __( 'Cancel subscription', 'flexacommerce' ) ],
 			default => null,

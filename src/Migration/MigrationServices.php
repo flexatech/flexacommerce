@@ -29,6 +29,7 @@ use Flexa\Commerce\Migration\Sources\WooOrderReader;
 use Flexa\Commerce\Migration\Sources\WooShippingReader;
 use Flexa\Commerce\Migration\Sources\WooSource;
 use Flexa\Commerce\Migration\Sources\WooStoreReader;
+use Flexa\Commerce\Migration\Sources\WooSubscriptionReader;
 use Flexa\Commerce\Migration\Targets\FxcCatalogWriter;
 use Flexa\Commerce\Migration\Targets\FxcCheckoutWriter;
 use Flexa\Commerce\Migration\Targets\FxcCouponWriter;
@@ -36,6 +37,7 @@ use Flexa\Commerce\Migration\Targets\FxcOptionWriter;
 use Flexa\Commerce\Migration\Targets\FxcOrderWriter;
 use Flexa\Commerce\Migration\Targets\FxcShippingWriter;
 use Flexa\Commerce\Migration\Targets\FxcStoreWriter;
+use Flexa\Commerce\Migration\Targets\FxcSubscriptionWriter;
 use Flexa\Commerce\Migration\Targets\FxcTarget;
 use Flexa\Commerce\Migration\Targets\ReviewWriter;
 use Flexa\Commerce\Migration\Targets\TargetAdapter;
@@ -50,8 +52,11 @@ use Flexa\Commerce\Migration\Transport\FileExport;
 use Flexa\Commerce\Migration\Transport\FileIndex;
 use Flexa\Commerce\Migration\Transport\FileSource;
 use Flexa\Commerce\Options\OptionSetRepository;
+use Flexa\Commerce\Orders\TransitionContext;
 use Flexa\Commerce\Reviews\Reviews;
 use Flexa\Commerce\Shipping\ShippingServices;
+use Flexa\Commerce\Subscriptions\SubscriptionRepository;
+use Flexa\Commerce\Subscriptions\SubscriptionService;
 use Flexa\Commerce\Support\Services;
 use Flexa\Commerce\Tax\TaxServices;
 
@@ -72,11 +77,13 @@ final class MigrationServices {
 	private ?Cutover $cutover             = null;
 	private ?CouponRepository $coupons    = null;
 
+	/** @param \Closure():SubscriptionService $subscriptions */
 	public function __construct(
 		private readonly Services $services,
 		private readonly CatalogServices $catalog,
 		private readonly TaxServices $tax,
 		private readonly ShippingServices $shipping,
+		private readonly \Closure $subscriptions,
 	) {}
 
 	/** The migration's own coupon repository: the cart's one caches coupons by code for a request. */
@@ -111,7 +118,12 @@ final class MigrationServices {
 	}
 
 	public function cutover(): Cutover {
-		return $this->cutover ??= new Cutover( $this->jobs(), $this->ids(), $this->services->clock() );
+		return $this->cutover ??= new Cutover(
+			$this->jobs(),
+			$this->ids(),
+			$this->services->clock(),
+			start_billing: fn (): int => ( $this->subscriptions )()->start_billing( TransitionContext::system() ),
+		);
 	}
 
 	public function runner(): Runner {
@@ -180,7 +192,8 @@ final class MigrationServices {
 	public function woo_source(): WooSource {
 		if ( $this->woo_source === null ) {
 			$enumeration      = new WooEnumerationRepository( $this->services->wpdb() );
-			$this->woo_source = new WooSource( $enumeration, new WooStoreReader( $enumeration ), new WooCatalogReader(), new WooOrderReader(), new WooShippingReader(), new WooCouponReader(), new WooOptionReader( $enumeration ), new WooCheckoutReader(), new ReviewReader( 'wc', 'product' ) );
+			$orders           = new WooOrderReader();
+			$this->woo_source = new WooSource( $enumeration, new WooStoreReader( $enumeration ), new WooCatalogReader(), $orders, new WooShippingReader(), new WooCouponReader(), new WooOptionReader( $enumeration ), new WooCheckoutReader(), new ReviewReader( 'wc', 'product' ), new WooSubscriptionReader( $enumeration, $orders ) );
 		}
 		return $this->woo_source;
 	}
@@ -222,17 +235,23 @@ final class MigrationServices {
 	}
 
 	public function fxc_target(): FxcTarget {
-		return $this->fxc_target ??= new FxcTarget(
+		if ( $this->fxc_target !== null ) {
+			return $this->fxc_target;
+		}
+		$orders           = new FxcOrderWriter( $this->imports(), $this->catalog->product_service(), $this->services->sequence(), $this->services->clock(), new PermissionRepository( $this->services->wpdb() ) );
+		$this->fxc_target = new FxcTarget(
 			$this->services->transaction(),
 			new FxcStoreWriter( $this->tax->repository(), new CustomerProfile() ),
 			new FxcCatalogWriter( $this->catalog->attributes(), $this->catalog->product_service(), $this->catalog->variants() ),
-			new FxcOrderWriter( $this->imports(), $this->catalog->product_service(), $this->services->sequence(), $this->services->clock(), new PermissionRepository( $this->services->wpdb() ) ),
+			$orders,
 			$this->imports(),
 			new FxcShippingWriter( $this->shipping->service() ),
 			new FxcCouponWriter( $this->coupons(), new CouponEditor( $this->coupons(), $this->services->clock() ) ),
 			new FxcOptionWriter( new OptionSetRepository() ),
 			new FxcCheckoutWriter(),
 			new ReviewWriter( PostTypes::PRODUCT, Reviews::TYPE, static fn ( int $product ) => Reviews::instance()->refresh( $product ) ),
+			new FxcSubscriptionWriter( fn (): SubscriptionRepository => ( $this->subscriptions )()->repository(), $orders, $this->services->clock() ),
 		);
+		return $this->fxc_target;
 	}
 }

@@ -92,6 +92,9 @@ final class FxcSource implements SourceAdapter {
 				$problems[] = Problem::warning( 'multi_currency', sprintf( 'Orders use %d currencies.', count( $currencies ) ), [ 'currencies' => $currencies ] );
 			}
 		}
+		if ( in_array( 'subscriptions', $job->stages(), true ) && $this->enumeration->subscription_count() > 0 ) {
+			$problems[] = Problem::info( 'subscriptions_stay', 'Subscriptions stay in FlexaCommerce: WooCommerce has no subscriptions of its own to copy them into. Their orders copy back with the orders.' );
+		}
 		return $problems;
 	}
 
