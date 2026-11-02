@@ -117,12 +117,21 @@ Run `wp flexacommerce doctor`. It prints the same checks as the Status screen an
 
 = Is there sample data to try the store with? =
 
-Yes. On the Products screen click Import, then "Add sample products", or run `wp flexacommerce sample install`. It adds 22 products of every type (simple, variable, grouped, external, bundle, downloadable, subscription, gift card) with pictures drawn on your server, a few reviews and three coupons: SAMPLE10, SAMPLE5 and FREESHIP. The same screen, or `wp flexacommerce sample remove`, takes them out again and leaves your own products alone. The products come from `sample-data/sample_products.csv`, a file in the WooCommerce CSV format, so you can also import it by hand.
+Yes. On the Products screen click Import, then use the "Demo store" card, or run `wp flexacommerce sample install --type=physical` (or `digital`, or `both`). Pick what the store sells: physical products to ship, digital products to download (checkout then asks for no shipping address), or both. You get up to 25 products of every type (simple, variable, grouped, external, bundle, downloadable, subscription, gift card) with pictures drawn on your server, a few reviews and the coupons SAMPLE10, SAMPLE5 and FREESHIP.
+
+You can also tick what to set up around them (`--with=shipping,payments,tax,pages`):
+
+* Shipping: a zone for your store country with flat rate (extra for bulky items), free shipping from 50 or with a coupon, and local pickup, after your own zones.
+* Payments: bank transfer with a sample account; a digital store also turns off cash on delivery.
+* Tax: tax turned on with one 10% rate.
+* Pages and menu: a terms page, a wishlist page and a menu with the shop, its categories, cart, checkout and account.
+
+A payment method or page you already set up is kept. "Remove demo store", or `wp flexacommerce sample remove`, takes it all out again and puts back the settings it changed, unless you changed them since. The products come from `sample-data/sample_products.csv`, a file in the WooCommerce CSV format, so you can also import it by hand.
 
 == Changelog ==
 
 = Unreleased =
-* Catalog: simple, variable, grouped, external, downloadable, bundle, gift card and subscription products; attributes, swatches, badges, product options, gallery video; reviews; shop filters; wishlist; product CSV import and export; a sample store to try it out.
+* Catalog: simple, variable, grouped, external, downloadable, bundle, gift card and subscription products; attributes, swatches, badges, product options, gallery video; reviews; shop filters; wishlist; product CSV import and export; a demo store (physical, digital or both, with shipping, payments, tax, pages and a menu) to try it out.
 * Cart and checkout: checkout builder with fields, sections, steps and conditions; coupons, automatic discounts, pricing rules and fees; guest order lookup.
 * Payments: built-in Stripe and PayPal with express buttons; gift cards and store credit.
 * Shipping and tax: zones, shipping classes, table rates, shipment tracking; taxes by location.

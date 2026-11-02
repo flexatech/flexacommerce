@@ -10,6 +10,7 @@ use Flexa\Commerce\Catalog\Csv\ImportContext;
 use Flexa\Commerce\Catalog\Csv\ProductCsvExporter;
 use Flexa\Commerce\Catalog\Csv\ProductCsvImporter;
 use Flexa\Commerce\Plugin;
+use Flexa\Commerce\Setup\DemoSettings;
 use Flexa\Commerce\Setup\SampleStore;
 use WP_Error;
 use WP_REST_Request;
@@ -148,6 +149,21 @@ final class ProductCsvEndpoint extends Endpoint {
 					'methods'             => WP_REST_Server::CREATABLE,
 					'callback'            => [ $this, 'sample_install' ],
 					'permission_callback' => [ $this, 'manage_permission' ],
+					'args'                => [
+						'type'  => [
+							'type'    => 'string',
+							'enum'    => SampleStore::TYPES,
+							'default' => 'both',
+						],
+						'parts' => [
+							'type'    => 'array',
+							'items'   => [
+								'type' => 'string',
+								'enum' => DemoSettings::PARTS,
+							],
+							'default' => [],
+						],
+					],
 				],
 				[
 					'methods'             => WP_REST_Server::DELETABLE,
@@ -258,11 +274,10 @@ final class ProductCsvEndpoint extends Endpoint {
 	}
 
 	public function sample_install( WP_REST_Request $request ): WP_REST_Response|WP_Error {
-		unset( $request );
 		wp_raise_memory_limit( 'admin' );
 		$store = SampleStore::make();
 		try {
-			$counts = $store->install();
+			$counts = $store->install( (string) $request->get_param( 'type' ), array_values( array_map( 'strval', (array) $request->get_param( 'parts' ) ) ) );
 		} catch ( \RuntimeException $e ) {
 			return new WP_Error( 'fxc_sample_installed', $e->getMessage(), [ 'status' => 409 ] );
 		}

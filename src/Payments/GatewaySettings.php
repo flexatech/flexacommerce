@@ -76,6 +76,11 @@ final class GatewaySettings {
 		}
 	}
 
+	/** Read the gateway's option again, after it changed outside this object. */
+	public function forget( string $id ): void {
+		unset( $this->cache[ $id ] );
+	}
+
 	public function enabled( PaymentGateway $gateway ): bool {
 		return (bool) ( $this->values( $gateway )['enabled'] ?? false );
 	}

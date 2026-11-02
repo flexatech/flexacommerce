@@ -31,8 +31,10 @@ defined( 'ABSPATH' ) || exit;
  * installer then adds what a CSV file cannot hold: pictures drawn here
  * (no image comes from another site), colour swatches, a gift card, a
  * subscription plan, files to download, reviews and three coupons.
- * Everything it creates is listed in a non-autoloaded option, and remove()
- * deletes exactly that list.
+ * A physical store gets the products to ship, a digital one the
+ * downloads and the gift card; DemoSettings adds shipping, payments, tax,
+ * pages and a menu on request. Everything it creates is listed in a
+ * non-autoloaded option, and remove() deletes exactly that list.
  */
 final class SampleStore {
 	public const OPTION = 'flexacommerce_sample';
@@ -41,6 +43,11 @@ final class SampleStore {
 	private const FOLDER = 'flexacommerce-sample';
 
 	private const SIZE = 800;
+
+	public const TYPES = [ 'physical', 'digital', 'both' ];
+
+	/** The class the sample file gives its bulky items; the sample zone charges extra for it. */
+	public const SHIPPING_CLASS = 'bulky';
 
 	/** Background colour of each product's picture; the colour variations get their own. */
 	private const PICTURES = [
@@ -60,6 +67,9 @@ final class SampleStore {
 		'sample-mug'             => '#702459',
 		'sample-album'           => '#44337a',
 		'sample-single'          => '#553c9a',
+		'sample-ebook'           => '#276749',
+		'sample-wallpapers'      => '#2b6cb0',
+		'sample-presets'         => '#9c4221',
 		'sample-logo-collection' => '#2a4365',
 		'sample-winter-set'      => '#234e52',
 		'sample-pennant'         => '#c05621',
@@ -117,13 +127,16 @@ final class SampleStore {
 		return dirname( __DIR__, 2 ) . '/sample-data/sample_products.csv';
 	}
 
-	/** @return array{installed:bool,products:int,coupons:int} */
+	/** @return array{installed:bool,products:int,coupons:int,type:string,parts:list<string>,shop_url:string} */
 	public function status(): array {
 		$list = self::list();
 		return [
 			'installed' => $list !== null,
 			'products'  => count( $list['products'] ?? [] ),
 			'coupons'   => count( $list['coupons'] ?? [] ),
+			'type'      => $list['type'] ?? '',
+			'parts'     => $list['parts'] ?? [],
+			'shop_url'  => (string) get_post_type_archive_link( PostTypes::PRODUCT ),
 		];
 	}
 
@@ -131,25 +144,37 @@ final class SampleStore {
 	 * Products whose SKU the shop already has are left alone and not
 	 * counted, so a file imported by hand earlier is not touched.
 	 *
-	 * @return array{products:int,skipped:int,images:int,reviews:int,coupons:int,errors:list<string>}
+	 * @param string       $type  physical, digital or both
+	 * @param list<string> $parts the DemoSettings parts to add as well
+	 * @return array{products:int,skipped:int,images:int,reviews:int,coupons:int,errors:list<string>,store:array<string,mixed>}
 	 * @throws \RuntimeException when the sample store is already in or the file cannot be read
 	 */
-	public function install(): array {
+	public function install( string $type = 'both', array $parts = [] ): array {
 		if ( self::list() !== null ) {
 			throw new \RuntimeException( __( 'The sample products are already in the shop. Remove them first to add them again.', 'flexacommerce' ) );
 		}
+		if ( ! in_array( $type, self::TYPES, true ) ) {
+			throw new \RuntimeException( __( 'Choose a physical, digital or mixed store.', 'flexacommerce' ) );
+		}
+		$parts      = array_values( array_intersect( DemoSettings::PARTS, $parts ) );
 		$taxonomies = [ PostTypes::CATEGORY, PostTypes::TAG, PostTypes::ATTRIBUTE ];
 		$before     = self::term_ids( $taxonomies );
 
-		[ $headers, $rows, $skus ] = self::read( self::file() );
+		$classes = array_keys( CsvColumns::shipping_classes() );
+
+		[ $headers, $rows, $skus ] = self::read( self::file(), $type );
 		$mapping                   = array_map( static fn ( string $header ): string => CsvColumns::match( $header ) ?? '', $headers );
 		$results                   = $this->importer->import( $headers, $mapping, $rows, new ImportContext(), false, false );
 
 		$list    = [
+			'type'        => $type,
+			'parts'       => $parts,
 			'products'    => [],
 			'terms'       => [],
 			'attachments' => [],
 			'coupons'     => [],
+			'classes'     => array_values( array_diff( array_map( 'strval', array_keys( CsvColumns::shipping_classes() ) ), array_map( 'strval', $classes ) ) ),
+			'store'       => [],
 		];
 		$created = [];
 		$counts  = [
@@ -159,6 +184,7 @@ final class SampleStore {
 			'reviews'  => 0,
 			'coupons'  => 0,
 			'errors'   => [],
+			'store'    => [],
 		];
 		foreach ( $results as $result ) {
 			$sku = $skus[ $result['line'] ] ?? null;
@@ -191,15 +217,20 @@ final class SampleStore {
 			$counts['reviews'] += $this->reviews( $sku, $id );
 		}
 		$counts['images'] += $this->category_pictures( $list );
-		foreach ( $this->add_coupons() as $coupon_id ) {
+		foreach ( $this->add_coupons( $type ) as $coupon_id ) {
 			$list['coupons'][] = $coupon_id;
 			++$counts['coupons'];
 		}
 		update_option( self::OPTION, $list, false );
+		if ( $parts !== [] ) {
+			$list['store'] = DemoSettings::make()->apply( $type, $parts );
+			update_option( self::OPTION, $list, false );
+			$counts['store'] = self::summary( $list['store'] );
+		}
 		return $counts;
 	}
 
-	/** @return array{products:int,images:int,coupons:int,terms:int} */
+	/** @return array{products:int,images:int,coupons:int,terms:int,store:array{zones:int,gateways:int,rates:int,pages:int,menus:int}} */
 	public function remove(): array {
 		$list   = self::list() ?? [];
 		$counts = [
@@ -207,6 +238,7 @@ final class SampleStore {
 			'images'   => 0,
 			'coupons'  => 0,
 			'terms'    => 0,
+			'store'    => DemoSettings::make()->revert( $list['store'] ?? [] ),
 		];
 		// Bundles and grouped products come after their parts in the file: last in, first out.
 		foreach ( array_reverse( $list['products'] ?? [] ) as $id ) {
@@ -243,18 +275,34 @@ final class SampleStore {
 				++$counts['terms'];
 			}
 		}
+		// A class the file added goes once none of the shop's products use it.
+		$added = $list['classes'] ?? [];
+		if ( $added !== [] ) {
+			$used = Plugin::instance()->catalog()->variants()->shipping_class_counts();
+			$keep = [];
+			foreach ( CsvColumns::shipping_classes() as $slug => $name ) {
+				if ( ! in_array( (string) $slug, $added, true ) || isset( $used[ (string) $slug ] ) ) {
+					$keep[] = [
+						'slug' => (string) $slug,
+						'name' => $name,
+					];
+				}
+			}
+			Settings::update( [ 'shipping_classes' => $keep ] );
+		}
 		self::delete_folder();
 		delete_option( self::OPTION );
 		return $counts;
 	}
 
 	/**
-	 * The header and the rows as the importer takes them, with the SKU of
-	 * each product row (variations are left out) by line.
+	 * The header and the rows of the store type as the importer takes them,
+	 * with the SKU of each product row (variations are left out) by line.
+	 * Digital means the virtual products; a variation goes with its parent.
 	 *
 	 * @return array{0:list<string>,1:list<array{line:int,cells:list<string>}>,2:array<int,string>}
 	 */
-	private static function read( string $path ): array {
+	private static function read( string $path, string $type = 'both' ): array {
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- a file shipped with the plugin.
 		$handle = is_readable( $path ) ? fopen( $path, 'rb' ) : false;
 		if ( $handle === false ) {
@@ -263,17 +311,32 @@ final class SampleStore {
 		$headers = array_map( [ CsvValues::class, 'strip_bom' ], array_map( 'strval', (array) fgetcsv( $handle, null, ',', '"', '' ) ) );
 		$sku     = array_search( 'SKU', $headers, true );
 		$parent  = array_search( 'Parent', $headers, true );
+		$kind    = array_search( 'Type', $headers, true );
 		$rows    = [];
 		$skus    = [];
+		$kept    = [];
 		$line    = 1;
 		for ( $cells = fgetcsv( $handle, null, ',', '"', '' ); $cells !== false; $cells = fgetcsv( $handle, null, ',', '"', '' ) ) {
 			++$line;
-			$cells  = array_map( 'strval', $cells );
+			$cells = array_map( 'strval', $cells );
+			$own   = $parent === false ? '' : ( $cells[ $parent ] ?? '' );
+			if ( $own !== '' ) {
+				$keep = isset( $kept[ $own ] );
+			} else {
+				$virtual = $kind !== false && str_contains( $cells[ $kind ] ?? '', 'virtual' );
+				$keep    = $type === 'both' || ( $type === 'digital' ) === $virtual;
+				if ( $keep && $sku !== false ) {
+					$kept[ $cells[ $sku ] ?? '' ] = true;
+				}
+			}
+			if ( ! $keep ) {
+				continue;
+			}
 			$rows[] = [
 				'line'  => $line,
 				'cells' => $cells,
 			];
-			if ( $sku !== false && ( $parent === false || ( $cells[ $parent ] ?? '' ) === '' ) ) {
+			if ( $sku !== false && $own === '' ) {
 				$skus[ $line ] = $cells[ $sku ] ?? '';
 			}
 		}
@@ -325,7 +388,7 @@ final class SampleStore {
 	/**
 	 * The product's picture, and one per colour for its variations.
 	 *
-	 * @param array{products:list<int>,terms:list<int>,attachments:list<int>,coupons:list<int>} $list
+	 * @param array<string,mixed> $list
 	 */
 	private function picture( string $sku, int $id, array &$list ): int {
 		$color = self::PICTURES[ $sku ] ?? null;
@@ -401,17 +464,25 @@ final class SampleStore {
 					),
 				],
 			],
-			'sample-single'      => [
-				'downloadable' => true,
-				'downloads'    => [
-					'files' => array_filter( [ self::download( 'single.txt', "Sample single.\nThis file stands in for the track a real store would sell.\n" ) ] ),
-				],
-			],
+			'sample-single'      => self::downloads( 'single.txt', "Sample single.\nThis file stands in for the track a real store would sell.\n" ),
+			'sample-ebook'       => self::downloads( 'field-guide.txt', "Field Guide (sample).\nThis file stands in for the ebook a real store would sell.\n" ),
+			'sample-wallpapers'  => self::downloads( 'wallpapers.txt', "Wallpaper Pack (sample).\nThis file stands in for the pictures a real store would sell.\n" ),
+			'sample-presets'     => self::downloads( 'presets.txt', "Photo Presets (sample).\nThis file stands in for the presets a real store would sell.\n" ),
 			default              => null,
 		};
 		if ( $base !== null ) {
 			$this->products->save( $id, ProductInput::from_array( [ 'base' => $base ] ) );
 		}
+	}
+
+	/** @return array{downloadable:true,downloads:array{files:array<int,array{name:string,file:string}>}} */
+	private static function downloads( string $name, string $contents ): array {
+		return [
+			'downloadable' => true,
+			'downloads'    => [
+				'files' => array_filter( [ self::download( $name, $contents ) ] ),
+			],
+		];
 	}
 
 	private function reviews( string $sku, int $id ): int {
@@ -439,7 +510,7 @@ final class SampleStore {
 		return $added;
 	}
 
-	/** @param array{products:list<int>,terms:list<int>,attachments:list<int>,coupons:list<int>} $list */
+	/** @param array<string,mixed> $list */
 	private function category_pictures( array &$list ): int {
 		$made = 0;
 		foreach ( $list['terms'] as $id ) {
@@ -457,7 +528,7 @@ final class SampleStore {
 	}
 
 	/** @return list<int> the coupons added; a code the shop already uses is skipped */
-	private function add_coupons(): array {
+	private function add_coupons( string $type ): array {
 		$coupons = [
 			[
 				'code'        => 'SAMPLE10',
@@ -480,7 +551,10 @@ final class SampleStore {
 				'description'   => __( 'Sample coupon: free shipping, for methods that accept a coupon.', 'flexacommerce' ),
 			],
 		];
-		$ids     = [];
+		if ( $type === 'digital' ) {
+			array_pop( $coupons ); // Nothing to ship, so no free-shipping coupon.
+		}
+		$ids = [];
 		foreach ( $coupons as $input ) {
 			if ( $this->coupons->code_taken( $input['code'] ) ) {
 				continue;
@@ -494,7 +568,8 @@ final class SampleStore {
 		return $ids;
 	}
 
-	private static function minor( string $amount ): int {
+	/** @internal DemoSettings prices its shipping methods with it. */
+	public static function minor( string $amount ): int {
 		$currency = Settings::string( 'currency' );
 		return Money::from_decimal_string( $amount, $currency, Currency::exponent( $currency ) )->amount;
 	}
@@ -525,13 +600,26 @@ final class SampleStore {
 
 	/**
 	 * Uninstall (Maintenance\Eraser): the products and terms go with the rest
-	 * of the catalog, so only the pictures and the download folder are left.
+	 * of the catalog and the zones, gateways and rates with the plugin's
+	 * options and tables, so the pictures, the download folder and the
+	 * demo pages and menu are left.
 	 */
 	public static function erase(): void {
-		foreach ( self::list()['attachments'] ?? [] as $id ) {
+		$list = self::list();
+		foreach ( $list['attachments'] ?? [] as $id ) {
 			if ( get_post_type( $id ) === 'attachment' ) {
 				wp_delete_attachment( $id, true );
 			}
+		}
+		$store = $list['store'] ?? [];
+		foreach ( [ ...(array) ( $store['pages'] ?? [] ), (int) ( $store['navigation'] ?? 0 ) ] as $id ) {
+			if ( in_array( get_post_type( (int) $id ), [ 'page', 'wp_navigation' ], true ) ) {
+				wp_delete_post( (int) $id, true );
+			}
+		}
+		$menu = (int) ( $store['menu'] ?? 0 );
+		if ( $menu > 0 && is_nav_menu( $menu ) ) {
+			wp_delete_nav_menu( $menu );
 		}
 		self::delete_folder();
 	}
@@ -554,7 +642,7 @@ final class SampleStore {
 	 * A square PNG with the title on a plain colour, saved to the media
 	 * library. 0 when the GD extension is missing.
 	 *
-	 * @param array{products:list<int>,terms:list<int>,attachments:list<int>,coupons:list<int>} $list
+	 * @param array<string,mixed> $list
 	 */
 	private function image( string $title, string $caption, string $color, int $parent, array &$list ): int {
 		$png = self::draw( $title, $caption, $color );
@@ -618,18 +706,41 @@ final class SampleStore {
 		imagettftext( $image, $size + 2, 0, (int) ( ( self::SIZE - $width ) / 2 ), $baseline, $color, $font, $text );
 	}
 
-	/** @return array{products:list<int>,terms:list<int>,attachments:list<int>,coupons:list<int>}|null */
+	/**
+	 * What install() added and how DemoSettings changed the store.
+	 *
+	 * @param array<string,mixed> $store
+	 * @return array{zone:bool,methods:int,gateways:list<string>,tax:bool,pages:int,menu:bool}
+	 */
+	private static function summary( array $store ): array {
+		$zone = (int) ( $store['zone'] ?? 0 ) > 0;
+		return [
+			'zone'     => $zone,
+			'methods'  => ( $zone ? 3 : 0 ) + count( (array) ( $store['rest_methods'] ?? [] ) ),
+			'gateways' => array_map( 'strval', array_keys( (array) ( $store['gateways'] ?? [] ) ) ),
+			'tax'      => ! empty( $store['tax_rate'] ),
+			'pages'    => count( (array) ( $store['pages'] ?? [] ) ),
+			'menu'     => (int) ( $store['menu'] ?? 0 ) > 0 || (int) ( $store['navigation'] ?? 0 ) > 0,
+		];
+	}
+
+	/** @return array{type:string,parts:list<string>,products:list<int>,terms:list<int>,attachments:list<int>,coupons:list<int>,classes:list<string>,store:array<string,mixed>}|null */
 	private static function list(): ?array {
 		$list = get_option( self::OPTION, null );
 		if ( ! is_array( $list ) ) {
 			return null;
 		}
-		$ids = static fn ( mixed $value ): array => is_array( $value ) ? array_values( array_map( 'intval', $value ) ) : [];
+		$ids     = static fn ( mixed $value ): array => is_array( $value ) ? array_values( array_map( 'intval', $value ) ) : [];
+		$strings = static fn ( mixed $value ): array => is_array( $value ) ? array_values( array_map( 'strval', $value ) ) : [];
 		return [
+			'type'        => is_string( $list['type'] ?? null ) ? $list['type'] : 'both',
+			'parts'       => $strings( $list['parts'] ?? null ),
 			'products'    => $ids( $list['products'] ?? null ),
 			'terms'       => $ids( $list['terms'] ?? null ),
 			'attachments' => $ids( $list['attachments'] ?? null ),
 			'coupons'     => $ids( $list['coupons'] ?? null ),
+			'classes'     => $strings( $list['classes'] ?? null ),
+			'store'       => is_array( $list['store'] ?? null ) ? $list['store'] : [],
 		];
 	}
 }
