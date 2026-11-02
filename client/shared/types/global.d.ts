@@ -26,7 +26,10 @@ export interface NavSection {
     pages: { slug: string; label: string; url: string }[];
 }
 
+/** The `flexaCommerceNav` global for the store header, on app pages and core store screens. */
 export interface FlexaCommerceNav {
+    version: string;
+    theme: AppTheme;
     sections: NavSection[];
     /** [section id, page slug]; the page is "" on a screen with no tab of its own. */
     current: [string, string];
@@ -47,8 +50,6 @@ export interface FlexaCommerceGlobal {
         weight: "kg" | "g" | "lb" | "oz";
         dimension: "cm" | "mm" | "m" | "in" | "yd";
     };
-    /** The app pages only, not the product editor. */
-    nav?: FlexaCommerceNav;
     /** Product editor screen only. */
     productId?: number;
     canManageTerms?: boolean;
@@ -63,5 +64,6 @@ export interface FlexaCommerceGlobal {
 declare global {
     interface Window {
         flexaCommerce?: FlexaCommerceGlobal;
+        flexaCommerceNav?: FlexaCommerceNav;
     }
 }

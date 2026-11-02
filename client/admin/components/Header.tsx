@@ -3,7 +3,6 @@ import { ExternalLink, Megaphone, Package, Receipt, Search, Settings, Store, Use
 
 import { cn } from "@/shared/lib/cn";
 import { __ } from "@/shared/lib/i18n";
-import { getPluginGlobal } from "@/shared/lib/api";
 import type { NavSection } from "@/shared/types/global";
 
 function isMac(): boolean {
@@ -25,11 +24,14 @@ const ICONS: Record<NavSection["id"], typeof Store> = {
 };
 
 /**
- * The app header (ADR-082): the five menu sections, the open section's
+ * The store header (ADR-082): the five menu sections, the open section's
  * pages as tabs, and a button for the command palette (Ctrl or Cmd + K).
+ * Mounted above the admin notices on the app pages and on core's product,
+ * category, tag and review screens, so the store reads as one area.
  */
 export function Header() {
-    const { version, nav } = getPluginGlobal();
+    const nav = window.flexaCommerceNav;
+    const version = nav?.version ?? "";
     const sections = nav?.sections ?? [];
     const [section, slug] = nav?.current ?? ["", ""];
     const open = sections.find((s) => s.id === section);
@@ -41,7 +43,7 @@ export function Header() {
     }, []);
 
     return (
-        <header className="fxc:bg-background/95 fxc:sticky fxc:top-8 fxc:z-40 fxc:w-full fxc:border-b fxc:backdrop-blur">
+        <header className="flexacommerce-header fxc:bg-background/95 fxc:sticky fxc:z-40 fxc:w-full fxc:border-b fxc:border-solid fxc:backdrop-blur">
             <div className="fxc:flex fxc:h-14 fxc:items-center fxc:gap-4 fxc:px-4">
                 <div className="fxc:flex fxc:shrink-0 fxc:items-center fxc:gap-3 fxc:pr-2">
                     <div className="fxc:bg-sidebar-primary fxc:text-sidebar-primary-foreground fxc:flex fxc:size-8 fxc:items-center fxc:justify-center fxc:rounded-lg fxc:shadow-sm">

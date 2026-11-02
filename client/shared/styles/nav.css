@@ -1,0 +1,53 @@
+/*
+ * The store header on core screens (product list, categories, tags,
+ * reviews). Like the product editor styles, no global preflight: everything
+ * is scoped under .flexacommerce-nav so core's list tables keep their look.
+ */
+@layer theme, base, components, utilities;
+
+@custom-variant dark (&:is(.dark *));
+
+@import 'tailwindcss/theme.css' layer(theme) prefix(fxc);
+@import './theme.css';
+@import './header-frame.css';
+
+@layer base {
+    /* The parts of Tailwind's preflight that the utilities rely on. */
+    .flexacommerce-nav,
+    .flexacommerce-nav *,
+    .flexacommerce-nav ::before,
+    .flexacommerce-nav ::after {
+        box-sizing: border-box;
+        border: 0 solid var(--border);
+    }
+
+    .flexacommerce-nav {
+        color: var(--foreground);
+        font-size: 0.875rem;
+        line-height: 1.25rem;
+    }
+
+    .flexacommerce-nav button {
+        font: inherit;
+        color: inherit;
+        background: none;
+    }
+
+    .flexacommerce-nav kbd {
+        font: inherit;
+    }
+
+    .flexacommerce-nav svg {
+        display: block;
+        flex-shrink: 0;
+    }
+}
+
+.flexacommerce-ui.flexacommerce-nav {
+    @import 'tailwindcss/utilities.css';
+}
+
+/* Core's link focus ring (a 2px box-shadow) would double the focus-visible ring. */
+.flexacommerce-nav a:focus {
+    box-shadow: none;
+}

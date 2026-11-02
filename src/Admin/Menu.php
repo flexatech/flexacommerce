@@ -69,7 +69,7 @@ final class Menu {
 		add_filter( 'parent_file', [ $this, 'parent_file' ] );
 		add_filter( 'submenu_file', [ $this, 'submenu_file' ] );
 		add_action( 'admin_footer-edit.php', [ $this, 'product_list_buttons' ] );
-		add_action( 'all_admin_notices', [ $this, 'core_screen_tabs' ] );
+		add_action( 'in_admin_header', [ $this, 'header_root' ] );
 		add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_commands' ], 20 );
 	}
 
@@ -266,34 +266,21 @@ final class Menu {
 	}
 
 	/**
-	 * The section tabs above core's product, term and review lists, so they
-	 * read as one area with the app pages. Core's own nav-tab styles.
+	 * True on a screen that shows the store header: the app pages and core's
+	 * product, category, tag and review lists. Not the block editor, which
+	 * covers the page.
 	 */
-	public function core_screen_tabs(): void {
-		[ $section, $slug ] = $this->current();
-		$screen             = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
-		if ( $section === '' || isset( $this->pages[ $slug ] ) || $screen === null || $screen->base === 'post' ) {
-			return;
-		}
-		foreach ( $this->sections() as $item ) {
-			if ( $item['id'] !== $section ) {
-				continue;
-			}
-			echo '<nav class="nav-tab-wrapper wp-clearfix" style="margin:10px 20px 0 2px" aria-label="' . esc_attr( $item['label'] ) . '">';
-			foreach ( $item['pages'] as $page ) {
-				$active = $page['slug'] === $slug;
-				printf(
-					'<a href="%s" class="nav-tab%s"%s>%s</a>',
-					esc_url( $page['url'] ),
-					$active ? ' nav-tab-active' : '',
-					$active ? ' aria-current="page"' : '',
-					esc_html( $page['label'] )
-				);
-			}
-			echo '</nav>';
-		}
+	public function shows_header(): bool {
+		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+		return $screen !== null && $screen->base !== 'post' && $this->current()[0] !== '';
 	}
 
+	/** The header's mount point, above the admin notices (ADR-082). */
+	public function header_root(): void {
+		if ( $this->shows_header() ) {
+			echo '<div id="flexacommerce-nav-root" class="flexacommerce-ui flexacommerce-nav"></div>';
+		}
+	}
 	/**
 	 * Shortcuts the command palette offers besides the pages.
 	 *

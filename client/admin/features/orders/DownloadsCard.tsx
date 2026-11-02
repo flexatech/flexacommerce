@@ -47,7 +47,7 @@ export function DownloadsCard({ order }: { order: OrderDetail }) {
                 )}
             </CardHeader>
             {order.downloads.length === 0 ? (
-                <p className="fxc:text-muted-foreground fxc:px-5 fxc:pb-4 fxc:text-sm">
+                <p className="fxc:text-muted-foreground fxc:px-5 fxc:py-4 fxc:text-sm">
                     {OPEN_STATUSES.includes(order.status)
                         ? __("No download links yet. Grant the files to send the customer their links.")
                         : __("Links are created when the order is paid.")}

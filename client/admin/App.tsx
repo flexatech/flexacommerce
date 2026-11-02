@@ -4,7 +4,6 @@ import { Toaster } from "@/shared/components/ui/sonner";
 import { cn } from "@/shared/lib/cn";
 import { __ } from "@/shared/lib/i18n";
 import type { AdminPage } from "@/shared/types/global";
-import { Header } from "./components/Header";
 import { AttributesPage } from "./features/attributes/AttributesPage";
 import { CustomersPage } from "./features/customers/CustomersPage";
 import { MigrationPage } from "./features/migration/MigrationPage";
@@ -24,8 +23,7 @@ const CheckoutBuilderPage = lazy(() => import("./features/checkout/CheckoutBuild
 
 export function App({ page }: { page: AdminPage }) {
     return (
-        <div className="fxc:bg-background fxc:min-h-screen">
-            <Header />
+        <div className="fxc:min-h-screen">
             <main className={cn("fxc:mx-auto fxc:px-6 fxc:py-6", page === "flexacommerce-checkout" ? "fxc:max-w-7xl" : "fxc:max-w-5xl")}>
                 <Toaster />
                 {page === "flexacommerce-orders" ? (

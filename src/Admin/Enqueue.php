@@ -22,6 +22,10 @@ final class Enqueue {
 	public const HANDLE = 'flexacommerce-admin';
 	public const ENTRY  = 'admin/main.tsx';
 
+	/** The store header alone, for core's store screens (ADR-082). */
+	public const NAV_HANDLE = 'flexacommerce-nav';
+	public const NAV_ENTRY  = 'admin/nav.tsx';
+
 	public function register(): void {
 		add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_admin' ] );
 	}
@@ -32,23 +36,27 @@ final class Enqueue {
 			if ( $page === Menu::SLUG . '-attributes' || $page === Menu::SLUG . '-settings' ) {
 				wp_enqueue_media(); // Image swatches and the invoice logo pick from the media library.
 			}
-			$this->enqueue_entry( self::HANDLE, self::ENTRY, $page, $this->navigation() );
+			if ( $this->enqueue_entry( self::HANDLE, self::ENTRY, $page ) ) {
+				wp_localize_script( self::HANDLE, 'flexaCommerceNav', $this->navigation() );
+			}
+		} elseif ( Menu::instance()->shows_header() && $this->load_entry( self::NAV_HANDLE, self::NAV_ENTRY ) ) {
+			wp_localize_script( self::NAV_HANDLE, 'flexaCommerceNav', $this->navigation() );
 		}
 	}
 
 	/**
-	 * The app header (ADR-082): the menu sections and the open one.
+	 * The store header (ADR-082): the menu sections and the open one.
 	 *
 	 * @return array<string,mixed>
 	 */
 	private function navigation(): array {
 		$menu = Menu::instance();
 		return [
-			'nav' => [
-				'sections' => $menu->sections(),
-				'current'  => $menu->current(),
-				'storeUrl' => esc_url_raw( home_url( '/' ) ),
-			],
+			'version'  => FLEXACOMMERCE_VERSION,
+			'theme'    => $this->detect_admin_theme(),
+			'sections' => $menu->sections(),
+			'current'  => $menu->current(),
+			'storeUrl' => esc_url_raw( home_url( '/' ) ),
 		];
 	}
 
@@ -58,15 +66,9 @@ final class Enqueue {
 	 * @param array<string,mixed> $extra merged into the localized data
 	 */
 	public function enqueue_entry( string $handle, string $entry, string $page, array $extra = [] ): bool {
-		$dev_server = __DIR__ . '/dev-server.php';
-		if ( $this->is_dev_mode() && is_readable( $dev_server ) ) {
-			require_once $dev_server;
-			\Flexa\Commerce\Admin\flexacommerce_enqueue_dev_server( $handle, $entry );
-		} elseif ( ! $this->enqueue_prod( $handle, $entry ) ) {
+		if ( ! $this->load_entry( $handle, $entry ) ) {
 			return false;
 		}
-
-		wp_set_script_translations( $handle, FLEXACOMMERCE_TEXT_DOMAIN, FLEXACOMMERCE_PATH . 'i18n/languages' );
 
 		$currency = Settings::string( 'currency' );
 		wp_localize_script(
@@ -95,6 +97,19 @@ final class Enqueue {
 				],
 			]
 		);
+		return true;
+	}
+
+	/** Enqueues one Vite entry with its styles and translations, without the localized data. */
+	private function load_entry( string $handle, string $entry ): bool {
+		$dev_server = __DIR__ . '/dev-server.php';
+		if ( $this->is_dev_mode() && is_readable( $dev_server ) ) {
+			require_once $dev_server;
+			\Flexa\Commerce\Admin\flexacommerce_enqueue_dev_server( $handle, $entry );
+		} elseif ( ! $this->enqueue_prod( $handle, $entry ) ) {
+			return false;
+		}
+		wp_set_script_translations( $handle, FLEXACOMMERCE_TEXT_DOMAIN, FLEXACOMMERCE_PATH . 'i18n/languages' );
 		return true;
 	}
 

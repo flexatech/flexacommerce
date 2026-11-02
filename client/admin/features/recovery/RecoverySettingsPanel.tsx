@@ -12,6 +12,7 @@ import { Textarea } from "@/shared/components/ui/textarea";
 import { getPluginGlobal } from "@/shared/lib/api";
 import { __, sprintf } from "@/shared/lib/i18n";
 import { MoneyInput } from "../../components/MoneyInput";
+import { SaveBar } from "../../components/SaveBar";
 import { SettingRow } from "../../components/SettingRow";
 import {
     useRecoverySettings,
@@ -268,12 +269,6 @@ export function RecoverySettingsPanel() {
 
     return (
         <div className="fxc:space-y-6">
-            <div className="fxc:flex fxc:items-center fxc:justify-end fxc:gap-3">
-                {dirty && <span className="fxc:text-muted-foreground fxc:text-xs">{__("Unsaved changes")}</span>}
-                <Button onClick={submit} disabled={!dirty || save.isPending}>
-                    {save.isPending ? __("Saving…") : __("Save changes")}
-                </Button>
-            </div>
 
             <Card>
                 <CardHeader>
@@ -336,6 +331,8 @@ export function RecoverySettingsPanel() {
                     onChange={(next) => set("reminders", draft.reminders.map((r, i) => (i === index ? next : r)))}
                 />
             ))}
+
+            <SaveBar dirty={dirty} pending={save.isPending} onSave={submit} />
         </div>
     );
 }

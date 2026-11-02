@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Search } from "lucide-react";
+import { Search, Users } from "lucide-react";
 
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
@@ -11,6 +11,7 @@ import { showToast } from "@/shared/components/showToast";
 import { getPluginGlobal } from "@/shared/lib/api";
 import { __, sprintf } from "@/shared/lib/i18n";
 import { useDebounced } from "@/shared/lib/useDebounced";
+import { EmptyState } from "../../components/EmptyState";
 import { PageTitle } from "../../components/PageTitle";
 import { Tabs } from "../../components/Tabs";
 import { formatDate, orderMoney } from "../orders/format";
@@ -107,9 +108,12 @@ export function CustomersPage() {
                 ) : list.isError ? (
                     <p className="fxc:text-destructive fxc:px-5 fxc:py-4">{list.error.message}</p>
                 ) : list.data.items.length === 0 ? (
-                    <p className="fxc:text-muted-foreground fxc:px-5 fxc:py-8 fxc:text-center">
-                        {params.search !== "" || params.type !== "" ? __("No customers match.") : __("No customers yet.")}
-                    </p>
+                    <EmptyState
+                        icon={Users}
+                        filtered={params.search !== "" || params.type !== ""}
+                        title={params.search !== "" || params.type !== "" ? __("No customers match.") : __("No customers yet.")}
+                        description={__("A shopper shows here after their first order, with an account or as a guest.")}
+                    />
                 ) : (
                     <table className="fxc:w-full fxc:text-sm">
                         <thead>

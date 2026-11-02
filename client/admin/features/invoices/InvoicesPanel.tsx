@@ -10,6 +10,7 @@ import { Switch } from "@/shared/components/ui/switch";
 import { Textarea } from "@/shared/components/ui/textarea";
 import { __, sprintf } from "@/shared/lib/i18n";
 import { canPickImage, pickImage } from "../../components/pickImage";
+import { SaveBar } from "../../components/SaveBar";
 import { SettingRow } from "../../components/SettingRow";
 import { useInvoiceSettings, useSaveInvoiceSettings, type InvoiceSettings, type InvoiceSettingsChanges } from "./useInvoices";
 
@@ -96,12 +97,6 @@ export function InvoicesPanel() {
 
     return (
         <div className="fxc:space-y-6">
-            <div className="fxc:flex fxc:items-center fxc:justify-end fxc:gap-3">
-                {dirty && <span className="fxc:text-muted-foreground fxc:text-xs">{__("Unsaved changes")}</span>}
-                <Button onClick={submit} disabled={!dirty || save.isPending}>
-                    {save.isPending ? __("Saving…") : __("Save changes")}
-                </Button>
-            </div>
 
             <Card>
                 <CardHeader>
@@ -394,6 +389,8 @@ export function InvoicesPanel() {
                     control={<Switch aria-label={__("Show SKUs")} checked={draft.show_sku} onCheckedChange={(v) => set("show_sku", v)} />}
                 />
             </Card>
+
+            <SaveBar dirty={dirty} pending={save.isPending} onSave={submit} />
         </div>
     );
 }

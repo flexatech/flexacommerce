@@ -53,7 +53,7 @@ export function ShipmentsCard({ order }: { order: OrderDetail }) {
                 )}
             </CardHeader>
             {order.shipments.length === 0 ? (
-                <p className="fxc:text-muted-foreground fxc:px-5 fxc:pb-4 fxc:text-sm">
+                <p className="fxc:text-muted-foreground fxc:px-5 fxc:py-4 fxc:text-sm">
                     {__("Nothing shipped yet. Add the tracking number when the package leaves.")}
                 </p>
             ) : (

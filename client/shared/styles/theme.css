@@ -9,6 +9,8 @@
 
     --background: oklch(1 0 0);
     --foreground: oklch(0.205 0 0);
+    /* The page behind the cards: a step darker than muted, so muted controls on it still show. */
+    --canvas: #f1f2f4;
 
     --primary: var(--brand-600);
     --primary-foreground: #ffffff;
@@ -69,6 +71,7 @@
 
 .dark {
     --background: #0f1419;
+    --canvas: #0a0e12;
     --foreground: #e5e7eb;
 
     --card: #1d2327;
@@ -99,6 +102,7 @@
     --color-brand-700: var(--brand-700);
 
     --color-background: var(--background);
+    --color-canvas: var(--canvas);
     --color-foreground: var(--foreground);
 
     --color-primary: var(--primary);

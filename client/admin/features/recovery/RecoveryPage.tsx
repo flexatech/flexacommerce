@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Trash2 } from "lucide-react";
+import { ShoppingCart, Trash2 } from "lucide-react";
 
 import { showToast } from "@/shared/components/showToast";
 import { Badge } from "@/shared/components/ui/badge";
@@ -8,6 +8,7 @@ import { Card } from "@/shared/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/components/ui/dialog";
 import { getPluginGlobal } from "@/shared/lib/api";
 import { __, _n, sprintf } from "@/shared/lib/i18n";
+import { EmptyState } from "../../components/EmptyState";
 import { PageTitle } from "../../components/PageTitle";
 import { Tabs } from "../../components/Tabs";
 import { useUrlTab } from "../../components/useUrlTab";
@@ -115,9 +116,12 @@ function CartsPanel({ onSettings }: { onSettings: () => void }) {
                 ) : list.isError ? (
                     <p className="fxc:text-destructive fxc:px-5 fxc:py-4">{list.error.message}</p>
                 ) : list.data.items.length === 0 ? (
-                    <p className="fxc:text-muted-foreground fxc:px-5 fxc:py-8 fxc:text-center">
-                        {status !== "" ? __("No carts match.") : __("No abandoned carts yet.")}
-                    </p>
+                    <EmptyState
+                        icon={ShoppingCart}
+                        filtered={status !== ""}
+                        title={status !== "" ? __("No carts match.") : __("No abandoned carts yet.")}
+                        description={__("Carts that shoppers leave at checkout show here, with the reminders they were sent.")}
+                    />
                 ) : (
                     <table className="fxc:w-full fxc:text-sm">
                         <thead>

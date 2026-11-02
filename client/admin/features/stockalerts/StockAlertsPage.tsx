@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Trash2, X } from "lucide-react";
+import { BellRing, Trash2, X } from "lucide-react";
 
 import { showToast } from "@/shared/components/showToast";
 import { Badge } from "@/shared/components/ui/badge";
@@ -8,6 +8,7 @@ import { Card, CardDescription, CardHeader, CardTitle } from "@/shared/component
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/components/ui/dialog";
 import { getPluginGlobal } from "@/shared/lib/api";
 import { __, _n, sprintf } from "@/shared/lib/i18n";
+import { EmptyState } from "../../components/EmptyState";
 import { PageTitle } from "../../components/PageTitle";
 import { Tabs } from "../../components/Tabs";
 import { useUrlTab } from "../../components/useUrlTab";
@@ -144,9 +145,12 @@ function SignupsPanel({ onSettings }: { onSettings: () => void }) {
                 ) : list.isError ? (
                     <p className="fxc:text-destructive fxc:px-5 fxc:py-4">{list.error.message}</p>
                 ) : list.data.items.length === 0 ? (
-                    <p className="fxc:text-muted-foreground fxc:px-5 fxc:py-8 fxc:text-center">
-                        {status !== "" || product ? __("No signups match.") : __("No back-in-stock signups yet.")}
-                    </p>
+                    <EmptyState
+                        icon={BellRing}
+                        filtered={status !== "" || product !== null}
+                        title={status !== "" || product ? __("No signups match.") : __("No back-in-stock signups yet.")}
+                        description={__("When a shopper asks for an email on a sold-out product, the request shows here.")}
+                    />
                 ) : (
                     <table className="fxc:w-full fxc:text-sm">
                         <thead>

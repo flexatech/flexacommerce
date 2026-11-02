@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { LayoutTemplate, Pencil, Plus, Search, Sparkles, Trash2 } from "lucide-react";
+import { LayoutTemplate, Pencil, Plus, Search, Sparkles, TicketPercent, Trash2 } from "lucide-react";
 
 import { showToast } from "@/shared/components/showToast";
 import { Badge } from "@/shared/components/ui/badge";
@@ -10,6 +10,7 @@ import { Input } from "@/shared/components/ui/input";
 import { __, sprintf } from "@/shared/lib/i18n";
 import { useDebounced } from "@/shared/lib/useDebounced";
 import { Select } from "@/shared/components/ui/select";
+import { EmptyState } from "../../components/EmptyState";
 import { formatDate, orderMoney } from "../orders/format";
 import type { TemplateProps } from "../promotions/templates";
 import { CouponDialog, type CouponPreset } from "./CouponDialog";
@@ -134,9 +135,12 @@ export function CouponsPanel({ template, onTemplates, onTemplateUsed }: Template
                 ) : list.isError ? (
                     <p className="fxc:text-destructive fxc:px-5 fxc:py-4">{list.error.message}</p>
                 ) : list.data.items.length === 0 ? (
-                    <p className="fxc:text-muted-foreground fxc:px-5 fxc:py-8 fxc:text-center">
-                        {params.search !== "" || params.status !== "" ? __("No coupons match.") : __("No coupons yet.")}
-                    </p>
+                    <EmptyState
+                        icon={TicketPercent}
+                        filtered={params.search !== "" || params.status !== ""}
+                        title={params.search !== "" || params.status !== "" ? __("No coupons match.") : __("No coupons yet.")}
+                        description={__("Add a coupon or an automatic discount, or start from a template.")}
+                    />
                 ) : (
                     <table className="fxc:w-full fxc:text-sm">
                         <thead>

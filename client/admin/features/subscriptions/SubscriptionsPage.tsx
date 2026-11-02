@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Search } from "lucide-react";
+import { Repeat, Search } from "lucide-react";
 
 import { showToast } from "@/shared/components/showToast";
 import { Badge } from "@/shared/components/ui/badge";
@@ -10,6 +10,7 @@ import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { getPluginGlobal } from "@/shared/lib/api";
 import { __, _n, sprintf } from "@/shared/lib/i18n";
+import { EmptyState } from "../../components/EmptyState";
 import { PageTitle } from "../../components/PageTitle";
 import { Tabs } from "../../components/Tabs";
 import { formatDate, orderMoney } from "../orders/format";
@@ -494,11 +495,12 @@ export function SubscriptionsPage() {
                 ) : list.isError ? (
                     <p className="fxc:text-destructive fxc:px-5 fxc:py-4">{list.error.message}</p>
                 ) : list.data.items.length === 0 ? (
-                    <p className="fxc:text-muted-foreground fxc:px-5 fxc:py-8 fxc:text-center">
-                        {status !== "" || query !== ""
-                            ? __("No subscriptions match.")
-                            : __("No subscriptions yet. Give a product a subscription plan in its General tab to sell it as one.")}
-                    </p>
+                    <EmptyState
+                        icon={Repeat}
+                        filtered={status !== "" || query !== ""}
+                        title={status !== "" || query !== "" ? __("No subscriptions match.") : __("No subscriptions yet.")}
+                        description={__("Give a product a subscription plan in its General tab to sell it as one.")}
+                    />
                 ) : (
                     <table className="fxc:w-full fxc:text-sm">
                         <thead>

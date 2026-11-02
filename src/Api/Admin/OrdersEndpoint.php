@@ -829,7 +829,7 @@ final class OrdersEndpoint extends Endpoint {
 			'variant_id'     => $item->variant_id,
 			'code'           => $item->code,
 			'name'           => $item->name,
-			'sku'            => $item->sku,
+			'sku'            => $item->sku ?? '',
 			'attributes'     => $item->attributes,
 			'quantity'       => $item->quantity,
 			'unit_price'     => $item->unit_price,

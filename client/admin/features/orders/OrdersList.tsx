@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, Download, FileText, Package, Search } from "lucide-react";
+import { AlertTriangle, Download, FileText, Package, Receipt, Search } from "lucide-react";
 
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
@@ -7,6 +7,7 @@ import { Card } from "@/shared/components/ui/card";
 import { Input } from "@/shared/components/ui/input";
 import { __, sprintf } from "@/shared/lib/i18n";
 import { useDebounced } from "@/shared/lib/useDebounced";
+import { EmptyState } from "../../components/EmptyState";
 import { PageTitle } from "../../components/PageTitle";
 import { invoicePdfUrl } from "../invoices/useInvoices";
 import { Tabs } from "../../components/Tabs";
@@ -175,9 +176,12 @@ export function OrdersList({ params, onParams, onOpen }: Props) {
                 ) : list.isError ? (
                     <p className="fxc:text-destructive fxc:px-5 fxc:py-4">{list.error.message}</p>
                 ) : list.data.items.length === 0 ? (
-                    <p className="fxc:text-muted-foreground fxc:px-5 fxc:py-8 fxc:text-center">
-                        {narrowed ? __("No orders match.") : __("No orders yet.")}
-                    </p>
+                    <EmptyState
+                        icon={Receipt}
+                        filtered={narrowed}
+                        title={narrowed ? __("No orders match.") : __("No orders yet.")}
+                        description={__("Orders show here as soon as a shopper checks out. You can also create one for a customer with Create order.")}
+                    />
                 ) : (
                     <table className="fxc:w-full fxc:text-sm">
                         <thead>

@@ -97,3 +97,19 @@ select.flexacommerce-control {
     margin: 0;
     color: revert-layer;
 }
+
+/* The page behind the cards. */
+body.flexacommerce-ui,
+body.flexacommerce-ui #wpwrap {
+    background: var(--canvas);
+}
+
+/*
+ * Admin notices print above the app, at the left edge of #wpbody-content.
+ * Line them up with the centered page column (max-w-5xl less its px-6).
+ */
+body.flexacommerce-ui #wpbody-content > :is(.notice, .update-nag, .error, .updated) {
+    display: block;
+    box-sizing: border-box;
+    margin: 1rem max(1.5rem, calc((100% - 61rem) / 2)) 0;
+}

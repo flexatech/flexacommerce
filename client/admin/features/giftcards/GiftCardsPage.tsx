@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CalendarClock, Copy, Plus, Search } from "lucide-react";
+import { CalendarClock, Copy, Gift, Plus, Search } from "lucide-react";
 
 import { showToast } from "@/shared/components/showToast";
 import { Badge } from "@/shared/components/ui/badge";
@@ -14,6 +14,7 @@ import { Textarea } from "@/shared/components/ui/textarea";
 import { getPluginGlobal } from "@/shared/lib/api";
 import { __, sprintf } from "@/shared/lib/i18n";
 import { inputToMinor } from "@/shared/lib/units";
+import { EmptyState } from "../../components/EmptyState";
 import { PageTitle } from "../../components/PageTitle";
 import { SettingRow } from "../../components/SettingRow";
 import { Tabs } from "../../components/Tabs";
@@ -445,11 +446,12 @@ function CardsPanel() {
                 ) : list.isError ? (
                     <p className="fxc:text-destructive fxc:px-5 fxc:py-4">{list.error.message}</p>
                 ) : list.data.items.length === 0 ? (
-                    <p className="fxc:text-muted-foreground fxc:px-5 fxc:py-8 fxc:text-center">
-                        {status !== "" || query !== ""
-                            ? __("No gift cards match.")
-                            : __("No gift cards yet. Turn on Gift card on a product to sell them, or make one here.")}
-                    </p>
+                    <EmptyState
+                        icon={Gift}
+                        filtered={status !== "" || query !== ""}
+                        title={status !== "" || query !== "" ? __("No gift cards match.") : __("No gift cards yet.")}
+                        description={__("Turn on Gift card on a product to sell them, or make one here.")}
+                    />
                 ) : (
                     <table className="fxc:w-full fxc:text-sm">
                         <thead>

@@ -34,6 +34,7 @@ export default defineConfig({
             input: {
                 admin: resolve(root, "admin/main.tsx"),
                 "product-editor": resolve(root, "admin/product-editor.tsx"),
+                nav: resolve(root, "admin/nav.tsx"),
             },
         },
     },

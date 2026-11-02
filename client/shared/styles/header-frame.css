@@ -1,0 +1,31 @@
+/*
+ * The store header (ADR-082) is mounted in #wpcontent, above the admin
+ * notices, and sticks under the admin bar. Shared by the app and nav entries.
+ */
+.flexacommerce-header {
+    top: 32px;
+}
+
+@media (max-width: 782px) {
+    .flexacommerce-header {
+        top: 46px;
+    }
+}
+
+/* The admin bar scrolls away on phones. */
+@media (max-width: 600px) {
+    .flexacommerce-header {
+        top: 0;
+    }
+}
+
+/* Core screens keep #wpcontent's left padding; the header spans it. */
+body:not(.flexacommerce-ui) #flexacommerce-nav-root {
+    margin-left: -20px;
+}
+
+@media (max-width: 782px) {
+    body:not(.flexacommerce-ui) #flexacommerce-nav-root {
+        margin-left: -10px;
+    }
+}

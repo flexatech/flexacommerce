@@ -9,6 +9,7 @@ import { Label } from "@/shared/components/ui/label";
 import { Switch } from "@/shared/components/ui/switch";
 import { Textarea } from "@/shared/components/ui/textarea";
 import { __, sprintf } from "@/shared/lib/i18n";
+import { SaveBar } from "../../components/SaveBar";
 import { SettingRow } from "../../components/SettingRow";
 import { useSaveStockAlertSettings, useStockAlertSettings, useTestStockAlert, type StockAlertSettings } from "./useStockAlerts";
 
@@ -71,12 +72,6 @@ export function StockAlertSettingsPanel() {
 
     return (
         <div className="fxc:space-y-6">
-            <div className="fxc:flex fxc:items-center fxc:justify-end fxc:gap-3">
-                {dirty && <span className="fxc:text-muted-foreground fxc:text-xs">{__("Unsaved changes")}</span>}
-                <Button onClick={submit} disabled={!dirty || save.isPending}>
-                    {save.isPending ? __("Saving…") : __("Save changes")}
-                </Button>
-            </div>
 
             <Card>
                 <CardHeader>
@@ -163,6 +158,8 @@ export function StockAlertSettingsPanel() {
                     }
                 />
             </Card>
+
+            <SaveBar dirty={dirty} pending={save.isPending} onSave={submit} />
         </div>
     );
 }

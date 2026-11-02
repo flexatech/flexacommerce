@@ -7,6 +7,7 @@ import { createRoot } from "react-dom/client";
 import { showToast } from "@/shared/components/showToast";
 import { __, sprintf } from "@/shared/lib/i18n";
 import { App } from "./App";
+import { Header } from "./components/Header";
 
 // Module scope on purpose: every root mounted on the page shares one cache.
 const queryClient = new QueryClient({
@@ -25,6 +26,8 @@ const queryClient = new QueryClient({
 });
 
 const container = document.getElementById("flexacommerce-admin-root");
+// Printed by Admin\Menu above the admin notices (ADR-082).
+const nav = document.getElementById("flexacommerce-nav-root");
 
 if (container) {
     if (window.flexaCommerce?.theme === "dark") {
@@ -37,4 +40,11 @@ if (container) {
             </QueryClientProvider>
         </React.StrictMode>,
     );
+    if (nav) {
+        createRoot(nav).render(
+            <React.StrictMode>
+                <Header />
+            </React.StrictMode>,
+        );
+    }
 }

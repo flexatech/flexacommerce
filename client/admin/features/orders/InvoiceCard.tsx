@@ -23,7 +23,7 @@ export function InvoiceCard({ order }: { order: OrderDetail }) {
             <CardHeader>
                 <CardTitle>{__("Invoice")}</CardTitle>
             </CardHeader>
-            <div className="fxc:space-y-3 fxc:px-5 fxc:pb-5 fxc:text-sm">
+            <div className="fxc:space-y-3 fxc:px-5 fxc:py-4 fxc:text-sm">
                 {query.isPending ? (
                     <p className="fxc:text-muted-foreground">{__("Loading…")}</p>
                 ) : invoice ? (

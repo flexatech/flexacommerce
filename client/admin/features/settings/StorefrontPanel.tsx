@@ -21,13 +21,13 @@ import {
 } from "lucide-react";
 
 import { showToast } from "@/shared/components/showToast";
-import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { Input } from "@/shared/components/ui/input";
 import { Select } from "@/shared/components/ui/select";
 import { Switch } from "@/shared/components/ui/switch";
 import { cn } from "@/shared/lib/cn";
 import { __, sprintf } from "@/shared/lib/i18n";
+import { SaveBar } from "../../components/SaveBar";
 import { SettingRow } from "../../components/SettingRow";
 import { useSaveSettings, useSettings, type Settings } from "./useSettings";
 
@@ -107,12 +107,6 @@ export function StorefrontPanel() {
 
     return (
         <div className="fxc:space-y-6">
-            <div className="fxc:flex fxc:items-center fxc:justify-end fxc:gap-3">
-                {dirty && <span className="fxc:text-muted-foreground fxc:text-xs">{__("Unsaved changes")}</span>}
-                <Button onClick={submit} disabled={!dirty || save.isPending}>
-                    {save.isPending ? __("Saving…") : __("Save changes")}
-                </Button>
-            </div>
 
             <Card>
                 <CardHeader>
@@ -464,6 +458,8 @@ export function StorefrontPanel() {
                     }
                 />
             </Card>
+
+            <SaveBar dirty={dirty} pending={save.isPending} onSave={submit} />
         </div>
     );
 }

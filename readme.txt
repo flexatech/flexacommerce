@@ -138,7 +138,7 @@ A payment method or page you already set up is kept. "Remove demo store", or `wp
 * Orders: create and edit in the admin, PDF invoices and credit notes, order CSV export, abandoned cart and back-in-stock emails.
 * Subscriptions with automatic renewals, reminder emails, plan switching and customer self-service.
 * Migration to and from WooCommerce, on the same site or through a file.
-* Admin: five menu sections (Orders, Products, Customers, Marketing, Settings) with page tabs, and every page and settings tab in the command palette (Ctrl or Cmd + K).
+* Admin: five menu sections (Orders, Products, Customers, Marketing, Settings) in a store header that also shows on the product, category, tag and review screens; every page and settings tab in the command palette (Ctrl or Cmd + K); a save bar on settings that stays in view while there are unsaved changes.
 
 = 0.1.0 =
 * First development release: database schema, Status and Settings screens, plugin log, roles and capabilities, WP-CLI tools.
