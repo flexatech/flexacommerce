@@ -205,6 +205,26 @@ final class PayPalGatewayTest extends OrderTestCase {
 		);
 	}
 
+	public function test_a_cart_with_a_plan_asks_paypal_to_keep_the_account(): void {
+		$plain = new CheckoutContext( new Money( 1999, 'USD' ), 'US', 'US', true, '', null, 1 );
+		self::assertStringNotContainsString( 'renewals', $this->gateway()->checkout_fields( $plain )->description );
+		$plan = new CheckoutContext( new Money( 1999, 'USD' ), 'US', 'US', true, '', null, 1, true );
+		self::assertStringContainsString( 'PayPal keeps your account on file so the store can charge the renewals.', $this->gateway()->checkout_fields( $plan )->description );
+
+		FakePayPal::$routes['POST v2/checkout/orders'] = [ 201, $this->order( 'PPX', 'CREATED', '19.99' ) ];
+		$quote = [
+			'currency'       => 'USD',
+			'total'          => 1999,
+			'needs_shipping' => false,
+			'lines'          => [],
+		];
+		$this->gateway()->open_express( $quote );
+		$this->gateway()->open_express( [ 'recurring' => true ] + $quote );
+		$calls = FakePayPal::calls_to( 'POST', 'v2/checkout/orders' );
+		self::assertArrayNotHasKey( 'attributes', $calls[0]['body']['payment_source']['paypal'] );
+		self::assertSame( 'ON_SUCCESS', $calls[1]['body']['payment_source']['paypal']['attributes']['vault']['store_in_vault'] );
+	}
+
 	public function test_the_checkout_buttons_open_the_order_in_a_window_and_the_return_captures(): void {
 		FakePayPal::$routes['POST v2/checkout/orders'] = [ 201, $this->order( 'PP1', 'PAYER_ACTION_REQUIRED', '15.00' ) ];
 		[ $order, $txn, $result ]                      = $this->pay( 1500, [ 'flow' => 'popup' ] );

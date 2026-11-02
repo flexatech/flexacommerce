@@ -199,7 +199,7 @@ final class StripeGateway extends AbstractPaymentGateway implements ConnectedGat
 			'transaction_id' => (string) $request->transaction_id,
 		];
 		$method   = is_string( $request->gateway_input['payment_method'] ?? null ) ? $request->gateway_input['payment_method'] : '';
-		$customer = self::recurring( $request->order ) ? $this->customer( $request->order, $request->idempotency_key ) : '';
+		$customer = $request->order->recurring() ? $this->customer( $request->order, $request->idempotency_key ) : '';
 		if ( $method === '' ) {
 			return $this->checkout_session( $request, $amount, $metadata, $customer );
 		}
@@ -705,18 +705,6 @@ final class StripeGateway extends AbstractPaymentGateway implements ConnectedGat
 		}
 		$owner = is_array( $method['customer'] ?? null ) ? ( $method['customer']['id'] ?? '' ) : ( $method['customer'] ?? '' );
 		return $owner === $customer ? new SavedMethod( $customer, $method['id'], self::label( $method ) ) : null;
-	}
-
-	private static function recurring( OrderView $order ): bool {
-		if ( $order->created_via === 'subscription' ) {
-			return true;
-		}
-		foreach ( $order->items as $item ) {
-			if ( $item->subscription ) {
-				return true;
-			}
-		}
-		return false;
 	}
 
 	/** The order's Stripe customer: the user's own, kept per mode, or a new one for a guest. */

@@ -27,7 +27,11 @@ use Flexa\Commerce\Subscriptions\Subscription;
 use Flexa\Commerce\Subscriptions\SubscriptionService;
 use Flexa\Commerce\Subscriptions\SubscriptionStatus;
 use Flexa\Commerce\Tests\Integration\Orders\OrderTestCase;
+use Flexa\Commerce\Tests\Integration\Payments\FakePayPal;
 use Flexa\Commerce\Tests\Integration\Payments\FakeStripe;
+use Flexa\Commerce\Payments\Gateways\PayPal\PayPalClient;
+use Flexa\Commerce\Payments\Gateways\PayPal\PayPalGateway;
+use Flexa\Commerce\Payments\Transaction;
 use Flexa\Commerce\Payments\Gateways\Stripe\StripeGateway;
 use Flexa\Commerce\Notifications\Emails\CustomerRenewalInvoice;
 use Flexa\Commerce\Notifications\Emails\CustomerRenewalReminder;
@@ -59,6 +63,8 @@ final class SubscriptionTest extends OrderTestCase {
 	private int $last_user = 0;
 
 	private bool $stripe = false;
+
+	private bool $paypal = false;
 
 	public function set_up(): void {
 		parent::set_up();
@@ -93,6 +99,14 @@ final class SubscriptionTest extends OrderTestCase {
 			delete_option( StripeGateway::STATUS_OPTION );
 			\Flexa\Commerce\Support\WalletPlaces::put( StripeGateway::ID, [] );
 			FakeStripe::forget( StripeGateway::ID );
+		}
+		if ( $this->paypal ) {
+			FakePayPal::uninstall();
+			delete_option( GatewaySettings::PREFIX . PayPalGateway::ID );
+			delete_option( PayPalGateway::STATUS_OPTION );
+			delete_option( PayPalClient::TOKEN_OPTION );
+			\Flexa\Commerce\Support\WalletPlaces::put( PayPalGateway::ID, [] );
+			FakeStripe::forget( PayPalGateway::ID );
 		}
 		wp_set_current_user( 0 );
 		$_POST = [];
@@ -544,6 +558,161 @@ final class SubscriptionTest extends OrderTestCase {
 		FakeStripe::$routes['GET checkout/sessions/cs_other'] = [ 200, [ 'client_reference_id' => 'subscription-999' ] + FakeStripe::$routes['GET checkout/sessions/cs_setup'][1] ];
 		$this->account()->handle();
 		self::assertSame( 'pm_master', $this->subs()->find( (int) $row?->id )?->payment_token );
+		$_GET = [];
+		unset( $_SERVER['HTTP_REFERER'] );
+	}
+
+	public function test_paypal_vaults_the_account_on_the_first_order_and_charges_renewals_with_it(): void {
+		$this->paypal();
+		FakePayPal::$routes['POST v2/checkout/orders'] = [ 201, self::pp_order( 'PP1', 'PAYER_ACTION_REQUIRED' ) ];
+		$order  = $this->buy( $this->user, $this->plan_product( 1000, [ 'period' => 'month' ] ), 1, [], PayPalGateway::ID );
+		$source = FakePayPal::calls_to( 'POST', 'v2/checkout/orders' )[0]['body']['payment_source']['paypal'];
+		self::assertSame(
+			[
+				'store_in_vault' => 'ON_SUCCESS',
+				'usage_type'     => 'MERCHANT',
+				'customer_type'  => 'CONSUMER',
+			],
+			$source['attributes']['vault']
+		);
+		FakePayPal::$routes['GET v2/checkout/orders/PP1']          = [ 200, self::pp_order( 'PP1', 'APPROVED' ) ];
+		FakePayPal::$routes['POST v2/checkout/orders/PP1/capture'] = [ 201, self::pp_paid( 'PP1', 'APPROVED' ) ];
+		$this->pay_return( $order, 'PP1' );
+		$row = $this->only( $order );
+		self::assertSame( SubscriptionStatus::ACTIVE, $row->status );
+
+		// PayPal is still making the vault entry: the row is asked again later, not left to renew by hand.
+		FakePayPal::$routes['GET v2/checkout/orders/PP1'] = [ 200, self::pp_paid( 'PP1', 'APPROVED' ) ];
+		$this->subs()->run();
+		self::assertNull( $this->subs()->find( $row->id )?->payment_token );
+
+		FakePayPal::$routes['GET v2/checkout/orders/PP1'] = [ 200, self::pp_paid( 'PP1', 'VAULTED' ) ];
+		$this->subs()->run();
+		$row = $this->subs()->find( $row->id );
+		self::assertSame( [ PayPalGateway::ID, 'PPCUS1', 'VAULT1', 'PayPal (ada@example.com)', true ], [ $row?->payment_method, $row?->payment_customer, $row?->payment_token, $row?->payment_label, $row?->is_automatic() ] );
+
+		self::assertNotNull( $row );
+		$this->due( $row );
+		FakePayPal::$routes['POST v2/checkout/orders'] = [ 201, self::pp_paid( 'PPR1', '' ) ];
+		$sent = $this->watch( CustomerRenewalInvoice::DUE );
+		self::assertSame( 1, $this->subs()->run() );
+		$charge = array_slice( FakePayPal::calls_to( 'POST', 'v2/checkout/orders' ), -1 )[0];
+		self::assertSame( [ 'vault_id' => 'VAULT1' ], $charge['body']['payment_source']['paypal'] );
+		self::assertSame( '15.00', $charge['body']['purchase_units'][0]['amount']['value'] );
+		self::assertNotSame( '', $charge['headers']['PayPal-Request-Id'] );
+		$row = $this->subs()->find( $row->id );
+		self::assertSame( [ SubscriptionStatus::ACTIVE, 2 ], [ $row?->status, $row?->billed ] );
+		self::assertNotNull( $row );
+		self::assertNull( $this->subs()->unpaid_renewal( $row ) );
+		self::assertSame( [], $sent(), 'No invoice for a renewal PayPal paid.' );
+	}
+
+	public function test_the_wallet_quote_says_when_the_cart_holds_a_plan(): void {
+		$plugin  = Plugin::instance();
+		$browser = new CartServices( $plugin->services(), $plugin->catalog(), new MemoryTokenStore() );
+		$plain   = $this->simple( 800 );
+		$browser->cart()->add( $this->user, $plain, $this->service()->get( $plain )->base->id, 1 );
+		self::assertFalse( $this->checkout( $browser )->express_quote( $this->user, null, null, '', 'paypal' )['recurring'] );
+		$plan = $this->plan_product( 1000, [ 'period' => 'month' ] );
+		$browser->cart()->add( $this->user, $plan, $this->service()->get( $plan )->base->id, 1 );
+		self::assertTrue( $this->checkout( $browser )->express_quote( $this->user, null, null, '', 'paypal' )['recurring'] );
+	}
+
+	public function test_a_declined_paypal_renewal_is_tried_again(): void {
+		$row = $this->paypal_automatic();
+		$this->due( $row );
+		FakePayPal::$routes['POST v2/checkout/orders'] = [ 422, self::pp_declined() ];
+		reset_phpmailer_instance();
+		$this->subs()->run();
+		$row = $this->subs()->find( $row->id );
+		self::assertSame( [ SubscriptionStatus::ON_HOLD, 1 ], [ $row?->status, $row?->retry_count ] );
+		self::assertNotNull( $row );
+		$order = $this->subs()->unpaid_renewal( $row );
+		self::assertNotNull( $order );
+		$failed = array_values( array_filter( $this->payments_of( $order->id ), static fn ( Transaction $t ): bool => $t->status === Transaction::FAILED ) );
+		self::assertSame( 'instrument_declined', $failed[0]->failure_code ?? '' );
+		self::assertCount( 1, $this->mails( 'subscription payment failed' ) );
+	}
+
+	public function test_the_customer_approves_another_paypal_account_and_the_unpaid_renewal_is_charged_to_it(): void {
+		Pages::install();
+		$row = $this->paypal_automatic();
+		$this->due( $row );
+		FakePayPal::$routes['POST v2/checkout/orders'] = [ 422, self::pp_declined() ];
+		$this->subs()->run();
+
+		wp_set_current_user( $this->user );
+		$_GET = [ 'fxc_view_subscription' => (string) $row->id ];
+		self::assertStringContainsString( 'PayPal (ada@example.com), charged automatically', $this->account()->render() );
+
+		FakePayPal::$routes['POST v3/vault/setup-tokens'] = [
+			201,
+			[
+				'id'     => 'SETUP1',
+				'status' => 'PAYER_ACTION_REQUIRED',
+				'links'  => [
+					[
+						'rel'  => 'approve',
+						'href' => 'https://www.sandbox.paypal.com/agreements/approve?approval_session_id=SETUP1',
+					],
+				],
+			],
+		];
+		$_POST                   = $this->subscription_post( $row, 'card', [] );
+		$_SERVER['HTTP_REFERER'] = home_url( '/my-account/' );
+		self::assertSame( 'https://www.sandbox.paypal.com/agreements/approve?approval_session_id=SETUP1', $this->redirected() );
+		$setup = FakePayPal::calls_to( 'POST', 'v3/vault/setup-tokens' )[0]['body'];
+		self::assertSame( [ 'id' => 'PPCUS1' ], $setup['customer'] );
+		self::assertSame( [ 'MERCHANT', 'ada@example.com' ], [ $setup['payment_source']['paypal']['usage_type'], $setup['payment_source']['paypal']['email_address'] ] );
+		parse_str( (string) wp_parse_url( $setup['payment_source']['paypal']['experience_context']['return_url'], PHP_URL_QUERY ), $back );
+		$key = (string) ( $back['fxc_setup'] ?? '' );
+		self::assertSame( (string) $row->id, $back['fxc_view_subscription'] ?? '' );
+		self::assertMatchesRegularExpression( '/^[a-z0-9]{24}$/', $key );
+
+		FakePayPal::$routes['POST v3/vault/payment-tokens'] = [
+			201,
+			[
+				'id'             => 'VAULT2',
+				'customer'       => [ 'id' => 'PPCUS1' ],
+				'payment_source' => [ 'paypal' => [ 'email_address' => 'ada.new@example.com' ] ],
+			],
+		];
+		FakePayPal::$routes['POST v2/checkout/orders']      = [ 201, self::pp_paid( 'PPR2', '' ) ];
+		$_POST = [];
+		$_GET  = [
+			'fxc_view_subscription' => (string) $row->id,
+			'fxc_setup'             => $key,
+			'approval_token_id'     => 'SETUP1',
+		];
+		self::assertStringContainsString( 'subscription_card_paid', $this->redirected() );
+		self::assertSame(
+			[
+				'id'   => 'SETUP1',
+				'type' => 'SETUP_TOKEN',
+			],
+			FakePayPal::calls_to( 'POST', 'v3/vault/payment-tokens' )[0]['body']['payment_source']['token']
+		);
+		$row = $this->subs()->find( $row->id );
+		self::assertSame( [ SubscriptionStatus::ACTIVE, 'VAULT2', 'PayPal (ada.new@example.com)', 0 ], [ $row?->status, $row?->payment_token, $row?->payment_label, $row?->retry_count ] );
+		self::assertSame( [ 'vault_id' => 'VAULT2' ], array_slice( FakePayPal::calls_to( 'POST', 'v2/checkout/orders' ), -1 )[0]['body']['payment_source']['paypal'] );
+
+		// The key works once, and only for the subscription it was made for.
+		FakePayPal::$calls = [];
+		$this->account()->handle();
+		set_transient(
+			'fxc_paypal_setup_' . str_repeat( 'a', 24 ),
+			[
+				'token' => 'SETUP9',
+				'tag'   => 'subscription-999',
+				'mode'  => 'test',
+			],
+			HOUR_IN_SECONDS
+		);
+		$_GET['fxc_setup'] = str_repeat( 'a', 24 );
+		$this->account()->handle();
+		self::assertSame( [], FakePayPal::calls_to( 'POST', 'v3/vault/payment-tokens' ) );
+		self::assertSame( 'VAULT2', $this->subs()->find( (int) $row?->id )?->payment_token );
+		delete_transient( 'fxc_paypal_setup_' . str_repeat( 'a', 24 ) );
 		$_GET = [];
 		unset( $_SERVER['HTTP_REFERER'] );
 	}
@@ -1192,6 +1361,113 @@ final class SubscriptionTest extends OrderTestCase {
 					'payment_method' => self::method( 'pm_visa', 'visa', '4242' ),
 				]
 			),
+		];
+	}
+
+	private function paypal(): void {
+		$this->paypal = true;
+		FakePayPal::install();
+		FakePayPal::connectable();
+		Plugin::instance()->payments()->gateways()->settings()->save(
+			Plugin::instance()->payments()->gateways()->get( PayPalGateway::ID ) ?? throw new \LogicException( 'No PayPal.' ),
+			[
+				'enabled'            => true,
+				'mode'               => 'test',
+				'test_client_id'     => 'AbcClientId',
+				'test_client_secret' => 'EfgSecret',
+			]
+		);
+	}
+
+	/** An active row paid with PayPal, its vault entry read by the cron. */
+	private function paypal_automatic(): Subscription {
+		$this->paypal();
+		FakePayPal::$routes['POST v2/checkout/orders']             = [ 201, self::pp_order( 'PP1', 'PAYER_ACTION_REQUIRED' ) ];
+		FakePayPal::$routes['POST v2/checkout/orders/PP1/capture'] = [ 201, self::pp_paid( 'PP1', 'VAULTED' ) ];
+		$order = $this->buy( $this->user, $this->plan_product( 1000, [ 'period' => 'month' ] ), 1, [], PayPalGateway::ID );
+		FakePayPal::$routes['GET v2/checkout/orders/PP1'] = [ [ 200, self::pp_order( 'PP1', 'APPROVED' ) ], [ 200, self::pp_paid( 'PP1', 'VAULTED' ) ] ];
+		$this->pay_return( $order, 'PP1' );
+		$this->subs()->run();
+		$row = $this->subs()->find( $this->only( $order )->id );
+		self::assertNotNull( $row );
+		self::assertTrue( $row->is_automatic() );
+		return $row;
+	}
+
+	/** The shopper back from PayPal: the order is captured. */
+	private function pay_return( Order $order, string $paypal_order ): void {
+		$txn = $this->payments_of( $order->id )[0];
+		self::assertSame( 'applied', Plugin::instance()->payments()->service()->handle_return( $txn->id, [ 'token' => $paypal_order ] ) );
+	}
+
+	/** @return list<Transaction> */
+	private function payments_of( int $order_id ): array {
+		return Plugin::instance()->payments()->service()->for_order( $order_id );
+	}
+
+	/** @return array<string,mixed> */
+	private static function pp_order( string $id, string $status ): array {
+		return [
+			'id'             => $id,
+			'intent'         => 'CAPTURE',
+			'status'         => $status,
+			'purchase_units' => [
+				[
+					'reference_id' => 'default',
+					'amount'       => [
+						'currency_code' => 'USD',
+						'value'         => '15.00',
+					],
+				],
+			],
+			'links'          => [
+				[
+					'rel'  => 'payer-action',
+					'href' => 'https://www.sandbox.paypal.com/checkoutnow?token=' . $id,
+				],
+			],
+		];
+	}
+
+	/**
+	 * A captured PayPal order; `$vault` is the status of its vault entry, '' for none.
+	 *
+	 * @return array<string,mixed>
+	 */
+	private static function pp_paid( string $id, string $vault ): array {
+		$order = self::pp_order( $id, 'COMPLETED' );
+		$order['purchase_units'][0]['payments']['captures'] = [
+			[
+				'id'                 => 'CAP-' . $id,
+				'status'             => 'COMPLETED',
+				'amount'             => [
+					'currency_code' => 'USD',
+					'value'         => '15.00',
+				],
+				'supplementary_data' => [ 'related_ids' => [ 'order_id' => $id ] ],
+			],
+		];
+		$order['payment_source']                            = [ 'paypal' => [ 'email_address' => 'ada@example.com' ] ];
+		if ( $vault !== '' ) {
+			$order['payment_source']['paypal']['attributes']['vault'] = [
+				'id'       => 'VAULT1',
+				'status'   => $vault,
+				'customer' => [ 'id' => 'PPCUS1' ],
+			];
+		}
+		return $order;
+	}
+
+	/** @return array<string,mixed> */
+	private static function pp_declined(): array {
+		return [
+			'name'    => 'UNPROCESSABLE_ENTITY',
+			'details' => [
+				[
+					'issue'       => 'INSTRUMENT_DECLINED',
+					'description' => 'The instrument presented was declined.',
+				],
+			],
 		];
 	}
 

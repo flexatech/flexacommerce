@@ -434,6 +434,8 @@ final class CheckoutService {
 			'shipping_rates' => $rates,
 			'shipping_rate'  => $quote->rate->id ?? '',
 			'lines'          => $lines,
+			// A plan in the cart: the wallet saves the method for the renewals (ADR-078).
+			'recurring'      => $this->subscriptions !== null && self::plan_groups( $state ) !== [],
 			'checkout_token' => $stored !== null ? $this->cart->checkout_token( $user_id, $stored ) : '',
 		];
 	}

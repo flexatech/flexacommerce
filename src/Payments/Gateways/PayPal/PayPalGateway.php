@@ -19,6 +19,8 @@ use Flexa\Commerce\Contracts\ValidationResult;
 use Flexa\Commerce\Payments\ConnectedGateway;
 use Flexa\Commerce\Payments\ExpressGateway;
 use Flexa\Commerce\Payments\ExpressSession;
+use Flexa\Commerce\Payments\RecurringGateway;
+use Flexa\Commerce\Payments\SavedMethod;
 use Flexa\Commerce\Support\Settings;
 
 defined( 'ABSPATH' ) || exit;
@@ -36,8 +38,13 @@ defined( 'ABSPATH' ) || exit;
  * checkout open the PayPal order first, keep it in step with the quote
  * while the shopper picks an address and a rate on PayPal's sheet, then
  * place the store order with the contact PayPal shares (ExpressSession).
+ *
+ * An order with a subscription asks PayPal to keep the account in its
+ * vault once the payment goes through (ADR-078); renewals are charged to
+ * the vault id with nobody at the screen, and the customer can approve
+ * another account from My Account through a setup token.
  */
-final class PayPalGateway extends AbstractPaymentGateway implements ConnectedGateway, ExpressGateway, ExpressSession {
+final class PayPalGateway extends AbstractPaymentGateway implements ConnectedGateway, ExpressGateway, ExpressSession, RecurringGateway {
 	public const ID = 'paypal';
 
 	/** What the last save learned from PayPal, per mode. Erased with the store's options. */
@@ -52,6 +59,9 @@ final class PayPalGateway extends AbstractPaymentGateway implements ConnectedGat
 	protected const SUPPORTS = [ 'refunds', 'partial_refunds', 'webhooks', 'signed_returns' ];
 
 	private const COLORS = [ 'gold', 'blue', 'silver', 'white', 'black' ];
+
+	/** The setup token a My Account approval is waiting for, by the random key in its return URL. */
+	private const SETUP_TRANSIENT = 'fxc_paypal_setup_';
 
 	/** @var array<string,array<string,mixed>> PayPal orders read in this request */
 	private array $orders = [];
@@ -159,8 +169,12 @@ final class PayPalGateway extends AbstractPaymentGateway implements ConnectedGat
 	}
 
 	public function checkout_fields( CheckoutContext $checkout ): CheckoutFields {
+		$description = (string) $this->setting( 'description' );
+		if ( $checkout->recurring ) {
+			$description = trim( $description . "\n\n" . __( 'PayPal keeps your account on file so the store can charge the renewals. You can change it from your account.', 'flexacommerce' ) );
+		}
 		return new CheckoutFields(
-			(string) $this->setting( 'description' ),
+			$description,
 			[],
 			FLEXACOMMERCE_URL . 'assets/frontend/paypal.js?ver=' . FLEXACOMMERCE_VERSION,
 			$this->button_config( $checkout->total->currency ) + [
@@ -205,7 +219,10 @@ final class PayPalGateway extends AbstractPaymentGateway implements ConnectedGat
 			'shipping_preference' => 'NO_SHIPPING',
 		];
 		$source   = [ 'experience_context' => $context ];
-		$billing  = $request->order->billing;
+		if ( $request->order->recurring() ) {
+			$source['attributes'] = self::vault();
+		}
+		$billing = $request->order->billing;
 		if ( is_email( $request->order->customer_email ) ) {
 			$source['email_address'] = $request->order->customer_email;
 		}
@@ -366,20 +383,22 @@ final class PayPalGateway extends AbstractPaymentGateway implements ConnectedGat
 		if ( $needs && $rates !== [] ) {
 			$unit['shipping'] = [ 'options' => $rates ];
 		}
+		$source = [
+			'experience_context' => [
+				'user_action'         => 'PAY_NOW',
+				'brand_name'          => $this->brand(),
+				'shipping_preference' => $needs ? 'GET_FROM_FILE' : 'NO_SHIPPING',
+			],
+		];
+		if ( (bool) ( $quote['recurring'] ?? false ) ) {
+			$source['attributes'] = self::vault();
+		}
 		$order = $this->client()->post(
 			'v2/checkout/orders',
 			[
 				'intent'         => 'CAPTURE',
 				'purchase_units' => [ $unit ],
-				'payment_source' => [
-					'paypal' => [
-						'experience_context' => [
-							'user_action'         => 'PAY_NOW',
-							'brand_name'          => $this->brand(),
-							'shipping_preference' => $needs ? 'GET_FROM_FILE' : 'NO_SHIPPING',
-						],
-					],
-				],
+				'payment_source' => [ 'paypal' => $source ],
 			],
 			wp_generate_uuid4()
 		);
@@ -455,6 +474,146 @@ final class PayPalGateway extends AbstractPaymentGateway implements ConnectedGat
 			'shipping'      => $shipping,
 			'shipping_rate' => $rate,
 		];
+	}
+
+	/**
+	 * The account a paid order kept in the vault. PayPal may still be
+	 * making the vault entry right after the capture; that throws, so the
+	 * subscription asks again on the next run instead of renewing by hand.
+	 */
+	public function saved_method( string $reference ): ?SavedMethod {
+		if ( preg_match( '/^[A-Z0-9]{1,36}$/', $reference ) !== 1 ) {
+			return null;
+		}
+		// Read fresh: the capture's answer may predate the vault entry.
+		$order  = $this->client()->get( 'v2/checkout/orders/' . $reference );
+		$paypal = is_array( $order['payment_source']['paypal'] ?? null ) ? $order['payment_source']['paypal'] : [];
+		$vault  = is_array( $paypal['attributes']['vault'] ?? null ) ? $paypal['attributes']['vault'] : [];
+		if ( ( $order['status'] ?? '' ) !== 'COMPLETED' || $vault === [] ) {
+			return null;
+		}
+		if ( ( $vault['status'] ?? '' ) === 'APPROVED' ) {
+			throw new PayPalError( 'PayPal has not finished saving the account yet.' );
+		}
+		return self::saved( $vault, $paypal );
+	}
+
+	public function charge_saved( PaymentRequest $request, SavedMethod $method ): PaymentResult {
+		if ( PayPalAmount::to_paypal( $request->amount ) === null ) {
+			return PaymentResult::failed( 'currency', __( 'PayPal cannot take this amount in this currency.', 'flexacommerce' ) );
+		}
+		$body = [
+			'intent'         => 'CAPTURE',
+			'purchase_units' => [
+				[
+					'reference_id' => 'default',
+					'custom_id'    => (string) $request->transaction_id,
+					'description'  => mb_substr( $this->description( $request->order->number ), 0, 127 ),
+					'amount'       => PayPalAmount::field( $request->amount ),
+				],
+			],
+			'payment_source' => [ 'paypal' => [ 'vault_id' => $method->token ] ],
+		];
+		try {
+			// With a vault id PayPal captures at once: no approval, no second call.
+			$order = $this->client()->post( 'v2/checkout/orders', $body, $request->idempotency_key );
+		} catch ( PayPalError $e ) {
+			// A decline, an account closed or the vault entry removed by the customer.
+			if ( $e->refused() ) {
+				return PaymentResult::failed( strtolower( $e->issue() ), $e->getMessage() );
+			}
+			throw $e;
+		}
+		$id      = (string) ( $order['id'] ?? '' );
+		$capture = PayPalEvents::capture( $order );
+		return match ( $capture['status'] ?? '' ) {
+			'COMPLETED'          => PaymentResult::succeeded( $id ),
+			'PENDING'            => PaymentResult::pending( $id ),
+			'DECLINED', 'FAILED' => PaymentResult::failed( 'declined', __( 'PayPal declined the payment.', 'flexacommerce' ) ),
+			default              => ( $order['status'] ?? '' ) === 'COMPLETED' || ( $order['status'] ?? '' ) === 'APPROVED'
+				? PaymentResult::pending( $id )
+				: PaymentResult::failed( 'declined', __( 'PayPal declined the payment.', 'flexacommerce' ) ),
+		};
+	}
+
+	/**
+	 * PayPal's page where the customer approves an account for the
+	 * renewals, through a setup token. PayPal sends them back to the return
+	 * URL with its own query args; the token is found again by a random key
+	 * in SETUP_ARG, kept for three hours with the tag it is for.
+	 */
+	public function setup_url( string $customer, string $email, string $name, int $user_id, string $tag, string $return_url, string $cancel_url ): string {
+		unset( $user_id, $name );
+		$key    = strtolower( wp_generate_password( 24, false ) );
+		$source = [
+			'usage_type'         => 'MERCHANT',
+			'customer_type'      => 'CONSUMER',
+			'experience_context' => [
+				'brand_name'          => $this->brand(),
+				'return_url'          => add_query_arg( self::SETUP_ARG, $key, $return_url ),
+				'cancel_url'          => $cancel_url,
+				'shipping_preference' => 'NO_SHIPPING',
+				'vault_instruction'   => 'ON_PAYER_APPROVAL',
+			],
+		];
+		if ( is_email( $email ) ) {
+			$source['email_address'] = $email;
+		}
+		$body = [ 'payment_source' => [ 'paypal' => $source ] ];
+		if ( $customer !== '' ) {
+			$body['customer'] = [ 'id' => $customer ];
+		}
+		$token = $this->client()->post( 'v3/vault/setup-tokens', $body, 'fxc-setup-' . $key );
+		$id    = is_string( $token['id'] ?? null ) ? $token['id'] : '';
+		foreach ( (array) ( $token['links'] ?? [] ) as $link ) {
+			if ( $id !== '' && is_array( $link ) && ( $link['rel'] ?? '' ) === 'approve' && is_string( $link['href'] ?? null ) ) {
+				set_transient(
+					self::SETUP_TRANSIENT . $key,
+					[
+						'token' => $id,
+						'tag'   => $tag,
+						'mode'  => $this->mode(),
+					],
+					3 * HOUR_IN_SECONDS
+				);
+				return $link['href'];
+			}
+		}
+		return '';
+	}
+
+	/** The approved setup token turned into a vault entry, once, for the tag it was made for. */
+	public function finish_setup( string $reference, string $tag ): ?SavedMethod {
+		if ( preg_match( '/^[a-z0-9]{24}$/', $reference ) !== 1 ) {
+			return null;
+		}
+		$waiting = get_transient( self::SETUP_TRANSIENT . $reference );
+		if ( ! is_array( $waiting ) || ( $waiting['tag'] ?? '' ) !== $tag || ( $waiting['mode'] ?? '' ) !== $this->mode() || ! is_string( $waiting['token'] ?? null ) ) {
+			return null;
+		}
+		try {
+			$entry = $this->client()->post(
+				'v3/vault/payment-tokens',
+				[
+					'payment_source' => [
+						'token' => [
+							'id'   => $waiting['token'],
+							'type' => 'SETUP_TOKEN',
+						],
+					],
+				],
+				'fxc-vault-' . $waiting['token']
+			);
+		} catch ( PayPalError $e ) {
+			// Not approved: the customer closed PayPal's page or came back by hand.
+			if ( $e->refused() ) {
+				return null;
+			}
+			throw $e;
+		}
+		delete_transient( self::SETUP_TRANSIENT . $reference );
+		$paypal = is_array( $entry['payment_source']['paypal'] ?? null ) ? $entry['payment_source']['paypal'] : [];
+		return self::saved( $entry, $paypal );
 	}
 
 	public function connect( array $values, array $before ): array {
@@ -801,6 +960,39 @@ final class PayPalGateway extends AbstractPaymentGateway implements ConnectedGat
 			}
 		}
 		return $hooks;
+	}
+
+	/**
+	 * Keep the account in PayPal's vault when the payment goes through, for
+	 * charges the store makes later (ADR-078).
+	 *
+	 * @return array<string,mixed>
+	 */
+	private static function vault(): array {
+		return [
+			'vault' => [
+				'store_in_vault' => 'ON_SUCCESS',
+				'usage_type'     => 'MERCHANT',
+				'customer_type'  => 'CONSUMER',
+			],
+		];
+	}
+
+	/**
+	 * A vault entry as a saved method: "PayPal (ada@example.com)".
+	 *
+	 * @param array<string,mixed> $entry  with `id` and `customer.id`
+	 * @param array<string,mixed> $paypal the PayPal payment source
+	 */
+	private static function saved( array $entry, array $paypal ): ?SavedMethod {
+		$id       = is_string( $entry['id'] ?? null ) ? $entry['id'] : '';
+		$customer = is_string( $entry['customer']['id'] ?? null ) ? $entry['customer']['id'] : '';
+		if ( $id === '' ) {
+			return null;
+		}
+		$email = is_string( $paypal['email_address'] ?? null ) ? sanitize_email( $paypal['email_address'] ) : '';
+		/* translators: %s: the email of a PayPal account */
+		return new SavedMethod( $customer, $id, $email !== '' ? sprintf( __( 'PayPal (%s)', 'flexacommerce' ), $email ) : __( 'PayPal', 'flexacommerce' ) );
 	}
 
 	private function ready(): bool {

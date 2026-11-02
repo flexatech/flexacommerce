@@ -50,6 +50,19 @@ final class OrderView {
 		return array_values( array_filter( $this->items, static fn ( OrderItemView $i ): bool => $i->type === $type ) );
 	}
 
+	/** Whether paying this order should save the method for renewals: a plan line or a renewal (ADR-074). */
+	public function recurring(): bool {
+		if ( $this->created_via === 'subscription' ) {
+			return true;
+		}
+		foreach ( $this->items as $item ) {
+			if ( $item->subscription ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	/** Paid minus refunded: what a further refund may not exceed. */
 	public function refundable(): Money {
 		return $this->amount_paid->subtract( $this->amount_refunded );
