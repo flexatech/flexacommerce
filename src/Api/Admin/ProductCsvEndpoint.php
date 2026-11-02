@@ -10,6 +10,8 @@ use Flexa\Commerce\Catalog\Csv\ImportContext;
 use Flexa\Commerce\Catalog\Csv\ProductCsvExporter;
 use Flexa\Commerce\Catalog\Csv\ProductCsvImporter;
 use Flexa\Commerce\Plugin;
+use Flexa\Commerce\Setup\SampleStore;
+use WP_Error;
 use WP_REST_Request;
 use WP_REST_Response;
 use WP_REST_Server;
@@ -20,7 +22,9 @@ defined( 'ABSPATH' ) || exit;
  * Product CSV export and import (ADR-059). The browser reads and writes
  * the file; these routes take and return rows a page or a batch at a time
  * so no request runs long. An import keeps what earlier batches created in
- * a transient named by the screen's session id.
+ * a transient named by the screen's session id. The sample store routes
+ * add and remove the shipped sample-data/sample_products.csv with its
+ * pictures, reviews and coupons.
  */
 final class ProductCsvEndpoint extends Endpoint {
 	private const CONTEXT_TTL = DAY_IN_SECONDS;
@@ -130,6 +134,28 @@ final class ProductCsvEndpoint extends Endpoint {
 				],
 			]
 		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/admin/products/sample',
+			[
+				[
+					'methods'             => WP_REST_Server::READABLE,
+					'callback'            => [ $this, 'sample_status' ],
+					'permission_callback' => [ $this, 'manage_permission' ],
+				],
+				[
+					'methods'             => WP_REST_Server::CREATABLE,
+					'callback'            => [ $this, 'sample_install' ],
+					'permission_callback' => [ $this, 'manage_permission' ],
+				],
+				[
+					'methods'             => WP_REST_Server::DELETABLE,
+					'callback'            => [ $this, 'sample_remove' ],
+					'permission_callback' => [ $this, 'manage_permission' ],
+				],
+			]
+		);
 	}
 
 	/**
@@ -225,5 +251,28 @@ final class ProductCsvEndpoint extends Endpoint {
 			],
 			200
 		);
+	}
+	public function sample_status( WP_REST_Request $request ): WP_REST_Response {
+		unset( $request );
+		return new WP_REST_Response( SampleStore::make()->status(), 200 );
+	}
+
+	public function sample_install( WP_REST_Request $request ): WP_REST_Response|WP_Error {
+		unset( $request );
+		wp_raise_memory_limit( 'admin' );
+		$store = SampleStore::make();
+		try {
+			$counts = $store->install();
+		} catch ( \RuntimeException $e ) {
+			return new WP_Error( 'fxc_sample_installed', $e->getMessage(), [ 'status' => 409 ] );
+		}
+		return new WP_REST_Response( $counts + [ 'status' => $store->status() ], 201 );
+	}
+
+	public function sample_remove( WP_REST_Request $request ): WP_REST_Response {
+		unset( $request );
+		$store  = SampleStore::make();
+		$counts = $store->remove();
+		return new WP_REST_Response( $counts + [ 'status' => $store->status() ], 200 );
 	}
 }

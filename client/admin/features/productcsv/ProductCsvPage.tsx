@@ -5,6 +5,7 @@ import { PageTitle } from "../../components/PageTitle";
 import { Tabs } from "../../components/Tabs";
 import { ExportPanel } from "./ExportPanel";
 import { ImportPanel } from "./ImportPanel";
+import { SamplePanel } from "./SamplePanel";
 import { productsUrl } from "./useProductCsv";
 
 type Tab = "import" | "export";
@@ -43,7 +44,16 @@ export function ProductCsvPage() {
                     { value: "export", label: __("Export") },
                 ]}
             />
-            <div className="fxc:mt-6">{tab === "import" ? <ImportPanel /> : <ExportPanel />}</div>
+            <div className="fxc:mt-6 fxc:space-y-6">
+                {tab === "import" ? (
+                    <>
+                        <ImportPanel />
+                        <SamplePanel />
+                    </>
+                ) : (
+                    <ExportPanel />
+                )}
+            </div>
         </div>
     );
 }

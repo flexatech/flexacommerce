@@ -8,17 +8,19 @@ use Flexa\Commerce\Catalog\PostTypes;
 use Flexa\Commerce\Customers\CustomerProfile;
 use Flexa\Commerce\Database\Schema;
 use Flexa\Commerce\Setup\Roles;
+use Flexa\Commerce\Setup\SampleStore;
 
 defined( 'ABSPATH' ) || exit;
 
 /**
  * The single destructive path: deletes the products and their terms, then
  * drops every table, option, role, saved address and cron event of the
- * current site, and the export files uploaded to the Migration screen. Uninstall and WP-CLI both call this.
+ * current site, the sample store's pictures and the export files uploaded to the Migration screen. Uninstall and WP-CLI both call this.
  */
 final class Eraser {
 	public static function erase_site(): void {
 		Cron::unschedule();
+		SampleStore::erase();
 		self::erase_catalog();
 		Schema::drop_all();
 		Roles::uninstall();

@@ -162,6 +162,7 @@ final class Plugin {
 			Cli\ProductCsvCommand::register();
 			Cli\InvoiceCommand::register();
 			Cli\ShipmentCommand::register();
+			Cli\SampleCommand::register();
 			Reviews\Reviews::instance()->register();
 		}
 

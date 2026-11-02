@@ -23,7 +23,7 @@ What it includes:
 * Coupons, automatic discounts, pricing rules and checkout fees.
 * Shipping zones, shipping classes and table rates; taxes by location.
 * Built-in Stripe and PayPal payments, including express buttons and automatic subscription renewals.
-* Orders you can create and edit in the admin, refunds, shipment tracking, PDF invoices and credit notes, order CSV export and product CSV import and export.
+* Orders you can create and edit in the admin, refunds, shipment tracking, PDF invoices and credit notes, order CSV export and product CSV import and export; a sample store to try it out.
 * Product reviews, shop filters, back-in-stock and abandoned cart emails.
 * A migration tool that copies a WooCommerce store into FlexaCommerce and back, on the same site or through a file.
 * Status screen with environment checks, database health and a searchable plugin log. Secrets (keys, tokens, card numbers) and personal details such as names, addresses and IP addresses are masked before an entry is stored.
@@ -115,10 +115,14 @@ FlexaCommerce > Status > Logs. Entries older than the retention period (30 days 
 
 Run `wp flexacommerce doctor`. It prints the same checks as the Status screen and exits with an error code if any check fails.
 
+= Is there sample data to try the store with? =
+
+Yes. On the Products screen click Import, then "Add sample products", or run `wp flexacommerce sample install`. It adds 22 products of every type (simple, variable, grouped, external, bundle, downloadable, subscription, gift card) with pictures drawn on your server, a few reviews and three coupons: SAMPLE10, SAMPLE5 and FREESHIP. The same screen, or `wp flexacommerce sample remove`, takes them out again and leaves your own products alone. The products come from `sample-data/sample_products.csv`, a file in the WooCommerce CSV format, so you can also import it by hand.
+
 == Changelog ==
 
 = Unreleased =
-* Catalog: simple, variable, grouped, external, downloadable, bundle, gift card and subscription products; attributes, swatches, badges, product options, gallery video; reviews; shop filters; wishlist; product CSV import and export.
+* Catalog: simple, variable, grouped, external, downloadable, bundle, gift card and subscription products; attributes, swatches, badges, product options, gallery video; reviews; shop filters; wishlist; product CSV import and export; a sample store to try it out.
 * Cart and checkout: checkout builder with fields, sections, steps and conditions; coupons, automatic discounts, pricing rules and fees; guest order lookup.
 * Payments: built-in Stripe and PayPal with express buttons; gift cards and store credit.
 * Shipping and tax: zones, shipping classes, table rates, shipment tracking; taxes by location.
