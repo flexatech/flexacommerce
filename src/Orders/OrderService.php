@@ -50,6 +50,11 @@ final class OrderService {
 		return $this->orders->find( $order_id );
 	}
 
+	/** One meta value of an order, or null. */
+	public function meta( int $order_id, string $key ): ?string {
+		return $this->orders->get_meta( $order_id, $key );
+	}
+
 	/** @throws OrderNotFound */
 	public function get( int $order_id ): Order {
 		return $this->orders->find( $order_id ) ?? throw new OrderNotFound( __( 'Order not found.', 'flexacommerce' ) );

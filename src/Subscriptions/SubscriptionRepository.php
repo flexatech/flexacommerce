@@ -18,6 +18,8 @@ defined( 'ABSPATH' ) || exit;
 final class SubscriptionRepository {
 	public const PARENT  = 'parent';
 	public const RENEWAL = 'renewal';
+	/** An order that pays a plan switch (ADR-077). */
+	public const SWITCH = 'switch';
 
 	public function __construct( private readonly \wpdb $wpdb ) {}
 
@@ -31,15 +33,15 @@ final class SubscriptionRepository {
 		return $this->many( $this->wpdb->prepare( 'SELECT * FROM %i WHERE parent_order_id = %d ORDER BY id', Schema::table( 'subscriptions' ), $order_id ) );
 	}
 
-	/** @return list<Subscription> what a renewal order bills */
-	public function for_renewal( int $order_id ): array {
+	/** @return list<Subscription> what a renewal order bills, or a switch order with `$relation` SWITCH */
+	public function for_renewal( int $order_id, string $relation = self::RENEWAL ): array {
 		return $this->many(
 			$this->wpdb->prepare(
 				'SELECT s.* FROM %i s INNER JOIN %i r ON r.subscription_id = s.id WHERE r.order_id = %d AND r.relation = %s ORDER BY s.id',
 				Schema::table( 'subscriptions' ),
 				Schema::table( 'subscription_orders' ),
 				$order_id,
-				self::RENEWAL
+				$relation
 			)
 		);
 	}

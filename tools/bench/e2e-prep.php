@@ -299,6 +299,38 @@ $products->save(
 	)
 );
 
+// A variable subscription whose sizes are priced apart, for plan switches (ADR-077).
+$box_id = $make( 'Coffee box', 'coffee-box' );
+$products->save(
+	$box_id,
+	ProductInput::from_array(
+		[
+			'type'       => 'variable',
+			'attributes' => [
+				[
+					'type'      => 'local',
+					'name'      => 'Size',
+					'values'    => [ 'Small', 'Large' ],
+					'variation' => true,
+				],
+			],
+		]
+	)
+);
+$rows = [];
+foreach ( $products->generate_variants( $box_id )->product->variations as $variation ) {
+	$small  = in_array( 'small', $variation->combination->to_array(), true );
+	$rows[] = [
+		'id'            => $variation->id,
+		'regular_price' => $small ? 1200 : 2000,
+		'subscription'  => [
+			'period'   => 'month',
+			'interval' => 1,
+		],
+	];
+}
+$products->save( $box_id, ProductInput::from_array( [ 'variations' => $rows ] ) );
+
 $category = get_term_by( 'slug', (string) $simple['categories'][0], PostTypes::CATEGORY );
 
 $out = [
@@ -363,6 +395,12 @@ $out = [
 		'url'   => (string) get_permalink( $club_id ),
 		'price' => 1500,
 		'fee'   => 500,
+	],
+	'box'      => [
+		'name'  => 'Coffee box',
+		'url'   => (string) get_permalink( $box_id ),
+		'small' => 1200,
+		'large' => 2000,
 	],
 	'category' => [
 		'slug' => $category instanceof WP_Term ? $category->slug : '',

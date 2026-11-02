@@ -70,7 +70,7 @@ export interface SubscriptionAddress {
 export interface SubscriptionOrder {
     id: number;
     number: string;
-    relation: "parent" | "renewal";
+    relation: "parent" | "renewal" | "switch";
     status: string;
     status_label: string;
     total: number;

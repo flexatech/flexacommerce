@@ -10,6 +10,7 @@ use Flexa\Commerce\Concerns\HasInstance;
 use Flexa\Commerce\Customers\CustomerProfile;
 use Flexa\Commerce\Orders\Order;
 use Flexa\Commerce\Orders\OrderAccess;
+use Flexa\Commerce\Orders\OrderStatus;
 use Flexa\Commerce\Orders\TransitionContext;
 use Flexa\Commerce\Payments\RecurringGateway;
 use Flexa\Commerce\Contracts\Orders\AddressView;
@@ -19,6 +20,7 @@ use Flexa\Commerce\Storefront\Render\Account;
 use Flexa\Commerce\Storefront\Render\Component;
 use Flexa\Commerce\Subscriptions\Snapshot;
 use Flexa\Commerce\Subscriptions\Subscription;
+use Flexa\Commerce\Subscriptions\SwitchQuote;
 use Flexa\Commerce\Support\SameSite;
 use Flexa\Commerce\Support\Settings;
 use Flexa\Commerce\Wishlist\WishlistCookies;
@@ -54,8 +56,8 @@ final class AccountPage {
 
 	private ?CustomerProfile $profile = null;
 
-	/** A subscription change priced for the customer to confirm (ADR-076). */
-	private ?Snapshot $preview = null;
+	/** A subscription change (ADR-076) or plan switch (ADR-077) priced for the customer to confirm. */
+	private Snapshot|SwitchQuote|null $preview = null;
 
 	/**
 	 * The account page, or one of its sub-pages. With plain permalinks the
@@ -334,8 +336,9 @@ final class AccountPage {
 
 	/**
 	 * Cancel or reactivate a subscription of the account (ADR-073), go save
-	 * a new payment method (ADR-074), pause or resume it, or change its
-	 * quantities or address (ADR-076).
+	 * a new payment method (ADR-074), pause or resume it, change its
+	 * quantities or address (ADR-076), or switch it to other variations
+	 * (ADR-077).
 	 */
 	private function change_subscription( int $user ): void {
 		$service = Plugin::instance()->subscriptions();
@@ -352,6 +355,16 @@ final class AccountPage {
 				if ( ! $this->change_items( $row, $ctx ) ) {
 					return;
 				}
+			} elseif ( $do === 'switch' ) {
+				$order = $this->switch_plan( $row, $ctx );
+				if ( $order === false ) {
+					return;
+				}
+				if ( $order !== null && $order->status === OrderStatus::PENDING && $order->balance_due() > 0 ) {
+					// Nothing saved to charge, or the charge failed: the shopper pays on the order's pay page.
+					self::redirect( Plugin::instance()->checkout()->pages()->pay_url( $order ) );
+				}
+				$do = $order === null ? 'switch' : 'switch_paid';
 			} elseif ( $do === 'pause' ) {
 				$service->pause( $id, $ctx );
 			} elseif ( $do === 'resume' ) {
@@ -422,6 +435,36 @@ final class AccountPage {
 		}
 		$service->apply_change( $row, $snapshot, $address, $ctx );
 		return true;
+	}
+
+	/**
+	 * Other variations for some lines, priced with what switching costs
+	 * now (ADR-077). It is shown first and made when the customer confirms
+	 * the same price and charge. Returns false while nothing is made, else
+	 * the switch order, or null when nothing was owed.
+	 *
+	 * @throws \InvalidArgumentException
+	 */
+	private function switch_plan( Subscription $row, TransitionContext $ctx ): Order|false|null {
+		$switch = [];
+		foreach ( is_array( $this->posted['subscription_variant'] ?? null ) ? $this->posted['subscription_variant'] : [] as $index => $variant ) {
+			$variant = is_scalar( $variant ) ? absint( $variant ) : 0;
+			if ( is_int( $index ) && $variant > 0 && $variant !== (int) ( $row->snapshot->items[ $index ]->variant_id ?? 0 ) ) {
+				$switch[ $index ] = $variant;
+			}
+		}
+		if ( $switch === [] ) {
+			$this->errors = [ 'form' => __( 'Choose an option to switch to.', 'flexacommerce' ) ];
+			return false;
+		}
+		$service  = Plugin::instance()->subscriptions();
+		$quote    = $service->quote_switch( $row, $switch );
+		$expected = is_scalar( $this->posted['subscription_quote'] ?? null ) ? (string) $this->posted['subscription_quote'] : '';
+		if ( empty( $this->posted['subscription_confirm'] ) || $expected !== $quote->snapshot->total . ':' . $quote->charge ) {
+			$this->preview = $quote;
+			return false;
+		}
+		return $service->apply_switch( $row, $quote, $ctx );
 	}
 
 	private function verified( string $action ): bool {

@@ -354,7 +354,7 @@ function SubscriptionView({ row, onClose }: { row: SubscriptionDetail; onClose: 
                                             <a href={orderUrl(order.id)} className="fxc:text-primary fxc:no-underline fxc:hover:underline">
                                                 {sprintf(__("#%s"), order.number)}
                                             </a>
-                                            <span className="fxc:text-muted-foreground fxc:ml-2 fxc:text-xs">{order.relation === "parent" ? __("First order") : __("Renewal")}</span>
+                                            <span className="fxc:text-muted-foreground fxc:ml-2 fxc:text-xs">{order.relation === "parent" ? __("First order") : order.relation === "switch" ? __("Plan switch") : __("Renewal")}</span>
                                         </td>
                                         <td className="fxc:text-muted-foreground fxc:py-2 fxc:pr-3 fxc:whitespace-nowrap">{formatDate(order.created_at, false)}</td>
                                         <td className="fxc:py-2 fxc:pr-3">{order.status_label}</td>

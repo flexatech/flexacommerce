@@ -128,3 +128,39 @@ test( 'the customer changes the quantity, pauses and resumes from the account', 
 	await expect( page.getByText( 'Your subscription is active again.' ) ).toBeVisible();
 	await expect( page.getByRole( 'button', { name: 'Pause subscription' } ) ).toBeVisible();
 } );
+
+test( 'the customer switches to another size and pays the difference', async ( { page }, info ) => {
+	test.skip( info.project.name !== 'tt5', 'one project places the order' );
+	test.setTimeout( 90_000 );
+	await logInAsAdmin( page );
+	await page.goto( store.box.url );
+	const form = page.locator( 'form.fxc-add-to-cart--single' );
+	await form.getByLabel( 'Size', { exact: false } ).selectOption( { label: 'Small' } );
+	await form.getByRole( 'button', { name: 'Add to cart' } ).click();
+	await expect( form.locator( '.fxc-add-to-cart__message' ) ).not.toBeEmpty();
+	await page.goto( store.checkout );
+	await fillBilling( page, 'admin@example.test' );
+	await page.locator( '#fxc-payment-method' ).getByLabel( /cash on delivery/i ).check();
+	await page.locator( '#fxc-terms' ).check();
+	await page.getByRole( 'button', { name: 'Place order' } ).click();
+	await expect( page.locator( '.fxc-order' ) ).toBeVisible( { timeout: 15_000 } );
+
+	await page.goto( `${ store.account }?fxc_subscriptions=1` );
+	await page.locator( '.fxc-account__subscriptions' ).getByRole( 'link', { name: /Coffee box/ } ).first().click();
+	const plan = page.getByRole( 'group', { name: 'Switch plan' } );
+	await plan.getByRole( 'combobox' ).selectOption( { label: `Large: ${ money( store.box.large ) } / month` } );
+	await expectAccessible( page, info, 'subscription switch form' );
+	await page.getByRole( 'button', { name: 'Review the switch' } ).click();
+	const review = page.getByRole( 'region', { name: 'Review your switch' } );
+	await expect( review ).toContainText( 'New renewal price' );
+	await expect( review ).toContainText( 'To pay now' );
+	await expectAccessible( page, info, 'subscription switch review' );
+	await review.getByRole( 'button', { name: 'Confirm the switch' } ).click();
+	// Cash on delivery saves no card, so the difference is paid on the order's pay page.
+	await expect( page.locator( '.fxc-order__pay-form' ) ).toBeVisible( { timeout: 15_000 } );
+
+	await page.goto( `${ store.account }?fxc_subscriptions=1` );
+	await page.locator( '.fxc-account__subscriptions' ).getByRole( 'link', { name: /Coffee box/ } ).first().click();
+	await expect( page.getByRole( 'link', { name: 'Pay for the switch' } ) ).toBeVisible();
+	await expect( page.getByRole( 'table', { name: 'Related orders' } ) ).toContainText( 'Plan switch' );
+} );

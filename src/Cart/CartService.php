@@ -151,6 +151,68 @@ final class CartService {
 	}
 
 	/**
+	 * The other variations a subscription line can switch to (ADR-077):
+	 * rows of the same product sold on a plan, purchasable and in stock,
+	 * each with its option names and shop price. An option the variation
+	 * leaves open keeps the line's choice.
+	 *
+	 * @param array<string,string> $selection the line's chosen options
+	 * @return list<array{variant_id:int,label:string,price:int,plan:\Flexa\Commerce\Catalog\SubscriptionPlan}>
+	 */
+	public function switch_rows( int $product_id, int $variant_id, array $selection ): array {
+		$product = $this->products->find( $product_id );
+		if ( $product === null || ! $product->is_variable() ) {
+			return [];
+		}
+		$now = $this->clock->db_now();
+		$out = [];
+		foreach ( $product->variations as $variant ) {
+			$plan  = $product->plan_for( $variant );
+			$price = $variant->active_price( $now );
+			if ( $variant->id === $variant_id || $plan === null || $price === null || $product->stock_owner( $variant )->stock_status === Variant::OUTOFSTOCK || ! $this->is_purchasable( $product, $variant ) ) {
+				continue;
+			}
+			try {
+				[ , $chosen ] = $this->select( $product, $variant->id, self::open_choices( $variant, $selection ) );
+			} catch ( InvalidCartRequest | NotPurchasable ) {
+				continue;
+			}
+			$out[] = [
+				'variant_id' => $variant->id,
+				'label'      => implode( ', ', array_column( $this->labels( $product, $chosen ), 'value' ) ),
+				'price'      => $price,
+				'plan'       => $plan,
+			];
+		}
+		return $out;
+	}
+
+	/**
+	 * A subscription line moved to another variation of its product
+	 * (ADR-077), with the same quantity and product options.
+	 *
+	 * @param array<string,string>   $selection the line's chosen options
+	 * @param array<array-key,mixed> $options
+	 * @throws \Flexa\Commerce\Contracts\CommerceException the variation cannot be ordered
+	 */
+	public function switch_line( int $product_id, int $variant_id, int $quantity, array $selection, array $options = [] ): CartLine {
+		$product = $this->products->find( $product_id );
+		$variant = $product?->sellable( $variant_id );
+		if ( $product === null || $variant === null || $product->plan_for( $variant ) === null ) {
+			throw new NotPurchasable( $variant_id, __( 'This option cannot be chosen for the subscription.', 'flexacommerce' ) );
+		}
+		return $this->prepare( $product_id, $variant_id, $quantity, self::open_choices( $variant, $selection ), $options )[2];
+	}
+
+	/**
+	 * @param array<string,string> $selection
+	 * @return array<string,string> the choices the variation leaves open
+	 */
+	private static function open_choices( Variant $variant, array $selection ): array {
+		return array_intersect_key( $selection, array_filter( $variant->combination->to_array(), static fn ( string $value ): bool => $value === Combination::WILDCARD ) );
+	}
+
+	/**
 	 * What every price rule did to each line of a priced cart and what
 	 * every fee rule did to the cart (ADR-046), with the same facts and
 	 * counts resolve() used.

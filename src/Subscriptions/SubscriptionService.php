@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Flexa\Commerce\Subscriptions;
 
+use Flexa\Commerce\Catalog\SubscriptionPlan;
 use Flexa\Commerce\Contracts\Email\EmailMessage;
 use Flexa\Commerce\Contracts\Exceptions\InsufficientStock;
 use Flexa\Commerce\Contracts\Logger;
@@ -15,6 +16,8 @@ use Flexa\Commerce\Database\Transaction as DbTransaction;
 use Flexa\Commerce\Notifications\EmailTemplates;
 use Flexa\Commerce\Notifications\Mailer;
 use Flexa\Commerce\Orders\NewOrder;
+use Flexa\Commerce\Orders\NewOrderItem;
+use Flexa\Commerce\Orders\OrderItem;
 use Flexa\Commerce\Orders\Order;
 use Flexa\Commerce\Orders\OrderService;
 use Flexa\Commerce\Orders\OrderStatus;
@@ -49,6 +52,9 @@ final class SubscriptionService {
 
 	public const CREATED_VIA = 'subscription';
 
+	/** Order meta of a switch order: the snapshot it moves the subscription to once paid (ADR-077). */
+	public const SWITCH_META = '_fxc_subscription_switch';
+
 	/** Days to the next automatic try after each failed one; after the last, the customer pays from the email (ADR-074). */
 	public const RETRY_DAYS = [ 1, 2, 4 ];
 
@@ -80,7 +86,7 @@ final class SubscriptionService {
 	 * @param (\Closure(): PaymentService)|null $payments    lazy, so the cron builds payments only when it charges
 	 * @param (\Closure(int): string)|null      $account_url the subscription's page in the account
 	 * @param (\Closure(): int)|null            $reminder_days days before a renewal the reminder goes out, 0 when it is off
-	 * @param (\Closure(Snapshot, array<int,int>, AddressView, ?AddressView, int): Snapshot)|null $reprice the snapshot priced again with new quantities and addresses (ADR-076)
+	 * @param (\Closure(Snapshot, array<int,int>, AddressView, ?AddressView, int, array<int,int>): Snapshot)|null $reprice the snapshot priced again with new quantities and addresses (ADR-076), or other variations (ADR-077)
 	 */
 	public function __construct(
 		private readonly SubscriptionRepository $rows,
@@ -166,6 +172,9 @@ final class SubscriptionService {
 			if ( $paid ) {
 				foreach ( $this->rows->for_renewal( $view->id ) as $row ) {
 					$this->renewal_paid( $row->id, $view->id );
+				}
+				foreach ( $this->rows->for_renewal( $view->id, SubscriptionRepository::SWITCH ) as $row ) {
+					$this->switch_paid( $row, $view->id );
 				}
 			}
 			return;
@@ -294,6 +303,8 @@ final class SubscriptionService {
 		if ( $row->next_payment_at === null ) {
 			throw new \InvalidArgumentException( __( 'This subscription has no payment left.', 'flexacommerce' ) );
 		}
+		// A switch priced for the period that ends now no longer fits.
+		$this->cancel_switches( $row, $ctx );
 		$number = $this->orders->next_number();
 		try {
 			$order = $this->db->run(
@@ -818,7 +829,7 @@ final class SubscriptionService {
 		if ( $billing === null ) {
 			throw new \InvalidArgumentException( __( 'This subscription has no address to price it with. Contact the store to change it.', 'flexacommerce' ) );
 		}
-		return ( $this->reprice )( $row->snapshot, $quantities, $billing, $shipping, $row->customer_id );
+		return ( $this->reprice )( $row->snapshot, $quantities, $billing, $shipping, $row->customer_id, [] );
 	}
 
 	/**
@@ -874,6 +885,248 @@ final class SubscriptionService {
 
 	private static function typed( AddressView $a, string $type, ?string $email = null, ?string $phone = null ): AddressView {
 		return new AddressView( $type, $a->first_name, $a->last_name, $a->company, $a->address_1, $a->address_2, $a->city, $a->state, $a->postcode, $a->country, $email ?? $a->email, $phone ?? $a->phone );
+	}
+
+	/** Whether the customer can switch the subscription to other variations (ADR-077). */
+	public function can_switch( Subscription $row ): bool {
+		return $this->reprice !== null && $row->snapshot !== null && $row->next_payment_at !== null && $row->status === SubscriptionStatus::ACTIVE;
+	}
+
+	/**
+	 * What switching lines to other variations of their products costs
+	 * (ADR-077). `$switch` maps an index of the snapshot's items to the
+	 * variation id. The unused share of the period paid for is the
+	 * credit, by time left: on the same schedule an upgrade pays the
+	 * difference for the rest of the period and a downgrade pays nothing
+	 * now; on another schedule a new period starts today, less the
+	 * credit, and a credit larger than the new price moves the first
+	 * payment out by as long as it pays for. A switch during a free trial
+	 * costs nothing and bills from the trial's end.
+	 *
+	 * @param array<int,int> $switch
+	 * @throws \InvalidArgumentException the switch cannot be made, with a message for the customer
+	 */
+	public function quote_switch( Subscription $row, array $switch ): SwitchQuote {
+		if ( ! $this->can_switch( $row ) || $row->snapshot === null || $row->next_payment_at === null || $this->reprice === null || $switch === [] ) {
+			throw new \InvalidArgumentException( __( 'This subscription cannot be switched now.', 'flexacommerce' ) );
+		}
+		if ( $row->billing === null ) {
+			throw new \InvalidArgumentException( __( 'This subscription has no address to price it with. Contact the store to change it.', 'flexacommerce' ) );
+		}
+		$new  = ( $this->reprice )( $row->snapshot, [], $row->billing, $row->shipping, $row->customer_id, $switch );
+		$now  = $this->clock->db_now();
+		$next = $row->next_payment_at;
+		$same = Snapshot::same_schedule( $new->plan, $row->plan );
+		if ( $row->in_trial( $now ) ) {
+			return new SwitchQuote( $new, 0, 0, $same, $next );
+		}
+		$span   = max( 1, self::seconds( $row->plan->after( $next, -1, $row->anchor_day ), $next ) );
+		$left   = max( 0, min( $span, self::seconds( $now, $next ) ) );
+		$credit = (int) round( $row->total * $left / $span );
+		if ( $same ) {
+			return new SwitchQuote( $new, $credit, max( 0, (int) round( $new->total * $left / $span ) - $credit ), true, $next );
+		}
+		$period = $new->plan->after( $now, 1, (int) substr( $now, 8, 2 ) );
+		if ( $new->total <= 0 || $new->total > $credit ) {
+			return new SwitchQuote( $new, $credit, max( 0, $new->total - $credit ), false, $period );
+		}
+		$covered = (int) floor( self::seconds( $now, $period ) * $credit / $new->total );
+		return new SwitchQuote( $new, $credit, 0, false, gmdate( 'Y-m-d H:i:s', (int) strtotime( $now . ' UTC' ) + $covered ) );
+	}
+
+	/**
+	 * Make a switch quote_switch() priced (ADR-077). One that costs
+	 * nothing applies now. Otherwise a switch order bills the charge, to
+	 * the saved method when there is one, and the switch applies when it
+	 * is paid. Returns that order, or null when nothing was owed.
+	 */
+	public function apply_switch( Subscription $row, SwitchQuote $quote, TransitionContext $ctx ): ?Order {
+		$this->cancel_switches( $row, $ctx );
+		if ( $quote->charge <= 0 ) {
+			$this->switch_to( $row, $quote->snapshot, $quote->same_schedule ? null : $quote->next_payment_at, null, $ctx );
+			return null;
+		}
+		$number = $this->orders->next_number();
+		$order  = $this->db->run(
+			function () use ( $row, $quote, $number, $ctx ): Order {
+				$now   = $this->clock->db_now();
+				$order = $this->orders->create( $this->switch_order( $row, $quote ), $number, $ctx->with_message( __( 'Plan switch order created.', 'flexacommerce' ) ) );
+				$this->rows->link( $row->id, $order->id, SubscriptionRepository::SWITCH, $now );
+				/* translators: 1: order number, 2: what the subscription switches to, like "Coffee beans 1 kg". */
+				$this->rows->add_event( $row->id, 'switch-order', sprintf( __( 'Switch order #%1$s created for %2$s.', 'flexacommerce' ), $order->order_number, $quote->snapshot->title() ), $order->id, $ctx->actor_type, $ctx->actor_id, $now );
+				return $order;
+			}
+		);
+		$this->collect( $row->id, $order, $ctx, 'customer' );
+		return $this->orders->get( $order->id );
+	}
+
+	/** The unpaid switch order of a row, which the account page links to (ADR-077). */
+	public function pending_switch( Subscription $row ): ?Order {
+		foreach ( array_reverse( $this->rows->orders( $row->id ) ) as $link ) {
+			if ( $link['relation'] !== SubscriptionRepository::SWITCH ) {
+				continue;
+			}
+			$order = $this->orders->find( $link['order_id'] );
+			if ( $order !== null && $order->status === OrderStatus::PENDING && $order->balance_due() > 0 ) {
+				return $order;
+			}
+		}
+		return null;
+	}
+
+	/** Unpaid switch orders are cancelled when another switch or a renewal replaces them. */
+	private function cancel_switches( Subscription $row, TransitionContext $ctx ): void {
+		foreach ( $this->rows->orders( $row->id ) as $link ) {
+			if ( $link['relation'] !== SubscriptionRepository::SWITCH ) {
+				continue;
+			}
+			$order = $this->orders->find( $link['order_id'] );
+			if ( $order !== null && $order->status === OrderStatus::PENDING && $order->amount_paid === 0 ) {
+				$this->orders->cancel( $order->id, $ctx->with_message( __( 'The plan switch was replaced or the period it was priced for ended.', 'flexacommerce' ) ) );
+			}
+		}
+	}
+
+	/**
+	 * A switch order: on the same schedule, the price difference for the
+	 * rest of the period as one line with its share of each tax; on
+	 * another schedule, the new period's lines less a credit line.
+	 */
+	private function switch_order( Subscription $row, SwitchQuote $quote ): NewOrder {
+		$new = $quote->snapshot;
+		if ( $quote->same_schedule ) {
+			[ $items, $tax ]                           = $this->difference( $row, $quote );
+			$fee                                       = $quote->charge - $tax;
+			[ $subtotal, $shipping, $discount, $incl ] = [ 0, 0, 0, false ];
+		} else {
+			$credit = min( $quote->credit, $new->total - $quote->charge );
+			$items  = $new->items;
+			if ( $credit > 0 ) {
+				$items[] = NewOrderItem::fee( __( 'Credit for the unused part of the previous plan', 'flexacommerce' ), -$credit, [ 'switch_credit' => true ] );
+			}
+			[ $subtotal, $shipping, $discount, $fee, $tax, $incl ] = [ $new->subtotal, $new->shipping_total, $new->discount_total, $new->fee_total - $credit, $new->tax_total, $new->prices_include_tax ];
+		}
+		$method = str_starts_with( $row->payment_method, 'fxc_' ) ? '' : $row->payment_method;
+		return new NewOrder(
+			status: OrderStatus::PENDING,
+			currency: $row->currency,
+			currency_exponent: $this->money->exponent( $row->currency ),
+			items: $items,
+			subtotal: $subtotal,
+			shipping_total: $shipping,
+			total: $quote->charge,
+			customer_email: $row->customer_email,
+			customer_id: $row->customer_id > 0 ? $row->customer_id : null,
+			billing: $row->billing,
+			shipping: $row->shipping,
+			payment_method: $method,
+			payment_method_title: $method !== '' ? $row->payment_method_title : '',
+			created_via: self::CREATED_VIA,
+			discount_total: $discount,
+			fee_total: $fee,
+			tax_total: $tax,
+			meta: [
+				self::ORDER_META  => (string) $row->id,
+				self::SWITCH_META => $new->to_json(),
+			],
+			prices_include_tax: $incl,
+		);
+	}
+
+	/**
+	 * The price difference for the rest of the period, as one line with
+	 * its share of each tax. A split that does not fit the charge leaves
+	 * the line untaxed.
+	 *
+	 * @return array{0:list<NewOrderItem>,1:int} the items and their tax
+	 */
+	private function difference( Subscription $row, SwitchQuote $quote ): array {
+		$new   = $quote->snapshot;
+		$share = $quote->charge / max( 1, $new->total - $row->total );
+		$old   = [];
+		foreach ( $row->snapshot->items ?? [] as $item ) {
+			if ( $item->type === OrderItem::TAX ) {
+				$old[ $item->code ] = $item->total;
+			}
+		}
+		$taxes = [];
+		$lines = [];
+		foreach ( $new->items as $item ) {
+			if ( $item->type !== OrderItem::TAX ) {
+				continue;
+			}
+			$amount = (int) round( ( $item->total - ( $old[ $item->code ] ?? 0 ) ) * $share );
+			if ( $amount < 0 ) {
+				return $this->difference_line( $quote->charge, [], [] );
+			}
+			if ( $amount > 0 ) {
+				$taxes[ $item->code ] = $amount;
+				$lines[]              = NewOrderItem::tax( $item->code, $item->name, $amount, $item->meta );
+			}
+		}
+		return array_sum( $taxes ) > $quote->charge ? $this->difference_line( $quote->charge, [], [] ) : $this->difference_line( $quote->charge, $taxes, $lines );
+	}
+
+	/**
+	 * @param array<string,int>  $taxes rate key => tax
+	 * @param list<NewOrderItem> $lines the tax lines
+	 * @return array{0:list<NewOrderItem>,1:int}
+	 */
+	private function difference_line( int $charge, array $taxes, array $lines ): array {
+		$tax = array_sum( $taxes );
+		$net = $charge - $tax;
+		return [
+			[ new NewOrderItem( OrderItem::FEE, __( 'Plan switch for the rest of the period', 'flexacommerce' ), 1, $net, $net, $net, tax_total: $tax, meta: ( $taxes !== [] ? [ 'taxes' => $taxes ] : [] ) + [ 'switch' => true ] ), ...$lines ],
+			$tax,
+		];
+	}
+
+	/** A switch order was paid: the subscription moves to what it bought, once. */
+	private function switch_paid( Subscription $row, int $order_id ): void {
+		foreach ( $this->rows->events( $row->id ) as $event ) {
+			if ( $event['type'] === 'switched' && $event['order_id'] === $order_id ) {
+				return;
+			}
+		}
+		$snapshot = Snapshot::from_json( $this->orders->meta( $order_id, self::SWITCH_META ) );
+		if ( $snapshot === null || $row->is_ended() ) {
+			return;
+		}
+		$this->switch_to( $row, $snapshot, null, $order_id, TransitionContext::system() );
+	}
+
+	/**
+	 * The renewals bill `$snapshot` from now on. Another schedule starts
+	 * over: from `$next`, or one period from today when a switch order
+	 * paid it.
+	 */
+	private function switch_to( Subscription $row, Snapshot $snapshot, ?string $next, ?int $order_id, TransitionContext $ctx ): void {
+		$now    = $this->clock->db_now();
+		$plan   = $snapshot->plan;
+		$fields = [
+			'snapshot' => $snapshot->to_json(),
+			'total'    => $snapshot->total,
+		];
+		if ( ! Snapshot::same_schedule( $plan, $row->plan ) ) {
+			$next  ??= $plan->after( $now, 1, (int) substr( $now, 8, 2 ) );
+			$billed  = $order_id !== null ? 1 : 0;
+			$fields += [
+				'period'         => $plan->period,
+				'interval_count' => $plan->interval,
+				'length'         => $plan->length,
+				'billed'         => $billed,
+				'anchor_day'     => (int) substr( $next, 8, 2 ),
+			] + $this->schedule( $row, $billed, $next, $plan );
+		}
+		$this->rows->update( $row->id, $fields, $now );
+		$changed = $this->rows->find( $row->id ) ?? $row;
+		/* translators: 1: what the subscription is for, like "Coffee beans 1 kg", 2: the renewal price, like "$10.00 / month". */
+		$this->rows->add_event( $row->id, 'switched', sprintf( __( 'Switched to %1$s. Renewal price %2$s.', 'flexacommerce' ), $snapshot->title(), $this->price_text( $changed ) ), $order_id, $ctx->actor_type, $ctx->actor_id, $now );
+	}
+
+	private static function seconds( string $from, string $to ): int {
+		return (int) strtotime( $to . ' UTC' ) - (int) strtotime( $from . ' UTC' );
 	}
 
 	/**
@@ -1035,8 +1288,9 @@ final class SubscriptionService {
 	 *
 	 * @return array{next_payment_at:?string,end_at:?string}
 	 */
-	private function schedule( Subscription $row, int $billed, string $next ): array {
-		return $row->plan->length > 0 && $billed >= $row->plan->length
+	private function schedule( Subscription $row, int $billed, string $next, ?SubscriptionPlan $plan = null ): array {
+		$plan ??= $row->plan;
+		return $plan->length > 0 && $billed >= $plan->length
 			? [
 				'next_payment_at' => null,
 				'end_at'          => $next,

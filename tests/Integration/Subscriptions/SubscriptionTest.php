@@ -697,7 +697,14 @@ final class SubscriptionTest extends OrderTestCase {
 		self::assertTrue( $this->subs()->can_change( $row ) );
 		$at = self::indexes( $row );
 
-		$quote = $this->subs()->quote_change( $row, [ $at[ $coffee ] => 2, $at[ $filter ] => 0 ], null );
+		$quote = $this->subs()->quote_change(
+			$row,
+			[
+				$at[ $coffee ] => 2,
+				$at[ $filter ] => 0,
+			],
+			null
+		);
 		self::assertSame( 2500, $quote->total, 'The filter is dropped.' );
 		$row = $this->subs()->apply_change( $row, $quote, null, new TransitionContext( 'customer', $this->user ) );
 		self::assertSame( [ 2500, 'Test product × 2' ], [ $row->total, $row->title() ] );
@@ -891,6 +898,242 @@ final class SubscriptionTest extends OrderTestCase {
 		self::assertSame( [ SubscriptionStatus::PENDING_CANCEL, $next, null ], [ $row->status, $row->end_at, $row->paused_at ] );
 	}
 
+	public function test_an_upgrade_on_the_same_schedule_bills_the_difference_for_the_rest_of_the_period(): void {
+		$monthly       = [ 'period' => 'month' ];
+		[ $row, $ids ] = $this->sized_row(
+			[
+				'S' => [ 1000, $monthly ],
+				'M' => [ 2000, $monthly ],
+			],
+			'S'
+		);
+		$next          = $row->next_payment_at;
+		$customer      = new TransitionContext( 'customer', $this->user );
+		$quote         = $this->subs()->quote_switch( $row, [ 0 => $ids['M'] ] );
+		self::assertTrue( $quote->same_schedule );
+		self::assertSame( 2500, $quote->snapshot->total );
+		self::assertEqualsWithDelta( 1500, $quote->credit, 2, 'A whole period is left.' );
+		self::assertEqualsWithDelta( 1000, $quote->charge, 2 );
+
+		$order = $this->subs()->apply_switch( $row, $quote, $customer );
+		self::assertNotNull( $order );
+		self::assertSame( [ OrderStatus::PENDING, $quote->charge ], [ $order->status, $order->total ] );
+		self::assertSame( [ 'Plan switch for the rest of the period' ], array_map( static fn ( $item ): string => $item->name, $order->items ) );
+		self::assertSame( 1500, $this->subs()->find( $row->id )?->total, 'Nothing changes before it is paid.' );
+		self::assertSame( $order->id, $this->subs()->pending_switch( $row )?->id );
+
+		$this->orders()->record_payment( $order->id, $order->total, TransitionContext::system() );
+		$this->orders()->transition( $order->id, OrderStatus::COMPLETED, TransitionContext::admin() );
+		$row = $this->subs()->find( $row->id );
+		self::assertNotNull( $row );
+		self::assertSame( [ 2500, $next, $ids['M'] ], [ $row->total, $row->next_payment_at, $row->snapshot?->items[0]->variant_id ] );
+		self::assertNull( $this->subs()->pending_switch( $row ) );
+		self::assertCount( 1, array_filter( $this->subs()->repository()->events( $row->id ), static fn ( array $e ): bool => $e['type'] === 'switched' ), 'Applied once.' );
+		self::assertContains( 'switch', array_column( $this->subs()->repository()->orders( $row->id ), 'relation' ) );
+	}
+
+	public function test_a_downgrade_on_the_same_schedule_applies_now_and_bills_the_next_renewal(): void {
+		$monthly       = [ 'period' => 'month' ];
+		[ $row, $ids ] = $this->sized_row(
+			[
+				'S' => [ 1000, $monthly ],
+				'M' => [ 2000, $monthly ],
+			],
+			'M'
+		);
+		$quote         = $this->subs()->quote_switch( $row, [ 0 => $ids['S'] ] );
+		self::assertSame( 0, $quote->charge );
+		self::assertNull( $this->subs()->apply_switch( $row, $quote, new TransitionContext( 'customer', $this->user ) ) );
+		$after = $this->subs()->find( $row->id );
+		self::assertSame( [ 1500, $row->next_payment_at, 'month' ], [ $after?->total, $after?->next_payment_at, $after?->plan->period ] );
+	}
+
+	public function test_another_schedule_starts_a_new_period_less_the_credit(): void {
+		[ $row, $ids ] = $this->sized_row(
+			[
+				'S' => [ 1000, [ 'period' => 'month' ] ],
+				'L' => [ 10000, [ 'period' => 'year' ] ],
+			],
+			'S'
+		);
+		$quote         = $this->subs()->quote_switch( $row, [ 0 => $ids['L'] ] );
+		self::assertFalse( $quote->same_schedule );
+		self::assertSame( 10500, $quote->snapshot->total );
+		self::assertSame( 10500 - $quote->credit, $quote->charge );
+		$order = $this->subs()->apply_switch( $row, $quote, new TransitionContext( 'customer', $this->user ) );
+		self::assertNotNull( $order );
+		$credit = array_values( array_filter( $order->items, static fn ( $item ): bool => ! empty( $item->meta['switch_credit'] ) ) );
+		self::assertCount( 1, $credit );
+		self::assertSame( -$quote->credit, $credit[0]->total );
+
+		$this->orders()->record_payment( $order->id, $order->total, TransitionContext::system() );
+		$row = $this->subs()->find( $row->id );
+		self::assertNotNull( $row );
+		self::assertSame( [ 'year', 1, 10500 ], [ $row->plan->period, $row->billed, $row->total ] );
+		self::assertGreaterThan( gmdate( 'Y-m-d H:i:s', time() + 360 * DAY_IN_SECONDS ), (string) $row->next_payment_at );
+	}
+
+	public function test_a_credit_larger_than_the_new_price_moves_the_first_payment_out(): void {
+		[ $row, $ids ] = $this->sized_row(
+			[
+				'S' => [ 1000, [ 'period' => 'month' ] ],
+				'L' => [ 10000, [ 'period' => 'year' ] ],
+			],
+			'L'
+		);
+		$quote         = $this->subs()->quote_switch( $row, [ 0 => $ids['S'] ] );
+		self::assertSame( 0, $quote->charge );
+		self::assertNull( $this->subs()->apply_switch( $row, $quote, new TransitionContext( 'customer', $this->user ) ) );
+		$row = $this->subs()->find( $row->id );
+		self::assertNotNull( $row );
+		self::assertSame( [ 'month', 0, 1500 ], [ $row->plan->period, $row->billed, $row->total ] );
+		// 10500 of credit pays for seven periods of 1500.
+		self::assertGreaterThan( gmdate( 'Y-m-d H:i:s', time() + 200 * DAY_IN_SECONDS ), (string) $row->next_payment_at );
+		self::assertLessThan( gmdate( 'Y-m-d H:i:s', time() + 220 * DAY_IN_SECONDS ), (string) $row->next_payment_at );
+	}
+
+	public function test_a_switch_during_the_free_trial_costs_nothing(): void {
+		$trial         = [
+			'period'     => 'month',
+			'trial_days' => 7,
+		];
+		[ $row, $ids ] = $this->sized_row(
+			[
+				'S' => [ 1000, $trial ],
+				'M' => [ 2000, $trial ],
+			],
+			'S'
+		);
+		self::assertTrue( $row->in_trial( gmdate( 'Y-m-d H:i:s' ) ) );
+		$quote = $this->subs()->quote_switch( $row, [ 0 => $ids['M'] ] );
+		self::assertSame( [ 0, 0 ], [ $quote->credit, $quote->charge ] );
+		self::assertNull( $this->subs()->apply_switch( $row, $quote, new TransitionContext( 'customer', $this->user ) ) );
+		$after = $this->subs()->find( $row->id );
+		self::assertSame( [ 2500, $row->next_payment_at ], [ $after?->total, $after?->next_payment_at ] );
+	}
+
+	public function test_a_renewal_cancels_an_unpaid_switch(): void {
+		$monthly       = [ 'period' => 'month' ];
+		[ $row, $ids ] = $this->sized_row(
+			[
+				'S' => [ 1000, $monthly ],
+				'M' => [ 2000, $monthly ],
+			],
+			'S'
+		);
+		$order         = $this->subs()->apply_switch( $row, $this->subs()->quote_switch( $row, [ 0 => $ids['M'] ] ), new TransitionContext( 'customer', $this->user ) );
+		self::assertNotNull( $order );
+		$this->due( $row );
+		self::assertSame( 1, $this->subs()->run() );
+		self::assertSame( OrderStatus::CANCELLED, $this->orders()->find( $order->id )?->status );
+		self::assertSame( 1500, $this->subs()->find( $row->id )?->total );
+	}
+
+	public function test_a_saved_card_pays_the_switch_at_once(): void {
+		$this->stripe();
+		$monthly                                    = [ 'period' => 'month' ];
+		[ $product, $ids ]                          = $this->plan_sizes(
+			[
+				'S' => [ 1000, $monthly ],
+				'M' => [ 2000, $monthly ],
+			]
+		);
+		FakeStripe::$routes['POST payment_intents'] = [ 200, self::intent( 'pi_first', 'succeeded', 1500 ) ];
+		$order                                      = $this->buy( $this->user, $product, 1, [], StripeGateway::ID, self::CARD, [], $ids['S'] );
+		$this->subs()->run();
+		$row = $this->subs()->find( $this->only( $order )->id );
+		self::assertNotNull( $row );
+		self::assertTrue( $row->is_automatic() );
+
+		$quote                                      = $this->subs()->quote_switch( $row, [ 0 => $ids['M'] ] );
+		FakeStripe::$routes['POST payment_intents'] = [ 200, self::intent( 'pi_switch', 'succeeded', $quote->charge ) ];
+		$switch                                     = $this->subs()->apply_switch( $row, $quote, new TransitionContext( 'customer', $this->user ) );
+		self::assertNotNull( $switch );
+		self::assertSame( 0, $switch->balance_due() );
+		$charge = array_slice( FakeStripe::calls_to( 'POST', 'payment_intents' ), -1 )[0]['body'];
+		self::assertSame( [ 'pm_visa', (string) $quote->charge ], [ $charge['payment_method'], (string) $charge['amount'] ] );
+		self::assertSame( 2500, $this->subs()->find( $row->id )?->total );
+	}
+
+	public function test_one_line_cannot_switch_to_another_schedule_than_the_others(): void {
+		[ $product, $ids ] = $this->plan_sizes(
+			[
+				'S' => [ 1000, [ 'period' => 'month' ] ],
+				'L' => [ 10000, [ 'period' => 'year' ] ],
+			]
+		);
+		$other             = $this->plan_product( 700, [ 'period' => 'month' ] );
+		$order             = $this->buy( $this->user, $product, 1, [], 'bacs', [], [ $other => 1 ], $ids['S'] );
+		$this->orders()->record_payment( $order->id, $order->total, TransitionContext::system() );
+		$row = $this->only( $order );
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'billed on another schedule' );
+		$this->subs()->quote_switch( $row, [ self::indexes( $row )[ $product ] => $ids['L'] ] );
+	}
+
+	public function test_the_account_page_quotes_a_switch_and_sends_the_charge_to_the_pay_page(): void {
+		Pages::install();
+		$monthly       = [ 'period' => 'month' ];
+		[ $row, $ids ] = $this->sized_row(
+			[
+				'S' => [ 1000, $monthly ],
+				'M' => [ 2000, $monthly ],
+				'L' => [ 500, $monthly ],
+			],
+			'S'
+		);
+		wp_set_current_user( $this->user );
+		$_SERVER['HTTP_REFERER'] = home_url( '/my-account/' );
+		$_GET                    = [ 'fxc_view_subscription' => (string) $row->id ];
+		$html                    = $this->account()->render();
+		self::assertStringContainsString( 'name="subscription_variant[0]"', $html );
+		self::assertStringContainsString( 'Review the switch', $html );
+		self::assertStringContainsString( 'value="' . $ids['M'] . '"', $html );
+
+		$_POST = $this->subscription_post( $row, 'switch', [ 'subscription_variant' => [ 0 => (string) $ids['M'] ] ] );
+		$page  = $this->account();
+		$page->handle();
+		self::assertSame( [], $page->errors() );
+		$html  = $page->render();
+		$quote = $this->subs()->quote_switch( $row, [ 0 => $ids['M'] ] );
+		self::assertStringContainsString( 'Review your switch', $html );
+		self::assertStringContainsString( 'To pay now', $html );
+		self::assertStringContainsString( 'name="subscription_quote" value="2500:' . $quote->charge . '"', $html );
+
+		$_POST   = $this->subscription_post(
+			$row,
+			'switch',
+			[
+				'subscription_variant' => [ 0 => (string) $ids['M'] ],
+				'subscription_quote'   => '2500:' . $quote->charge,
+				'subscription_confirm' => '1',
+			]
+		);
+		$pending = $this->redirected();
+		$order   = $this->subs()->pending_switch( $row );
+		self::assertNotNull( $order );
+		self::assertSame( Plugin::instance()->checkout()->pages()->pay_url( $order ), $pending );
+
+		$_POST = [];
+		$html  = $this->account()->render();
+		self::assertStringContainsString( 'Pay for the switch', $html );
+		self::assertStringContainsString( 'Plan switch', $html );
+
+		// A downgrade is saved at once.
+		$_POST = $this->subscription_post(
+			$row,
+			'switch',
+			[
+				'subscription_variant' => [ 0 => (string) $ids['L'] ],
+				'subscription_quote'   => '1000:0',
+				'subscription_confirm' => '1',
+			]
+		);
+		self::assertStringContainsString( 'subscription_switch', $this->redirected() );
+		self::assertSame( 1000, $this->subs()->find( $row->id )?->total );
+		self::assertSame( OrderStatus::CANCELLED, $this->orders()->find( $order->id )?->status, 'The new switch replaces the unpaid one.' );
+	}
+
 	/** @return array<int,int> product id => index of its item in the renewals */
 	private static function indexes( Subscription $row ): array {
 		$out = [];
@@ -1071,6 +1314,45 @@ final class SubscriptionTest extends OrderTestCase {
 		return $id;
 	}
 
+	/**
+	 * A variable product with sizes S, M and L, each on its own price and plan.
+	 *
+	 * @param array<string,array{int,array<string,mixed>}> $sizes size => [ price, plan ]
+	 * @return array{int,array<string,int>} product id, size => variant id
+	 */
+	private function plan_sizes( array $sizes ): array {
+		$id      = $this->variable_product( array_keys( $sizes ) );
+		$product = $this->service()->generate_variants( $id )->product;
+		$rows    = [];
+		$ids     = [];
+		foreach ( $product->variations as $variation ) {
+			$size         = strtoupper( (string) $variation->combination->get( 'l:size' ) );
+			$rows[]       = [
+				'id'            => $variation->id,
+				'regular_price' => $sizes[ $size ][0],
+				'subscription'  => $sizes[ $size ][1],
+			];
+			$ids[ $size ] = $variation->id;
+		}
+		$this->save( $id, [ 'variations' => $rows ] );
+		return [ $id, $ids ];
+	}
+
+	/**
+	 * A paid subscription to one size of a plan_sizes() product.
+	 *
+	 * @param array<string,array{int,array<string,mixed>}> $sizes
+	 * @return array{Subscription,array<string,int>}
+	 */
+	private function sized_row( array $sizes, string $size ): array {
+		[ $product, $ids ] = $this->plan_sizes( $sizes );
+		$order             = $this->buy( $this->user, $product, 1, [], 'bacs', [], [], $ids[ $size ] );
+		$this->orders()->record_payment( $order->id, $order->total, TransitionContext::system() );
+		$row = $this->subs()->find( $this->only( $order )->id );
+		self::assertNotNull( $row );
+		return [ $row, $ids ];
+	}
+
 	private function only( Order $order ): Subscription {
 		$rows = $this->subs()->repository()->for_parent( $order->id );
 		self::assertCount( 1, $rows );
@@ -1085,12 +1367,13 @@ final class SubscriptionTest extends OrderTestCase {
 	 * @param array<string,string> $billing
 	 * @param array<string,string> $input
 	 * @param array<int,int>       $more  other products in the cart, id => quantity
+	 * @param int                  $variant the variation of `$product_id`, or 0 for its base row
 	 */
-	private function buy( int $user_id, int $product_id, int $qty, array $billing = [], string $method = 'bacs', array $input = [], array $more = [] ): Order {
+	private function buy( int $user_id, int $product_id, int $qty, array $billing = [], string $method = 'bacs', array $input = [], array $more = [], int $variant = 0 ): Order {
 		$plugin  = Plugin::instance();
 		$browser = new CartServices( $plugin->services(), $plugin->catalog(), new MemoryTokenStore() );
 		foreach ( [ $product_id => $qty ] + $more as $id => $quantity ) {
-			$browser->cart()->add( $user_id, $id, $this->service()->get( $id )->base->id, $quantity );
+			$browser->cart()->add( $user_id, $id, $id === $product_id && $variant > 0 ? $variant : $this->service()->get( $id )->base->id, $quantity );
 		}
 		$checkout = $this->checkout( $browser );
 		$token    = $checkout->form_state( $user_id )['checkout_token'];

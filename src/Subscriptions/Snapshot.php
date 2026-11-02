@@ -81,6 +81,11 @@ final class Snapshot {
 		);
 	}
 
+	/** Whether two plans bill on the same days: the trial and the sign-up fee only touch the start. */
+	public static function same_schedule( SubscriptionPlan $a, SubscriptionPlan $b ): bool {
+		return $a->period === $b->period && $a->interval === $b->interval && $a->length === $b->length;
+	}
+
 	/** @return list<NewOrderItem> */
 	public function products(): array {
 		return array_values( array_filter( $this->items, static fn ( NewOrderItem $item ): bool => $item->type === OrderItem::PRODUCT ) );

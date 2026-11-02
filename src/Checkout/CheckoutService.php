@@ -1126,6 +1126,10 @@ final class CheckoutService {
 				/* translators: %s: product name. */
 				throw new \InvalidArgumentException( sprintf( __( '%s is no longer sold on this subscription. Contact the store to change it.', 'flexacommerce' ), $item->name() ) );
 			}
+			if ( $strict && $plan !== null && ! Snapshot::same_schedule( $plan, $item->plan ) ) {
+				// One subscription bills on one schedule: a switch moves all of it, never part of it (ADR-077).
+				throw new \InvalidArgumentException( __( 'This option is billed on another schedule than the other items. Subscribe to it separately instead.', 'flexacommerce' ) );
+			}
 			$plan ??= $item->plan;
 		}
 		if ( $strict && $quote->needs_shipping && $quote->rate === null ) {
@@ -1151,12 +1155,15 @@ final class CheckoutService {
 	 * choices, at today's prices, shipped and taxed to the new address
 	 * with the rate chosen at checkout when it is still offered.
 	 * `$quantities` maps an index of `$old->items` to its new quantity;
-	 * 0 drops the line, and bundle parts follow their bundle.
+	 * 0 drops the line, and bundle parts follow their bundle. `$switch`
+	 * maps an index to another variation of the line's product (ADR-077);
+	 * the plan may then change, as long as every line shares it.
 	 *
 	 * @param array<int,int> $quantities
+	 * @param array<int,int> $switch
 	 * @throws \InvalidArgumentException the change cannot be made, with a message for the customer
 	 */
-	public function resnapshot( Snapshot $old, array $quantities, AddressView $billing, ?AddressView $shipping, int $customer_id ): Snapshot {
+	public function resnapshot( Snapshot $old, array $quantities, AddressView $billing, ?AddressView $shipping, int $customer_id, array $switch = [] ): Snapshot {
 		$lines = [];
 		$rate  = '';
 		foreach ( $old->items as $index => $item ) {
@@ -1176,8 +1183,11 @@ final class CheckoutService {
 					$attributes[ $key ] = (string) $value;
 				}
 			}
+			$options = is_array( $item->meta['options'] ?? null ) ? $item->meta['options'] : [];
 			try {
-				$lines[] = $this->cart->admin_line( $item->product_id, (int) $item->variant_id, $quantity, $attributes, is_array( $item->meta['options'] ?? null ) ? $item->meta['options'] : [] );
+				$lines[] = isset( $switch[ $index ] )
+					? $this->cart->switch_line( $item->product_id, $switch[ $index ], $quantity, $attributes, $options )
+					: $this->cart->admin_line( $item->product_id, (int) $item->variant_id, $quantity, $attributes, $options );
 			} catch ( \Flexa\Commerce\Contracts\CommerceException $e ) {
 				/* translators: 1: product name, 2: why it cannot be ordered. */
 				throw new \InvalidArgumentException( sprintf( __( '%1$s: %2$s', 'flexacommerce' ), $item->name, $e->getMessage() ), 0, $e );
@@ -1193,9 +1203,11 @@ final class CheckoutService {
 		} catch ( InvalidCheckout $e ) {
 			throw new \InvalidArgumentException( (string) ( array_values( $e->errors )[0] ?? __( 'This change cannot be made.', 'flexacommerce' ) ), 0, $e );
 		}
+		if ( $switch !== [] ) {
+			return $new;
+		}
 		// The schedule stays: only lines sold on the same plan fit it.
-		$same = $new->plan->period === $old->plan->period && $new->plan->interval === $old->plan->interval && $new->plan->length === $old->plan->length;
-		if ( ! $same ) {
+		if ( ! Snapshot::same_schedule( $new->plan, $old->plan ) ) {
 			throw new \InvalidArgumentException( __( 'The plan of this product changed since you subscribed. Contact the store to change the subscription.', 'flexacommerce' ) );
 		}
 		return $new;

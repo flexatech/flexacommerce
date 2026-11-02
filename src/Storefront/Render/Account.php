@@ -21,6 +21,7 @@ use Flexa\Commerce\Subscriptions\Snapshot;
 use Flexa\Commerce\Subscriptions\Subscription;
 use Flexa\Commerce\Subscriptions\SubscriptionService;
 use Flexa\Commerce\Subscriptions\SubscriptionStatus;
+use Flexa\Commerce\Subscriptions\SwitchQuote;
 use Flexa\Commerce\Support\Countries;
 use Flexa\Commerce\Support\Settings;
 use Flexa\Commerce\Wishlist\WishlistService;
@@ -139,6 +140,8 @@ final class Account {
 			'subscription_card_paid' => __( 'Payment method saved, and the renewal is paid.', 'flexacommerce' ),
 			'subscription_card_failed' => __( 'Payment method saved, but the renewal payment did not go through. Pay it with the button below.', 'flexacommerce' ),
 			'subscription_change' => __( 'Subscription updated. The next renewal bills the change.', 'flexacommerce' ),
+			'subscription_switch' => __( 'Plan switched. The next renewal bills the new plan.', 'flexacommerce' ),
+			'subscription_switch_paid' => __( 'Plan switched and paid. The next renewal bills the new plan.', 'flexacommerce' ),
 			'subscription_pause' => __( 'Your subscription is paused. Nothing is charged or sent until you resume it.', 'flexacommerce' ),
 			'subscription_resume' => __( 'Your subscription is active again.', 'flexacommerce' ),
 			'subscription_resume_paid' => __( 'Your subscription is active again, and the renewal is paid.', 'flexacommerce' ),
@@ -261,9 +264,9 @@ final class Account {
 	 *
 	 * @param array<string,string> $errors
 	 * @param array<string,mixed>  $posted  the last post, to fill the forms again
-	 * @param ?Snapshot            $preview a change priced for the customer to confirm (ADR-076)
+	 * @param Snapshot|SwitchQuote|null $preview a change (ADR-076) or plan switch (ADR-077) priced for the customer to confirm
 	 */
-	public function subscription( ?Subscription $row, array $errors = [], array $posted = [], ?Snapshot $preview = null ): string {
+	public function subscription( ?Subscription $row, array $errors = [], array $posted = [], Snapshot|SwitchQuote|null $preview = null ): string {
 		if ( $row === null ) {
 			return '<p class="fxc-notice fxc-notice--error" role="alert">' . esc_html__( 'Subscription not found.', 'flexacommerce' ) . '</p>';
 		}
@@ -310,7 +313,14 @@ final class Account {
 			$html .= '<p class="fxc-notice" role="status">' . esc_html( $wait ) . '</p>'
 				. '<p><a class="fxc-button" href="' . esc_url( $this->checkout->pages()->pay_url( $unpaid ) ) . '">' . esc_html__( 'Pay renewal', 'flexacommerce' ) . '</a></p>';
 		}
-		if ( $preview !== null ) {
+		$switching = $service->pending_switch( $row );
+		if ( $switching !== null ) {
+			$html .= '<p class="fxc-notice" role="status">' . esc_html__( 'Your plan switch is waiting for payment. It applies once it is paid.', 'flexacommerce' ) . '</p>'
+				. '<p><a class="fxc-button" href="' . esc_url( $this->checkout->pages()->pay_url( $switching ) ) . '">' . esc_html__( 'Pay for the switch', 'flexacommerce' ) . '</a></p>';
+		}
+		if ( $preview instanceof SwitchQuote ) {
+			$html .= $this->switch_preview( $row, $preview, $posted );
+		} elseif ( $preview !== null ) {
 			$html .= $this->preview( $row, $preview, $posted );
 		}
 		if ( $row->is_paused() ) {
@@ -323,6 +333,9 @@ final class Account {
 		}
 		if ( $service->can_change( $row ) && $row->snapshot !== null ) {
 			$html .= $this->items_form( $row, $row->snapshot, $posted );
+		}
+		if ( $service->can_switch( $row ) && $row->snapshot !== null ) {
+			$html .= $this->switch_form( $row, $row->snapshot, $posted );
 		}
 		if ( $service->can_update_method( $row ) ) {
 			$html .= '<form method="post" class="fxc-account__subscription-action">' . self::hidden( 'subscription' )
@@ -366,7 +379,13 @@ final class Account {
 				'<tr><th scope="row"><a href="%1$s">%2$s</a></th><td>%3$s</td><td>%4$s</td><td>%5$s</td><td>%6$s</td></tr>',
 				esc_url( AccountPage::url( 'view-order', (string) $order->id ) ),
 				esc_html( $order->order_number ),
-				esc_html( $link['relation'] === 'parent' ? __( 'First order', 'flexacommerce' ) : __( 'Renewal', 'flexacommerce' ) ),
+				esc_html(
+					match ( $link['relation'] ) {
+						'parent' => __( 'First order', 'flexacommerce' ),
+						'switch' => __( 'Plan switch', 'flexacommerce' ),
+						default => __( 'Renewal', 'flexacommerce' ),
+					}
+				),
 				esc_html( self::date( $order ) ),
 				esc_html( OrderStatus::label( $order->status ) ),
 				esc_html( $this->checkout->format( $order->total, $order->currency ) )
@@ -493,6 +512,113 @@ final class Account {
 			. '<input type="hidden" name="subscription_confirm" value="1">'
 			. '<p><button type="submit" class="fxc-button">' . esc_html__( 'Confirm the change', 'flexacommerce' ) . '</button> '
 			. '<a href="' . esc_url( AccountPage::url( 'view-subscription', (string) $row->id ) ) . '">' . esc_html__( 'Keep it as it is', 'flexacommerce' ) . '</a></p></form></section>';
+	}
+
+	/**
+	 * Other variations of the product lines that can be switched to
+	 * (ADR-077): one choice per line, the current one first. Nothing
+	 * shows when no line has another variation on a plan.
+	 *
+	 * @param array<string,mixed> $posted
+	 */
+	private function switch_form( Subscription $row, Snapshot $snapshot, array $posted ): string {
+		$cart   = Plugin::instance()->cart()->cart();
+		$values = is_array( $posted['subscription_variant'] ?? null ) ? $posted['subscription_variant'] : [];
+		$fields = '';
+		foreach ( self::lines( $snapshot ) as $index => $item ) {
+			if ( (int) $item->variant_id <= 0 ) {
+				continue;
+			}
+			$choices = $cart->switch_rows( $item->product_id, (int) $item->variant_id, self::selection( $item ) );
+			if ( $choices === [] ) {
+				continue;
+			}
+			$chosen = is_scalar( $values[ $index ] ?? null ) ? absint( $values[ $index ] ) : (int) $item->variant_id;
+			$id     = 'fxc-subscription-variant-' . $index;
+			/* translators: %s: the item the subscription has now. */
+			$options = '<option value="' . esc_attr( (string) $item->variant_id ) . '">' . esc_html( sprintf( __( '%s (current)', 'flexacommerce' ), $item->name ) ) . '</option>';
+			foreach ( $choices as $choice ) {
+				$options .= sprintf(
+					'<option value="%1$d"%2$s>%3$s</option>',
+					$choice['variant_id'],
+					selected( $chosen, $choice['variant_id'], false ),
+					/* translators: 1: the option, like "1 kg", 2: its price, like "$20.00 / month". */
+					esc_html( sprintf( __( '%1$s: %2$s', 'flexacommerce' ), $choice['label'], $choice['plan']->per( $this->checkout->format( $choice['price'], $row->currency ) ) ) )
+				);
+			}
+			$fields .= '<p class="fxc-field"><label for="' . esc_attr( $id ) . '">' . esc_html( $item->name ) . '</label><select id="' . esc_attr( $id ) . '" name="subscription_variant[' . $index . ']">' . $options . '</select></p>';
+		}
+		if ( $fields === '' ) {
+			return '';
+		}
+		return '<form method="post" class="fxc-account__subscription-switch">' . self::hidden( 'subscription' ) . self::subscription_fields( $row, 'switch' )
+			. '<fieldset><legend>' . esc_html__( 'Switch plan', 'flexacommerce' ) . '</legend>' . $fields . '</fieldset>'
+			. '<p>' . esc_html__( 'The part of this period you already paid for counts toward the new plan. You see the price before anything changes.', 'flexacommerce' ) . '</p>'
+			. '<p><button type="submit" class="fxc-button fxc-button--secondary">' . esc_html__( 'Review the switch', 'flexacommerce' ) . '</button></p></form>';
+	}
+
+	/**
+	 * A plan switch with the new items and renewal price, the credit for
+	 * the period paid, what is charged now and when it applies (ADR-077).
+	 *
+	 * @param array<string,mixed> $posted
+	 */
+	private function switch_preview( Subscription $row, SwitchQuote $quote, array $posted ): string {
+		$new   = $quote->snapshot;
+		$items = '';
+		foreach ( self::lines( $new ) as $item ) {
+			$items .= '<li>' . esc_html( $item->quantity > 1 ? sprintf( '%1$s × %2$d', $item->name, $item->quantity ) : $item->name ) . '</li>';
+		}
+		$hidden = '';
+		foreach ( is_array( $posted['subscription_variant'] ?? null ) ? $posted['subscription_variant'] : [] as $index => $variant ) {
+			if ( is_int( $index ) && is_scalar( $variant ) ) {
+				$hidden .= '<input type="hidden" name="subscription_variant[' . $index . ']" value="' . esc_attr( (string) absint( $variant ) ) . '">';
+			}
+		}
+		$money = fn ( int $amount ): string => $this->checkout->format( $amount, $row->currency );
+		$terms = '<p>' . sprintf(
+			/* translators: 1: new renewal price, 2: current renewal price. */
+			esc_html__( 'New renewal price: %1$s (now %2$s).', 'flexacommerce' ),
+			'<strong>' . esc_html( $new->plan->per( $money( $new->total ) ) ) . '</strong>',
+			esc_html( Plugin::instance()->subscriptions()->price_text( $row ) )
+		) . '</p>';
+		if ( $quote->credit > 0 ) {
+			/* translators: %s: amount credited. */
+			$terms .= '<p>' . esc_html( sprintf( __( 'Credit for the part of this period you already paid for: %s.', 'flexacommerce' ), $money( $quote->credit ) ) ) . '</p>';
+		}
+		$terms .= $quote->charge > 0
+			/* translators: %s: amount charged now. */
+			? '<p>' . sprintf( esc_html__( 'To pay now: %s.', 'flexacommerce' ), '<strong>' . esc_html( $money( $quote->charge ) ) . '</strong>' ) . '</p>'
+			: '<p>' . esc_html__( 'Nothing to pay now.', 'flexacommerce' ) . '</p>';
+		$terms .= '<p>' . esc_html(
+			$quote->charge > 0
+				/* translators: %s: date of the next payment. */
+				? sprintf( __( 'The switch applies once this is paid. The next payment is on %s.', 'flexacommerce' ), self::day( $quote->next_payment_at ) )
+				/* translators: %s: date of the next payment. */
+				: sprintf( __( 'The switch applies now. The next payment is on %s.', 'flexacommerce' ), self::day( $quote->next_payment_at ) )
+		) . '</p>';
+		return '<section class="fxc-account__subscription-preview" aria-labelledby="fxc-subscription-preview"><h3 id="fxc-subscription-preview" tabindex="-1">' . esc_html__( 'Review your switch', 'flexacommerce' ) . '</h3>'
+			. '<ul>' . $items . '</ul>' . $terms
+			. '<form method="post">' . self::hidden( 'subscription' ) . self::subscription_fields( $row, 'switch' ) . $hidden
+			. '<input type="hidden" name="subscription_quote" value="' . esc_attr( $new->total . ':' . $quote->charge ) . '">'
+			. '<input type="hidden" name="subscription_confirm" value="1">'
+			. '<p><button type="submit" class="fxc-button">' . esc_html__( 'Confirm the switch', 'flexacommerce' ) . '</button> '
+			. '<a href="' . esc_url( AccountPage::url( 'view-subscription', (string) $row->id ) ) . '">' . esc_html__( 'Keep it as it is', 'flexacommerce' ) . '</a></p></form></section>';
+	}
+
+	/**
+	 * The options chosen for a line, as the cart takes them.
+	 *
+	 * @return array<string,string>
+	 */
+	private static function selection( \Flexa\Commerce\Orders\NewOrderItem $item ): array {
+		$out = [];
+		foreach ( is_array( $item->meta['selection'] ?? null ) ? $item->meta['selection'] : [] as $key => $value ) {
+			if ( is_string( $key ) && is_scalar( $value ) ) {
+				$out[ $key ] = (string) $value;
+			}
+		}
+		return $out;
 	}
 
 	/**

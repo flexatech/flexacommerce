@@ -285,7 +285,7 @@ final class Plugin {
 			fn (): Payments\PaymentService => $this->payments()->service(),
 			static fn ( int $id ): string => Storefront\AccountPage::url( 'view-subscription', (string) $id ),
 			fn (): int => $this->notifications()->days_before( Notifications\Emails\CustomerRenewalReminder::ID ),
-			fn ( Subscriptions\Snapshot $old, array $quantities, Contracts\Orders\AddressView $billing, ?Contracts\Orders\AddressView $shipping, int $customer_id ): Subscriptions\Snapshot => $this->checkout()->service()->resnapshot( $old, $quantities, $billing, $shipping, $customer_id )
+			fn ( Subscriptions\Snapshot $old, array $quantities, Contracts\Orders\AddressView $billing, ?Contracts\Orders\AddressView $shipping, int $customer_id, array $switch ): Subscriptions\Snapshot => $this->checkout()->service()->resnapshot( $old, $quantities, $billing, $shipping, $customer_id, $switch )
 		);
 	}
 
