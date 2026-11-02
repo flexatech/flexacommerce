@@ -32,8 +32,24 @@ final class Enqueue {
 			if ( $page === Menu::SLUG . '-attributes' || $page === Menu::SLUG . '-settings' ) {
 				wp_enqueue_media(); // Image swatches and the invoice logo pick from the media library.
 			}
-			$this->enqueue_entry( self::HANDLE, self::ENTRY, $page );
+			$this->enqueue_entry( self::HANDLE, self::ENTRY, $page, $this->navigation() );
 		}
+	}
+
+	/**
+	 * The app header (ADR-082): the menu sections and the open one.
+	 *
+	 * @return array<string,mixed>
+	 */
+	private function navigation(): array {
+		$menu = Menu::instance();
+		return [
+			'nav' => [
+				'sections' => $menu->sections(),
+				'current'  => $menu->current(),
+				'storeUrl' => esc_url_raw( home_url( '/' ) ),
+			],
+		];
 	}
 
 	/**

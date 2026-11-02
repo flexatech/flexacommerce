@@ -25,7 +25,7 @@ const CheckoutBuilderPage = lazy(() => import("./features/checkout/CheckoutBuild
 export function App({ page }: { page: AdminPage }) {
     return (
         <div className="fxc:bg-background fxc:min-h-screen">
-            <Header page={page} />
+            <Header />
             <main className={cn("fxc:mx-auto fxc:px-6 fxc:py-6", page === "flexacommerce-checkout" ? "fxc:max-w-7xl" : "fxc:max-w-5xl")}>
                 <Toaster />
                 {page === "flexacommerce-orders" ? (

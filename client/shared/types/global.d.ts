@@ -18,6 +18,21 @@ export interface FlexaCommerceCurrency {
     thousandSeparator: string;
 }
 
+/** One menu section and the pages in it the user may open (Admin\\Menu::sections). */
+export interface NavSection {
+    id: "orders" | "products" | "customers" | "marketing" | "settings";
+    label: string;
+    url: string;
+    pages: { slug: string; label: string; url: string }[];
+}
+
+export interface FlexaCommerceNav {
+    sections: NavSection[];
+    /** [section id, page slug]; the page is "" on a screen with no tab of its own. */
+    current: [string, string];
+    storeUrl: string;
+}
+
 export interface FlexaCommerceGlobal {
     restUrl: string;
     restNonce: string;
@@ -32,6 +47,8 @@ export interface FlexaCommerceGlobal {
         weight: "kg" | "g" | "lb" | "oz";
         dimension: "cm" | "mm" | "m" | "in" | "yd";
     };
+    /** The app pages only, not the product editor. */
+    nav?: FlexaCommerceNav;
     /** Product editor screen only. */
     productId?: number;
     canManageTerms?: boolean;
