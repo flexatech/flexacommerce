@@ -20,9 +20,9 @@ defined( 'ABSPATH' ) || exit;
 final class Reviews {
 	use HasInstance;
 
-	public const TYPE          = 'review';
-	public const META_RATING   = 'rating';
-	public const META_VERIFIED = 'verified';
+	public const TYPE          = 'fxc_review';
+	public const META_RATING   = '_fxc_review_rating';
+	public const META_VERIFIED = '_fxc_review_verified';
 
 	/** Product meta: the average rating, the number of rated reviews and the reviews per star. */
 	public const META_AVERAGE = '_fxc_rating';

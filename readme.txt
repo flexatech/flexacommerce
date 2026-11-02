@@ -14,15 +14,20 @@ A commerce engine for WordPress: products with variants, cart, checkout and orde
 
 FlexaCommerce keeps store data in its own database tables instead of posts and post meta. Products, variants, prices, stock, carts and orders each get a table with the indexes their queries need, so a large catalog or order history does not slow down the rest of the site.
 
-This is an early development release. It installs the database schema, the admin Status and Settings screens, the plugin log and the WP-CLI tools. Catalog, cart and checkout arrive in later releases, so do not use it on a live store yet.
+This is a development release. Test it on a staging copy of your store before you use it on a live site.
 
-What this release includes:
+What it includes:
 
-* All store tables, created on activation and kept up to date by a versioned schema runner. Works on single sites and multisite networks.
+* Simple, variable, grouped, external, downloadable, bundle, gift card and subscription products, with attributes, swatches, badges, product options and a gallery with video.
+* Cart, a checkout you can rearrange (fields, sections, steps and conditions), guest checkout and a My Account area with orders, downloads, wishlist, subscriptions and store credit.
+* Coupons, automatic discounts, pricing rules and checkout fees.
+* Shipping zones, shipping classes and table rates; taxes by location.
+* Built-in Stripe and PayPal payments, including express buttons and automatic subscription renewals.
+* Orders you can create and edit in the admin, refunds, shipment tracking, PDF invoices and credit notes, order CSV export and product CSV import and export.
+* Product reviews, shop filters, back-in-stock and abandoned cart emails.
+* A migration tool that copies a WooCommerce store into FlexaCommerce and back, on the same site or through a file.
 * Status screen with environment checks, database health and a searchable plugin log. Secrets (keys, tokens, card numbers) and personal details such as names, addresses and IP addresses are masked before an entry is stored.
-* Settings for currency format, order numbering, stock holds and logging.
-* A Store Manager role and dedicated capabilities for viewing, editing and refunding orders.
-* WP-CLI commands: `wp flexacommerce doctor`, `wp flexacommerce status`, `wp flexacommerce db version` and `wp flexacommerce db upgrade`.
+* A Store Manager role, dedicated capabilities and WP-CLI commands (`wp flexacommerce doctor`, `wp flexacommerce status`, `wp flexacommerce db upgrade` and more).
 * No database queries and no assets on pages outside the store.
 
 = Your data on uninstall =
@@ -31,9 +36,54 @@ By default, deleting the plugin leaves every table, option and setting in place,
 
 = Source code =
 
-The admin screens are a React app. Its readable source ships with the plugin in the `client/` folder; the compiled files are in `assets/dist/`.
+The admin screens are a React app. Its readable source ships with the plugin in the `client/` folder, together with its build configuration (`package.json`, `pnpm-lock.yaml`, `tsconfig.json`, `vite.config.ts`). The compiled files are in `assets/dist/`. To build them yourself, with Node.js 20 or newer and pnpm:
+
+`cd client && pnpm install && pnpm build`
+
+The build checks the types, then writes the bundles to `assets/dist/`. The storefront scripts and styles in `assets/frontend/` are not compiled; they ship as written.
 
 PDF invoices use the Noto Sans fonts in `assets/fonts/`, under the SIL Open Font License 1.1 (`assets/fonts/OFL.txt`).
+
+== External services ==
+
+FlexaCommerce connects to the services below only when the store owner turns on the feature that needs them. Nothing is sent to FlexaCommerce's authors.
+
+= Stripe =
+
+Used by the built-in Stripe payment method and Stripe express buttons (Apple Pay, Google Pay, Link), once the store owner adds Stripe API keys.
+
+* When a shopper pays at checkout or on the order-pay page, the store's server sends the order amount, currency, order number, the store's web address and the shopper's email and name to the Stripe API (`api.stripe.com`) to create and confirm the payment. The server also calls the API to issue refunds, charge subscription renewals, save a card for renewals, register the store's webhook address and the store's domain for Apple Pay, and read the Stripe account name when the keys are saved.
+* On the checkout, cart and product pages where Stripe is offered, the shopper's browser loads Stripe.js from `js.stripe.com`. Card details are typed into Stripe's own fields and go straight to Stripe; they never reach the store's server. When Stripe.js cannot load, the shopper is sent to a Stripe-hosted payment page on `checkout.stripe.com` instead.
+
+Stripe terms of service: https://stripe.com/legal/ssa
+Stripe privacy policy: https://stripe.com/privacy
+
+= PayPal =
+
+Used by the built-in PayPal payment method and PayPal express buttons, once the store owner adds PayPal API credentials.
+
+* When a shopper pays with PayPal, the store's server sends the order amount, currency, order number and the shopper's name, email and shipping address to the PayPal REST API (`api-m.paypal.com`, or `api-m.sandbox.paypal.com` in sandbox mode) to create and capture the payment. The server also calls the API to issue refunds, save a PayPal account for subscription renewals, charge those renewals and verify webhook events.
+* On the checkout, cart and product pages where PayPal is offered, the shopper's browser loads the PayPal JavaScript SDK from `www.paypal.com`.
+
+PayPal user agreement: https://www.paypal.com/legalhub/paypal/useragreement-full
+PayPal privacy statement: https://www.paypal.com/legalhub/paypal/privacy-full
+
+= YouTube and Vimeo =
+
+When the store owner adds a YouTube or Vimeo link to a product gallery, the product page embeds that video in an iframe from `www.youtube-nocookie.com` or `player.vimeo.com`. The shopper's browser loads the player only after the shopper clicks the video, and the video service then receives the shopper's IP address and browser details.
+
+YouTube terms of service: https://www.youtube.com/t/terms
+Google privacy policy: https://policies.google.com/privacy
+Vimeo terms of service: https://vimeo.com/terms
+Vimeo privacy policy: https://vimeo.com/privacy
+
+= Image and file downloads during imports =
+
+The product CSV import and the migration file import download the images and media named in the file, from whatever addresses the file lists (usually the old store). This happens only when an administrator runs an import, and the request carries no store or customer data.
+
+= Carrier tracking links =
+
+Shipment tracking adds a link to the carrier's tracking page (for example USPS, UPS, FedEx, DHL, Royal Mail, Canada Post or Australia Post) to order emails and the My Account order page. The plugin makes no request to the carrier; the customer's browser opens the page only if the customer clicks the link.
 
 == Installation ==
 
@@ -47,7 +97,7 @@ The database must use the InnoDB storage engine. MySQL 8.0+ or MariaDB 10.6+ is 
 
 = Does it work alongside WooCommerce? =
 
-Yes. The two plugins use separate tables and do not share data. A migration tool between them is planned.
+Yes. The two plugins use separate tables and do not share data. FlexaCommerce > Migration copies products, customers, orders, coupons, reviews, subscriptions and settings from WooCommerce, and can copy a store back to WooCommerce too.
 
 = Does it work with page caching? =
 
@@ -68,9 +118,13 @@ Run `wp flexacommerce doctor`. It prints the same checks as the Status screen an
 == Changelog ==
 
 = Unreleased =
-* Products: simple and variable products with global and custom attributes, variation generation and bulk editing, prices with sale schedules, stock (per variation or shared with the product), weight and dimensions.
-* New Attributes screen for store-wide attributes and their values.
-* Product duplicate action.
+* Catalog: simple, variable, grouped, external, downloadable, bundle, gift card and subscription products; attributes, swatches, badges, product options, gallery video; reviews; shop filters; wishlist; product CSV import and export.
+* Cart and checkout: checkout builder with fields, sections, steps and conditions; coupons, automatic discounts, pricing rules and fees; guest order lookup.
+* Payments: built-in Stripe and PayPal with express buttons; gift cards and store credit.
+* Shipping and tax: zones, shipping classes, table rates, shipment tracking; taxes by location.
+* Orders: create and edit in the admin, PDF invoices and credit notes, order CSV export, abandoned cart and back-in-stock emails.
+* Subscriptions with automatic renewals, reminder emails, plan switching and customer self-service.
+* Migration to and from WooCommerce, on the same site or through a file.
 
 = 0.1.0 =
 * First development release: database schema, Status and Settings screens, plugin log, roles and capabilities, WP-CLI tools.

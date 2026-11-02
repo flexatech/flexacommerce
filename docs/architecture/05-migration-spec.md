@@ -302,7 +302,7 @@ Files live in `uploads/flexacommerce-imports`, which carries `.htaccess`, `index
 |---|---|
 | `wc_get_attribute_taxonomies()` row (`attribute_id`, `attribute_label`, `attribute_name`, `attribute_orderby`) | top-level `fxc_attribute` term (name = label, slug = `attribute_name`, term meta `_fxc_orderby`) |
 | `pa_{name}` terms (with hierarchy flattened, order meta) | child terms of that attribute term, slug preserved when no other attribute uses it (all values share one taxonomy, so WordPress suffixes a taken slug), `order` meta preserved |
-| `product_cat` / `product_tag` terms | `fxc_product_cat` / `fxc_product_tag`: name, slug, description, parent, `thumbnail_id` term meta, display order |
+| `product_cat` / `product_tag` terms | `fxc_product_cat` / `fxc_product_tag`: name, slug, description, parent, `thumbnail_id` term meta (`_fxc_thumbnail_id` on FlexaCommerce categories), display order |
 
 Slug collisions inside a target taxonomy are impossible for a fresh store; on re-run the id map is used, not the slug.
 
@@ -456,7 +456,7 @@ A second run replaces the sections again from the extension, so changes made in 
 
 ### 5.11 Product reviews
 
-The `reviews` stage runs last, in both directions (ADR-056). Both stores keep reviews as comments on the product with `rating` and `verified` in comment meta, so one record shape serves both.
+The `reviews` stage runs last, in both directions (ADR-056). Both stores keep reviews as comments on the product with the rating and the verified flag in comment meta, so one record shape serves both; `Migration\ReviewKeys` holds each store's keys (WooCommerce: type `review`, replies `comment`, meta `rating`/`verified`; FlexaCommerce: type `fxc_review` for both, meta `_fxc_review_rating`/`_fxc_review_verified`).
 
 - Records: one `review` per approved or held comment of type `review` or `comment` on a product. Spam and trash stay behind. The record holds the product and, for a reply, the review it answers (both references the record depends on), the customer (`wp:user:ID`), the author's name and email, the text, the rating (1 to 5, top-level only), the verified flag, whether it is approved, and the date.
 - Target: a comment on the imported product with the same date and author. A top-level review is type `review`; a reply is `comment` in WooCommerce and `review` in FlexaCommerce. A held review stays held. The customer is kept when the user exists (on another site, matched by email). The product's rating summary is rebuilt after each write.

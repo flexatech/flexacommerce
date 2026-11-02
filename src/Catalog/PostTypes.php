@@ -24,6 +24,9 @@ final class PostTypes {
 	public const TAG       = 'fxc_product_tag';
 	public const ATTRIBUTE = 'fxc_attribute';
 
+	/** Category term meta: the attachment id of the category image. */
+	public const CATEGORY_THUMBNAIL = '_fxc_thumbnail_id';
+
 	/**
 	 * Account sub-pages (doc 02 §6.3): query var => URL slug, rewrite
 	 * endpoints on pages. They live here with the other rewrite rules, so

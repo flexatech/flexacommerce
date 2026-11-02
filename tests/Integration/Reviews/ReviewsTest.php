@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Flexa\Commerce\Tests\Integration\Reviews;
 
 use Flexa\Commerce\Catalog\PostTypes;
+use Flexa\Commerce\Database\Upgrades\V23PrefixedKeys;
 use Flexa\Commerce\Orders\OrderStatus;
 use Flexa\Commerce\Reviews\Reviews;
 use Flexa\Commerce\Support\Settings;
@@ -188,6 +189,42 @@ final class ReviewsTest extends OrderTestCase {
 		);
 		$posts = array_map( static fn ( \WP_Post $post ): int => $post->ID, $GLOBALS['wp_query']->posts );
 		self::assertSame( [ $ids['high'], $ids['low'], $ids['none'] ], array_values( array_intersect( $posts, $ids ) ) );
+	}
+
+	public function test_v23_moves_old_keys_to_the_prefixed_ones_on_our_rows_only(): void {
+		$product = $this->simple();
+		$post    = self::factory()->post->create();
+		$old     = static fn ( int $on ): int => (int) wp_insert_comment(
+			[
+				'comment_post_ID'  => $on,
+				'comment_type'     => 'review',
+				'comment_content'  => 'Old.',
+				'comment_approved' => 1,
+				'comment_meta'     => [
+					'rating'   => 3,
+					'verified' => 1,
+				],
+			]
+		);
+		$review  = $old( $product );
+		$other   = $old( $post );
+		$term    = self::factory()->term->create( [ 'taxonomy' => PostTypes::CATEGORY ] );
+		$tag     = self::factory()->term->create( [ 'taxonomy' => 'category' ] );
+		update_term_meta( $term, 'thumbnail_id', 42 );
+		update_term_meta( $tag, 'thumbnail_id', 43 );
+
+		( new V23PrefixedKeys() )->run();
+		( new V23PrefixedKeys() )->run();
+
+		self::assertSame( Reviews::TYPE, get_comment( $review )->comment_type );
+		self::assertSame( '3', get_comment_meta( $review, Reviews::META_RATING, true ) );
+		self::assertSame( '1', get_comment_meta( $review, Reviews::META_VERIFIED, true ) );
+		self::assertSame( '', get_comment_meta( $review, 'rating', true ) );
+		self::assertSame( '42', get_term_meta( $term, PostTypes::CATEGORY_THUMBNAIL, true ) );
+		self::assertSame( '', get_term_meta( $term, 'thumbnail_id', true ) );
+		self::assertSame( 'review', get_comment( $other )->comment_type, 'Comments on other posts keep their type.' );
+		self::assertSame( '3', get_comment_meta( $other, 'rating', true ) );
+		self::assertSame( '43', get_term_meta( $tag, 'thumbnail_id', true ) );
 	}
 
 	/**

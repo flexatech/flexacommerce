@@ -42,10 +42,8 @@ final class SameSite {
 
 	/** The same check on the current request's headers. */
 	public static function current(): bool {
-		// phpcs:disable WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- only the host is parsed and compared.
-		$origin  = isset( $_SERVER['HTTP_ORIGIN'] ) ? (string) wp_unslash( $_SERVER['HTTP_ORIGIN'] ) : '';
-		$referer = isset( $_SERVER['HTTP_REFERER'] ) ? (string) wp_unslash( $_SERVER['HTTP_REFERER'] ) : '';
-		// phpcs:enable
+		$origin  = isset( $_SERVER['HTTP_ORIGIN'] ) ? sanitize_text_field( wp_unslash( (string) $_SERVER['HTTP_ORIGIN'] ) ) : '';
+		$referer = isset( $_SERVER['HTTP_REFERER'] ) ? sanitize_text_field( wp_unslash( (string) $_SERVER['HTTP_REFERER'] ) ) : '';
 		return self::check( $origin, $referer );
 	}
 }

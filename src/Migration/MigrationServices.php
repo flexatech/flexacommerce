@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Flexa\Commerce\Migration;
 
 use Flexa\Commerce\Catalog\CatalogServices;
-use Flexa\Commerce\Catalog\PostTypes;
 use Flexa\Commerce\Coupons\CouponEditor;
 use Flexa\Commerce\Coupons\CouponRepository;
 use Flexa\Commerce\Customers\CustomerProfile;
@@ -193,7 +192,7 @@ final class MigrationServices {
 		if ( $this->woo_source === null ) {
 			$enumeration      = new WooEnumerationRepository( $this->services->wpdb() );
 			$orders           = new WooOrderReader();
-			$this->woo_source = new WooSource( $enumeration, new WooStoreReader( $enumeration ), new WooCatalogReader(), $orders, new WooShippingReader(), new WooCouponReader(), new WooOptionReader( $enumeration ), new WooCheckoutReader(), new ReviewReader( 'wc', 'product' ), new WooSubscriptionReader( $enumeration, $orders ) );
+			$this->woo_source = new WooSource( $enumeration, new WooStoreReader( $enumeration ), new WooCatalogReader(), $orders, new WooShippingReader(), new WooCouponReader(), new WooOptionReader( $enumeration ), new WooCheckoutReader(), new ReviewReader( 'wc', ReviewKeys::woo() ), new WooSubscriptionReader( $enumeration, $orders ) );
 		}
 		return $this->woo_source;
 	}
@@ -208,7 +207,7 @@ final class MigrationServices {
 				new FxcOrderReader( $enumeration ),
 				new FxcShippingReader( $this->shipping->service() ),
 				new FxcCouponReader( $this->coupons(), $this->catalog->variants() ),
-				new ReviewReader( 'fxc', PostTypes::PRODUCT ),
+				new ReviewReader( 'fxc', ReviewKeys::fxc() ),
 			);
 		}
 		return $this->fxc_source;
@@ -222,8 +221,7 @@ final class MigrationServices {
 			new WooShippingWriter( new WooShippingRepository( $this->services->wpdb() ) ),
 			new WooCouponWriter(),
 			new ReviewWriter(
-				'product',
-				'comment',
+				ReviewKeys::woo(),
 				static function ( int $product ): void {
 					// WooCommerce stores the average, the count and the per-star counts when the count changes.
 					if ( class_exists( \WC_Comments::class ) ) {
@@ -249,7 +247,7 @@ final class MigrationServices {
 			new FxcCouponWriter( $this->coupons(), new CouponEditor( $this->coupons(), $this->services->clock() ) ),
 			new FxcOptionWriter( new OptionSetRepository() ),
 			new FxcCheckoutWriter(),
-			new ReviewWriter( PostTypes::PRODUCT, Reviews::TYPE, static fn ( int $product ) => Reviews::instance()->refresh( $product ) ),
+			new ReviewWriter( ReviewKeys::fxc(), static fn ( int $product ) => Reviews::instance()->refresh( $product ) ),
 			new FxcSubscriptionWriter( fn (): SubscriptionRepository => ( $this->subscriptions )()->repository(), $orders, $this->services->clock() ),
 		);
 		return $this->fxc_target;

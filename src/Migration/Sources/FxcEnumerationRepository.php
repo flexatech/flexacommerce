@@ -8,6 +8,7 @@ use Flexa\Commerce\Catalog\PostTypes;
 use Flexa\Commerce\Customers\CustomerProfile;
 use Flexa\Commerce\Database\QueryFailed;
 use Flexa\Commerce\Database\Schema;
+use Flexa\Commerce\Reviews\Reviews;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -67,7 +68,7 @@ final class FxcEnumerationRepository {
 				$limit
 			),
 			'coupons'    => $this->wpdb->prepare( 'SELECT id FROM %i WHERE id > %d AND id <= %d ORDER BY id LIMIT %d', Schema::table( 'coupons' ), $after, $upper, $limit ),
-			'reviews'    => $this->wpdb->prepare( "SELECT c.comment_ID FROM %i AS c INNER JOIN %i AS p ON p.ID = c.comment_post_ID WHERE p.post_type = %s AND c.comment_approved IN ('0', '1') AND c.comment_type IN ('review', 'comment') AND c.comment_ID > %d AND c.comment_ID <= %d ORDER BY c.comment_ID LIMIT %d", $this->wpdb->comments, $this->wpdb->posts, PostTypes::PRODUCT, $after, $upper, $limit ),
+			'reviews'    => $this->wpdb->prepare( "SELECT c.comment_ID FROM %i AS c INNER JOIN %i AS p ON p.ID = c.comment_post_ID WHERE p.post_type = %s AND c.comment_approved IN ('0', '1') AND c.comment_type = %s AND c.comment_ID > %d AND c.comment_ID <= %d ORDER BY c.comment_ID LIMIT %d", $this->wpdb->comments, $this->wpdb->posts, PostTypes::PRODUCT, Reviews::TYPE, $after, $upper, $limit ),
 			default      => null,
 		};
 		if ( $sql === null ) {

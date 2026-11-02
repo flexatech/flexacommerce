@@ -157,6 +157,12 @@ final class Downloads {
 		$path = null;
 		if ( preg_match( '#^https?://#i', $file ) === 1 ) {
 			$path = self::url_to_path( $file );
+			if ( $path === null && self::same_host( $file ) ) {
+				return [
+					'kind'  => 'invalid',
+					'error' => __( 'Files can only be sold from the uploads folder.', 'flexacommerce' ),
+				];
+			}
 			if ( $path === null ) {
 				return [
 					'kind' => 'remote',
@@ -232,22 +238,25 @@ final class Downloads {
 		return false;
 	}
 
-	/** A URL on this site, as a path; null for another host. */
+	/** A URL in the uploads folder, as a path; null for any other URL. */
 	private static function url_to_path( string $url ): ?string {
 		$bare    = static fn ( string $value ): string => strtolower( (string) preg_replace( '#^https?:#i', '', $value ) );
 		$address = strtok( $url, '?#' );
 		$address = $address === false ? $url : $address;
 		$uploads = wp_get_upload_dir();
-		foreach ( [
-			(string) $uploads['baseurl'] => (string) $uploads['basedir'],
-			site_url()                   => ABSPATH,
-		] as $base => $dir ) {
-			$prefix = rtrim( $bare( $base ), '/' ) . '/';
-			if ( $base !== '' && str_starts_with( strtolower( $bare( $address ) ), $prefix ) ) {
-				return rtrim( $dir, '/\\' ) . '/' . rawurldecode( substr( (string) preg_replace( '#^https?:#i', '', $address ), strlen( $prefix ) ) );
-			}
+		$base    = (string) $uploads['baseurl'];
+		$prefix  = rtrim( $bare( $base ), '/' ) . '/';
+		if ( $base === '' || ! str_starts_with( strtolower( $bare( $address ) ), $prefix ) ) {
+			return null;
 		}
-		return null;
+		return rtrim( (string) $uploads['basedir'], '/\\' ) . '/' . rawurldecode( substr( (string) preg_replace( '#^https?:#i', '', $address ), strlen( $prefix ) ) );
+	}
+
+	/** Whether a URL points at this site, where only the uploads folder may be sold from. */
+	private static function same_host( string $url ): bool {
+		$host = wp_parse_url( $url, PHP_URL_HOST );
+		$own  = wp_parse_url( site_url(), PHP_URL_HOST );
+		return is_string( $host ) && is_string( $own ) && strtolower( $host ) === strtolower( $own );
 	}
 
 	private static function positive( mixed $value ): ?int {

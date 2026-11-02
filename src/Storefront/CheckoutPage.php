@@ -223,15 +223,15 @@ final class CheckoutPage {
 	}
 
 	/**
-	 * The raw submission. Values stay unsanitized here on purpose: the
-	 * validator cleans each field by its type and the renderer escapes.
+	 * The submission, cleaned as text that keeps line breaks (order notes).
+	 * The validator then cleans each field by its type and the renderer escapes.
 	 *
 	 * @return array<string,mixed>
 	 */
 	private function posted(): array {
 		$out = [];
-		// phpcs:ignore WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- see the method comment; the nonce is checked next.
-		foreach ( wp_unslash( $_POST ) as $key => $value ) {
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- the nonce is checked next.
+		foreach ( map_deep( wp_unslash( $_POST ), 'sanitize_textarea_field' ) as $key => $value ) {
 			if ( is_string( $key ) ) {
 				$out[ $key ] = $value;
 			}
@@ -255,10 +255,10 @@ final class CheckoutPage {
 	/** @return array<string,mixed> */
 	private function query(): array {
 		$out = [];
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- the gateway verifies its own signed return.
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- the gateway verifies its own signed return.
 		foreach ( wp_unslash( $_GET ) as $key => $value ) {
 			if ( is_string( $key ) && is_scalar( $value ) ) {
-				$out[ $key ] = (string) $value;
+				$out[ $key ] = sanitize_text_field( (string) $value );
 			}
 		}
 		return $out;

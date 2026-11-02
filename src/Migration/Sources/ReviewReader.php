@@ -7,31 +7,30 @@ namespace Flexa\Commerce\Migration\Sources;
 use Flexa\Commerce\Migration\Canonical\Dates;
 use Flexa\Commerce\Migration\Canonical\Record;
 use Flexa\Commerce\Migration\Canonical\Ref;
+use Flexa\Commerce\Migration\ReviewKeys;
 
 defined( 'ABSPATH' ) || exit;
 
 /**
  * A product review as a canonical record (doc 05 §5.9, ADR-056). Both
- * stores keep reviews as WordPress comments on the product with `rating`
- * and `verified` in comment meta, so one reader serves both; replies come
- * along and depend on the review they answer.
+ * stores keep reviews as WordPress comments on the product with the rating
+ * and the verified flag in comment meta, each under its own keys, so one
+ * reader serves both; replies come along and depend on the review they
+ * answer.
  */
 final class ReviewReader {
-	/** Comment types on a product that are reviews or replies to one. */
-	public const TYPES = [ 'review', 'comment' ];
-
 	public function __construct(
 		private readonly string $system,
-		private readonly string $post_type,
+		private readonly ReviewKeys $keys,
 	) {}
 
 	public function review( int $id ): ?Record {
 		$comment = get_comment( $id );
-		if ( ! $comment instanceof \WP_Comment || ! in_array( $comment->comment_type, self::TYPES, true ) || ! in_array( $comment->comment_approved, [ '0', '1' ], true ) ) {
+		if ( ! $comment instanceof \WP_Comment || ! in_array( $comment->comment_type, $this->keys->types(), true ) || ! in_array( $comment->comment_approved, [ '0', '1' ], true ) ) {
 			return null;
 		}
 		$product = (int) $comment->comment_post_ID;
-		if ( get_post_type( $product ) !== $this->post_type ) {
+		if ( get_post_type( $product ) !== $this->keys->post_type ) {
 			return null;
 		}
 		$depends = [ Ref::make( $this->system, Record::PRODUCT, $product ) ];
@@ -39,7 +38,7 @@ final class ReviewReader {
 		if ( $parent > 0 ) {
 			$depends[] = Ref::make( $this->system, Record::REVIEW, $parent );
 		}
-		$rating = (int) get_comment_meta( $id, 'rating', true );
+		$rating = (int) get_comment_meta( $id, $this->keys->rating, true );
 		$user   = (int) $comment->user_id;
 		return new Record(
 			Record::REVIEW,
@@ -52,7 +51,7 @@ final class ReviewReader {
 				'author_email' => (string) $comment->comment_author_email,
 				'content'      => (string) $comment->comment_content,
 				'rating'       => $parent === 0 && $rating >= 1 && $rating <= 5 ? $rating : null,
-				'verified'     => (bool) get_comment_meta( $id, 'verified', true ),
+				'verified'     => (bool) get_comment_meta( $id, $this->keys->verified, true ),
 				'approved'     => $comment->comment_approved === '1',
 				'created_at'   => Dates::from_db( $comment->comment_date_gmt ),
 			],

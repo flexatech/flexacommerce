@@ -5,10 +5,7 @@ vendor
 node_modules
 composer.json
 composer.lock
-client/package.json
-client/pnpm-lock.yaml
-client/tsconfig.json
-client/vite.config.ts
+client/node_modules
 client/.dev
 
 # Tests and static analysis

@@ -80,7 +80,7 @@ final class FxcCatalogReader {
 			$depends[] = $parent;
 		}
 		$order     = get_term_meta( $id, AttributeRepository::POSITION_META, true );
-		$thumbnail = (int) get_term_meta( $id, 'thumbnail_id', true );
+		$thumbnail = (int) get_term_meta( $id, PostTypes::CATEGORY_THUMBNAIL, true );
 		$import    = self::import_of( get_term_meta( $id, FxcCatalogWriter::IMPORT_META, true ) );
 		return new Record(
 			Record::TERM,

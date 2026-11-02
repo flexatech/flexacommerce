@@ -171,7 +171,7 @@ final class Uploads {
 		}
 		$guards = [
 			'.htaccess'  => "Require all denied\n<IfModule !mod_authz_core.c>\nDeny from all\n</IfModule>\n",
-			'index.php'  => "<?php\n// Silence is golden.\n",
+			'index.html' => '',
 			'web.config' => "<?xml version=\"1.0\"?>\n<configuration><system.webServer><authorization><deny users=\"*\" /></authorization></system.webServer></configuration>\n",
 		];
 		foreach ( $guards as $name => $body ) {

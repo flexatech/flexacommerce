@@ -23,8 +23,11 @@ final class Menu {
 	/** Product CSV import and export (ADR-059): reached from the product list, not the menu. */
 	public const PRODUCT_CSV = self::SLUG . '-product-csv';
 
+	/** Reviews::TYPE written out, so building the menu loads no Reviews class. */
+	private const REVIEW_TYPE = 'fxc_review';
+
 	/** Core's comments screen, filtered to product reviews (ADR-056). */
-	private const REVIEWS = 'edit-comments.php?comment_type=review';
+	private const REVIEWS = 'edit-comments.php?comment_type=' . self::REVIEW_TYPE;
 
 	/** Submenu order; core adds the product list itself (show_in_menu). */
 	private const ORDER = [
@@ -339,7 +342,7 @@ final class Menu {
 	private function on_reviews(): bool {
 		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- a list filter, no state change.
-		return $screen !== null && $screen->base === 'edit-comments' && isset( $_GET['comment_type'] ) && sanitize_key( wp_unslash( $_GET['comment_type'] ) ) === 'review';
+		return $screen !== null && $screen->base === 'edit-comments' && isset( $_GET['comment_type'] ) && sanitize_key( wp_unslash( $_GET['comment_type'] ) ) === self::REVIEW_TYPE;
 	}
 
 	/** @return array<string,string> page slug => hook suffix */

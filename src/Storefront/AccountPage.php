@@ -48,6 +48,8 @@ final class AccountPage {
 
 	public const PER_PAGE = 10;
 
+	private const PASSWORDS = [ 'password_current', 'password_1', 'password_2' ];
+
 	/** @var array<string,mixed> */
 	private array $posted = [];
 
@@ -481,18 +483,20 @@ final class AccountPage {
 	}
 
 	/**
-	 * The raw submission; each field is cleaned where it is used, and the
-	 * renderer escapes.
+	 * The submission cleaned as text; each field is cleaned again where it
+	 * is used, and the renderer escapes. Passwords stay as typed, like
+	 * WordPress core keeps them: they are only hashed or compared.
 	 *
 	 * @return array<string,mixed>
 	 */
 	private function posted(): array {
 		$out = [];
-		// phpcs:ignore WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- see the method comment; the nonce is checked next.
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- the nonce is checked next; every value but a password is sanitized below.
 		foreach ( wp_unslash( $_POST ) as $key => $value ) {
-			if ( is_string( $key ) ) {
-				$out[ $key ] = $value;
+			if ( ! is_string( $key ) ) {
+				continue;
 			}
+			$out[ $key ] = in_array( $key, self::PASSWORDS, true ) && is_string( $value ) ? $value : map_deep( $value, 'sanitize_textarea_field' );
 		}
 		return $out;
 	}

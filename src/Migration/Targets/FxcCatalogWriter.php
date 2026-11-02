@@ -95,7 +95,7 @@ final class FxcCatalogWriter {
 		}
 		$image = $this->attachment( $data['image'] ?? null, $map, $problems );
 		if ( $image > 0 ) {
-			update_term_meta( $target, 'thumbnail_id', $image );
+			update_term_meta( $target, PostTypes::CATEGORY_THUMBNAIL, $image );
 		}
 		$extra = self::extra_of( $data['extra'] ?? null, $problems );
 		if ( $extra !== null ) {

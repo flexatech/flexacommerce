@@ -9,30 +9,30 @@ use Flexa\Commerce\Migration\Canonical\Record;
 use Flexa\Commerce\Migration\Canonical\Ref;
 use Flexa\Commerce\Migration\Canonical\Rejected;
 use Flexa\Commerce\Migration\Mapping;
+use Flexa\Commerce\Migration\ReviewKeys;
 
 defined( 'ABSPATH' ) || exit;
 
 /**
  * Product reviews into either store (doc 05 §5.9, ADR-056), as comments on
- * the imported product of type `review`. A reply takes the store's own
- * type: `comment` in WooCommerce, `review` in FlexaCommerce. Comments are
- * written directly, past the comment form checks, and the product's
- * rating summary is rebuilt after.
+ * the imported product with the store's own types and meta keys: `review`
+ * with replies of type `comment` in WooCommerce, `fxc_review` for both in
+ * FlexaCommerce. Comments are written directly, past the comment form
+ * checks, and the product's rating summary is rebuilt after.
  */
 final class ReviewWriter {
 	/**
 	 * @param \Closure(int):void $refresh rebuilds a product's rating summary
 	 */
 	public function __construct(
-		private readonly string $post_type,
-		private readonly string $reply_type,
+		private readonly ReviewKeys $keys,
 		private readonly \Closure $refresh,
 	) {}
 
 	public function review( Record $record, Mapping $map ): WriteResult {
 		$data    = $record->data;
 		$product = $map->target_id( Record::PRODUCT, Ref::parse( is_string( $data['product'] ?? null ) ? $data['product'] : null )->id ?? '' );
-		if ( $product <= 0 || get_post_type( $product ) !== $this->post_type ) {
+		if ( $product <= 0 || get_post_type( $product ) !== $this->keys->post_type ) {
 			throw new Rejected( 'missing_product', 'The product of this review was not imported.' );
 		}
 		$parent_ref = is_string( $data['parent'] ?? null ) ? $data['parent'] : null;
@@ -45,7 +45,7 @@ final class ReviewWriter {
 		$fields = [
 			'comment_post_ID'      => $product,
 			'comment_parent'       => $parent,
-			'comment_type'         => $parent > 0 ? $this->reply_type : 'review',
+			'comment_type'         => $parent > 0 ? $this->keys->reply_type : $this->keys->type,
 			'comment_author'       => (string) ( $data['author'] ?? '' ),
 			'comment_author_email' => (string) ( $data['author_email'] ?? '' ),
 			'comment_content'      => (string) ( $data['content'] ?? '' ),
@@ -67,11 +67,11 @@ final class ReviewWriter {
 			$action = WriteResult::CREATED;
 		}
 		if ( $parent === 0 && $rating >= 1 && $rating <= 5 ) {
-			update_comment_meta( $target, 'rating', $rating );
+			update_comment_meta( $target, $this->keys->rating, $rating );
 		} else {
-			delete_comment_meta( $target, 'rating' );
+			delete_comment_meta( $target, $this->keys->rating );
 		}
-		update_comment_meta( $target, 'verified', ! empty( $data['verified'] ) ? 1 : 0 );
+		update_comment_meta( $target, $this->keys->verified, ! empty( $data['verified'] ) ? 1 : 0 );
 		( $this->refresh )( $product );
 
 		$map->remember( Record::REVIEW, $record->source_id(), $target, $record->checksum );

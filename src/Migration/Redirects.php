@@ -29,7 +29,7 @@ final class Redirects {
 		}
 		$path   = wp_parse_url( isset( $_SERVER['REQUEST_URI'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REQUEST_URI'] ) ) : '', PHP_URL_PATH );
 		$target = ( new self( \Flexa\Commerce\Plugin::instance()->migration()->ids() ) )->resolve(
-			wp_unslash( $_GET ), // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only routing.
+			map_deep( wp_unslash( $_GET ), 'sanitize_text_field' ), // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only routing.
 			is_string( $path ) ? $path : '',
 			is_404()
 		);
