@@ -77,4 +77,12 @@ final class CustomerRenewalInvoice extends OrderEmail {
 		unset( $order );
 		return ( $this->why['failed'] ?? '' ) !== '' ? __( 'Payment failed', 'flexacommerce' ) : __( 'Renewal due', 'flexacommerce' );
 	}
+
+	protected function sample( OrderView $order ): array {
+		$this->why = [
+			'attempt'          => 1,
+			'subscription_url' => home_url( '/' ),
+		];
+		return [ $order, $this->why ];
+	}
 }

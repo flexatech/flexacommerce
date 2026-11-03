@@ -95,4 +95,19 @@ final class CustomerRenewalReminder extends OrderEmail implements SentAhead {
 		$at = is_string( $this->why['renews_at'] ?? null ) ? $this->why['renews_at'] : '';
 		return $at !== '' ? (string) wp_date( (string) get_option( 'date_format' ), (int) strtotime( $at . ' UTC' ) ) : '';
 	}
+
+	protected function sample( OrderView $order ): array {
+		$item      = $order->items_of_type( 'product' )[0] ?? null;
+		$this->why = [
+			'subscription_id'  => 0,
+			'renews_at'        => gmdate( 'Y-m-d H:i:s', time() + self::DEFAULT_DAYS * DAY_IN_SECONDS ),
+			'title'            => $item !== null ? $item->name : __( 'Subscription', 'flexacommerce' ),
+			'price'            => wp_strip_all_tags( $this->data->money( $order->total ) ),
+			'trial'            => false,
+			'automatic'        => true,
+			'payment_label'    => $order->payment_method_title,
+			'subscription_url' => home_url( '/' ),
+		];
+		return [ $order, $this->why ];
+	}
 }

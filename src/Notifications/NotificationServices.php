@@ -18,6 +18,7 @@ final class NotificationServices {
 	private ?EmailTemplates $templates = null;
 	private ?OrderData $data           = null;
 	private ?Mailer $mailer            = null;
+	private ?Design\Designer $designer = null;
 
 	/** @var list<Email>|null */
 	private ?array $emails = null;
@@ -44,7 +45,17 @@ final class NotificationServices {
 	}
 
 	public function mailer(): Mailer {
-		return $this->mailer ??= new Mailer( $this->templates(), $this->orders->history(), $this->services->clock(), $this->services->logger( 'emails' ) );
+		return $this->mailer ??= new Mailer( $this->templates(), $this->orders->history(), $this->services->clock(), $this->services->logger( 'emails' ), $this->designer() );
+	}
+
+	/** The designer's preview of an email (ADR-085). */
+	public function preview(): Design\Preview {
+		return new Design\Preview( $this->designer(), $this->mailer(), $this->settings(), $this->orders->orders() );
+	}
+
+	/** Lays out every email in the store's style and, when it has one, its design (ADR-085). */
+	public function designer(): Design\Designer {
+		return $this->designer ??= new Design\Designer( $this->templates(), $this->settings(), new Design\MailStyle(), $this->data() );
 	}
 
 	public function settings(): EmailSettings {

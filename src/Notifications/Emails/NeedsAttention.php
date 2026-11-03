@@ -55,4 +55,8 @@ final class NeedsAttention extends OrderEmail {
 		unset( $order );
 		return __( 'Order #{order_number} needs attention', 'flexacommerce' );
 	}
+
+	protected function sample( OrderView $order ): array {
+		return [ $order, __( 'The payment amount does not match the order total.', 'flexacommerce' ) ];
+	}
 }

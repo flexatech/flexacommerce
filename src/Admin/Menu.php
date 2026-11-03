@@ -23,6 +23,9 @@ final class Menu {
 	/** Product CSV import and export (ADR-059): reached from the product list, not the menu. */
 	public const PRODUCT_CSV = self::SLUG . '-product-csv';
 
+	/** The email designer (ADR-085): reached from Settings > Emails, not the menu. */
+	public const EMAIL_DESIGN = self::SLUG . '-email-design';
+
 	/** Reviews::TYPE written out, so building the menu loads no Reviews class. */
 	private const REVIEW_TYPE = 'fxc_review';
 
@@ -152,6 +155,14 @@ final class Menu {
 				$GLOBALS['title'] = __( 'Import and export products', 'flexacommerce' ); // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- the admin page title.
 			}
 		);
+		$design = (string) add_submenu_page( '', __( 'Email designer', 'flexacommerce' ), __( 'Email designer', 'flexacommerce' ), Capabilities::MANAGE, self::EMAIL_DESIGN, [ $this, 'render_page' ] );
+		$this->add( self::EMAIL_DESIGN, $design );
+		add_action(
+			'load-' . $design,
+			static function (): void {
+				$GLOBALS['title'] = __( 'Email designer', 'flexacommerce' ); // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- the admin page title.
+			}
+		);
 	}
 
 	/**
@@ -169,7 +180,8 @@ final class Menu {
 			$entries[ (string) $entry[2] ]    = $entry;
 			$this->caps[ (string) $entry[2] ] = (string) $entry[1];
 		}
-		$this->caps[ self::PRODUCT_CSV ] = Capabilities::MANAGE;
+		$this->caps[ self::PRODUCT_CSV ]  = Capabilities::MANAGE;
+		$this->caps[ self::EMAIL_DESIGN ] = Capabilities::MANAGE;
 
 		$grouped = [];
 		foreach ( self::section_labels() as $section => $label ) {
@@ -239,6 +251,9 @@ final class Menu {
 		$slug = $this->page_for( $screen->id );
 		if ( $slug === self::PRODUCT_CSV ) {
 			return [ 'products', '' ];
+		}
+		if ( $slug === self::EMAIL_DESIGN ) {
+			return [ 'settings', self::SLUG . '-settings' ];
 		}
 		if ( $slug === '' && $this->on_reviews() ) {
 			$slug = self::REVIEWS;

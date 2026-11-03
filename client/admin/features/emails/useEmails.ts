@@ -17,6 +17,8 @@ export interface OrderEmail extends EmailValues {
     to_customer: boolean;
     /** Sent by hand from the order screen; no switch. */
     manual: boolean;
+    /** Has its own design from the email designer (ADR-085). */
+    custom: boolean;
 }
 
 export interface EmailsResponse {

@@ -9,6 +9,7 @@ use Flexa\Commerce\Contracts\Email\EmailMessage;
 use Flexa\Commerce\Contracts\Orders\OrderView;
 use Flexa\Commerce\Notifications\EmailTemplates;
 use Flexa\Commerce\Notifications\OrderData;
+use Flexa\Commerce\Notifications\Previewable;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -19,7 +20,7 @@ defined( 'ABSPATH' ) || exit;
  * order created as processing, then the same order seen by status_changed),
  * so each email sends once per order and request.
  */
-abstract class OrderEmail implements Email {
+abstract class OrderEmail implements Email, Previewable {
 	public const CREATED      = 'flexacommerce.order.created';
 	public const STATUS       = 'flexacommerce.order.status_changed';
 	public const REFUNDED     = 'flexacommerce.order.refunded';
@@ -91,7 +92,24 @@ abstract class OrderEmail implements Email {
 			return null;
 		}
 		$this->sent[ $key ] = true;
+		return $this->message( $hook, $args, $order );
+	}
 
+	public function preview( OrderView $order ): EmailMessage {
+		return $this->message( (string) array_key_first( $this->trigger_hooks() ), $this->sample( $order ), $order );
+	}
+
+	/**
+	 * The hook arguments a preview renders with.
+	 *
+	 * @return list<mixed>
+	 */
+	protected function sample( OrderView $order ): array {
+		return [ $order ];
+	}
+
+	/** @param list<mixed> $args */
+	private function message( string $hook, array $args, OrderView $order ): EmailMessage {
 		$content    = $this->templates->render(
 			$this->template(),
 			[

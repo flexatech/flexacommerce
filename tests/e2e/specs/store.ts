@@ -37,10 +37,15 @@ const OURS = '[class*="fxc-"], [class*="wp-block-flexacommerce"]';
 /**
  * Runs axe (WCAG 2.1 A and AA) on the page. A violation inside FlexaCommerce
  * markup fails the test; one in the theme is attached to the report, since
- * the theme is not ours to fix.
+ * the theme is not ours to fix. `exclude` skips parts axe cannot reach,
+ * such as a sandboxed frame without scripts.
  */
-export async function expectAccessible( page: Page, info: TestInfo, label: string ): Promise< void > {
-	const results = await new AxeBuilder( { page } ).withTags( [ 'wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa' ] ).analyze();
+export async function expectAccessible( page: Page, info: TestInfo, label: string, exclude: string[] = [] ): Promise< void > {
+	let builder = new AxeBuilder( { page } ).withTags( [ 'wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa' ] );
+	for ( const selector of exclude ) {
+		builder = builder.exclude( selector );
+	}
+	const results = await builder.analyze();
 	const ours: string[] = [];
 	const theirs: string[] = [];
 	for ( const violation of results.violations ) {

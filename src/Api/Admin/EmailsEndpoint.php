@@ -134,13 +134,15 @@ final class EmailsEndpoint extends Endpoint {
 	 * @return array<string,mixed>
 	 */
 	private function email_data( Email $email ): array {
-		$settings         = Plugin::instance()->notifications()->settings()->get( $email->id() );
+		$store            = Plugin::instance()->notifications()->settings();
+		$settings         = $store->get( $email->id() );
 		$settings['days'] = $email instanceof SentAhead ? ( $settings['days'] > 0 ? $settings['days'] : $email->default_days() ) : null;
 		return [
 			'id'          => $email->id(),
 			'title'       => $email->title(),
 			'to_customer' => $email->to_customer(),
 			'manual'      => $email->trigger_hooks() === [],
+			'custom'      => $store->design( $email->id() ) !== null,
 		] + $settings;
 	}
 

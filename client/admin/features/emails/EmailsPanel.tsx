@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ChevronDown, Mail } from "lucide-react";
+import { ChevronDown, Mail, Palette } from "lucide-react";
 
 import { showToast } from "@/shared/components/showToast";
 import { Badge } from "@/shared/components/ui/badge";
@@ -7,6 +7,7 @@ import { Button } from "@/shared/components/ui/button";
 import { Card } from "@/shared/components/ui/card";
 import { Input } from "@/shared/components/ui/input";
 import { Switch } from "@/shared/components/ui/switch";
+import { getPluginGlobal } from "@/shared/lib/api";
 import { cn } from "@/shared/lib/cn";
 import { __, sprintf } from "@/shared/lib/i18n";
 import { useEmails, useSaveEmail, type EmailValues, type OrderEmail } from "./useEmails";
@@ -32,12 +33,22 @@ export function EmailsPanel() {
 
     return (
         <div className="fxc:space-y-3">
-            <p className="fxc:text-muted-foreground fxc:text-sm">
-                {sprintf(
-                    __("Emails sent when an order changes. Leave a subject or heading empty to use the default. You can use %s."),
-                    placeholders.join(", "),
+            <div className="fxc:flex fxc:flex-wrap fxc:items-start fxc:justify-between fxc:gap-3">
+                <p className="fxc:text-muted-foreground fxc:min-w-0 fxc:flex-1 fxc:text-sm">
+                    {sprintf(
+                        __("Emails sent when an order changes. Leave a subject or heading empty to use the default. You can use %s."),
+                        placeholders.join(", "),
+                    )}
+                </p>
+                {list.length > 0 && (
+                    <Button variant="outline" size="sm" asChild>
+                        <a href={`${getPluginGlobal().adminUrl}?page=flexacommerce-email-design&email=${encodeURIComponent(list[0].id)}`} className="fxc:no-underline">
+                            <Palette aria-hidden />
+                            {__("Open the email designer")}
+                        </a>
+                    </Button>
                 )}
-            </p>
+            </div>
             {list.map((email) => (
                 <EmailCard
                     key={email.id}
@@ -101,6 +112,7 @@ function EmailCard({ email, adminEmail, open, onToggle }: CardProps) {
                         {email.to_customer ? __("To the customer") : email.recipients !== "" ? email.recipients : adminEmail}
                     </div>
                 </div>
+                {email.custom && <Badge variant="brand">{__("Custom design")}</Badge>}
                 {email.manual ? (
                     <Badge variant="muted">{__("Sent by hand")}</Badge>
                 ) : (
@@ -178,6 +190,17 @@ function EmailCard({ email, adminEmail, open, onToggle }: CardProps) {
                             placeholder={__("Default heading")}
                             onChange={(e) => set("heading", e.target.value)}
                         />
+                    </div>
+                    <div className="fxc:bg-muted/50 fxc:flex fxc:flex-wrap fxc:items-center fxc:justify-between fxc:gap-3 fxc:rounded-md fxc:px-3 fxc:py-2.5">
+                        <p className="fxc:text-muted-foreground fxc:text-sm">
+                            {email.custom ? __("This email has its own design.") : __("Uses the default design. Add your logo, colors, text and images.")}
+                        </p>
+                        <Button variant="outline" size="sm" asChild>
+                            <a href={`${getPluginGlobal().adminUrl}?page=flexacommerce-email-design&email=${encodeURIComponent(email.id)}`} className="fxc:no-underline">
+                                <Palette aria-hidden />
+                                {email.custom ? __("Edit design") : __("Customize design")}
+                            </a>
+                        </Button>
                     </div>
                     <div className="fxc:flex fxc:justify-end fxc:gap-2 fxc:pt-2">
                         {dirty && (

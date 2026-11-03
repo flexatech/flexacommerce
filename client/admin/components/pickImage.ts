@@ -21,8 +21,9 @@ declare global {
 
 export interface PickedImage {
     id: number;
-    /** The thumbnail, or the full image when the site has no thumbnail size. */
+    /** The thumbnail (the full image with `full`, or when the site has no thumbnail size). */
     url: string;
+    alt: string;
 }
 
 /** True when the screen enqueued the media library (`wp_enqueue_media()`). */
@@ -31,7 +32,7 @@ export function canPickImage(): boolean {
 }
 
 /** Opens the media library for one image; `onPick` runs when the user selects it. */
-export function pickImage(title: string, onPick: (image: PickedImage) => void): void {
+export function pickImage(title: string, onPick: (image: PickedImage) => void, options: { full?: boolean } = {}): void {
     const media = window.wp?.media;
     if (!media) {
         return;
@@ -40,7 +41,7 @@ export function pickImage(title: string, onPick: (image: PickedImage) => void): 
     frame.on("select", () => {
         const attachment = frame.state().get("selection").first();
         if (attachment) {
-            onPick({ id: attachment.id, url: thumbOf(attachment) });
+            onPick({ id: attachment.id, url: options.full ? String(attachment.get("url") ?? "") : thumbOf(attachment), alt: String(attachment.get("alt") ?? "") });
         }
     });
     frame.open();
@@ -52,7 +53,7 @@ const thumbOf = (attachment: Attachment): string => {
 };
 
 /** Opens the media library for several images, in the order they were selected. */
-export function pickImages(title: string, onPick: (images: (PickedImage & { alt: string })[]) => void): void {
+export function pickImages(title: string, onPick: (images: PickedImage[]) => void): void {
     const media = window.wp?.media;
     if (!media) {
         return;

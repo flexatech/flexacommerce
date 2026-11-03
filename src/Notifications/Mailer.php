@@ -8,6 +8,7 @@ use Flexa\Commerce\Contracts\Email\Email;
 use Flexa\Commerce\Contracts\Email\EmailMessage;
 use Flexa\Commerce\Contracts\Logger;
 use Flexa\Commerce\Contracts\Orders\OrderView;
+use Flexa\Commerce\Notifications\Design\Designer;
 use Flexa\Commerce\Orders\HistoryRepository;
 use Flexa\Commerce\Maintenance\Cron;
 use Flexa\Commerce\Support\Clock;
@@ -35,6 +36,7 @@ final class Mailer {
 		private readonly HistoryRepository $history,
 		private readonly Clock $clock,
 		private readonly Logger $log,
+		private readonly ?Designer $designer = null,
 	) {}
 
 	/**
@@ -102,12 +104,19 @@ final class Mailer {
 		$subject = $this->text( 'subject', $settings['subject'] !== '' ? $settings['subject'] : $message->subject, $id, $order );
 		$heading = $this->text( 'heading', $settings['heading'] !== '' ? $settings['heading'] : $message->heading, $id, $order );
 		$content = (string) apply_filters( 'flexacommerce.email.content_html', $message->content_html, $id, $order );
-		$html    = $this->templates->render(
+		$mail    = [
+			'email_id'    => $id,
+			'to_customer' => $email->to_customer(),
+			'heading'     => $heading,
+			'content'     => $content,
+			'order'       => $order,
+		];
+		$html    = $this->designer !== null ? $this->designer->frame( $mail ) : $this->templates->render(
 			'layout',
 			[
 				'email_id'   => $id,
 				'heading'    => $heading,
-				'content'    => $content,
+				'content'    => Designer::unmark( $content ),
 				'site_title' => self::site_title(),
 				'site_url'   => home_url( '/' ),
 			]
@@ -121,6 +130,28 @@ final class Mailer {
 			'subject'    => $subject,
 			'html'       => $html,
 			'context'    => $message->context,
+		];
+	}
+
+	/**
+	 * A test of a design from the email designer: not queued, not in the order history.
+	 *
+	 * @param list<string> $recipients
+	 */
+	public function send_test( array $recipients, string $subject, string $html ): bool {
+		return wp_mail( $recipients, $subject, $html, [ 'Content-Type: text/html; charset=UTF-8' ] );
+	}
+
+	/**
+	 * Subject and heading as the send would settle them, for the designer's preview.
+	 *
+	 * @param array{subject:string,heading:string} $settings
+	 * @return array{subject:string,heading:string}
+	 */
+	public function titles( string $id, EmailMessage $message, array $settings ): array {
+		return [
+			'subject' => $this->text( 'subject', $settings['subject'] !== '' ? $settings['subject'] : $message->subject, $id, $message->order ),
+			'heading' => $this->text( 'heading', $settings['heading'] !== '' ? $settings['heading'] : $message->heading, $id, $message->order ),
 		];
 	}
 

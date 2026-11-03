@@ -33,8 +33,8 @@ final class Enqueue {
 	public function enqueue_admin( string $hook_suffix ): void {
 		$page = Menu::instance()->page_for( $hook_suffix );
 		if ( $page !== '' ) {
-			if ( $page === Menu::SLUG . '-attributes' || $page === Menu::SLUG . '-settings' ) {
-				wp_enqueue_media(); // Image swatches and the invoice logo pick from the media library.
+			if ( in_array( $page, [ Menu::SLUG . '-attributes', Menu::SLUG . '-settings', Menu::EMAIL_DESIGN ], true ) ) {
+				wp_enqueue_media(); // Image swatches, the invoice logo and email images pick from the media library.
 			}
 			if ( $this->enqueue_entry( self::HANDLE, self::ENTRY, $page ) ) {
 				wp_localize_script( self::HANDLE, 'flexaCommerceNav', $this->navigation() );

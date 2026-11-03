@@ -40,6 +40,7 @@ final class Router {
 			( new Admin\OptionSetsEndpoint() )->register_routes();
 			( new Admin\CheckoutLayoutEndpoint() )->register_routes();
 			( new Admin\EmailsEndpoint() )->register_routes();
+			( new Admin\EmailDesignEndpoint() )->register_routes();
 			( new Admin\InvoicesEndpoint() )->register_routes();
 			( new Admin\RecoveryEndpoint() )->register_routes();
 			( new Admin\StockAlertsEndpoint() )->register_routes();

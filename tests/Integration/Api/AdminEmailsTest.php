@@ -32,7 +32,7 @@ final class AdminEmailsTest extends \WP_UnitTestCase {
 				'heading'    => '',
 				'days'       => null,
 			],
-			array_diff_key( $emails['new_order'], array_flip( [ 'id', 'title', 'to_customer', 'manual' ] ) )
+			array_diff_key( $emails['new_order'], array_flip( [ 'id', 'title', 'to_customer', 'manual', 'custom' ] ) )
 		);
 		self::assertContains( '{order_number}', $data['placeholders'] );
 	}

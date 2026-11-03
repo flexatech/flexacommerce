@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Flexa\Commerce\Notifications\Emails;
 
+use Flexa\Commerce\Contracts\Money;
 use Flexa\Commerce\Contracts\Orders\OrderView;
 use Flexa\Commerce\Contracts\Payments\TransactionView;
 
@@ -64,5 +65,10 @@ final class CustomerRefundedOrder extends OrderEmail {
 		return self::full( $order )
 			? __( 'Your order was refunded', 'flexacommerce' )
 			: __( 'Your order was partially refunded', 'flexacommerce' );
+	}
+
+	protected function sample( OrderView $order ): array {
+		$amount = new Money( intdiv( $order->total->amount, 2 ), $order->currency );
+		return [ $order, new TransactionView( 0, $order->id, null, 'refund', 'completed', 'manual', '', $amount, null, gmdate( 'Y-m-d H:i:s' ), null ) ];
 	}
 }

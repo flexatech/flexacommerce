@@ -10,6 +10,8 @@ defined( 'ABSPATH' ) || exit;
  * Email templates live in `templates/emails/`; a theme overrides one by
  * copying it to `{theme}/flexacommerce/emails/` with the same path (doc 02
  * §7.9). Templates read their values from `$args`, as load_template() does.
+ * A part (`parts/…`) comes back between two marks, so an email design can
+ * move it out of the message (ADR-085); Designer removes the marks.
  */
 final class EmailTemplates {
 	public const THEME_DIR = 'flexacommerce/emails/';
@@ -25,7 +27,12 @@ final class EmailTemplates {
 		( static function ( string $__file, array $args ): void {
 			include $__file;
 		} )( $file, $args );
-		return (string) ob_get_clean();
+		$html = (string) ob_get_clean();
+		if ( str_starts_with( $name, 'parts/' ) && trim( $html ) !== '' ) {
+			$part = substr( $name, 6 );
+			return '<!--fxc-part:' . $part . '-->' . $html . '<!--/fxc-part:' . $part . '-->';
+		}
+		return $html;
 	}
 
 	/** The theme copy when there is one, else ours; '' for an unknown name. */

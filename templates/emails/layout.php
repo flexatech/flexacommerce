@@ -4,12 +4,17 @@
  *
  * Override by copying to yourtheme/flexacommerce/emails/layout.php.
  *
- * @version 1.0.0
+ * @version 1.1.0
  *
- * @var array{email_id:string,heading:string,content:string,site_title:string,site_url:string} $args
+ * @var array{email_id:string,heading:string,content:string,site_title:string,site_url:string,style?:array<string,mixed>} $args
  */
 
 defined( 'ABSPATH' ) || exit;
+
+// The store's email style (ADR-085); the defaults are the colors this layout always had.
+$fxc_style  = \Flexa\Commerce\Notifications\Design\MailStyle::clean( $args['style'] ?? [] );
+$fxc_font   = \Flexa\Commerce\Notifications\Design\MailStyle::font_stack( $fxc_style );
+$fxc_footer = $fxc_style['footer'] !== '' ? $fxc_style['footer'] : $args['site_title'];
 ?>
 <!DOCTYPE html>
 <html lang="<?php echo esc_attr( str_replace( '_', '-', determine_locale() ) ); ?>">
@@ -18,11 +23,11 @@ defined( 'ABSPATH' ) || exit;
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title><?php echo esc_html( $args['heading'] ); ?></title>
 </head>
-<body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#18181b;">
-<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4f4f5;">
+<body style="<?php echo esc_attr( 'margin:0;padding:0;background:' . $fxc_style['background'] . ';font-family:' . $fxc_font . ';color:' . $fxc_style['text'] . ';' ); ?>">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:<?php echo esc_attr( $fxc_style['background'] ); ?>;">
 	<tr>
 		<td align="center" style="padding:32px 16px;">
-			<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;background:#ffffff;border:1px solid #e4e4e7;border-radius:8px;">
+			<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;background:<?php echo esc_attr( $fxc_style['body'] ); ?>;border:1px solid #e4e4e7;border-radius:8px;">
 				<tr>
 					<td style="padding:24px 32px;border-bottom:1px solid #e4e4e7;">
 						<a href="<?php echo esc_url( $args['site_url'] ); ?>" style="color:#18181b;font-size:16px;font-weight:600;text-decoration:none;"><?php echo esc_html( $args['site_title'] ); ?></a>
@@ -30,7 +35,7 @@ defined( 'ABSPATH' ) || exit;
 				</tr>
 				<tr>
 					<td style="padding:32px 32px 8px;">
-						<h1 style="margin:0;font-size:22px;line-height:1.3;font-weight:600;color:#18181b;"><?php echo esc_html( $args['heading'] ); ?></h1>
+						<h1 style="margin:0;font-size:22px;line-height:1.3;font-weight:600;color:<?php echo esc_attr( $fxc_style['text'] ); ?>;"><?php echo esc_html( $args['heading'] ); ?></h1>
 					</td>
 				</tr>
 				<tr>
@@ -39,7 +44,7 @@ defined( 'ABSPATH' ) || exit;
 					</td>
 				</tr>
 			</table>
-			<p style="margin:16px 0 0;font-size:12px;color:#71717a;"><?php echo esc_html( $args['site_title'] ); ?></p>
+			<p style="margin:16px 0 0;font-size:12px;color:#71717a;"><?php echo nl2br( esc_html( $fxc_footer ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped, then line breaks. ?></p>
 		</td>
 	</tr>
 </table>

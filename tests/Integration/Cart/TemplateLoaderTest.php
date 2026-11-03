@@ -77,7 +77,7 @@ final class TemplateLoaderTest extends CartTestCase {
 				[
 					'file'   => 'flexacommerce/emails/layout.php',
 					'theme'  => '',
-					'plugin' => '1.0.0',
+					'plugin' => '1.1.0',
 				],
 				[
 					'file'   => 'flexacommerce/single-product.php',
