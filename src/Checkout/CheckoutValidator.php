@@ -179,7 +179,7 @@ final class CheckoutValidator {
 	 */
 	private function answer( string $type, CheckoutField $field, string $value, array &$answers ): void {
 		$entry = CheckoutLayout::current()->custom( $type, $field->id );
-		if ( $entry === null ) {
+		if ( $entry === null && ! ( $type === 'billing' && $field->id === FieldSchema::VAT ) ) {
 			return;
 		}
 		$answers[] = [

@@ -68,6 +68,15 @@ Used by the built-in PayPal payment method and PayPal express buttons, once the 
 PayPal user agreement: https://www.paypal.com/legalhub/paypal/useragreement-full
 PayPal privacy statement: https://www.paypal.com/legalhub/paypal/privacy-full
 
+= VIES (EU VAT number check) =
+
+Used when the store owner turns on the VAT number field under Taxes and keeps the check set to "With VIES".
+
+* When a shopper types an EU VAT number at checkout, and again when the order is placed, the store's server sends the VAT number and its country code to the European Commission's VIES service (`ec.europa.eu`) to confirm the number is registered. No other order or customer data is sent. Answers are cached on the store for up to a week, so a number is not looked up on every change.
+
+VIES legal notice and privacy statement: https://ec.europa.eu/taxation_customs/vies/#/disclaimer
+European Commission privacy policy: https://commission.europa.eu/privacy-policy-websites-managed-european-commission_en
+
 = YouTube and Vimeo =
 
 When the store owner adds a YouTube or Vimeo link to a product gallery, the product page embeds that video in an iframe from `www.youtube-nocookie.com` or `player.vimeo.com`. The shopper's browser loads the player only after the shopper clicks the video, and the video service then receives the shopper's IP address and browser details.

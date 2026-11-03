@@ -485,6 +485,12 @@ function setup( root ) {
 		if ( ! body.country ) {
 			return null;
 		}
+		// The VAT number goes with the billing country, wherever the order ships (ADR-086).
+		const vat = control( 'billing', 'vat_number' );
+		if ( vat ) {
+			body.vat_number = vat.disabled ? '' : vat.value;
+			body.vat_country = value( 'billing', 'country' );
+		}
 		const call = request( 'checkout/shipping', body );
 		pending = call;
 		try {
@@ -496,6 +502,7 @@ function setup( root ) {
 			syncCountries();
 			renderRates( data );
 			renderTotals( data );
+			showVat( data.vat );
 			return data;
 		} catch ( error ) {
 			message.textContent = error.message;
@@ -503,6 +510,15 @@ function setup( root ) {
 		}
 	}
 	const requoteSoon = debounce( requote, 350 );
+
+	function showVat( vat ) {
+		const status = form.querySelector( '[data-fxc-vat-status]' );
+		if ( ! status ) {
+			return;
+		}
+		status.textContent = vat?.message || '';
+		status.classList.toggle( 'is-error', !! vat?.error );
+	}
 
 	// A guest's address goes on the cart session for cart reminders (ADR-063).
 	let captured = '';
@@ -979,8 +995,9 @@ function setup( root ) {
 			captureEmail( target );
 		}
 		if (
-			type === activeType() &&
-			[ 'country', 'state', 'postcode', 'city' ].includes( key )
+			( type === activeType() &&
+				[ 'country', 'state', 'postcode', 'city' ].includes( key ) ) ||
+			( type === 'billing' && [ 'country', 'vat_number' ].includes( key ) )
 		) {
 			requoteSoon();
 		}

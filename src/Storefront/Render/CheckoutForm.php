@@ -324,8 +324,12 @@ final class CheckoutForm {
 		$mark     = $required ? ' <abbr class="fxc-required" title="' . esc_attr__( 'required', 'flexacommerce' ) . '">*</abbr>' : '';
 		$label    = sprintf( '<label for="%1$s">%2$s%3$s</label>', esc_attr( $dom_id ), esc_html( (string) $field['label'] ), $mark );
 		$after    = ( $help !== '' ? '<span class="fxc-field__help" id="' . esc_attr( $help_id ) . '">' . esc_html( $help ) . '</span>' : '' ) . self::error_for( $path, $errors );
-		$class    = 'fxc-field fxc-field--' . ( $note ? 'note' : $id ) . ( ( $field['width'] ?? '' ) === 'half' ? ' fxc-field--half' : '' );
-		$wrap     = $only !== [] ? ' data-fxc-countries="' . esc_attr( implode( ' ', $only ) ) . '"' . ( $off ? ' hidden' : '' ) : '';
+		if ( $type === 'billing' && $id === FieldSchema::VAT ) {
+			// checkout.js says here what the VAT check answered (ADR-086).
+			$after .= '<span class="fxc-field__status" role="status" data-fxc-vat-status></span>';
+		}
+		$class = 'fxc-field fxc-field--' . ( $note ? 'note' : $id ) . ( ( $field['width'] ?? '' ) === 'half' ? ' fxc-field--half' : '' );
+		$wrap  = $only !== [] ? ' data-fxc-countries="' . esc_attr( implode( ' ', $only ) ) . '"' . ( $off ? ' hidden' : '' ) : '';
 
 		$options = [];
 		if ( $kind === 'country' ) {
@@ -782,6 +786,20 @@ final class CheckoutForm {
 	 * @return array<string,string>
 	 */
 	private function defaults( array $state, string $type ): array {
+		$values = $this->address_defaults( $state, $type );
+		// The VAT number the cart was quoted with, so the form matches the totals (ADR-086).
+		$vat = (string) ( $state['vat_number'] ?? '' );
+		if ( $type === 'billing' && $vat !== '' && ( $values[ FieldSchema::VAT ] ?? '' ) === '' ) {
+			$values[ FieldSchema::VAT ] = $vat;
+		}
+		return $values;
+	}
+
+	/**
+	 * @param array<string,mixed> $state
+	 * @return array<string,string>
+	 */
+	private function address_defaults( array $state, string $type ): array {
 		$saved = is_array( $state['saved'][ $type ] ?? null ) ? $state['saved'][ $type ] : null;
 		if ( $saved !== null ) {
 			return array_map( 'strval', array_filter( $saved, 'is_scalar' ) );

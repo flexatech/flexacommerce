@@ -107,6 +107,12 @@ final class Settings {
 		'price_display_suffix'     => [ 'string', '' ],
 		'tax_total_display'        => [ 'enum:itemized|single', 'itemized' ],
 		'tax_markets'              => [ 'tax_markets', [] ],
+		// The billing VAT number field (ADR-086); a valid number from another EU country removes the VAT.
+		'vat_numbers'              => [ 'enum:off|optional|required', 'off' ],
+		// VIES asks the EU service; format checks the number's pattern only.
+		'vat_check'                => [ 'enum:vies|format', 'vies' ],
+		// What a well-formed number gets while VIES does not answer.
+		'vat_unverified'           => [ 'enum:accept|charge', 'accept' ],
 		// Products pick one; flat rate and table rate price by it (ADR-068).
 		'shipping_classes'         => [ 'shipping_classes', [] ],
 		'tax_base_rates'           => [ 'tax_rates', [] ],

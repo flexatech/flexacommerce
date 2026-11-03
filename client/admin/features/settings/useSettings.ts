@@ -35,6 +35,10 @@ export interface Settings {
     price_display_suffix: string;
     tax_total_display: "itemized" | "single";
     tax_markets: TaxMarket[];
+    /** The billing VAT number field (ADR-086). */
+    vat_numbers: "off" | "optional" | "required";
+    vat_check: "vies" | "format";
+    vat_unverified: "accept" | "charge";
     swatch_size: number;
     swatch_shape: "round" | "square";
     swatch_show_choice: boolean;

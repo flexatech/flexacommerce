@@ -1,0 +1,248 @@
+{
+	"id": "eu",
+	"name": "European Union (VAT)",
+	"scope": "countries",
+	"country": "",
+	"version": 1,
+	"as_of": "2026-01-01",
+	"notes": "Standard VAT rates of the 27 member states only. Reduced and zero rates (food, books, children's clothes and so on) differ by country: add them to the Reduced rate class by hand or import them as CSV rows. Territories outside EU VAT are not covered: Åland, the French overseas departments and Mount Athos have their own country codes or need a 0 % row, and Spain's Canary Islands, Ceuta and Melilla need 0 % rows for their provinces (GC, TF, CE, ML). Shipping is charged the same VAT as the goods it carries. The store owner is responsible for the rates. Check every row against the member state's tax authority before going live.",
+	"others": "home",
+	"label": "VAT",
+	"settings": {
+		"prices_include_tax": true,
+		"tax_display_shop": "incl",
+		"tax_display_cart": "incl",
+		"tax_based_on": "shipping",
+		"tax_default_location": "base",
+		"tax_total_display": "itemized",
+		"price_display_suffix": "incl. VAT",
+		"vat_numbers": "optional"
+	},
+	"market": {
+		"id": "eu",
+		"name": "European Union",
+		"countries": [
+			"AT",
+			"BE",
+			"BG",
+			"CY",
+			"CZ",
+			"DE",
+			"DK",
+			"EE",
+			"ES",
+			"FI",
+			"FR",
+			"GR",
+			"HR",
+			"HU",
+			"IE",
+			"IT",
+			"LT",
+			"LU",
+			"LV",
+			"MT",
+			"NL",
+			"PL",
+			"PT",
+			"RO",
+			"SE",
+			"SI",
+			"SK"
+		],
+		"overrides": {
+			"keep_gross_prices": true
+		}
+	},
+	"regions": [
+		{
+			"country": "AT",
+			"name": "Austria",
+			"rate": "20",
+			"shipping": true,
+			"source": "European Commission, Taxes in Europe database"
+		},
+		{
+			"country": "BE",
+			"name": "Belgium",
+			"rate": "21",
+			"shipping": true,
+			"source": "European Commission, Taxes in Europe database"
+		},
+		{
+			"country": "BG",
+			"name": "Bulgaria",
+			"rate": "20",
+			"shipping": true,
+			"source": "European Commission, Taxes in Europe database"
+		},
+		{
+			"country": "HR",
+			"name": "Croatia",
+			"rate": "25",
+			"shipping": true,
+			"source": "European Commission, Taxes in Europe database"
+		},
+		{
+			"country": "CY",
+			"name": "Cyprus",
+			"rate": "19",
+			"shipping": true,
+			"source": "European Commission, Taxes in Europe database"
+		},
+		{
+			"country": "CZ",
+			"name": "Czechia",
+			"rate": "21",
+			"shipping": true,
+			"source": "European Commission, Taxes in Europe database"
+		},
+		{
+			"country": "DK",
+			"name": "Denmark",
+			"rate": "25",
+			"shipping": true,
+			"source": "European Commission, Taxes in Europe database"
+		},
+		{
+			"country": "EE",
+			"name": "Estonia",
+			"rate": "24",
+			"shipping": true,
+			"source": "European Commission, Taxes in Europe database"
+		},
+		{
+			"country": "FI",
+			"name": "Finland",
+			"rate": "25.5",
+			"shipping": true,
+			"source": "European Commission, Taxes in Europe database"
+		},
+		{
+			"country": "FR",
+			"name": "France",
+			"rate": "20",
+			"shipping": true,
+			"source": "European Commission, Taxes in Europe database"
+		},
+		{
+			"country": "DE",
+			"name": "Germany",
+			"rate": "19",
+			"shipping": true,
+			"source": "European Commission, Taxes in Europe database"
+		},
+		{
+			"country": "GR",
+			"name": "Greece",
+			"rate": "24",
+			"shipping": true,
+			"source": "European Commission, Taxes in Europe database"
+		},
+		{
+			"country": "HU",
+			"name": "Hungary",
+			"rate": "27",
+			"shipping": true,
+			"source": "European Commission, Taxes in Europe database"
+		},
+		{
+			"country": "IE",
+			"name": "Ireland",
+			"rate": "23",
+			"shipping": true,
+			"source": "European Commission, Taxes in Europe database"
+		},
+		{
+			"country": "IT",
+			"name": "Italy",
+			"rate": "22",
+			"shipping": true,
+			"source": "European Commission, Taxes in Europe database"
+		},
+		{
+			"country": "LV",
+			"name": "Latvia",
+			"rate": "21",
+			"shipping": true,
+			"source": "European Commission, Taxes in Europe database"
+		},
+		{
+			"country": "LT",
+			"name": "Lithuania",
+			"rate": "21",
+			"shipping": true,
+			"source": "European Commission, Taxes in Europe database"
+		},
+		{
+			"country": "LU",
+			"name": "Luxembourg",
+			"rate": "17",
+			"shipping": true,
+			"source": "European Commission, Taxes in Europe database"
+		},
+		{
+			"country": "MT",
+			"name": "Malta",
+			"rate": "18",
+			"shipping": true,
+			"source": "European Commission, Taxes in Europe database"
+		},
+		{
+			"country": "NL",
+			"name": "Netherlands",
+			"rate": "21",
+			"shipping": true,
+			"source": "European Commission, Taxes in Europe database"
+		},
+		{
+			"country": "PL",
+			"name": "Poland",
+			"rate": "23",
+			"shipping": true,
+			"source": "European Commission, Taxes in Europe database"
+		},
+		{
+			"country": "PT",
+			"name": "Portugal",
+			"rate": "23",
+			"shipping": true,
+			"source": "European Commission, Taxes in Europe database"
+		},
+		{
+			"country": "RO",
+			"name": "Romania",
+			"rate": "21",
+			"shipping": true,
+			"source": "European Commission, Taxes in Europe database"
+		},
+		{
+			"country": "SK",
+			"name": "Slovakia",
+			"rate": "23",
+			"shipping": true,
+			"source": "European Commission, Taxes in Europe database"
+		},
+		{
+			"country": "SI",
+			"name": "Slovenia",
+			"rate": "22",
+			"shipping": true,
+			"source": "European Commission, Taxes in Europe database"
+		},
+		{
+			"country": "ES",
+			"name": "Spain",
+			"rate": "21",
+			"shipping": true,
+			"source": "European Commission, Taxes in Europe database"
+		},
+		{
+			"country": "SE",
+			"name": "Sweden",
+			"rate": "25",
+			"shipping": true,
+			"source": "European Commission, Taxes in Europe database"
+		}
+	]
+}

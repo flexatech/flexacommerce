@@ -104,11 +104,12 @@ final class TaxesEndpoint extends Endpoint {
 		}
 		return new WP_REST_Response(
 			[
-				'classes'    => $classes,
-				'presets'    => $presets,
-				'countries'  => self::countries(),
-				'batch'      => TaxCsv::BATCH,
-				'csv_header' => TaxCsv::HEADER,
+				'classes'       => $classes,
+				'presets'       => $presets,
+				'countries'     => self::countries(),
+				'store_country' => Settings::string( 'store_country' ),
+				'batch'         => TaxCsv::BATCH,
+				'csv_header'    => TaxCsv::HEADER,
 			],
 			200
 		);

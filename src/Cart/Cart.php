@@ -16,6 +16,8 @@ defined( 'ABSPATH' ) || exit;
  * `gift_cards` holds normalized gift card codes in the order added, written
  * only when there is one (ADR-069). `skip_credit` is set when the shopper
  * chose not to pay with their store credit, written only when set (ADR-072).
+ * `vat_number` is the EU VAT number accepted for the reverse charge, with
+ * its country prefix, written only when set (ADR-086).
  * Immutable; every change returns a new instance.
  */
 final class Cart {
@@ -50,6 +52,7 @@ final class Cart {
 		public readonly string $payment_method = '',
 		public readonly array $gift_cards = [],
 		public readonly bool $skip_credit = false,
+		public readonly string $vat_number = '',
 	) {}
 
 	/** @param array<string,mixed> $data */
@@ -103,6 +106,7 @@ final class Cart {
 			is_string( $data['payment_method'] ?? null ) ? $data['payment_method'] : '',
 			$gift_cards,
 			( $data['skip_credit'] ?? false ) === true,
+			is_string( $data['vat_number'] ?? null ) ? $data['vat_number'] : '',
 		);
 	}
 
@@ -128,6 +132,9 @@ final class Cart {
 		}
 		if ( $this->skip_credit ) {
 			$data['skip_credit'] = true;
+		}
+		if ( $this->vat_number !== '' ) {
+			$data['vat_number'] = $this->vat_number;
 		}
 		return $data;
 	}
@@ -243,6 +250,11 @@ final class Cart {
 		return $this->copy( skip_credit: ! $use );
 	}
 
+	/** The VAT number that takes VAT off this cart, or '' (ADR-086). */
+	public function with_vat_number( string $number ): self {
+		return $this->copy( vat_number: $number );
+	}
+
 	/**
 	 * @param list<CartLine>|null                                     $lines
 	 * @param list<array{code:string,message:string}>|null            $notices
@@ -251,7 +263,7 @@ final class Cart {
 	 * @param list<string>|null                                       $coupons
 	 * @param list<string>|null                                       $gift_cards
 	 */
-	private function copy( ?array $lines = null, ?array $notices = null, ?array $rate = null, ?string $shipping_rate = null, ?array $destination = null, ?string $checkout_token = null, ?array $coupons = null, ?string $payment_method = null, ?array $gift_cards = null, ?bool $skip_credit = null ): self {
+	private function copy( ?array $lines = null, ?array $notices = null, ?array $rate = null, ?string $shipping_rate = null, ?array $destination = null, ?string $checkout_token = null, ?array $coupons = null, ?string $payment_method = null, ?array $gift_cards = null, ?bool $skip_credit = null, ?string $vat_number = null ): self {
 		return new self(
 			$lines ?? $this->lines,
 			$notices ?? $this->notices,
@@ -263,6 +275,7 @@ final class Cart {
 			$payment_method ?? $this->payment_method,
 			$gift_cards ?? $this->gift_cards,
 			$skip_credit ?? $this->skip_credit,
+			$vat_number ?? $this->vat_number,
 		);
 	}
 }

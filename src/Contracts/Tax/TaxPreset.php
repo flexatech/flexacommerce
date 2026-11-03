@@ -9,37 +9,70 @@ defined( 'ABSPATH' ) || exit;
 /**
  * A market preset for the Taxes screen (doc 02 §7.12.8): one base rate per
  * region, the settings it proposes and an optional market override. Core
- * ships `us`; add one with the `flexacommerce.tax.presets` filter.
+ * ships `us` and `eu`; add one with the `flexacommerce.tax.presets` filter.
  *
- * Regions with a null rate have no tax at that level and get no row.
+ * A region is a state of `country` (scope `states`) or a whole country
+ * (scope `countries`, ADR-086). Regions with a null rate have no tax at
+ * that level and get no row. With `others` set to `home`, the regions the
+ * admin did not pick are charged the store country's rate, as a store under
+ * the EU distance-selling threshold does.
  *
  * @api
  */
 final class TaxPreset {
+	public const STATES    = 'states';
+	public const COUNTRIES = 'countries';
+
+	/** @var list<array{code:string,name:string,rate:?string,shipping:bool,source:string}> */
+	public readonly array $regions;
+
 	/**
-	 * @param list<array{state:string,name:string,rate:?string,shipping:bool,source:string}> $regions
-	 * @param array<string,mixed>                                                         $settings proposed global settings
-	 * @param array<string,mixed>|null                                                    $market   proposed tax market `{id, name, countries, overrides}`
-	 * @param list<string>                                                                $origin_states states for `origin_states` in the market
+	 * @param list<array<string,mixed>> $regions  `{code, name, rate, shipping, source}`; `state` is read as `code` too
+	 * @param array<string,mixed>       $settings proposed global settings
+	 * @param array<string,mixed>|null  $market   proposed tax market `{id, name, countries, overrides}`
+	 * @param list<string>              $origin_states states for `origin_states` in the market
+	 * @param string                    $scope    `states` of `country`, or `countries`
+	 * @param string                    $others   `none`, or `home` to charge the store country's rate in the regions not picked
 	 */
 	public function __construct(
 		public readonly string $id,
 		public readonly string $name,
 		public readonly string $country,
 		public readonly string $as_of,
-		public readonly array $regions,
+		array $regions,
 		public readonly array $settings = [],
 		public readonly ?array $market = null,
 		public readonly array $origin_states = [],
 		public readonly string $label = '{STATE} Tax',
 		public readonly string $notes = '',
+		public readonly string $scope = self::STATES,
+		public readonly string $others = 'none',
 	) {
 		if ( preg_match( '/^[a-z0-9_-]{1,24}$/', $id ) !== 1 ) {
 			throw new \InvalidArgumentException( sprintf( 'Tax preset id "%s" must be 1 to 24 lower-case letters, digits, - or _.', $id ) );
 		}
-		if ( preg_match( '/^[A-Z]{2}$/', $country ) !== 1 ) {
+		if ( $scope !== self::STATES && $scope !== self::COUNTRIES ) {
+			throw new \InvalidArgumentException( sprintf( 'Tax preset "%s" has an unknown scope.', $id ) );
+		}
+		if ( $scope === self::STATES && preg_match( '/^[A-Z]{2}$/', $country ) !== 1 ) {
 			throw new \InvalidArgumentException( sprintf( 'Tax preset "%s" needs an ISO country code.', $id ) );
 		}
+		$list = [];
+		foreach ( $regions as $region ) {
+			$code = $region['code'] ?? $region['state'] ?? null;
+			if ( ! is_string( $code ) || $code === '' ) {
+				continue;
+			}
+			$rate   = $region['rate'] ?? null;
+			$list[] = [
+				'code'     => strtoupper( $code ),
+				'name'     => is_string( $region['name'] ?? null ) ? $region['name'] : $code,
+				'rate'     => is_scalar( $rate ) ? (string) $rate : null,
+				'shipping' => ! empty( $region['shipping'] ),
+				'source'   => is_string( $region['source'] ?? null ) ? $region['source'] : '',
+			];
+		}
+		$this->regions = $list;
 	}
 
 	/**
@@ -51,17 +84,9 @@ final class TaxPreset {
 	public static function from_array( array $data ): self {
 		$regions = [];
 		foreach ( is_array( $data['regions'] ?? null ) ? $data['regions'] : [] as $region ) {
-			if ( ! is_array( $region ) || ! is_string( $region['state'] ?? null ) ) {
-				continue;
+			if ( is_array( $region ) ) {
+				$regions[] = [ 'code' => $region['code'] ?? $region['state'] ?? $region['country'] ?? null ] + $region;
 			}
-			$rate      = $region['rate'] ?? null;
-			$regions[] = [
-				'state'    => strtoupper( $region['state'] ),
-				'name'     => is_string( $region['name'] ?? null ) ? $region['name'] : $region['state'],
-				'rate'     => is_scalar( $rate ) ? (string) $rate : null,
-				'shipping' => ! empty( $region['shipping'] ),
-				'source'   => is_string( $region['source'] ?? null ) ? $region['source'] : '',
-			];
 		}
 		$origin = [];
 		foreach ( is_array( $data['origin_states'] ?? null ) ? $data['origin_states'] : [] as $state ) {
@@ -80,32 +105,46 @@ final class TaxPreset {
 			origin_states: $origin,
 			label: is_string( $data['label'] ?? null ) ? $data['label'] : '{STATE} Tax',
 			notes: is_string( $data['notes'] ?? null ) ? $data['notes'] : '',
+			scope: is_string( $data['scope'] ?? null ) ? $data['scope'] : self::STATES,
+			others: ( $data['others'] ?? '' ) === 'home' ? 'home' : 'none',
 		);
 	}
 
 	/**
-	 * Rate rows for the picked regions (nexus states), in the input shape the
-	 * rate table accepts: Standard class, priority 1, source `preset:{id}`.
+	 * Rate rows for the picked regions (nexus states, or the countries where
+	 * the store charges local VAT), in the input shape the rate table
+	 * accepts: Standard class, priority 1, source `preset:{id}`.
 	 *
-	 * @param list<string> $states
+	 * @param list<string> $codes
+	 * @param string       $home  the store country, for `others: home`
 	 * @return list<array<string,mixed>>
 	 */
-	public function rows( array $states ): array {
-		$picked = array_flip( array_map( 'strtoupper', $states ) );
-		$rows   = [];
+	public function rows( array $codes, string $home = '' ): array {
+		$picked = array_flip( array_map( 'strtoupper', $codes ) );
+		$fall   = null;
+		if ( $this->others === 'home' && $this->scope === self::COUNTRIES ) {
+			foreach ( $this->regions as $region ) {
+				if ( $region['code'] === strtoupper( $home ) && $region['rate'] !== null ) {
+					$fall = $region;
+				}
+			}
+		}
+		$rows = [];
 		foreach ( $this->regions as $region ) {
-			if ( $region['rate'] === null || ! isset( $picked[ $region['state'] ] ) ) {
+			$charged = isset( $picked[ $region['code'] ] ) ? $region : $fall;
+			if ( $charged === null || $charged['rate'] === null ) {
 				continue;
 			}
-			$rows[] = [
+			$countries = $this->scope === self::COUNTRIES;
+			$rows[]    = [
 				'tax_class' => '',
-				'country'   => $this->country,
-				'state'     => $region['state'],
-				'rate'      => $region['rate'],
-				'name'      => str_replace( '{STATE}', $region['state'], $this->label ),
+				'country'   => $countries ? $region['code'] : $this->country,
+				'state'     => $countries ? '' : $region['code'],
+				'rate'      => $charged['rate'],
+				'name'      => str_replace( [ '{STATE}', '{COUNTRY}' ], $region['code'], $this->label ),
 				'priority'  => 1,
 				'compound'  => false,
-				'shipping'  => $region['shipping'],
+				'shipping'  => $charged['shipping'],
 				'source'    => 'preset:' . $this->id,
 			];
 		}
@@ -124,6 +163,8 @@ final class TaxPreset {
 			'market'        => $this->market,
 			'origin_states' => $this->origin_states,
 			'notes'         => $this->notes,
+			'scope'         => $this->scope,
+			'others'        => $this->others,
 		];
 	}
 }

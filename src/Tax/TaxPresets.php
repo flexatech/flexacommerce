@@ -108,7 +108,7 @@ final class TaxPresets {
 	 * @return list<RateRow>
 	 */
 	private function rows( TaxPreset $preset, array $states ): array {
-		return array_map( static fn ( array $row ): RateRow => RateRow::from_input( $row ), $preset->rows( $states ) );
+		return array_map( static fn ( array $row ): RateRow => RateRow::from_input( $row ), $preset->rows( $states, Settings::string( 'store_country' ) ) );
 	}
 
 	/** @return array<string,mixed>|null */

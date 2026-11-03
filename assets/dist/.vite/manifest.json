@@ -26,7 +26,7 @@
     ]
   },
   "admin/features/checkout/CheckoutBuilderPage.tsx": {
-    "file": "assets/CheckoutBuilderPage-ylFxX0lF.js",
+    "file": "assets/CheckoutBuilderPage-DcLA0mVI.js",
     "name": "CheckoutBuilderPage",
     "src": "admin/features/checkout/CheckoutBuilderPage.tsx",
     "isDynamicEntry": true,
@@ -39,7 +39,7 @@
     ]
   },
   "admin/features/emails/EmailDesignPage.tsx": {
-    "file": "assets/EmailDesignPage-x-RF6Cu5.js",
+    "file": "assets/EmailDesignPage-BjxWI1sO.js",
     "name": "EmailDesignPage",
     "src": "admin/features/emails/EmailDesignPage.tsx",
     "isDynamicEntry": true,
@@ -52,7 +52,7 @@
     ]
   },
   "admin/main.tsx": {
-    "file": "assets/admin-CwO1vf4b.js",
+    "file": "assets/admin-C_bTroQQ.js",
     "name": "admin",
     "src": "admin/main.tsx",
     "isEntry": true,

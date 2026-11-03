@@ -11,6 +11,7 @@ use Flexa\Commerce\Payments\PaymentServices;
 use Flexa\Commerce\Shipping\ShippingServices;
 use Flexa\Commerce\Support\Services;
 use Flexa\Commerce\Tax\TaxServices;
+use Flexa\Commerce\Tax\VatNumbers;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -65,6 +66,7 @@ final class CheckoutServices {
 			$this->coupons,
 			$this->gift_cards,
 			$this->subscriptions,
+			fn (): VatNumbers => $this->tax()->vat(),
 		);
 	}
 

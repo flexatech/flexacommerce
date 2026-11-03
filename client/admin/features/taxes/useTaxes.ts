@@ -28,7 +28,8 @@ export interface TaxClassSummary {
 }
 
 export interface PresetRegion {
-    state: string;
+    /** A state of the preset country, or a country code for scope `countries`. */
+    code: string;
     name: string;
     rate: string | null;
     shipping: boolean;
@@ -45,6 +46,9 @@ export interface TaxPreset {
     market: TaxMarket | null;
     origin_states: string[];
     notes: string;
+    scope: "states" | "countries";
+    /** `home`: regions not picked are charged the store country's rate. */
+    others: "none" | "home";
 }
 
 export interface TaxMarket {
@@ -58,6 +62,8 @@ export interface TaxOverview {
     classes: TaxClassSummary[];
     presets: TaxPreset[];
     countries: Country[];
+    /** Settings store_country, for presets that charge the home rate. */
+    store_country: string;
     batch: number;
     csv_header: string[];
 }

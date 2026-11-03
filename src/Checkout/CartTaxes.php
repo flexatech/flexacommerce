@@ -40,9 +40,10 @@ final class CartTaxes {
 	 * line key) and one `shipping` line for the rate, when there is one. Item
 	 * amounts are after the coupons, unless `$discounted` is false. An
 	 * account flagged tax exempt on the Customers screen starts exempt; the
-	 * `flexacommerce.tax.exempt` filter still has the last word.
+	 * `flexacommerce.tax.exempt` filter still has the last word. So does a
+	 * `$reverse_charge`, an EU business VAT number accepted (ADR-086).
 	 */
-	public function request( CartState $state, ?ShippingRate $rate, ?TaxLocation $location, string $context = TaxRequest::CHECKOUT, int $user_id = 0, string $email = '', bool $discounted = true ): TaxRequest {
+	public function request( CartState $state, ?ShippingRate $rate, ?TaxLocation $location, string $context = TaxRequest::CHECKOUT, int $user_id = 0, string $email = '', bool $discounted = true, bool $reverse_charge = false ): TaxRequest {
 		$enabled = $this->tax->enabled();
 		$lines   = [];
 		foreach ( $state->items as $item ) {
@@ -71,7 +72,7 @@ final class CartTaxes {
 			$user_id,
 			$email,
 			$context,
-			$enabled && ( new CustomerProfile() )->tax_exempt( $user_id ),
+			$enabled && ( $reverse_charge || ( new CustomerProfile() )->tax_exempt( $user_id ) ),
 		);
 	}
 
@@ -81,11 +82,11 @@ final class CartTaxes {
 	 *
 	 * @throws TaxUnavailable
 	 */
-	public function undiscounted( CartState $state, ?TaxLocation $location, int $user_id = 0, string $email = '' ): ?TaxResult {
+	public function undiscounted( CartState $state, ?TaxLocation $location, int $user_id = 0, string $email = '', bool $reverse_charge = false ): ?TaxResult {
 		if ( $state->discount()->is_zero() ) {
 			return null;
 		}
-		return $this->tax->calculate( $this->request( $state, null, $location, TaxRequest::CART, $user_id, $email, false ) )->result;
+		return $this->tax->calculate( $this->request( $state, null, $location, TaxRequest::CART, $user_id, $email, false, $reverse_charge ) )->result;
 	}
 
 	/**

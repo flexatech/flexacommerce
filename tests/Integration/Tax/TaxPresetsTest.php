@@ -44,7 +44,14 @@ final class TaxPresetsTest extends TaxTestCase {
 		$preset = $this->presets()->get( 'us' );
 		self::assertNotNull( $preset );
 		$this->presets()->apply( $preset, [ 'CA', 'TX' ], [] );
-		$local = $this->rate( [ 'state' => 'CA', 'rate' => '1', 'priority' => 2, 'postcodes' => '90001' ] );
+		$local = $this->rate(
+			[
+				'state'     => 'CA',
+				'rate'      => '1',
+				'priority'  => 2,
+				'postcodes' => '90001',
+			]
+		);
 
 		$preview = $this->presets()->preview( $preset, [ 'NY' ] );
 		self::assertCount( 1, $preview['add'] );
@@ -80,6 +87,37 @@ final class TaxPresetsTest extends TaxTestCase {
 		self::assertCount( 1, (array) Settings::get( 'tax_markets' ), 'applying again replaces the market' );
 	}
 
+	public function test_the_eu_preset_charges_the_home_rate_in_countries_not_picked(): void {
+		$this->enable(
+			[
+				'store_country'  => 'DE',
+				'store_state'    => '',
+				'store_postcode' => '10115',
+				'store_city'     => 'Berlin',
+			]
+		);
+		$preset = $this->presets()->get( 'eu' );
+		self::assertNotNull( $preset );
+		self::assertSame( [ TaxPreset::COUNTRIES, 'home' ], [ $preset->scope, $preset->others ] );
+		self::assertCount( 27, $preset->regions );
+
+		$written = $this->presets()->apply( $preset, [ 'DE', 'FR' ], [ 'prices_include_tax', 'vat_numbers', 'market' ] );
+		self::assertSame( 27, $written );
+		$rows = [];
+		foreach ( $this->rates()->all() as $row ) {
+			$rows[ $row->country ] = [ $row->state, $row->rate, $row->name ];
+		}
+		self::assertSame( [ '', 190000, 'VAT' ], $rows['DE'] );
+		self::assertSame( [ '', 200000, 'VAT' ], $rows['FR'] );
+		self::assertSame( [ '', 190000, 'VAT' ], $rows['IT'], 'below the distance-selling threshold the home rate applies' );
+
+		self::assertTrue( Settings::bool( 'prices_include_tax' ) );
+		self::assertSame( 'optional', Settings::string( 'vat_numbers' ) );
+		$markets = (array) Settings::get( 'tax_markets' );
+		self::assertSame( 'eu', $markets[0]['id'] );
+		self::assertTrue( $markets[0]['overrides']['keep_gross_prices'] );
+	}
+
 	public function test_an_add_on_can_add_a_preset(): void {
 		add_filter(
 			'flexacommerce.tax.presets',
@@ -92,7 +130,13 @@ final class TaxPresetsTest extends TaxTestCase {
 						'country' => 'CA',
 						'as_of'   => '2025-01-01',
 						'label'   => '{STATE} HST',
-						'regions' => [ [ 'state' => 'on', 'rate' => '13', 'shipping' => true ] ],
+						'regions' => [
+							[
+								'state'    => 'on',
+								'rate'     => '13',
+								'shipping' => true,
+							],
+						],
 					]
 				),
 			]

@@ -43,6 +43,11 @@ final class InvoiceRenderer {
 
 	private const FILL = [ 0.95, 0.95, 0.95 ];
 
+	private const NO_VAT = [
+		'number'         => '',
+		'reverse_charge' => false,
+	];
+
 	private PdfDocument $pdf;
 
 	private float $y = 0.0;
@@ -52,6 +57,12 @@ final class InvoiceRenderer {
 	private string $document = self::INVOICE;
 
 	private ?CreditNote $credit = null;
+
+	/** @var array{number:string,reverse_charge:bool} the buyer's EU VAT number (ADR-086) */
+	private array $vat = [
+		'number'         => '',
+		'reverse_charge' => false,
+	];
 
 	/** @var list<array{label:string,x:float,width:float,align:string}> */
 	private array $columns = [];
@@ -63,10 +74,12 @@ final class InvoiceRenderer {
 		private readonly ?PdfImage $logo = null,
 	) {}
 
-	public function render( PdfDocument $pdf, Order $order, ?Invoice $invoice, string $document ): void {
+	/** @param array{number:string,reverse_charge:bool}|null $vat the buyer's EU VAT number (ADR-086) */
+	public function render( PdfDocument $pdf, Order $order, ?Invoice $invoice, string $document, ?array $vat = null ): void {
 		$this->pdf      = $pdf;
 		$this->document = $document;
 		$this->credit   = null;
+		$this->vat      = $vat ?? self::NO_VAT;
 		$first          = $this->start( $pdf );
 
 		$this->header( $order, $invoice );
@@ -74,6 +87,7 @@ final class InvoiceRenderer {
 		$this->items( $order );
 		if ( $document === self::INVOICE ) {
 			$this->totals( $order );
+			$this->reverse_charge();
 		}
 		if ( $order->customer_note !== '' ) {
 			$this->note( $order->customer_note );
@@ -85,16 +99,20 @@ final class InvoiceRenderer {
 	 * The credit note of one refund: the invoice it corrects, the refunded
 	 * lines (net), any amount refunded without items, the refunded tax per
 	 * rate and the total credited.
+	 *
+	 * @param array{number:string,reverse_charge:bool}|null $vat the buyer's EU VAT number (ADR-086)
 	 */
-	public function render_credit_note( PdfDocument $pdf, Order $order, ?Invoice $invoice, CreditNote $note, Transaction $refund ): void {
+	public function render_credit_note( PdfDocument $pdf, Order $order, ?Invoice $invoice, CreditNote $note, Transaction $refund, ?array $vat = null ): void {
 		$this->pdf      = $pdf;
 		$this->document = self::CREDIT_NOTE;
 		$this->credit   = $note;
+		$this->vat      = $vat ?? self::NO_VAT;
 		$first          = $this->start( $pdf );
 
 		$this->header( $order, $invoice );
 		$this->addresses( $order );
 		$this->credit_items( $order, $refund );
+		$this->reverse_charge();
 		$reason = is_string( $refund->data['reason'] ?? null ) ? trim( $refund->data['reason'] ) : '';
 		if ( $reason !== '' ) {
 			$this->note( $reason, __( 'Reason', 'flexacommerce' ) );
@@ -290,6 +308,10 @@ final class InvoiceRenderer {
 			if ( $lines === [] ) {
 				$lines = array_values( array_filter( [ $order->customer_name, $order->customer_email ] ) );
 			}
+			if ( $contact && $this->vat['number'] !== '' ) {
+				/* translators: %s: the buyer's EU VAT number, such as DE123456789 */
+				$lines[] = sprintf( __( 'VAT number: %s', 'flexacommerce' ), $this->vat['number'] );
+			}
 			$y = $this->y;
 			$this->pdf->text( $x, $y, mb_strtoupper( $title ), 'bold', 8, self::MUTED );
 			$y += 14;
@@ -447,6 +469,13 @@ final class InvoiceRenderer {
 			$this->y += count( $lines ) * 13 + 4;
 		}
 		$this->y += 12;
+	}
+
+	/** The statement an EU invoice needs when the buyer accounts for the VAT (ADR-086). */
+	private function reverse_charge(): void {
+		if ( $this->vat['reverse_charge'] && $this->document !== self::PACKING_SLIP ) {
+			$this->note( __( 'Reverse charge: VAT is to be accounted for by the customer (Article 196, Council Directive 2006/112/EC).', 'flexacommerce' ), __( 'VAT', 'flexacommerce' ) );
+		}
 	}
 
 	private function note( string $note, string $title = '' ): void {

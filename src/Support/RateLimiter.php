@@ -27,6 +27,8 @@ final class RateLimiter {
 		'stock_alert_ip'   => [ 10, 3600 ],
 		'wishlist_ip'      => [ 20, 3600 ],
 		'gift_card_ip'     => [ 10, 3600 ],
+		// VAT numbers sent to VIES (ADR-086); cached answers are not counted.
+		'vat_ip'           => [ 20, 600 ],
 	];
 
 	public function __construct( private readonly Clock $clock = new Clock() ) {}

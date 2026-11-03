@@ -20,19 +20,38 @@ const SETTING_LABELS: Record<string, string> = {
     tax_round_at_subtotal: __("Round tax at subtotal"),
     shipping_tax_class: __("Shipping tax class"),
     price_display_suffix: __("Price suffix"),
+    vat_numbers: __("VAT number field at checkout"),
+    vat_check: __("Check VAT numbers"),
+    vat_unverified: __("When the check service is down"),
+};
+
+/** Readable values for the enum settings a preset can propose. */
+const VALUE_LABELS: Record<string, string> = {
+    excl: __("Excluding tax"),
+    incl: __("Including tax"),
+    shipping: __("Customer shipping address"),
+    billing: __("Customer billing address"),
+    base: __("Store address"),
+    none: __("No address"),
+    itemized: __("One line per tax"),
+    single: __("A single total"),
+    off: __("Off"),
+    optional: __("Optional"),
+    required: __("Required"),
 };
 
 function show(value: unknown): string {
     if (typeof value === "boolean") {
         return value ? __("Yes") : __("No");
     }
-    return String(value);
+    return VALUE_LABELS[String(value)] ?? String(value);
 }
 
 /**
  * A preset writes one base rate per picked state (where the store has
- * nexus) and can set tax options. Applying it again replaces only its own
- * rows; rates added by hand or imported stay.
+ * nexus) or per picked country (where the store charges local VAT) and can
+ * set tax options. Applying it again replaces only its own rows; rates
+ * added by hand or imported stay.
  */
 export function PresetDialog({ overview, onClose }: { overview: TaxOverview; onClose: () => void }) {
     const [presetId, setPresetId] = useState(overview.presets[0]?.id ?? "");
@@ -43,7 +62,11 @@ export function PresetDialog({ overview, onClose }: { overview: TaxOverview; onC
             <DialogContent className="fxc:max-h-[90vh] fxc:max-w-2xl fxc:overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>{__("Apply a tax preset")}</DialogTitle>
-                    <DialogDescription>{__("Pick the states where you must collect tax. The preset adds their base rate to the Standard class.")}</DialogDescription>
+                    <DialogDescription>
+                        {preset?.scope === "countries"
+                            ? __("Pick the countries where you charge their own VAT rate. The preset adds the rates to the Standard class.")
+                            : __("Pick the states where you must collect tax. The preset adds their base rate to the Standard class.")}
+                    </DialogDescription>
                 </DialogHeader>
                 {overview.presets.length > 1 && (
                     <div>
@@ -66,8 +89,13 @@ function PresetForm({ preset, overview, onClose }: { preset: TaxPreset; overview
     const [preview, setPreview] = useState<PresetPreview | null>(null);
     const [checking, setChecking] = useState(false);
 
+    const byCountry = preset.scope === "countries";
     const country = overview.countries.find((c) => c.code === preset.country);
-    const stateName = (code: string) => country?.states.find((s) => s.code === code)?.name ?? code;
+    const regionName = (code: string) =>
+        (byCountry ? overview.countries.find((c) => c.code === code)?.name : country?.states.find((s) => s.code === code)?.name) ??
+        preset.regions.find((r) => r.code === code)?.name ??
+        code;
+    const home = preset.others === "home" ? preset.regions.find((r) => r.code === overview.store_country && r.rate !== null) : undefined;
     const taxed = preset.regions.filter((r) => r.rate !== null);
     const untaxed = preset.regions.filter((r) => r.rate === null);
 
@@ -114,17 +142,26 @@ function PresetForm({ preset, overview, onClose }: { preset: TaxPreset; overview
             <div className="fxc:flex fxc:gap-3 fxc:rounded-md fxc:border fxc:border-amber-300 fxc:bg-amber-50 fxc:p-3 fxc:text-sm fxc:text-amber-900 fxc:dark:border-amber-700 fxc:dark:bg-amber-950 fxc:dark:text-amber-100">
                 <AlertTriangle aria-hidden className="fxc:mt-0.5 fxc:size-4 fxc:shrink-0" />
                 <div className="fxc:space-y-1">
-                    <p>{sprintf(__("Rates as of %s. They are a starting point: check them with each state's revenue department."), preset.as_of)}</p>
-                    <p>{__("You are responsible for the tax you collect. Most states add county and city taxes on top of the base rate; add those as more rates or import them from a CSV.")}</p>
+                    {byCountry ? (
+                        <>
+                            <p>{sprintf(__("Rates as of %s. They are a starting point: check them with each country's tax authority."), preset.as_of)}</p>
+                            <p>{__("You are responsible for the tax you collect. Only standard rates are included; add reduced rates for the products that need them.")}</p>
+                        </>
+                    ) : (
+                        <>
+                            <p>{sprintf(__("Rates as of %s. They are a starting point: check them with each state's revenue department."), preset.as_of)}</p>
+                            <p>{__("You are responsible for the tax you collect. Most states add county and city taxes on top of the base rate; add those as more rates or import them from a CSV.")}</p>
+                        </>
+                    )}
                     {preset.notes !== "" && <p className="fxc:text-xs">{preset.notes}</p>}
                 </div>
             </div>
 
             <fieldset>
                 <div className="fxc:mb-2 fxc:flex fxc:items-center fxc:justify-between">
-                    <legend className="fxc:text-sm fxc:font-medium">{__("States where you collect tax")}</legend>
+                    <legend className="fxc:text-sm fxc:font-medium">{byCountry ? __("Countries charged their own rate") : __("States where you collect tax")}</legend>
                     <div className="fxc:flex fxc:gap-1">
-                        <Button variant="link" size="sm" onClick={() => setStates(new Set(taxed.map((r) => r.state)))}>
+                        <Button variant="link" size="sm" onClick={() => setStates(new Set(taxed.map((r) => r.code)))}>
                             {__("Select all")}
                         </Button>
                         <Button variant="link" size="sm" onClick={() => setStates(new Set())}>
@@ -134,21 +171,32 @@ function PresetForm({ preset, overview, onClose }: { preset: TaxPreset; overview
                 </div>
                 <div className="fxc:grid fxc:max-h-64 fxc:grid-cols-2 fxc:gap-x-4 fxc:gap-y-1.5 fxc:overflow-y-auto fxc:rounded-md fxc:border fxc:p-3 fxc:sm:grid-cols-3">
                     {taxed.map((region) => (
-                        <label key={region.state} className="fxc:flex fxc:items-center fxc:gap-2 fxc:text-sm">
+                        <label key={region.code} className="fxc:flex fxc:items-center fxc:gap-2 fxc:text-sm">
                             <input
                                 type="checkbox"
                                 className="flexacommerce-check"
-                                checked={states.has(region.state)}
-                                onChange={() => toggle(states, region.state, setStates)}
+                                checked={states.has(region.code)}
+                                onChange={() => toggle(states, region.code, setStates)}
                             />
-                            <span className="fxc:truncate">{stateName(region.state)}</span>
+                            <span className="fxc:truncate">{regionName(region.code)}</span>
                             <span className="fxc:text-muted-foreground fxc:ml-auto fxc:text-xs fxc:tabular-nums">{region.rate}%</span>
                         </label>
                     ))}
                 </div>
                 {untaxed.length > 0 && (
                     <p className="fxc:text-muted-foreground fxc:mt-2 fxc:text-xs">
-                        {sprintf(__("No statewide sales tax: %s."), untaxed.map((r) => stateName(r.state)).join(", "))}
+                        {sprintf(__("No statewide sales tax: %s."), untaxed.map((r) => regionName(r.code)).join(", "))}
+                    </p>
+                )}
+                {preset.others === "home" && (
+                    <p className="fxc:text-muted-foreground fxc:mt-2 fxc:text-xs">
+                        {home
+                            ? sprintf(
+                                  __("Countries you leave unticked are charged your store country's rate (%1$s, %2$s%%). That is the rule while your EU distance sales stay under €10,000 a year; tick every country once you use the One-Stop Shop."),
+                                  regionName(home.code),
+                                  home.rate ?? "",
+                              )
+                            : __("Your store country is outside this preset, so only the ticked countries get a rate.")}
                     </p>
                 )}
             </fieldset>

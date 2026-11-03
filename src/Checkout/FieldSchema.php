@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace Flexa\Commerce\Checkout;
 
 use Flexa\Commerce\Support\Countries;
+use Flexa\Commerce\Support\Settings;
+use Flexa\Commerce\Support\TaxSettings;
+use Flexa\Commerce\Tax\VatNumbers;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -19,6 +22,9 @@ defined( 'ABSPATH' ) || exit;
  */
 final class FieldSchema {
 	public const CORE = [ 'first_name', 'last_name', 'company', 'address_1', 'address_2', 'city', 'state', 'postcode', 'country', 'email', 'phone' ];
+
+	/** The billing VAT number field (ADR-086), stored as `_billing_vat_number`. */
+	public const VAT = 'vat_number';
 
 	/** @param array<string,CheckoutField> $fields keyed by id */
 	private function __construct(
@@ -169,6 +175,22 @@ final class FieldSchema {
 				$changes['label'] = __( 'Apartment, suite, unit', 'flexacommerce' );
 			}
 			$fields[ $field->id ] = $field->copy( $changes );
+		}
+		if ( $type === 'billing' && TaxSettings::vat_numbers() ) {
+			$fields[ self::VAT ] = new CheckoutField(
+				self::VAT,
+				__( 'VAT number', 'flexacommerce' ),
+				'text',
+				Settings::string( 'vat_numbers' ) === 'required',
+				'',
+				[],
+				20,
+				( isset( $fields['company'] ) ? $fields['company']->priority : 30 ) + 1,
+				'',
+				__( 'Business buyers in another EU country with a valid VAT number pay no VAT (reverse charge).', 'flexacommerce' ),
+				'full',
+				VatNumbers::countries(),
+			);
 		}
 		return new self( $type, $country, $fields );
 	}

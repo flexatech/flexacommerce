@@ -24,6 +24,7 @@ use Flexa\Commerce\Orders\TransitionContext;
 use Flexa\Commerce\Payments\Transaction;
 use Flexa\Commerce\Plugin;
 use Flexa\Commerce\Support\Capabilities;
+use Flexa\Commerce\Tax\VatCheck;
 use WP_Error;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -740,12 +741,15 @@ final class OrdersEndpoint extends Endpoint {
 			'refundable'     => $order->refundable(),
 			'balance_due'    => $order->balance_due(),
 			'customer_note'  => $order->customer_note,
-			'fields'         => array_map(
-				static fn ( array $answer ): array => [
-					'label' => $answer['label'],
-					'value' => $answer['value'],
-				],
-				OrderFields::for_order( Plugin::instance()->orders()->orders(), $order->id )
+			'fields'         => array_merge(
+				array_map(
+					static fn ( array $answer ): array => [
+						'label' => $answer['label'],
+						'value' => $answer['value'],
+					],
+					OrderFields::for_order( Plugin::instance()->orders()->orders(), $order->id )
+				),
+				self::vat_rows( $order->id )
 			),
 			'customer_ip'    => $order->customer_ip,
 			'created_via'    => $order->created_via,
@@ -901,6 +905,37 @@ final class OrdersEndpoint extends Endpoint {
 	/** @return array<string,string>|null */
 	private static function address( ?AddressView $address ): ?array {
 		return $address?->to_array();
+	}
+
+	/**
+	 * What checkout found for the buyer's EU VAT number (ADR-086).
+	 *
+	 * @return list<array{label:string,value:string}>
+	 */
+	private static function vat_rows( int $order_id ): array {
+		$orders = Plugin::instance()->orders()->orders();
+		$raw    = json_decode( (string) $orders->get_meta( $order_id, '_fxc_vat_check' ), true );
+		$check  = is_array( $raw ) ? VatCheck::from_array( $raw ) : null;
+		if ( $check === null ) {
+			return [];
+		}
+		$value = match ( $check->status ) {
+			VatCheck::VALID       => __( 'Confirmed in VIES', 'flexacommerce' ),
+			VatCheck::WELL_FORMED => __( 'Format checked, not looked up in VIES', 'flexacommerce' ),
+			default               => __( 'Not confirmed: VIES did not answer', 'flexacommerce' ),
+		};
+		if ( $check->name !== '' ) {
+			$value .= ' (' . $check->name . ')';
+		}
+		$value .= '. ' . ( $orders->get_meta( $order_id, '_fxc_reverse_charge' ) === '1'
+			? __( 'No VAT charged (reverse charge).', 'flexacommerce' )
+			: __( 'VAT charged.', 'flexacommerce' ) );
+		return [
+			[
+				'label' => __( 'VAT number check', 'flexacommerce' ),
+				'value' => $value,
+			],
+		];
 	}
 
 	/** Stored dates are UTC without a zone; the client gets ISO 8601. */

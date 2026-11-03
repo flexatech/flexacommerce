@@ -24,7 +24,17 @@ final class TaxSettings {
 		'tax_based_on'          => 'enum:shipping|billing|base',
 		'intrastate_sourcing'   => 'enum:destination|origin',
 		'origin_states'         => 'states',
+		// Prices entered with tax keep the same gross price in every country of the market (ADR-086).
+		'keep_gross_prices'     => 'bool',
 	];
+
+	/**
+	 * True when checkout asks for an EU VAT number (ADR-086). Here and not on
+	 * Tax\VatNumbers so a checkout with taxes off loads no tax class.
+	 */
+	public static function vat_numbers(): bool {
+		return Settings::string( 'vat_numbers' ) !== 'off' && Settings::bool( 'tax_enabled' );
+	}
 
 	/** @return list<array{slug:string,name:string}> */
 	public static function classes( mixed $value, mixed $default ): array {

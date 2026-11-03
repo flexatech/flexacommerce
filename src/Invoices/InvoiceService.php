@@ -242,7 +242,8 @@ final class InvoiceService {
 		[ $pdf, $renderer ] = $this->document();
 		foreach ( $orders as $order ) {
 			$invoice = $document === InvoiceRenderer::INVOICE ? $this->create( $order ) : $this->invoices->find( $order->id );
-			$this->in_locale( $order, static fn () => $renderer->render( $pdf, $order, $invoice, $document ) );
+			$vat     = $this->vat( $order );
+			$this->in_locale( $order, static fn () => $renderer->render( $pdf, $order, $invoice, $document, $vat ) );
 		}
 		$title = count( $orders ) === 1 ? $this->filename( $orders, $document ) : get_bloginfo( 'name' );
 		return $pdf->output( preg_replace( '/\.pdf$/', '', $title ) ?? $title );
@@ -253,12 +254,21 @@ final class InvoiceService {
 		$note               = $this->create_credit_note( $order, $refund );
 		$invoice            = $this->invoices->find( $order->id );
 		[ $pdf, $renderer ] = $this->document();
-		$this->in_locale( $order, static fn () => $renderer->render_credit_note( $pdf, $order, $invoice, $note, $refund ) );
+		$vat                = $this->vat( $order );
+		$this->in_locale( $order, static fn () => $renderer->render_credit_note( $pdf, $order, $invoice, $note, $refund, $vat ) );
 		return $pdf->output( preg_replace( '/\.pdf$/', '', $this->credit_filename( $note ) ) ?? $note->number );
 	}
 
 	public function credit_filename( CreditNote $note ): string {
 		return sanitize_file_name( 'credit-note-' . $note->number . '.pdf' );
+	}
+
+	/** @return array{number:string,reverse_charge:bool} the buyer's EU VAT number from checkout (ADR-086) */
+	private function vat( Order $order ): array {
+		return [
+			'number'         => (string) $this->orders->get_meta( $order->id, '_billing_vat_number' ),
+			'reverse_charge' => $this->orders->get_meta( $order->id, '_fxc_reverse_charge' ) === '1',
+		];
 	}
 
 	/** @return array{0:PdfDocument,1:InvoiceRenderer} */

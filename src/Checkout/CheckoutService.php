@@ -42,6 +42,7 @@ use Flexa\Commerce\Support\Countries;
 use Flexa\Commerce\Support\RateLimiter;
 use Flexa\Commerce\Customers\CustomerProfile;
 use Flexa\Commerce\Support\Settings;
+use Flexa\Commerce\Support\TaxSettings;
 use Flexa\Commerce\Contracts\Tax\TaxLine;
 use Flexa\Commerce\Contracts\Tax\TaxLocation;
 use Flexa\Commerce\Contracts\Tax\TaxRequest;
@@ -51,6 +52,8 @@ use Flexa\Commerce\Coupons\CouponService;
 use Flexa\Commerce\GiftCards\GiftCardService;
 use Flexa\Commerce\GiftCards\GiftCardUnusable;
 use Flexa\Commerce\Tax\TaxService;
+use Flexa\Commerce\Tax\VatCheck;
+use Flexa\Commerce\Tax\VatNumbers;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -78,6 +81,8 @@ final class CheckoutService {
 
 	private readonly CustomerProfile $profile;
 
+	private ?VatNumbers $vat_numbers = null;
+
 	public function __construct(
 		private readonly CartService $cart,
 		private readonly CartPresenter $presenter,
@@ -96,6 +101,7 @@ final class CheckoutService {
 		private readonly ?\Closure $coupons = null,
 		private readonly ?\Closure $gift_cards = null,
 		private readonly ?\Closure $subscriptions = null,
+		private readonly ?\Closure $vat = null,
 	) {
 		$this->cart_taxes = $cart_taxes ?? new CartTaxes( $tax, $presenter );
 		$this->profile    = $profile ?? new CustomerProfile();
@@ -108,10 +114,11 @@ final class CheckoutService {
 	/**
 	 * Totals for a cart shipped to a destination. Without a valid rate id
 	 * the first offered rate is shown; the submit must name one exactly.
+	 * `$reverse_charge` null takes the VAT number stored on the cart (ADR-086).
 	 *
 	 * @throws \Flexa\Commerce\Contracts\Exceptions\TaxUnavailable a tax add-on failed and allows no fallback
 	 */
-	public function quote( CartState $state, Destination $destination, string $rate_id, ?AddressView $billing = null, int $user_id = 0 ): Quote {
+	public function quote( CartState $state, Destination $destination, string $rate_id, ?AddressView $billing = null, int $user_id = 0, ?bool $reverse_charge = null ): Quote {
 		$needs   = $state->needs_shipping() && $this->shipping->is_configured();
 		$package = $this->cart->package( $state, $destination );
 		$rates   = $needs ? $this->shipping->rates( $package ) : [];
@@ -139,10 +146,11 @@ final class CheckoutService {
 		$to       = new TaxLocation( $destination->country, $destination->state, $destination->postcode, $destination->city );
 		$from     = $billing !== null ? new TaxLocation( (string) $billing->country, (string) $billing->state, (string) $billing->postcode, (string) $billing->city ) : $to;
 		$location = $this->tax->location( $needs ? $to : null, $from );
-		$request  = $this->cart_taxes->request( $state, $rate, $location, TaxRequest::CHECKOUT, $user_id, (string) ( $billing->email ?? '' ) );
+		$reverse  = $reverse_charge ?? ( $state->cart->vat_number !== '' && TaxSettings::vat_numbers() );
+		$request  = $this->cart_taxes->request( $state, $rate, $location, TaxRequest::CHECKOUT, $user_id, (string) ( $billing->email ?? '' ), true, $reverse );
 		$outcome  = $this->tax->calculate( $request );
 		$taxes    = $outcome->result;
-		$base     = $this->cart_taxes->undiscounted( $state, $location, $user_id, (string) ( $billing->email ?? '' ) );
+		$base     = $this->cart_taxes->undiscounted( $state, $location, $user_id, (string) ( $billing->email ?? '' ), $reverse );
 		$net      = $zero;
 		$before   = $zero;
 		foreach ( $request->lines as $line ) {
@@ -209,6 +217,7 @@ final class CheckoutService {
 			'logged_in'      => $user_id > 0,
 			'saved'          => $saved,
 			'payment_method' => $method,
+			'vat_number'     => TaxSettings::vat_numbers() ? $state->cart->vat_number : '',
 		] + $this->quote_view( $quote, $user_id );
 	}
 
@@ -263,16 +272,27 @@ final class CheckoutService {
 	/**
 	 * The customer changed the address, the rate or the payment method:
 	 * requote and remember the choice so a reload shows the same thing.
+	 * A `$vat_number` (null: not sent, keep the stored one) is checked for
+	 * the billing country; the answer says whether VAT comes off (ADR-086).
 	 *
 	 * @return array<string,mixed>
+	 * @throws RateLimited the shopper asked VIES too often
 	 */
-	public function update_shipping( int $user_id, Destination $destination, string $rate_id, string $payment_method = '' ): array {
-		[ $state, $quote, $method ] = $this->quoted( $user_id, $destination, $rate_id, $payment_method );
+	public function update_shipping( int $user_id, Destination $destination, string $rate_id, string $payment_method = '', ?string $vat_number = null, string $vat_country = '' ): array {
+		$check   = null;
+		$reverse = null;
+		if ( $vat_number !== null && TaxSettings::vat_numbers() ) {
+			$check   = $this->vat()->check( $vat_number, $vat_country, ClientIp::get() );
+			$reverse = $this->vat()->reverse_charge( $check );
+		}
+		$accepted                   = $reverse === true && $check !== null ? $check->number : '';
+		[ $state, $quote, $method ] = $this->quoted( $user_id, $destination, $rate_id, $payment_method, $reverse );
 		$facts                      = CartFacts::from_state( $state, $quote->needs_shipping );
 		$chose                      = $quote->rate->id ?? '';
 		$stored                     = $this->cart->saved( $user_id );
 		$saved                      = $stored->destination;
-		if ( $state->has_session && ( $saved['country'] !== $destination->country || $saved['state'] !== $destination->state || $saved['postcode'] !== $destination->postcode || $saved['city'] !== $destination->city || $stored->shipping_rate !== $chose || $stored->payment_method !== $method ) ) {
+		$vat                        = $reverse !== null ? $accepted : $stored->vat_number;
+		if ( $state->has_session && ( $saved['country'] !== $destination->country || $saved['state'] !== $destination->state || $saved['postcode'] !== $destination->postcode || $saved['city'] !== $destination->city || $stored->shipping_rate !== $chose || $stored->payment_method !== $method || $stored->vat_number !== $vat ) ) {
 			$this->cart->set_shipping(
 				$user_id,
 				[
@@ -282,7 +302,8 @@ final class CheckoutService {
 					'city'     => $destination->city,
 				],
 				$chose,
-				$method
+				$method,
+				$vat
 			);
 		}
 		return [
@@ -292,7 +313,27 @@ final class CheckoutService {
 				'billing'  => FieldSchema::for_address( 'billing', $destination->country, $facts )->to_array(),
 				'shipping' => FieldSchema::for_address( 'shipping', $destination->country, $facts )->to_array(),
 			],
+			'vat'            => $check !== null ? self::vat_view( $check, $reverse === true ) : null,
 		] + $this->quote_view( $quote, $user_id );
+	}
+
+	/** @return array{number:string,status:string,message:string,reverse_charge:bool,error:bool} */
+	private static function vat_view( VatCheck $check, bool $reverse ): array {
+		$message = $check->message();
+		if ( $check->usable() && ! $reverse ) {
+			$message = $check->country === Settings::string( 'store_country' )
+				? __( 'VAT is charged: the business is in the same country as the store.', 'flexacommerce' )
+				: __( 'VAT is charged until the number can be confirmed.', 'flexacommerce' );
+		} elseif ( $reverse ) {
+			$message .= ' ' . __( 'No VAT is charged (reverse charge).', 'flexacommerce' );
+		}
+		return [
+			'number'         => $check->number,
+			'status'         => $check->status,
+			'message'        => $message,
+			'reverse_charge' => $reverse,
+			'error'          => ! $check->usable(),
+		];
 	}
 
 	/**
@@ -390,10 +431,11 @@ final class CheckoutService {
 		if ( $cart->is_empty() ) {
 			throw new InvalidCheckout( [ 'cart' => __( 'Your cart is empty.', 'flexacommerce' ) ] );
 		}
-		$destination             = $address !== null && $address['country'] !== ''
+		$destination = $address !== null && $address['country'] !== ''
 			? new Destination( $address['country'], $address['state'], $address['postcode'], $address['city'] )
 			: $this->stored_destination( $cart, $user_id );
-		[ $state, $quote, $pay ] = $this->preview( $cart->with_shipping( $cart->destination, $rate_id )->with_payment_method( $method ), $user_id, $destination );
+		// A wallet posts no VAT number, so its order pays VAT (ADR-086).
+		[ $state, $quote, $pay ] = $this->preview( $cart->with_shipping( $cart->destination, $rate_id )->with_payment_method( $method )->with_vat_number( '' ), $user_id, $destination );
 		$rates                   = [];
 		foreach ( $quote->rates as $rate ) {
 			$rates[] = [
@@ -464,8 +506,25 @@ final class CheckoutService {
 		$quote     = $this->quote( $state, $destination, $request->shipping_rate, null, $request->user_id );
 		$addresses = $this->validator->addresses( $request, $quote->needs_address(), CartFacts::from_state( $state, $quote->needs_shipping ) );
 		$errors    = $addresses['errors'];
+		// The VAT number is checked again here: the requote that showed the total may be stale (ADR-086).
+		$vat    = null;
+		$number = $addresses['meta'][ '_billing_' . FieldSchema::VAT ] ?? '';
+		if ( $number !== '' && TaxSettings::vat_numbers() ) {
+			$vat = $this->vat()->check( $number, $addresses['billing']->country );
+			if ( $vat !== null && ! $vat->usable() && ! isset( $errors[ 'billing.' . FieldSchema::VAT ] ) ) {
+				$errors[ 'billing.' . FieldSchema::VAT ] = $vat->message();
+			}
+		}
+		$reverse = $vat !== null && $this->vat()->reverse_charge( $vat );
+		if ( $vat !== null ) {
+			$addresses['meta'][ '_billing_' . FieldSchema::VAT ] = $vat->number;
+			$addresses['meta']['_fxc_vat_check']                 = (string) wp_json_encode( $vat->to_array() );
+			if ( $reverse ) {
+				$addresses['meta']['_fxc_reverse_charge'] = '1';
+			}
+		}
 		if ( $errors === [] ) {
-			$quote = $this->quote( $state, $destination, $request->shipping_rate, $addresses['billing'], $request->user_id );
+			$quote = $this->quote( $state, $destination, $request->shipping_rate, $addresses['billing'], $request->user_id, $reverse );
 		}
 		$context  = $this->context( $quote, $addresses['billing']->country, $addresses['shipping']->country ?? '', $request->user_id );
 		$gateways = $this->payments->gateways()->available( $context );
@@ -486,7 +545,7 @@ final class CheckoutService {
 		$customer_id = $plans !== [] ? $this->subscriber( $request, $addresses['billing'] ) : $request->user_id;
 		$snapshots   = [];
 		foreach ( $plans as $group ) {
-			$snapshots[] = $this->snapshot( $group, $destination, $request->shipping_rate, $addresses['billing'], $customer_id );
+			$snapshots[] = $this->snapshot( $group, $destination, $request->shipping_rate, $addresses['billing'], $customer_id, false, $reverse );
 		}
 
 		$gateway = $quote->due()->amount > 0 ? $gateways[ $request->payment_method ] : null;
@@ -758,6 +817,11 @@ final class CheckoutService {
 		return ( $this->coupons )();
 	}
 
+	/** Built on first use, so a checkout without VAT numbers loads no tax class. */
+	private function vat(): VatNumbers {
+		return $this->vat_numbers ??= $this->vat !== null ? ( $this->vat )() : new VatNumbers( $this->limiter );
+	}
+
 	private static function account_email( int $user_id ): string {
 		$user = $user_id > 0 ? get_userdata( $user_id ) : false;
 		return $user instanceof \WP_User ? $user->user_email : '';
@@ -775,7 +839,7 @@ final class CheckoutService {
 	 *
 	 * @return array{0:CartState,1:Quote,2:string} the state, the quote and the payment method
 	 */
-	private function quoted( int $user_id, Destination $destination, string $rate_id, string $method ): array {
+	private function quoted( int $user_id, Destination $destination, string $rate_id, string $method, ?bool $reverse_charge = null ): array {
 		return $this->requote(
 			fn ( string $rate, string $pay ): CartState => $this->cart->state(
 				$user_id,
@@ -788,7 +852,8 @@ final class CheckoutService {
 			$user_id,
 			$destination,
 			$rate_id,
-			$method
+			$method,
+			$reverse_charge
 		);
 	}
 
@@ -822,9 +887,9 @@ final class CheckoutService {
 	 * @param \Closure(string,string):CartState $priced the cart priced with a rate and a payment method
 	 * @return array{0:CartState,1:Quote,2:string}
 	 */
-	private function requote( \Closure $priced, int $user_id, Destination $destination, string $rate_id, string $method ): array {
+	private function requote( \Closure $priced, int $user_id, Destination $destination, string $rate_id, string $method, ?bool $reverse_charge = null ): array {
 		$state = $priced( $rate_id, $method );
-		$quote = $this->quote( $state, $destination, $rate_id, null, $user_id );
+		$quote = $this->quote( $state, $destination, $rate_id, null, $user_id, $reverse_charge );
 		$rate  = $quote->rate->id ?? '';
 		$pay   = $method;
 		if ( $quote->due()->amount > 0 ) {
@@ -833,7 +898,7 @@ final class CheckoutService {
 		}
 		if ( $rate !== $rate_id || $pay !== $method ) {
 			$state = $priced( $rate, $pay );
-			$quote = $this->quote( $state, $destination, $rate, null, $user_id );
+			$quote = $this->quote( $state, $destination, $rate, null, $user_id, $reverse_charge );
 		}
 		return [ $state, $quote, $pay ];
 	}
@@ -1110,7 +1175,7 @@ final class CheckoutService {
 	 *
 	 * @param list<\Flexa\Commerce\Cart\CartLine> $lines
 	 */
-	private function snapshot( array $lines, Destination $destination, string $rate_id, AddressView $billing, int $customer_id, bool $strict = false ): Snapshot {
+	private function snapshot( array $lines, Destination $destination, string $rate_id, AddressView $billing, int $customer_id, bool $strict = false, bool $reverse_charge = false ): Snapshot {
 		$cart  = ( new Cart( lines: $lines ) )->with_shipping(
 			[
 				'country'  => $destination->country,
@@ -1121,7 +1186,7 @@ final class CheckoutService {
 			$rate_id
 		);
 		$state = $this->cart->preview( $cart, $customer_id, true, CartService::RECURRING );
-		$quote = $this->quote( $state, $destination, $rate_id, $billing, $customer_id );
+		$quote = $this->quote( $state, $destination, $rate_id, $billing, $customer_id, $reverse_charge );
 		$plan  = null;
 		foreach ( $state->items as $item ) {
 			if ( $strict && ( $item->unit === null || $item->plan === null ) ) {

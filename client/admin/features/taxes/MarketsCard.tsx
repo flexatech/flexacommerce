@@ -63,7 +63,18 @@ const CHOICES: { key: string; label: string; options: { value: string; label: st
             { value: "origin", label: __("Tax at the store address (origin states)") },
         ],
     },
+    {
+        key: "keep_gross_prices",
+        label: __("Prices entered with tax, in another country"),
+        options: [
+            { value: "0", label: __("Change with the country's rate") },
+            { value: "1", label: __("Keep the same price with tax") },
+        ],
+    },
 ];
+
+/** Overrides stored as booleans. */
+const BOOLEANS = ["tax_round_at_subtotal", "keep_gross_prices"];
 
 const INHERIT = "__inherit";
 
@@ -75,7 +86,7 @@ function toChoice(value: unknown): string {
 }
 
 function fromChoice(key: string, value: string): unknown {
-    return key === "tax_round_at_subtotal" ? value === "1" : value;
+    return BOOLEANS.includes(key) ? value === "1" : value;
 }
 
 function marketId(name: string, taken: string[]): string {

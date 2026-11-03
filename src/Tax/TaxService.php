@@ -84,6 +84,7 @@ final class TaxService {
 			'tax_round_at_subtotal' => (bool) $all['tax_round_at_subtotal'],
 			'intrastate_sourcing'   => 'destination',
 			'origin_states'         => [],
+			'keep_gross_prices'     => false,
 		];
 		$country = strtoupper( $country );
 		foreach ( is_array( $all['tax_markets'] ) ? $all['tax_markets'] : [] as $market ) {
@@ -331,7 +332,7 @@ final class TaxService {
 			$this->classes(),
 			(bool) $settings['tax_round_at_subtotal'],
 			$base,
-			(bool) apply_filters( 'flexacommerce.tax.adjust_non_base_prices', true ),
+			(bool) apply_filters( 'flexacommerce.tax.adjust_non_base_prices', ! $settings['keep_gross_prices'] ),
 		);
 	}
 

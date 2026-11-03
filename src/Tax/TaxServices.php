@@ -14,6 +14,7 @@ final class TaxServices {
 	private ?TaxService $service           = null;
 	private ?TaxRateRepository $repository = null;
 	private ?TaxPresets $presets           = null;
+	private ?VatNumbers $vat               = null;
 
 	public function __construct( private readonly Services $services ) {}
 
@@ -30,5 +31,9 @@ final class TaxServices {
 
 	public function presets(): TaxPresets {
 		return $this->presets ??= new TaxPresets( $this->service() );
+	}
+
+	public function vat(): VatNumbers {
+		return $this->vat ??= new VatNumbers( $this->services->limiter(), $this->services->clock() );
 	}
 }

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Calculator, Eye, Layers, MapPin, Percent, Receipt, Sigma, Truck } from "lucide-react";
+import { BadgeCheck, Calculator, Eye, FileText, Layers, MapPin, Percent, Receipt, ShieldQuestion, Sigma, Truck } from "lucide-react";
 
 import { showToast } from "@/shared/components/showToast";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/shared/components/ui/card";
@@ -28,6 +28,9 @@ const TAX_KEYS = [
     "price_display_suffix",
     "tax_total_display",
     "tax_markets",
+    "vat_numbers",
+    "vat_check",
+    "vat_unverified",
 ] as const;
 
 type TaxKey = (typeof TAX_KEYS)[number];
@@ -249,6 +252,70 @@ export function TaxPanel() {
                             options={[
                                 { value: "itemized", label: __("One line per tax") },
                                 { value: "single", label: __("A single total") },
+                            ]}
+                        />
+                    }
+                />
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>{__("EU VAT numbers")}</CardTitle>
+                    <CardDescription>
+                        {__("A business buyer in another EU country who gives a valid VAT number pays no VAT (reverse charge). The number and the check result are kept on the order and printed on the invoice.")}
+                    </CardDescription>
+                </CardHeader>
+                <SettingRow
+                    icon={FileText}
+                    label={__("VAT number field at checkout")}
+                    htmlFor="fxc-vat-numbers"
+                    description={__("Shown under the company name for EU billing addresses.")}
+                    control={
+                        <Select
+                            id="fxc-vat-numbers"
+                            disabled={disabled}
+                            value={draft.vat_numbers}
+                            onChange={(e) => set("vat_numbers", e.target.value as TaxDraft["vat_numbers"])}
+                            options={[
+                                { value: "off", label: __("Off") },
+                                { value: "optional", label: __("Optional") },
+                                { value: "required", label: __("Required") },
+                            ]}
+                        />
+                    }
+                />
+                <SettingRow
+                    icon={BadgeCheck}
+                    label={__("Check VAT numbers")}
+                    htmlFor="fxc-vat-check"
+                    description={__("VIES asks the European Commission's service whether the number is registered. Format only checks the pattern of the number.")}
+                    control={
+                        <Select
+                            id="fxc-vat-check"
+                            disabled={disabled || draft.vat_numbers === "off"}
+                            value={draft.vat_check}
+                            onChange={(e) => set("vat_check", e.target.value as TaxDraft["vat_check"])}
+                            options={[
+                                { value: "vies", label: __("With VIES") },
+                                { value: "format", label: __("Format only") },
+                            ]}
+                        />
+                    }
+                />
+                <SettingRow
+                    icon={ShieldQuestion}
+                    label={__("When the check service is down")}
+                    htmlFor="fxc-vat-unverified"
+                    description={__("VIES is sometimes slow or offline for one country. Accepted numbers are marked unverified on the order so you can check them later.")}
+                    control={
+                        <Select
+                            id="fxc-vat-unverified"
+                            disabled={disabled || draft.vat_numbers === "off" || draft.vat_check !== "vies"}
+                            value={draft.vat_unverified}
+                            onChange={(e) => set("vat_unverified", e.target.value as TaxDraft["vat_unverified"])}
+                            options={[
+                                { value: "accept", label: __("Accept a well-formed number") },
+                                { value: "charge", label: __("Charge VAT") },
                             ]}
                         />
                     }

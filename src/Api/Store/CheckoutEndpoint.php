@@ -75,6 +75,15 @@ final class CheckoutEndpoint extends StoreEndpoint {
 							'type'    => 'string',
 							'default' => '',
 						],
+						// Sent while the VAT number field is on the form (ADR-086).
+						'vat_number'     => [
+							'type'      => 'string',
+							'maxLength' => 40,
+						],
+						'vat_country'    => [
+							'type'    => 'string',
+							'default' => '',
+						],
 					],
 				],
 			]
@@ -147,7 +156,9 @@ final class CheckoutEndpoint extends StoreEndpoint {
 		);
 		$rate_id     = sanitize_text_field( (string) $request->get_param( 'rate_id' ) );
 		$method      = sanitize_key( (string) $request->get_param( 'payment_method' ) );
-		return $this->run( static fn ( CheckoutService $checkout ): array => $checkout->update_shipping( get_current_user_id(), $destination, $rate_id, $method ) );
+		$vat         = $request->has_param( 'vat_number' ) ? sanitize_text_field( (string) $request->get_param( 'vat_number' ) ) : null;
+		$vat_country = strtoupper( sanitize_text_field( (string) $request->get_param( 'vat_country' ) ) );
+		return $this->run( static fn ( CheckoutService $checkout ): array => $checkout->update_shipping( get_current_user_id(), $destination, $rate_id, $method, $vat, $vat_country ) );
 	}
 
 	/**

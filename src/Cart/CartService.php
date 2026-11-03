@@ -631,13 +631,18 @@ final class CartService {
 	 * Remember the address used for quotes and the chosen rate. The rate is
 	 * not checked here: checkout checks it against fresh rates.
 	 *
-	 * A null `$payment_method` keeps the one stored.
+	 * A null `$payment_method` or `$vat_number` keeps the one stored.
 	 *
 	 * @param array{country:string,state:string,postcode:string,city:string} $destination
 	 * @throws RateLimited
 	 */
-	public function set_shipping( int $user_id, array $destination, string $rate_id, ?string $payment_method = null ): CartState {
-		return $this->mutate( $user_id, static fn ( Cart $cart ): Cart => $cart->with_shipping( $destination, $rate_id )->with_payment_method( $payment_method ?? $cart->payment_method ) );
+	public function set_shipping( int $user_id, array $destination, string $rate_id, ?string $payment_method = null, ?string $vat_number = null ): CartState {
+		return $this->mutate(
+			$user_id,
+			static fn ( Cart $cart ): Cart => $cart->with_shipping( $destination, $rate_id )
+				->with_payment_method( $payment_method ?? $cart->payment_method )
+				->with_vat_number( $vat_number ?? $cart->vat_number )
+		);
 	}
 
 	/**
