@@ -293,11 +293,11 @@ function Designer({ emailId, onSwitch }: { emailId: string; onSwitch: (id: strin
                                 <BlockSettings block={block} tokens={server.tokens} labels={labels} style={style} onChange={(props) => update(block.id, props)} onOpenStyle={() => setTab("style")} />
                             </div>
                         ) : (
-                            <div className="fxc:space-y-3">
+                            <div className="fxc:flex fxc:flex-col fxc:gap-4">
                                 <div className="fxc:text-muted-foreground fxc:text-xs">{__("Click a block to change it, or drag to reorder. You can also click straight on the preview.")}</div>
                                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
                                     <SortableContext items={design.blocks.map((b) => b.id)} strategy={verticalListSortingStrategy}>
-                                        <ul className="fxc:m-0 fxc:list-none fxc:space-y-1.5 fxc:p-0">
+                                        <ul className="fxc:m-0 fxc:flex fxc:list-none fxc:flex-col fxc:gap-2.5 fxc:p-0">
                                             {design.blocks.map((b) => (
                                                 <BlockRow key={b.id} block={b} text={summary(b, labels)} onSelect={() => choose(b.id)} />
                                             ))}
@@ -444,7 +444,7 @@ function BlockRow({ block, text, onSelect }: { block: DesignBlock; text: string;
         <li
             ref={setNodeRef}
             style={{ transform: CSS.Transform.toString(transform), transition }}
-            className={cn("fxc:bg-background fxc:flex fxc:items-center fxc:rounded-md fxc:border", isDragging && "fxc:relative fxc:z-10 fxc:shadow-md")}
+            className={cn("fxc:bg-background fxc:m-0 fxc:flex fxc:items-center fxc:rounded-md fxc:border", isDragging && "fxc:relative fxc:z-10 fxc:shadow-md")}
         >
             <button
                 type="button"

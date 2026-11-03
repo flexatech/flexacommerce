@@ -68,11 +68,11 @@ function VerifyStep({ run, pending }: { run: (body: Record<string, unknown>) => 
 
     return (
         <div className="fxc:space-y-3">
-            <p className="fxc:text-muted-foreground fxc:text-sm">
+            <div className="fxc:text-muted-foreground fxc:text-sm">
                 {__("Run the WooCommerce to FlexaCommerce job again now that checkout is paused, then pick it here. It must have no rejected records and no verification differences.")}
-            </p>
+            </div>
             {candidates.length === 0 ? (
-                <p className="fxc:text-sm">{__("No finished WooCommerce to FlexaCommerce job yet. Run one on the Jobs tab first.")}</p>
+                <div className="fxc:text-sm">{__("No finished WooCommerce to FlexaCommerce job yet. Run one on the Jobs tab first.")}</div>
             ) : (
                 <>
                     <div>
@@ -157,9 +157,9 @@ function StepBody({ step, status, run, pending }: { step: CutoverStepKey; status
         case "freeze":
             return (
                 <div className="fxc:space-y-3">
-                    <p className="fxc:text-muted-foreground fxc:text-sm">
+                    <div className="fxc:text-muted-foreground fxc:text-sm">
                         {__("FlexaCommerce cannot stop WooCommerce checkout. Put the shop in maintenance mode or catalog mode yourself first, so no order is placed between the final run and the switch. This step also keeps FlexaCommerce checkout closed until the last step.")}
-                    </p>
+                    </div>
                     <Button size="sm" disabled={pending} onClick={() => run("freeze")}>
                         {__("Checkout is paused, continue")}
                     </Button>
@@ -170,9 +170,9 @@ function StepBody({ step, status, run, pending }: { step: CutoverStepKey; status
         case "bases":
             return (
                 <div className="fxc:space-y-3">
-                    <p className="fxc:text-muted-foreground fxc:text-sm">
+                    <div className="fxc:text-muted-foreground fxc:text-sm">
                         {__("FlexaCommerce takes the WooCommerce bases, so product and category URLs stay the same. A base with a placeholder such as %product_cat% cannot be copied; its old URLs get a redirect.")}
-                    </p>
+                    </div>
                     <BasesTable bases={status.bases} />
                     <Button size="sm" disabled={pending} onClick={() => run("bases")}>
                         {__("Adopt these bases")}
@@ -195,11 +195,11 @@ function StepBody({ step, status, run, pending }: { step: CutoverStepKey; status
                                 { value: "woocommerce", label: __("Reuse the WooCommerce pages") },
                             ]}
                         />
-                        <p className="fxc:text-muted-foreground fxc:mt-1 fxc:text-xs">
+                        <div className="fxc:text-muted-foreground fxc:mt-1 fxc:text-xs">
                             {mode === "woocommerce"
                                 ? __("Keeps the page URLs. Their content is replaced with the FlexaCommerce blocks; a rollback puts the old content back.")
                                 : __("Creates the FlexaCommerce pages where they are missing.")}
-                        </p>
+                        </div>
                     </div>
                     <Button size="sm" disabled={pending} onClick={() => run("pages", { mode })}>
                         {__("Assign pages")}
@@ -208,25 +208,25 @@ function StepBody({ step, status, run, pending }: { step: CutoverStepKey; status
             );
         case "deactivate":
             return (
-                <p className="fxc:text-muted-foreground fxc:text-sm">
+                <div className="fxc:text-muted-foreground fxc:text-sm">
                     {__("Deactivate WooCommerce on the Plugins screen (FlexaCommerce never deactivates another plugin), then come back here.")}{" "}
                     <a href={plugins} className="fxc:inline-flex fxc:items-center fxc:gap-1">
                         {__("Open Plugins")}
                         <ExternalLink aria-hidden className="fxc:size-3" />
                     </a>
-                </p>
+                </div>
             );
         case "urls":
             return (
                 <div className="fxc:space-y-3">
-                    <p className="fxc:text-muted-foreground fxc:text-sm">
+                    <div className="fxc:text-muted-foreground fxc:text-sm">
                         {__("Flushes the rewrite rules, then opens up to 20 imported products and categories and checks that each shows the right page.")}
-                    </p>
+                    </div>
                     {status.urls && (
                         <>
-                            <p className={cn("fxc:text-sm", status.urls.failed > 0 && "fxc:text-destructive")}>
+                            <div className={cn("fxc:text-sm", status.urls.failed > 0 && "fxc:text-destructive")}>
                                 {sprintf(__("%1$d of %2$d URLs failed at %3$s UTC."), status.urls.failed, status.urls.checked, status.urls.checked_at)}
-                            </p>
+                            </div>
                             <UrlResults urls={status.urls} />
                         </>
                     )}
@@ -243,9 +243,9 @@ function StepBody({ step, status, run, pending }: { step: CutoverStepKey; status
         case "redirects":
             return (
                 <div className="fxc:space-y-3">
-                    <p className="fxc:text-muted-foreground fxc:text-sm">
+                    <div className="fxc:text-muted-foreground fxc:text-sm">
                         {__("Old WooCommerce links (?post_type=product&p=ID, ?product=slug and paths under a base that changed) answer with a permanent redirect to the FlexaCommerce page. They stop if WooCommerce is activated again.")}
-                    </p>
+                    </div>
                     <Button size="sm" disabled={pending} onClick={() => run("redirects")}>
                         {__("Turn on redirects")}
                     </Button>
@@ -254,11 +254,11 @@ function StepBody({ step, status, run, pending }: { step: CutoverStepKey; status
         case "reopen":
             return (
                 <div className="fxc:space-y-3">
-                    <p className="fxc:text-muted-foreground fxc:text-sm">
+                    <div className="fxc:text-muted-foreground fxc:text-sm">
                         {__("Opens FlexaCommerce checkout and starts billing the subscriptions imported from WooCommerce Subscriptions. Turn off the maintenance or catalog mode you used in step 1.")}
-                    </p>
+                    </div>
                     {status.billing !== null && status.billing > 0 && (
-                        <p className="fxc:text-sm">{sprintf(_n("Billing started for %d subscription.", "Billing started for %d subscriptions.", status.billing), status.billing)}</p>
+                        <div className="fxc:text-sm">{sprintf(_n("Billing started for %d subscription.", "Billing started for %d subscriptions.", status.billing), status.billing)}</div>
                     )}
                     <Button size="sm" disabled={pending} onClick={() => run("reopen")}>
                         {__("Reopen checkout")}
@@ -297,10 +297,10 @@ export function CutoverPanel() {
     const [rollbackOpen, setRollbackOpen] = useState(false);
 
     if (cutover.isPending) {
-        return <p className="fxc:text-muted-foreground">{__("Loading…")}</p>;
+        return <div className="fxc:text-muted-foreground">{__("Loading…")}</div>;
     }
     if (cutover.isError) {
-        return <p className="fxc:text-destructive">{cutover.error.message}</p>;
+        return <div className="fxc:text-destructive">{cutover.error.message}</div>;
     }
     const status = cutover.data;
     const next = status.steps.find((s) => !s.done)?.key ?? null;
@@ -310,11 +310,11 @@ export function CutoverPanel() {
     return (
         <div className="fxc:space-y-4">
             <div className="fxc:flex fxc:items-start fxc:justify-between fxc:gap-4">
-                <p className="fxc:text-muted-foreground fxc:text-sm">
+                <div className="fxc:text-muted-foreground fxc:text-sm">
                     {status.finished
                         ? __("The store runs on FlexaCommerce. Keep WooCommerce inactive: the redirects only work while it is.")
                         : __("Switch the live store from WooCommerce to FlexaCommerce, one step at a time. Every step can be rolled back until you reopen checkout, and after that too.")}
-                </p>
+                </div>
                 <div className="fxc:flex fxc:shrink-0 fxc:gap-2">
                     {next === "deactivate" && (
                         <Button variant="outline" size="sm" onClick={() => void cutover.refetch()} disabled={cutover.isFetching}>
@@ -330,11 +330,11 @@ export function CutoverPanel() {
                 </div>
             </div>
 
-            <ol className="fxc:space-y-3">
+            <ol className="fxc:m-0 fxc:flex fxc:list-none fxc:flex-col fxc:gap-3 fxc:p-0">
                 {status.steps.map((s, i) => {
                     const current = s.key === next;
                     return (
-                        <li key={s.key}>
+                        <li key={s.key} className="fxc:m-0">
                             <Card className={cn(!current && "fxc:shadow-none", current && "fxc:border-primary")}>
                                 <CardHeader className={cn(!current && "fxc:border-b-0")}>
                                     <div className="fxc:flex fxc:items-center fxc:gap-3">
