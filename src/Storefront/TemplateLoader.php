@@ -6,6 +6,8 @@ namespace Flexa\Commerce\Storefront;
 
 use Flexa\Commerce\Catalog\PostTypes;
 
+use Flexa\Commerce\Support\ShopLayout;
+
 defined( 'ABSPATH' ) || exit;
 
 /**
@@ -117,9 +119,7 @@ final class TemplateLoader {
 
 	/** The `@version` tag in the file's first 8 KB, as WooCommerce reads it. */
 	public static function version( string $file ): string {
-		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- a local template file.
-		$head = is_readable( $file ) ? (string) file_get_contents( $file, false, null, 0, 8192 ) : '';
-		return preg_match( '/^[ \t\/*#]*@version[ \t:]+([0-9][0-9A-Za-z.\-]*)/m', $head, $match ) === 1 ? $match[1] : '';
+		return ShopLayout::version( $file );
 	}
 
 	/** `admin_notices`: outdated theme copies, on our screens and the Themes screen. */

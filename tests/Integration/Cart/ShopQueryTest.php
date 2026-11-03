@@ -268,6 +268,11 @@ final class ShopQueryTest extends CartTestCase {
 
 		$html = do_blocks( '<!-- wp:flexacommerce/product-filters {"showCategories":false,"showPrice":false,"showStock":false,"attributeSlugs":["no-such-attribute"]} /-->' );
 		self::assertSame( '', $html );
+
+		// The shop sidebar's copy folds behind a toggle that counts the filters in use (ADR-084).
+		$html = do_blocks( '<!-- wp:flexacommerce/product-filters {"collapsible":true} /-->' );
+		self::assertStringContainsString( '<details class="fxc-filters-toggle wp-block-flexacommerce-product-filters" open data-wp-interactive="flexacommerce/cart" data-wp-init="callbacks.filterToggle">', $html );
+		self::assertStringContainsString( '>Filters (1)</summary><form class="fxc-filters"', $html );
 	}
 
 	public function test_price_and_stock_filters(): void {

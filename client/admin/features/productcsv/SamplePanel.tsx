@@ -45,7 +45,7 @@ const PARTS: { value: Part; label: string; help: string }[] = [
     },
     { value: "payments", label: __("Payments"), help: __("Turns on bank transfer with a sample account. A digital store also turns off cash on delivery.") },
     { value: "tax", label: __("Tax"), help: __("Turns on tax with one 10% rate for your store country.") },
-    { value: "pages", label: __("Pages and menu"), help: __("A terms page, a wishlist page and a menu with the shop, its categories, cart, checkout and account.") },
+    { value: "pages", label: __("Pages and menu"), help: __("A terms page, a wishlist page, filters beside the shop list and a menu with the shop, its categories, cart, checkout and account.") },
 ];
 
 /** Adds or removes the sample store: products from sample-data/sample_products.csv and, on request, the store settings around them. */

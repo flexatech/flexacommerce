@@ -163,6 +163,7 @@ final class Plugin {
 			Cli\InvoiceCommand::register();
 			Cli\ShipmentCommand::register();
 			Cli\SampleCommand::register();
+			Cli\PagesCommand::register();
 			Reviews\Reviews::instance()->register();
 		}
 

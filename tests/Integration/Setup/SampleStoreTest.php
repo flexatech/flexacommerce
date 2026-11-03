@@ -222,6 +222,7 @@ final class SampleStoreTest extends \WP_UnitTestCase {
 		self::assertTrue( Settings::bool( 'tax_enabled' ) );
 		self::assertCount( 1, Plugin::instance()->tax()->repository()->all( null, DemoSettings::RATE_SOURCE ) );
 
+		self::assertSame( 'left', Settings::string( 'shop_filters' ) );
 		$terms = Settings::int( 'terms_page_id' );
 		self::assertNotSame( $terms_before, $terms );
 		self::assertSame( 'publish', get_post_status( $terms ) );
@@ -244,6 +245,7 @@ final class SampleStoreTest extends \WP_UnitTestCase {
 		self::assertFalse( Settings::bool( 'tax_enabled' ) );
 		self::assertSame( [], Plugin::instance()->tax()->repository()->all( null, DemoSettings::RATE_SOURCE ) );
 		self::assertSame( $terms_before, Settings::int( 'terms_page_id' ) );
+		self::assertSame( 'off', Settings::string( 'shop_filters' ) );
 		self::assertNull( get_post( $terms ) );
 		self::assertTrue( $store['menu'] > 0 ? ! is_nav_menu( $menu ) : get_post( $menu ) === null );
 		self::assertNotContains( SampleStore::SHIPPING_CLASS, array_column( Settings::get( 'shipping_classes' ), 'slug' ) );

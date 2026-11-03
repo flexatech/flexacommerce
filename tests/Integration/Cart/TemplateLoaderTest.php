@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace Flexa\Commerce\Tests\Integration\Cart;
 
 use Flexa\Commerce\Catalog\PostTypes;
+use Flexa\Commerce\Setup\Pages;
 use Flexa\Commerce\Storefront\Storefront;
 use Flexa\Commerce\Storefront\TemplateLoader;
+use Flexa\Commerce\Support\Settings;
 
 /**
  * Classic theme templates: the plugin's own, a theme copy that wins, the
@@ -66,7 +68,7 @@ final class TemplateLoaderTest extends CartTestCase {
 
 	public function test_outdated_copies_are_reported(): void {
 		file_put_contents( $this->theme . '/flexacommerce/single-product.php', "<?php\n/**\n * @version 0.9.0\n */\n" );
-		file_put_contents( $this->theme . '/flexacommerce/archive-product.php', "<?php\n/**\n * @version 1.0.0\n */\n" );
+		file_put_contents( $this->theme . '/flexacommerce/archive-product.php', "<?php\n/**\n * @version 1.1.0\n */\n" );
 		file_put_contents( $this->theme . '/flexacommerce/emails/layout.php', "<?php\n// no version\n" );
 		file_put_contents( $this->theme . '/flexacommerce/emails/unknown.php', "<?php\n" );
 
@@ -135,6 +137,27 @@ final class TemplateLoaderTest extends CartTestCase {
 		self::assertStringContainsString( '<ul class="fxc-products">', $html );
 		self::assertStringContainsString( 'post-' . $id, $html );
 		self::assertStringContainsString( '7.50', $html );
+	}
+
+	public function test_the_archive_template_shows_the_filter_sidebar(): void {
+		$this->simple( 750 );
+		$this->go_to( add_query_arg( 'post_type', PostTypes::PRODUCT, home_url( '/' ) ) );
+		self::assertStringNotContainsString( 'fxc-shop-classic', $this->render( TemplateLoader::ARCHIVE ) );
+
+		Settings::update( [ 'shop_filters' => 'right' ] );
+		$html = $this->render( TemplateLoader::ARCHIVE );
+		self::assertStringContainsString( '<div class="fxc-shop-classic fxc-shop-classic--filters-right">', $html );
+		self::assertStringContainsString( '<details class="fxc-filters-toggle" open', $html );
+		self::assertStringContainsString( 'aria-label="Filter products"', $html );
+		self::assertLessThan( strpos( $html, '<ul class="fxc-products">' ), strpos( $html, 'fxc-shop-classic__sidebar' ) );
+		self::assertSame( '', Pages::shop()['hidden_by'] );
+
+		// A theme copy from before the sidebar cannot show it, and Settings says so.
+		file_put_contents( $this->theme . '/flexacommerce/archive-product.php', "<?php\n/**\n * @version 1.0.0\n */\n" );
+		self::assertSame( 'classic', Pages::shop()['hidden_by'] );
+		file_put_contents( $this->theme . '/flexacommerce/archive-product.php', "<?php\n/**\n * @version 1.1.0\n */\n" );
+		self::assertSame( '', Pages::shop()['hidden_by'] );
+		Settings::update( [ 'shop_filters' => 'off' ] );
 	}
 
 	public function test_a_theme_without_a_sidebar_gets_none(): void {

@@ -6,6 +6,7 @@ namespace Flexa\Commerce\Maintenance;
 
 use Flexa\Commerce\Database\Integrity;
 use Flexa\Commerce\Database\Schema;
+use Flexa\Commerce\Setup\Pages;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -54,6 +55,21 @@ final class Doctor {
 					'detail' => (string) $check['count'],
 				];
 			}
+		}
+
+		// Store pages warn rather than fail: the shop still runs, shoppers just miss a page.
+		// An optional page only counts once there is one.
+		foreach ( Pages::status() as $page ) {
+			if ( ! $page['required'] && $page['page'] === null ) {
+				continue;
+			}
+			$results[] = [
+				'id'     => 'page_' . $page['key'],
+				/* translators: %s: page name, such as Cart */
+				'label'  => sprintf( __( '%s page works', 'flexacommerce' ), $page['label'] ),
+				'status' => $page['problem'] === '' ? 'ok' : 'warning',
+				'detail' => $page['problem'] === '' ? ( $page['page']['title'] ?? '' ) : $page['message'],
+			];
 		}
 
 		/** @var list<array{id:string,label:string,status:string,detail:string}> */

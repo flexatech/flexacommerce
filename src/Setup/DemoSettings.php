@@ -291,7 +291,8 @@ final class DemoSettings {
 
 	/**
 	 * The cart, checkout and account pages if one is missing, a terms page,
-	 * a wishlist page and a menu with the shop's pages and categories.
+	 * a wishlist page, the shop's filter sidebar and a menu with the shop's
+	 * pages and categories.
 	 *
 	 * @param array<string,mixed> $record
 	 */
@@ -322,12 +323,16 @@ final class DemoSettings {
 			}
 		}
 
-		$wishlist = self::page( __( 'Wishlist', 'flexacommerce' ), '<!-- wp:shortcode -->[flexacommerce_wishlist]<!-- /wp:shortcode -->' );
-		if ( $wishlist > 0 ) {
+		$wishlist = Pages::find( 'wishlist' );
+		if ( $wishlist === 0 && Pages::fix( 'wishlist' ) ) {
+			$wishlist          = Pages::find( 'wishlist' );
 			$record['pages'][] = $wishlist;
 		}
 		if ( Settings::string( 'wishlist' ) === 'off' ) {
 			self::setting( $record, 'wishlist', 'all' );
+		}
+		if ( Settings::string( 'shop_filters' ) === 'off' ) {
+			self::setting( $record, 'shop_filters', 'left' );
 		}
 
 		$links      = [

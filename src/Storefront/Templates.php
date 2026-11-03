@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Flexa\Commerce\Storefront;
 
 use Flexa\Commerce\Catalog\PostTypes;
+use Flexa\Commerce\Support\ShopLayout;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -37,13 +38,33 @@ final class Templates {
 		);
 	}
 
+	/**
+	 * The shop, category and tag lists. With `shop_filters` set (ADR-084)
+	 * the Product filters block sits in a column beside the grid, which
+	 * then shows three products per row; on narrow screens the columns
+	 * stack and the filters fold into a "Filters" toggle.
+	 */
 	public static function archive(): string {
-		return self::wrap(
-			'<!-- wp:flexacommerce/breadcrumbs {"align":"wide"} /-->'
+		$side  = ShopLayout::side();
+		$query = self::product_query( '{"queryId":1,"query":{"inherit":true,"perPage":' . ShopQuery::per_page() . ',"postType":"' . PostTypes::PRODUCT . '"},"align":"wide"}', $side === 'off' ? 4 : 3 );
+		$head  = '<!-- wp:flexacommerce/breadcrumbs {"align":"wide"} /-->'
 			. '<!-- wp:query-title {"type":"archive","showPrefix":false,"align":"wide"} /-->'
-			. '<!-- wp:term-description {"align":"wide"} /-->'
-			. '<!-- wp:flexacommerce/catalog-sorting {"align":"wide"} /-->'
-			. self::product_query( '{"queryId":1,"query":{"inherit":true,"perPage":' . ShopQuery::per_page() . ',"postType":"' . PostTypes::PRODUCT . '"},"align":"wide"}' )
+			. '<!-- wp:term-description {"align":"wide"} /-->';
+		if ( $side === 'off' ) {
+			return self::wrap( $head . '<!-- wp:flexacommerce/catalog-sorting {"align":"wide"} /-->' . $query );
+		}
+		$filters = '<!-- wp:column {"width":"25%","className":"fxc-shop__sidebar"} --><div class="wp-block-column fxc-shop__sidebar" style="flex-basis:25%">'
+			. '<!-- wp:flexacommerce/product-filters {"collapsible":true} /-->'
+			. '</div><!-- /wp:column -->';
+		$grid    = '<!-- wp:column {"width":"75%"} --><div class="wp-block-column" style="flex-basis:75%">'
+			. '<!-- wp:flexacommerce/catalog-sorting /-->'
+			. $query
+			. '</div><!-- /wp:column -->';
+		return self::wrap(
+			$head
+			. '<!-- wp:columns {"align":"wide","className":"fxc-shop fxc-shop--filters-' . $side . '"} --><div class="wp-block-columns alignwide fxc-shop fxc-shop--filters-' . $side . '">'
+			. ( $side === 'left' ? $filters . $grid : $grid . $filters )
+			. '</div><!-- /wp:columns -->'
 		);
 	}
 
@@ -52,10 +73,10 @@ final class Templates {
 	 * pagination and a "no results" message. The Query Loop variation in
 	 * the editor inserts the same inner blocks.
 	 */
-	public static function product_query( string $attributes ): string {
+	public static function product_query( string $attributes, int $columns = 4 ): string {
 		return '<!-- wp:query ' . $attributes . ' -->'
 			. '<div class="wp-block-query alignwide">'
-			. '<!-- wp:post-template {"layout":{"type":"grid","columnCount":4}} -->'
+			. '<!-- wp:post-template {"layout":{"type":"grid","columnCount":' . $columns . '}} -->'
 			. '<!-- wp:post-featured-image {"isLink":true,"aspectRatio":"1"} /-->'
 			. '<!-- wp:post-title {"isLink":true,"level":2,"fontSize":"medium"} /-->'
 			. '<!-- wp:flexacommerce/product-rating /-->'

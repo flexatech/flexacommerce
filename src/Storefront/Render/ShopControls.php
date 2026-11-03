@@ -64,14 +64,16 @@ final class ShopControls {
 	 * The filter form (ADR-055). `$attribute_slugs` lists the global
 	 * attributes to offer; empty means all of them. With `$counts` each
 	 * value shows how many products it would list and values with none are
-	 * left out; without, values no product uses are left out.
+	 * left out; without, values no product uses are left out. `$collapsible`
+	 * (ADR-084) puts the form in a details element that phones show closed,
+	 * behind a "Filters" toggle with the number of filters in use.
 	 *
 	 * @param list<string> $attribute_slugs
 	 */
-	public function filters( bool $categories, array $attribute_slugs, bool $price = true, bool $stock = true, bool $counts = true ): string {
+	public function filters( bool $categories, array $attribute_slugs, bool $price = true, bool $stock = true, bool $counts = true, bool $collapsible = false ): string {
 		return Component::wrap(
 			'product_filters',
-			function () use ( $categories, $attribute_slugs, $price, $stock, $counts ): string {
+			function () use ( $categories, $attribute_slugs, $price, $stock, $counts, $collapsible ): string {
 				$chosen = ShopQuery::request();
 				$range  = ShopQuery::price();
 				$facets = $counts ? new ShopFacets() : null;
@@ -119,7 +121,7 @@ final class ShopControls {
 					return '';
 				}
 				Assets::use_store();
-				return sprintf(
+				$form = sprintf(
 					'<form class="fxc-filters" method="get" action="%1$s" aria-label="%2$s" data-wp-interactive="flexacommerce/cart" data-wp-init="callbacks.filters">%3$s%4$s%5$s<p class="fxc-filters__actions"><button type="submit" class="wp-element-button">%6$s</button></p></form>',
 					esc_url( self::action() ),
 					esc_attr__( 'Filter products', 'flexacommerce' ),
@@ -127,6 +129,18 @@ final class ShopControls {
 					$groups,
 					self::hidden( [], false ),
 					esc_html__( 'Apply filters', 'flexacommerce' )
+				);
+				if ( ! $collapsible ) {
+					return $form;
+				}
+				$used = array_sum( array_map( 'count', $chosen ) ) + ( $range !== null ? 1 : 0 );
+				return sprintf(
+					'<details class="fxc-filters-toggle" open data-wp-interactive="flexacommerce/cart" data-wp-init="callbacks.filterToggle"><summary class="fxc-filters-toggle__summary wp-element-button">%1$s</summary>%2$s</details>',
+					$used > 0
+						/* translators: %d: number of filters in use. */
+						? esc_html( sprintf( __( 'Filters (%d)', 'flexacommerce' ), $used ) )
+						: esc_html__( 'Filters', 'flexacommerce' ),
+					$form
 				);
 			},
 			[]

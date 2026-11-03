@@ -107,6 +107,14 @@ The cart, checkout and account pages differ per visitor. FlexaCommerce sends `no
 
 Do not make the cache skip every page when the `fxc_session` cookie is present. That cookie exists once a visitor adds something to the cart, and skipping on it turns off caching of the whole shop for every visitor who has a cart.
 
+= A store page is missing or shows nothing. What do I do? =
+
+Open Settings > Storefront. The Pages card shows each store page and what is wrong with it: no page set, in the trash, not published, or missing its FlexaCommerce block. Click the button next to it (Create page, Restore, Publish or Add the block), or "Create missing pages" for all of them. You can also pick one of your own pages for the cart, checkout, account and terms. FlexaCommerce > Status lists the same problems, and `wp flexacommerce pages status` and `wp flexacommerce pages install` do it from the command line.
+
+= How do I show filters on the shop page? =
+
+Open Settings > Storefront and click "Add filters" on the Shop row, or pick left or right. The shop, category and tag pages then show filters by category, price, attributes and availability beside the products; on phones they fold behind a Filters button. `wp flexacommerce pages shop --filters=left` does the same. If you edited the shop template in the Site Editor, or your theme has its own, the card says so: reset the template or add the Product filters block to it.
+
 = Where are the logs? =
 
 FlexaCommerce > Status > Logs. Entries older than the retention period (30 days by default) are removed by a daily cron job.
@@ -138,6 +146,8 @@ A payment method or page you already set up is kept. "Remove demo store", or `wp
 * Orders: create and edit in the admin, PDF invoices and credit notes, order CSV export, abandoned cart and back-in-stock emails.
 * Subscriptions with automatic renewals, reminder emails, plan switching and customer self-service.
 * Migration to and from WooCommerce, on the same site or through a file.
+* Store pages: Settings > Storefront lists the cart, checkout, account, terms, wishlist and order tracking pages, says when one is missing, in the trash, unpublished or lost its block, and fixes it in one click; `wp flexacommerce pages` does the same.
+* Shop filters: one click in Settings > Storefront puts category, price, attribute and availability filters beside the shop, category and tag lists, folded behind a button on phones; `wp flexacommerce pages shop` does the same.
 * Admin: five menu sections (Orders, Products, Customers, Marketing, Settings) in a store header that also shows on the product, category, tag and review screens; every page and settings tab in the command palette (Ctrl or Cmd + K); a save bar on settings that stays in view while there are unsaved changes.
 
 = 0.1.0 =

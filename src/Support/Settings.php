@@ -59,6 +59,8 @@ final class Settings {
 		'category_base'            => [ 'slug', '' ],
 		'tag_base'                 => [ 'slug', '' ],
 		'products_per_page'        => [ 'int:1:100', 16 ],
+		// A filter sidebar beside the shop, category and tag lists (ADR-084).
+		'shop_filters'             => [ 'enum:off|left|right', 'off' ],
 		'swatch_size'              => [ 'int:20:96', 32 ],
 		'swatch_shape'             => [ 'enum:round|square', 'round' ],
 		'swatch_show_choice'       => [ 'bool', true ],

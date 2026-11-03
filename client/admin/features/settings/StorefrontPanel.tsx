@@ -29,6 +29,7 @@ import { cn } from "@/shared/lib/cn";
 import { __, sprintf } from "@/shared/lib/i18n";
 import { SaveBar } from "../../components/SaveBar";
 import { SettingRow } from "../../components/SettingRow";
+import { PagesCard } from "./PagesCard";
 import { useSaveSettings, useSettings, type Settings } from "./useSettings";
 
 /** Values shown per product in a list; any other saved number is kept as an extra choice. */
@@ -107,6 +108,7 @@ export function StorefrontPanel() {
 
     return (
         <div className="fxc:space-y-6">
+            <PagesCard />
 
             <Card>
                 <CardHeader>

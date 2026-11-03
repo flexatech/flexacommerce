@@ -4,18 +4,21 @@
  *
  * Override by copying to yourtheme/flexacommerce/archive-product.php.
  * The main query already holds the shop's sorting, filters and page size
- * (ShopQuery).
+ * (ShopQuery). With Settings > Storefront > Shop filters set (ADR-084)
+ * the filters show in a sidebar beside the list.
  *
- * @version 1.0.0
+ * @version 1.1.0
  */
 
 use Flexa\Commerce\Storefront\Storefront;
 use Flexa\Commerce\Storefront\TemplateLoader;
+use Flexa\Commerce\Support\ShopLayout;
 
 defined( 'ABSPATH' ) || exit;
 
 $fxc         = Storefront::instance();
 $fxc_wrapper = TemplateLoader::wrapper();
+$fxc_side    = ShopLayout::side();
 
 get_header();
 ?>
@@ -29,6 +32,13 @@ get_header();
 		<?php the_archive_description( '<div class="fxc-shop__description archive-description">', '</div>' ); ?>
 	<?php endif; ?>
 </header>
+<?php if ( $fxc_side !== 'off' ) : ?>
+<div class="fxc-shop-classic fxc-shop-classic--filters-<?php echo esc_attr( $fxc_side ); ?>">
+	<aside class="fxc-shop-classic__sidebar">
+		<?php echo $fxc->render_block( 'product-filters', [ 'collapsible' => true ], null ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped markup. ?>
+	</aside>
+	<div class="fxc-shop-classic__main">
+<?php endif; ?>
 <?php if ( have_posts() ) : ?>
 	<?php echo $fxc->part( 'catalog-sorting' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped markup. ?>
 	<ul class="fxc-products">
@@ -48,6 +58,10 @@ get_header();
 	<?php the_posts_pagination(); ?>
 <?php else : ?>
 	<p class="fxc-shop__empty"><?php esc_html_e( 'No products found.', 'flexacommerce' ); ?></p>
+<?php endif; ?>
+<?php if ( $fxc_side !== 'off' ) : ?>
+	</div>
+</div>
 <?php endif; ?>
 <?php
 echo $fxc_wrapper[1]; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- theme markup.

@@ -395,6 +395,10 @@ return [
 				'type'    => 'boolean',
 				'default' => true,
 			],
+			'collapsible'    => [
+				'type'    => 'boolean',
+				'default' => false,
+			],
 			'attributeSlugs' => [
 				'type'    => 'array',
 				'default' => [],

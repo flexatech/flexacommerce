@@ -51,6 +51,8 @@ export interface Settings {
     tier_table: boolean;
     tier_table_title: string;
     reviews: "off" | "all" | "buyers";
+    /** The filter sidebar beside the shop, category and tag lists (ADR-084). */
+    shop_filters: "off" | "left" | "right";
     /** Where the wishlist heart shows (ADR-066). */
     wishlist: "off" | "single" | "all";
     /** How a download link sends a file from this server (ADR-058). */

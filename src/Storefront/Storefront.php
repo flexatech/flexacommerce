@@ -233,7 +233,8 @@ final class Storefront {
 					$slugs,
 					(bool) ( $attributes['showPrice'] ?? true ),
 					(bool) ( $attributes['showStock'] ?? true ),
-					(bool) ( $attributes['showCounts'] ?? true )
+					(bool) ( $attributes['showCounts'] ?? true ),
+					(bool) ( $attributes['collapsible'] ?? false )
 				);
 			case 'discount-nudge':
 				return $this->pricing()->nudge( $user );

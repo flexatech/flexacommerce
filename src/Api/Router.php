@@ -20,6 +20,7 @@ final class Router {
 		$scope = self::scope();
 		if ( $scope === 'all' ) {
 			( new Admin\SettingsEndpoint() )->register_routes();
+			( new Admin\PagesEndpoint() )->register_routes();
 			( new Admin\StatusEndpoint() )->register_routes();
 			( new Admin\LogsEndpoint() )->register_routes();
 			( new Admin\ProductsEndpoint() )->register_routes();

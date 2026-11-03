@@ -151,7 +151,13 @@
 					'showCounts',
 					__( 'Product counts', 'flexacommerce' ),
 					__( 'Shows how many products each choice lists and hides choices that list none.', 'flexacommerce' )
-				)
+				),
+				el( ToggleControl, {
+					label: __( 'Fold on small screens', 'flexacommerce' ),
+					help: __( 'On phones the filters sit behind a Filters button.', 'flexacommerce' ),
+					checked: attributes.collapsible === true,
+					onChange: ( value ) => setAttributes( { collapsible: value } ),
+				} )
 			),
 			el( PanelBody, { title: __( 'Attributes', 'flexacommerce' ), initialOpen: false }, list )
 		);

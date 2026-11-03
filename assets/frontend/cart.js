@@ -1023,6 +1023,20 @@ const { state, actions } = store( 'flexacommerce/cart', {
 				form.removeEventListener( 'submit', submit );
 			};
 		},
+		/**
+		 * The shop sidebar's filters (ADR-084): closed behind their toggle on
+		 * narrow screens, always open on wide ones.
+		 */
+		filterToggle() {
+			const details = getElement().ref;
+			const narrow = window.matchMedia( '(max-width: 781px)' );
+			const fit = () => {
+				details.open = ! narrow.matches;
+			};
+			fit();
+			narrow.addEventListener( 'change', fit );
+			return () => narrow.removeEventListener( 'change', fit );
+		},
 		/** Ticks a countdown (ADR-030); at zero it says the offer has ended. */
 		countdown() {
 			const { ref } = getElement();
