@@ -335,7 +335,7 @@ export function CutoverPanel() {
                     const current = s.key === next;
                     return (
                         <li key={s.key} className="fxc:m-0">
-                            <Card className={cn(!current && "fxc:shadow-none", current && "fxc:border-primary")}>
+                            <Card className={cn(current && "fxc:border-primary")}>
                                 <CardHeader className={cn(!current && "fxc:border-b-0")}>
                                     <div className="fxc:flex fxc:items-center fxc:gap-3">
                                         {s.done ? (

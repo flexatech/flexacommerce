@@ -26,7 +26,7 @@
     ]
   },
   "admin/features/checkout/CheckoutBuilderPage.tsx": {
-    "file": "assets/CheckoutBuilderPage-DcLA0mVI.js",
+    "file": "assets/CheckoutBuilderPage-IHDfuFL7.js",
     "name": "CheckoutBuilderPage",
     "src": "admin/features/checkout/CheckoutBuilderPage.tsx",
     "isDynamicEntry": true,
@@ -39,7 +39,7 @@
     ]
   },
   "admin/features/emails/EmailDesignPage.tsx": {
-    "file": "assets/EmailDesignPage-BjxWI1sO.js",
+    "file": "assets/EmailDesignPage-Ca-_Hvi4.js",
     "name": "EmailDesignPage",
     "src": "admin/features/emails/EmailDesignPage.tsx",
     "isDynamicEntry": true,
@@ -52,7 +52,7 @@
     ]
   },
   "admin/main.tsx": {
-    "file": "assets/admin-C_bTroQQ.js",
+    "file": "assets/admin-HS-ICcyx.js",
     "name": "admin",
     "src": "admin/main.tsx",
     "isEntry": true,
@@ -66,11 +66,11 @@
       "admin/features/emails/EmailDesignPage.tsx"
     ],
     "css": [
-      "assets/admin-CdvKtc2w.css"
+      "assets/admin-lOR4VBi5.css"
     ]
   },
   "admin/nav.tsx": {
-    "file": "assets/nav-CCzTMMO2.js",
+    "file": "assets/nav-DO5LLL5j.js",
     "name": "nav",
     "src": "admin/nav.tsx",
     "isEntry": true,
@@ -79,11 +79,11 @@
       "_Header-KNbM_bCd.js"
     ],
     "css": [
-      "assets/nav-DYCS0iqY.css"
+      "assets/nav-CE7HrE4_.css"
     ]
   },
   "admin/product-editor.tsx": {
-    "file": "assets/product-editor-R7zQIYqW.js",
+    "file": "assets/product-editor-1armIFeB.js",
     "name": "product-editor",
     "src": "admin/product-editor.tsx",
     "isEntry": true,
@@ -92,7 +92,7 @@
       "_SearchBox-DpPOFuXY.js"
     ],
     "css": [
-      "assets/product-editor-BypSjKF7.css"
+      "assets/product-editor-B1EwcR6Q.css"
     ]
   }
 }

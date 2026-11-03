@@ -14,7 +14,7 @@ export function SaveBar({ dirty, pending, onSave, onDiscard, label }: { dirty: b
         <div
             className={cn(
                 "fxc:bg-background/95 fxc:flex fxc:items-center fxc:gap-3 fxc:rounded-lg fxc:border fxc:px-4 fxc:py-3 fxc:backdrop-blur fxc:transition-shadow",
-                dirty ? "fxc:border-primary/40 fxc:sticky fxc:bottom-4 fxc:z-30 fxc:shadow-lg" : "fxc:shadow-sm",
+                dirty && "fxc:border-primary/40 fxc:sticky fxc:bottom-4 fxc:z-30 fxc:shadow-lg",
             )}
         >
             <span className={cn("fxc:flex fxc:flex-1 fxc:items-center fxc:gap-2 fxc:text-sm", dirty ? "fxc:text-foreground fxc:font-medium" : "fxc:text-muted-foreground")}>
