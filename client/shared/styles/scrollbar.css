@@ -1,0 +1,45 @@
+/*
+ * Thin, rounded scrollbars for the plugin screens and their dialogs (Radix
+ * portals land in <body>, which carries .flexacommerce-ui). The thumb sits
+ * inside a transparent border so it floats off the edge, and the track keeps
+ * clear of rounded corners. Firefox gets the standard properties; Chromium
+ * and Safari use the pseudo-elements, since setting scrollbar-width there
+ * would switch them off.
+ */
+.flexacommerce-ui * {
+    --fxc-scroll-thumb: color-mix(in oklab, var(--foreground) 22%, transparent);
+    --fxc-scroll-thumb-hover: color-mix(in oklab, var(--foreground) 40%, transparent);
+}
+
+@supports not selector(::-webkit-scrollbar) {
+    .flexacommerce-ui * {
+        scrollbar-width: thin;
+        scrollbar-color: var(--fxc-scroll-thumb) transparent;
+    }
+}
+
+.flexacommerce-ui *::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+}
+
+.flexacommerce-ui *::-webkit-scrollbar-track {
+    background: transparent;
+    margin-block: 10px;
+}
+
+.flexacommerce-ui *::-webkit-scrollbar-thumb {
+    background-color: var(--fxc-scroll-thumb);
+    background-clip: padding-box;
+    border: 3px solid transparent;
+    border-radius: 9999px;
+    min-height: 40px;
+}
+
+.flexacommerce-ui *::-webkit-scrollbar-thumb:hover {
+    background-color: var(--fxc-scroll-thumb-hover);
+}
+
+.flexacommerce-ui *::-webkit-scrollbar-corner {
+    background: transparent;
+}

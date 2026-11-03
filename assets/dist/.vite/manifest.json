@@ -26,7 +26,7 @@
     ]
   },
   "admin/features/checkout/CheckoutBuilderPage.tsx": {
-    "file": "assets/CheckoutBuilderPage-fd5CWAuX.js",
+    "file": "assets/CheckoutBuilderPage-oRVtFw5t.js",
     "name": "CheckoutBuilderPage",
     "src": "admin/features/checkout/CheckoutBuilderPage.tsx",
     "isDynamicEntry": true,
@@ -39,7 +39,7 @@
     ]
   },
   "admin/features/emails/EmailDesignPage.tsx": {
-    "file": "assets/EmailDesignPage-BGYbALl_.js",
+    "file": "assets/EmailDesignPage-02Qxfbbb.js",
     "name": "EmailDesignPage",
     "src": "admin/features/emails/EmailDesignPage.tsx",
     "isDynamicEntry": true,
@@ -52,7 +52,7 @@
     ]
   },
   "admin/main.tsx": {
-    "file": "assets/admin-CKg_3A5e.js",
+    "file": "assets/admin-BPa6_26N.js",
     "name": "admin",
     "src": "admin/main.tsx",
     "isEntry": true,
@@ -66,7 +66,7 @@
       "admin/features/emails/EmailDesignPage.tsx"
     ],
     "css": [
-      "assets/admin-ABi3F9Xw.css"
+      "assets/admin-Bdg8LQZX.css"
     ]
   },
   "admin/nav.tsx": {

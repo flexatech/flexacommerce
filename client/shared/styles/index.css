@@ -9,6 +9,7 @@
 @import './preflight.css';
 @import './header-frame.css';
 @import './focus.css';
+@import './scrollbar.css';
 
 /* Utilities only match inside the scope class, which Admin\Menu puts on <body> and the mount div. */
 .flexacommerce-ui {
