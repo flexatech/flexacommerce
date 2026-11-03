@@ -219,7 +219,7 @@ export function ConditionsEditor({ value, onChange, error, emptyText, fee = fals
     return (
         <div className="fxc:space-y-3">
             {value.items.length === 0 ? (
-                <p className="fxc:text-muted-foreground fxc:text-xs">{emptyText}</p>
+                <div className="fxc:text-muted-foreground fxc:text-xs">{emptyText}</div>
             ) : (
                 value.items.length > 1 && (
                     <div className="fxc:flex fxc:items-center fxc:gap-2 fxc:text-sm">
@@ -313,7 +313,7 @@ export function ConditionsEditor({ value, onChange, error, emptyText, fee = fals
                     </div>
                 );
             })}
-            {error && <p className="fxc:text-destructive fxc:text-xs">{error}</p>}
+            {error && <div className="fxc:text-destructive fxc:text-xs">{error}</div>}
             <Button
                 variant="outline"
                 size="sm"

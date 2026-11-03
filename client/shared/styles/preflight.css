@@ -94,8 +94,29 @@ select.flexacommerce-control {
  * inside dialog portals.
  */
 :is(h1, h2, h3, h4)[class*="fxc:"] {
-    margin: 0;
     color: revert-layer;
+}
+
+/* One class of weight beats WP's bare h1-h3 and lets the stack rules below space a heading. */
+:where(h1, h2, h3, h4)[class*="fxc:"] {
+    margin: 0;
+}
+
+/*
+ * space-y compiles to a :where() selector with no weight, so the margin
+ * resets above win on a p, heading, button or list inside a stack. These
+ * give the gap back at the same weight as the resets; a child's own mb-*
+ * still wins.
+ */
+.flexacommerce-ui {
+    :where(.fxc\:space-y-1 > :not(:last-child)) { margin-block-end: calc(var(--fxc-spacing) * 1); }
+    :where(.fxc\:space-y-1\.5 > :not(:last-child)) { margin-block-end: calc(var(--fxc-spacing) * 1.5); }
+    :where(.fxc\:space-y-2 > :not(:last-child)) { margin-block-end: calc(var(--fxc-spacing) * 2); }
+    :where(.fxc\:space-y-3 > :not(:last-child)) { margin-block-end: calc(var(--fxc-spacing) * 3); }
+    :where(.fxc\:space-y-4 > :not(:last-child)) { margin-block-end: calc(var(--fxc-spacing) * 4); }
+    :where(.fxc\:space-y-5 > :not(:last-child)) { margin-block-end: calc(var(--fxc-spacing) * 5); }
+    :where(.fxc\:space-y-6 > :not(:last-child)) { margin-block-end: calc(var(--fxc-spacing) * 6); }
+    :where(.fxc\:space-y-8 > :not(:last-child)) { margin-block-end: calc(var(--fxc-spacing) * 8); }
 }
 
 /* The page behind the cards. */
