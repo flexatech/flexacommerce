@@ -84,8 +84,8 @@ final class SubscriptionMigrationTest extends \WP_UnitTestCase {
 		$this->assertContains( 'subscriptions_held', $codes );
 		$this->assertContains( 'manual_renewals', $codes );
 
-		$fxc_product = $this->local_id( 'product', $product_id );
-		$plan        = Plugin::instance()->catalog()->products()->find( $fxc_product )?->base->plan();
+		$fxcm_product = $this->local_id( 'product', $product_id );
+		$plan         = Plugin::instance()->catalog()->products()->find( $fxcm_product )?->base->plan();
 		$this->assertNotNull( $plan );
 		$this->assertSame( [ 'month', 1, 12, 0, 500 ], [ $plan->period, $plan->interval, $plan->length, $plan->trial_days, $plan->signup_fee ] );
 

@@ -27,7 +27,7 @@ final class OrderLookup {
 	use HasInstance;
 
 	/** Literal in Plugin::on_template_redirect(), which must not load this class on other pages. */
-	public const ACTION = 'fxc_order_lookup';
+	public const ACTION = 'fxcm_order_lookup';
 	public const NUMBER = 'order_number';
 	public const EMAIL  = 'order_email';
 

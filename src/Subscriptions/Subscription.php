@@ -10,7 +10,7 @@ use Flexa\Commerce\Contracts\Orders\AddressView;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * A row of fxc_subscriptions (ADR-073). Dates are UTC `Y-m-d H:i:s`.
+ * A row of fxcm_subscriptions (ADR-073). Dates are UTC `Y-m-d H:i:s`.
  * `billed` counts the periods paid for, the first order's included unless
  * it only started a trial; `anchor_day` keeps a monthly plan on its day.
  * `payment_token` is the saved method renewals charge (ADR-074): null

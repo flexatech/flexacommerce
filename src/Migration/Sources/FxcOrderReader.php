@@ -364,7 +364,7 @@ final class FxcOrderReader {
 	private static function extra( array $meta ): array {
 		$out = [];
 		foreach ( $meta as $key => $value ) {
-			if ( str_starts_with( $key, '_fxc_' ) ) {
+			if ( str_starts_with( $key, '_fxcm_' ) ) {
 				continue;
 			}
 			if ( str_starts_with( $key, FxcOrderWriter::META_PREFIX ) ) {

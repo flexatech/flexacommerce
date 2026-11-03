@@ -6,7 +6,7 @@ namespace Flexa\Commerce\Cart;
 
 defined( 'ABSPATH' ) || exit;
 
-/** One row of fxc_sessions (doc 03 §4.9). */
+/** One row of fxcm_sessions (doc 03 §4.9). */
 final class Session {
 	/** @param array<string,mixed> $data */
 	public function __construct(

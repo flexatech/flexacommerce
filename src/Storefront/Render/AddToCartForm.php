@@ -33,14 +33,14 @@ defined( 'ABSPATH' ) || exit;
  * page; a variable one also shows its swatches as links that open the
  * page with a value picked (ADR-038).
  *
- * `?fxc_edit=<line key>` on the product page opens a line of the cart for
+ * `?fxcm_edit=<line key>` on the product page opens a line of the cart for
  * changes (ADR-037): the form starts from the line's choices and replaces
  * it instead of adding another.
  */
 final class AddToCartForm {
 	public const LOOP   = 'loop';
 	public const SINGLE = 'single';
-	public const EDIT   = 'fxc_edit';
+	public const EDIT   = 'fxcm_edit';
 
 	/** @param ?\Closure():ProductOptions $product_options built only when the store has option sets */
 	public function __construct(

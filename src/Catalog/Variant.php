@@ -7,7 +7,7 @@ namespace Flexa\Commerce\Catalog;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * One row of fxc_variants: a product's base row or one of its variations
+ * One row of fxcm_variants: a product's base row or one of its variations
  * (doc 03 §3, §4.1). Prices are integers in the currency's minor unit;
  * weight and dimensions are decimal strings in grams and millimetres.
  */

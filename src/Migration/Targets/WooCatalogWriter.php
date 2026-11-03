@@ -23,7 +23,7 @@ defined( 'ABSPATH' ) || exit;
  * reverse of WooCatalogReader. Variations are mapped as entity `variant`.
  */
 final class WooCatalogWriter {
-	public const SOURCE_META = '_fxc_source_id';
+	public const SOURCE_META = '_fxcm_source_id';
 
 	private const POST_STATUSES = [ 'publish', 'draft', 'pending', 'private', 'future' ];
 
@@ -606,7 +606,7 @@ final class WooCatalogWriter {
 		$out = [];
 		foreach ( is_array( $extra['meta'] ?? null ) ? $extra['meta'] : [] as $key => $value ) {
 			$key = (string) $key;
-			if ( $key !== '' && ! str_starts_with( $key, '_fxc_' ) ) {
+			if ( $key !== '' && ! str_starts_with( $key, '_fxcm_' ) ) {
 				$out[ $key ] = $value;
 			}
 		}

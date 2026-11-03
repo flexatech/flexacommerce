@@ -17,7 +17,7 @@ use PHPUnit\Framework\TestCase;
 /**
  * Phase 3 T1 budgets (doc 10 §4.1): catalog pages and the store API, each
  * request in a fresh process. Catalog pages are compared with the same URL
- * where `fxc_product` is a plain post type, so the difference is what
+ * where `fxcm_product` is a plain post type, so the difference is what
  * FlexaCommerce adds to a core archive or single post of the same posts.
  * The store routes are compared with the same URL without the plugin
  * (a 404 from the REST server), which leaves the cost of the route itself.
@@ -141,7 +141,7 @@ final class StorefrontBudgetTest extends TestCase {
 	public function test_p1h_product_list_cost_does_not_grow_with_its_size(): void {
 		$extra = [];
 		foreach ( [ 12, 48 ] as $size ) {
-			$page = (int) wp_insert_post(
+			$page          = (int) wp_insert_post(
 				[
 					'post_type'    => 'page',
 					'post_status'  => 'publish',
@@ -168,7 +168,10 @@ final class StorefrontBudgetTest extends TestCase {
 
 	/** P8: what a product page loads of ours, simple and with options. */
 	public function test_p8_product_page_assets(): void {
-		foreach ( [ 'simple' => self::$simple, 'variable' => self::$variable[6] ] as $label => $id ) {
+		foreach ( [
+			'simple'   => self::$simple,
+			'variable' => self::$variable[6],
+		] as $label => $id ) {
 			$bytes = Probe::run( '/?post_type=' . PostTypes::PRODUCT . '&p=' . $id, true )['bytes'];
 			$js    = 0;
 			$css   = 0;
@@ -206,7 +209,7 @@ final class StorefrontBudgetTest extends TestCase {
 				'classic product'     => [ '/?post_type=' . PostTypes::PRODUCT . '&p=' . self::$variable[6], [ 'theme' => 'classic' ] ],
 				'classic archive'     => [ '/?post_type=' . PostTypes::PRODUCT . '&orderby=price', [ 'theme' => 'classic' ] ],
 			];
-			$runs = [];
+			$runs  = [];
 			foreach ( $pages as $label => [ $uri, $options ] ) {
 				$runs[ $label ] = Probe::run( $uri, true, $options );
 				self::assertSame( 200, $runs[ $label ]['status'], $label );
@@ -217,7 +220,7 @@ final class StorefrontBudgetTest extends TestCase {
 			self::assertSame( 'archive-product.php', $runs['classic archive']['template'] );
 
 			// The other side: the cart page differs per visitor and turns caching off.
-			$cart = (int) wp_insert_post(
+			$cart          = (int) wp_insert_post(
 				[
 					'post_type'   => 'page',
 					'post_status' => 'publish',
@@ -236,7 +239,7 @@ final class StorefrontBudgetTest extends TestCase {
 	public function test_p4q_get_cart_cost_does_not_grow_with_lines(): void {
 		$extra = [];
 		foreach ( self::$carts as $lines => $token ) {
-			$run = Probe::compare( '/?rest_route=/' . FLEXACOMMERCE_REST_NAMESPACE . '/store/cart', [ 'cookies' => [ 'fxc_session' => $token ] ] );
+			$run = Probe::compare( '/?rest_route=/' . FLEXACOMMERCE_REST_NAMESPACE . '/store/cart', [ 'cookies' => [ 'fxcm_session' => $token ] ] );
 			self::assertSame( 200, $run['on']['status'] );
 			self::assertSame( $lines, $run['on']['rest']['item_count'] ?? null, 'The probe did not read the cart.' );
 			$extra[ $lines ] = $this->extra_queries( $run, (int) self::$budgets['P4q']['queries'], "P4q at {$lines}" );

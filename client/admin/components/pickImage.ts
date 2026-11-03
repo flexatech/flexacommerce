@@ -101,7 +101,7 @@ export interface PickedFile {
 
 /**
  * Opens the media library for a file to sell. Uploads from this frame carry
- * `fxc_download`, so the server puts them in the protected downloads folder
+ * `fxcm_download`, so the server puts them in the protected downloads folder
  * (ADR-058).
  */
 export function pickFile(title: string, onPick: (file: PickedFile) => void): void {
@@ -113,7 +113,7 @@ export function pickFile(title: string, onPick: (file: PickedFile) => void): voi
     frame.on("ready", () => {
         const options = frame.uploader?.options.uploader;
         if (options) {
-            options.params = { ...options.params, fxc_download: "1" };
+            options.params = { ...options.params, fxcm_download: "1" };
         }
     });
     frame.on("select", () => {

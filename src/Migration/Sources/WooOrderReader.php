@@ -17,10 +17,10 @@ defined( 'ABSPATH' ) || exit;
  */
 final class WooOrderReader {
 	/** Order meta covered by the mapping. */
-	private const MAPPED_META = [ '_wp_trash_meta_status', '_wp_trash_meta_time', '_wp_trash_meta_comments_status', '_wp_desired_post_slug', '_edit_lock', '_edit_last', '_fxc_source_id', '_fxc_order_number', '_order_number', '_fxc_import_job', '_wc_shipment_tracking_items' ];
+	private const MAPPED_META = [ '_wp_trash_meta_status', '_wp_trash_meta_time', '_wp_trash_meta_comments_status', '_wp_desired_post_slug', '_edit_lock', '_edit_last', '_fxcm_source_id', '_fxcm_order_number', '_order_number', '_fxcm_import_job', '_wc_shipment_tracking_items' ];
 
 	/** Item meta covered by the mapping. */
-	private const MAPPED_ITEM_META = [ '_reduced_stock', '_restock_refunded_items', '_refunded_item_id', '_fxc_source_id' ];
+	private const MAPPED_ITEM_META = [ '_reduced_stock', '_restock_refunded_items', '_refunded_item_id', '_fxcm_source_id' ];
 
 	/** Shipment Tracking carrier slugs => the built-in carrier keys (ADR-067). */
 	private const CARRIERS = [

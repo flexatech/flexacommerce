@@ -144,7 +144,7 @@ final class ExpressCheckoutTest extends OrderTestCase {
 		self::assertSame( 4000, $order->total );
 		self::assertSame( 'processing', $order->status );
 		self::assertStringContainsString( '(Apple Pay)', $order->payment_method_title );
-		self::assertSame( 'apple_pay', Plugin::instance()->orders()->orders()->get_meta( $order->id, '_fxc_express' ) );
+		self::assertSame( 'apple_pay', Plugin::instance()->orders()->orders()->get_meta( $order->id, '_fxcm_express' ) );
 		self::assertSame( 'CA', $order->billing?->state, 'the state name the wallet sent became its code' );
 		self::assertSame( 3, $this->stock_of( $bought ) );
 		self::assertSame( 'pm_wallet', FakeStripe::calls_to( 'POST', 'payment_intents' )[0]['body']['payment_method'] );

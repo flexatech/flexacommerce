@@ -34,7 +34,7 @@ final class EmailsTest extends OrderTestCase {
 		update_option( 'admin_email', $this->admin_email );
 		Settings::update( [ 'defer_emails' => false ] );
 		wp_unschedule_hook( Cron::SEND_EMAIL );
-		$wpdb->query( "DELETE FROM {$wpdb->options} WHERE option_name LIKE '\\_transient\\_%fxc\\_mail\\_%'" ); // phpcs:ignore WordPress.DB
+		$wpdb->query( "DELETE FROM {$wpdb->options} WHERE option_name LIKE '\\_transient\\_%fxcm\\_mail\\_%'" ); // phpcs:ignore WordPress.DB
 		wp_cache_flush();
 		$wpdb->query( 'COMMIT' ); // phpcs:ignore WordPress.DB
 	}

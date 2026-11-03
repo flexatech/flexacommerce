@@ -11,7 +11,7 @@ defined( 'ABSPATH' ) || exit;
 
 /** The OrderReader extensions get from the facade (doc 04 §5.3). */
 final class OrderReaderService implements OrderReader {
-	public const RESERVED_PREFIX = '_fxc_';
+	public const RESERVED_PREFIX = '_fxcm_';
 
 	public function __construct( private readonly OrderRepository $orders ) {}
 

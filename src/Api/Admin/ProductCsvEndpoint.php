@@ -245,7 +245,7 @@ final class ProductCsvEndpoint extends Endpoint {
 		}
 
 		$dry_run   = (bool) $request->get_param( 'dry_run' );
-		$transient = 'fxc_csv_import_' . get_current_user_id() . '_' . ( $dry_run ? 'check_' : '' ) . md5( (string) $request->get_param( 'session' ) );
+		$transient = 'fxcm_csv_import_' . get_current_user_id() . '_' . ( $dry_run ? 'check_' : '' ) . md5( (string) $request->get_param( 'session' ) );
 		$stored    = get_transient( $transient );
 		$context   = is_array( $stored ) ? ImportContext::from_array( $stored ) : new ImportContext();
 
@@ -279,7 +279,7 @@ final class ProductCsvEndpoint extends Endpoint {
 		try {
 			$counts = $store->install( (string) $request->get_param( 'type' ), array_values( array_map( 'strval', (array) $request->get_param( 'parts' ) ) ) );
 		} catch ( \RuntimeException $e ) {
-			return new WP_Error( 'fxc_sample_installed', $e->getMessage(), [ 'status' => 409 ] );
+			return new WP_Error( 'fxcm_sample_installed', $e->getMessage(), [ 'status' => 409 ] );
 		}
 		return new WP_REST_Response( $counts + [ 'status' => $store->status() ], 201 );
 	}

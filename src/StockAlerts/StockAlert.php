@@ -7,7 +7,7 @@ namespace Flexa\Commerce\StockAlerts;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * One row of fxc_stock_alerts (ADR-065): an address that asked to hear
+ * One row of fxcm_stock_alerts (ADR-065): an address that asked to hear
  * when a product, or one variant of it, is back in stock. `variant_id` 0
  * means any variant. `due` is set when the stock may have come back, so
  * the cron looks at the row again. The token is the secret part of the

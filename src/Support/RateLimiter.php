@@ -16,7 +16,7 @@ defined( 'ABSPATH' ) || exit;
  * a limit of 0 turns it off.
  */
 final class RateLimiter {
-	public const PREFIX = 'fxc_rl_';
+	public const PREFIX = 'fxcm_rl_';
 
 	/** name => [limit, window seconds] */
 	public const DEFAULTS = [

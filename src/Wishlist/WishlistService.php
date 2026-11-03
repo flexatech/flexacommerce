@@ -15,7 +15,7 @@ defined( 'ABSPATH' ) || exit;
 
 /**
  * Wishlists (ADR-066). A customer has one list, a guest has one found by
- * the `fxc_wishlist` cookie. A guest who signs in keeps what they saved:
+ * the `fxcm_wishlist` cookie. A guest who signs in keeps what they saved:
  * the first request that reads the list moves the guest list into the
  * account. Every change rewrites the script-readable ids cookie, so cached
  * pages can show the heart filled.

@@ -61,7 +61,7 @@ final class OrderLookupTest extends OrderTestCase {
 		self::assertNotNull( $location );
 		self::assertSame( OrderLookup::url( $this->order ), $location );
 		self::assertStringContainsString( 'key=' . $this->order->order_key, $location );
-		self::assertStringContainsString( 'fxc_view_order=' . $this->order->id, $location );
+		self::assertStringContainsString( 'fxcm_view_order=' . $this->order->id, $location );
 	}
 
 	public function test_a_wrong_email_or_number_gets_one_message_and_counts(): void {
@@ -112,8 +112,8 @@ final class OrderLookupTest extends OrderTestCase {
 	public function test_the_key_opens_the_order_for_a_guest(): void {
 		$this->orders()->add_note( $this->order->id, 'Packed and on its way.', true, new TransitionContext( 'admin', 1 ) );
 		$_GET = [
-			'fxc_view_order' => (string) $this->order->id,
-			'key'            => $this->order->order_key,
+			'fxcm_view_order' => (string) $this->order->id,
+			'key'             => $this->order->order_key,
 		];
 		$html = AccountPage::instance()->render();
 		self::assertStringContainsString( esc_html( $this->order->order_number ), $html );
@@ -134,8 +134,8 @@ final class OrderLookupTest extends OrderTestCase {
 
 	public function test_a_wrong_key_shows_not_found_and_counts(): void {
 		$_GET = [
-			'fxc_view_order' => (string) $this->order->id,
-			'key'            => 'wrong',
+			'fxcm_view_order' => (string) $this->order->id,
+			'key'             => 'wrong',
 		];
 		$html = AccountPage::instance()->render();
 		self::assertStringContainsString( 'Order not found.', $html );
@@ -143,7 +143,7 @@ final class OrderLookupTest extends OrderTestCase {
 		self::assertSame( 1, ( new RateLimiter() )->attempts( 'order_key_ip', '203.0.113.9' ) );
 
 		// Without a key a guest gets the sign-in form and the lookup.
-		$_GET = [ 'fxc_view_order' => (string) $this->order->id ];
+		$_GET = [ 'fxcm_view_order' => (string) $this->order->id ];
 		self::assertStringContainsString( 'id="fxc-login"', AccountPage::instance()->render() );
 	}
 

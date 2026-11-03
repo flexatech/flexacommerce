@@ -7,7 +7,7 @@ namespace Flexa\Commerce\Downloads;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * One row of fxc_downloads (ADR-058): the right to download one file of one
+ * One row of fxcm_downloads (ADR-058): the right to download one file of one
  * order line. `downloads_remaining` and `access_expires` are null for no
  * limit. The token is the secret part of the download link.
  */

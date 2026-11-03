@@ -42,9 +42,9 @@ defined( 'ABSPATH' ) || exit;
 final class AccountPage {
 	use HasInstance;
 
-	public const ACTION = 'fxc_account_action';
-	public const NONCE  = 'fxc_account_nonce';
-	public const SAVED  = 'fxc_saved';
+	public const ACTION = 'fxcm_account_action';
+	public const NONCE  = 'fxcm_account_nonce';
+	public const SAVED  = 'fxcm_saved';
 
 	public const PER_PAGE = 10;
 
@@ -148,7 +148,7 @@ final class AccountPage {
 				return $view->guest_order( $order );
 			}
 		}
-		// Plain permalinks link the own list as `?fxc_wishlist=1`.
+		// Plain permalinks link the own list as `?fxcm_wishlist=1`.
 		if ( $endpoint === 'wishlist' && $value !== '' && $value !== '1' ) {
 			return $this->shared_wishlist( $value );
 		}

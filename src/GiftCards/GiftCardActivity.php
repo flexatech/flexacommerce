@@ -7,7 +7,7 @@ namespace Flexa\Commerce\GiftCards;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * One row of fxc_gift_card_activity (ADR-069): every change to a balance.
+ * One row of fxcm_gift_card_activity (ADR-069): every change to a balance.
  * `amount` is signed: issued and credited rows add, redeemed rows take
  * off, adjusted rows go either way. `transaction_id` is the payment a
  * redeem made, or the refund a credit came from.

@@ -11,20 +11,20 @@
 
 defined( 'ABSPATH' ) || exit;
 
-$fxc_cell = 'padding:10px 0;border-bottom:1px solid #e4e4e7;vertical-align:middle;';
+$fxcm_cell = 'padding:10px 0;border-bottom:1px solid #e4e4e7;vertical-align:middle;';
 ?>
 <?php echo wp_kses_post( wpautop( esc_html( $args['message'] ) ) ); ?>
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;font-size:14px;margin-top:16px;">
-	<?php foreach ( $args['items'] as $fxc_item ) : ?>
+	<?php foreach ( $args['items'] as $fxcm_item ) : ?>
 		<tr>
-			<?php if ( $fxc_item['image'] !== '' ) : ?>
-				<td style="<?php echo esc_attr( $fxc_cell ); ?>width:64px;"><img src="<?php echo esc_url( $fxc_item['image'] ); ?>" alt="" width="48" height="48" style="display:block;width:48px;height:48px;border-radius:4px;object-fit:cover;"></td>
+			<?php if ( $fxcm_item['image'] !== '' ) : ?>
+				<td style="<?php echo esc_attr( $fxcm_cell ); ?>width:64px;"><img src="<?php echo esc_url( $fxcm_item['image'] ); ?>" alt="" width="48" height="48" style="display:block;width:48px;height:48px;border-radius:4px;object-fit:cover;"></td>
 			<?php else : ?>
-				<td style="<?php echo esc_attr( $fxc_cell ); ?>width:0;"></td>
+				<td style="<?php echo esc_attr( $fxcm_cell ); ?>width:0;"></td>
 			<?php endif; ?>
-			<td style="<?php echo esc_attr( $fxc_cell ); ?>"><?php echo esc_html( $fxc_item['name'] ); ?></td>
-			<td style="<?php echo esc_attr( $fxc_cell ); ?>text-align:center;width:48px;white-space:nowrap;">&times; <?php echo esc_html( (string) $fxc_item['quantity'] ); ?></td>
-			<td style="<?php echo esc_attr( $fxc_cell ); ?>text-align:right;white-space:nowrap;"><?php echo esc_html( $fxc_item['total'] ); ?></td>
+			<td style="<?php echo esc_attr( $fxcm_cell ); ?>"><?php echo esc_html( $fxcm_item['name'] ); ?></td>
+			<td style="<?php echo esc_attr( $fxcm_cell ); ?>text-align:center;width:48px;white-space:nowrap;">&times; <?php echo esc_html( (string) $fxcm_item['quantity'] ); ?></td>
+			<td style="<?php echo esc_attr( $fxcm_cell ); ?>text-align:right;white-space:nowrap;"><?php echo esc_html( $fxcm_item['total'] ); ?></td>
 		</tr>
 	<?php endforeach; ?>
 	<?php if ( $args['total'] !== '' ) : ?>

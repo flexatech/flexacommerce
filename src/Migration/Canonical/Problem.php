@@ -6,7 +6,7 @@ namespace Flexa\Commerce\Migration\Canonical;
 
 defined( 'ABSPATH' ) || exit;
 
-/** One warning, error or info row for fxc_migration_log. */
+/** One warning, error or info row for fxcm_migration_log. */
 final class Problem {
 	public const ERROR   = 'error';
 	public const WARNING = 'warning';

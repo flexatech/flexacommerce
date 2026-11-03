@@ -9,7 +9,7 @@ use Flexa\Commerce\Contracts\Money;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * A row of fxc_transactions as extensions see it. `data` is never included.
+ * A row of fxcm_transactions as extensions see it. `data` is never included.
  *
  * @api
  */

@@ -15,8 +15,8 @@ declare(strict_types=1);
 
 // phpcs:disable -- test tooling, runs outside WordPress until wp-settings.php.
 
-[ , $fxc_mode, $fxc_start, $fxc_json ] = $argv + [ '', 'add', '0', '{}' ];
-$fxc_args = (array) json_decode( $fxc_json, true );
+[ , $fxcm_mode, $fxcm_start, $fxcm_json ] = $argv + [ '', 'add', '0', '{}' ];
+$fxcm_args = (array) json_decode( $fxcm_json, true );
 
 $_SERVER['HTTP_HOST']   = 'example.org';
 $_SERVER['SERVER_NAME'] = 'example.org';
@@ -62,36 +62,36 @@ use Flexa\Commerce\Tests\Integration\Payments\FakeGateway;
 
 $plugin = Plugin::instance();
 $plugin->payments()->gateways()->register( FakeGateway::ID, static fn (): PaymentGateway => new FakeGateway() );
-$token    = (string) ( $fxc_args['token'] ?? '' );
+$token    = (string) ( $fxcm_args['token'] ?? '' );
 $services = new CartServices( $plugin->services(), $plugin->catalog(), new MemoryTokenStore( $token !== '' ? $token : null ) );
 $checkout = ( new CheckoutServices( $plugin->services(), $services, new ShippingServices( $plugin->services() ), $plugin->orders(), $plugin->payments() ) )->service();
 
-$fxc_run = null;
+$fxcm_run = null;
 try {
-	switch ( $fxc_mode ) {
+	switch ( $fxcm_mode ) {
 		case 'add':
-			$fxc_run = static function () use ( $services, $fxc_args ): array {
-				$services->cart()->add( 0, (int) $fxc_args['product'], 0, 1 );
+			$fxcm_run = static function () use ( $services, $fxcm_args ): array {
+				$services->cart()->add( 0, (int) $fxcm_args['product'], 0, 1 );
 				return [];
 			};
 			break;
 		case 'checkout':
 			// A new cart per worker unless the test shares one by token.
-			foreach ( $token === '' ? (array) $fxc_args['products'] : [] as $product_id ) {
+			foreach ( $token === '' ? (array) $fxcm_args['products'] : [] as $product_id ) {
 				$services->cart()->add( 0, (int) $product_id, 0, 1 );
 			}
 			$form    = $checkout->form_state( 0 );
 			$request = CheckoutRequest::from_array(
 				[
 					'checkout_token' => $form['checkout_token'],
-					'billing'        => (array) $fxc_args['billing'],
-					'shipping_rate'  => (string) $fxc_args['rate'],
+					'billing'        => (array) $fxcm_args['billing'],
+					'shipping_rate'  => (string) $fxcm_args['rate'],
 					'payment_method' => 'cod',
 				],
 				0,
-				(string) $fxc_args['ip']
+				(string) $fxcm_args['ip']
 			);
-			$fxc_run = static function () use ( $checkout, $request ): array {
+			$fxcm_run = static function () use ( $checkout, $request ): array {
 				$result = $checkout->place_order( $request );
 				return [
 					'order'     => $result->order->id,
@@ -100,18 +100,18 @@ try {
 			};
 			break;
 		case 'webhook':
-			$fxc_run = static function () use ( $plugin, $fxc_args ): array {
-				return [ 'code' => $plugin->payments()->service()->handle_webhook( FakeGateway::ID, FakeGateway::signed( (array) $fxc_args['payload'] ) ) ];
+			$fxcm_run = static function () use ( $plugin, $fxcm_args ): array {
+				return [ 'code' => $plugin->payments()->service()->handle_webhook( FakeGateway::ID, FakeGateway::signed( (array) $fxcm_args['payload'] ) ) ];
 			};
 			break;
 		case 'expire':
-			$fxc_run = static function () use ( $plugin ): array {
+			$fxcm_run = static function () use ( $plugin ): array {
 				return [ 'cancelled' => $plugin->orders()->service()->expire_pending() ];
 			};
 			break;
 		case 'cancel':
-			$fxc_run = static function () use ( $plugin, $fxc_args ): array {
-				$plugin->orders()->service()->cancel( (int) $fxc_args['order'], new TransitionContext( 'customer' ) );
+			$fxcm_run = static function () use ( $plugin, $fxcm_args ): array {
+				$plugin->orders()->service()->cancel( (int) $fxcm_args['order'], new TransitionContext( 'customer' ) );
 				return [];
 			};
 			break;
@@ -126,12 +126,12 @@ try {
 	exit;
 }
 
-while ( microtime( true ) < (float) $fxc_start ) {
+while ( microtime( true ) < (float) $fxcm_start ) {
 	usleep( 200 );
 }
 
 try {
-	echo json_encode( [ 'ok' => true ] + $fxc_run() ), "\n";
+	echo json_encode( [ 'ok' => true ] + $fxcm_run() ), "\n";
 } catch ( InvalidCheckout $e ) {
 	echo json_encode(
 		[

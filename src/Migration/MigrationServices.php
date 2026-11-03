@@ -69,8 +69,8 @@ final class MigrationServices {
 	private ?Runner $runner               = null;
 	private ?MigrationService $service    = null;
 	private ?WooSource $woo_source        = null;
-	private ?FxcTarget $fxc_target        = null;
-	private ?FxcSource $fxc_source        = null;
+	private ?FxcTarget $fxcm_target       = null;
+	private ?FxcSource $fxcm_source       = null;
 	private ?WooTarget $woo_target        = null;
 	private ?BackgroundDriver $background = null;
 	private ?Cutover $cutover             = null;
@@ -151,7 +151,7 @@ final class MigrationServices {
 		if ( $job->is_file() ) {
 			$source = new FileSource( FileIndex::open( (string) $job->option( 'file' ) ) );
 			if ( $job->direction === Direction::WC_TO_FXC ) {
-				return [ $source, $this->fxc_target() ];
+				return [ $source, $this->fxcm_target() ];
 			}
 			if ( ! WooSource::available() ) {
 				throw new MigrationError( 'woocommerce_inactive', 'WooCommerce is not active.' );
@@ -162,9 +162,9 @@ final class MigrationServices {
 			throw new MigrationError( 'woocommerce_inactive', 'WooCommerce is not active.' );
 		}
 		if ( $job->direction === Direction::FXC_TO_WC ) {
-			return [ $this->fxc_source(), $this->woo_target() ];
+			return [ $this->fxcm_source(), $this->woo_target() ];
 		}
-		return [ $this->woo_source(), $this->fxc_target() ];
+		return [ $this->woo_source(), $this->fxcm_target() ];
 	}
 
 	/**
@@ -180,7 +180,7 @@ final class MigrationServices {
 		}
 		$source = match ( $system ) {
 			'wc'    => $this->woo_source(),
-			'fxc'   => $this->fxc_source(),
+			'fxc'   => $this->fxcm_source(),
 			default => throw new MigrationError( 'invalid_direction', sprintf( 'Unknown store "%s"; use wc or fxc.', $system ) ),
 		};
 		unset( $options['file'], $options['id_system'] );
@@ -197,10 +197,10 @@ final class MigrationServices {
 		return $this->woo_source;
 	}
 
-	public function fxc_source(): FxcSource {
-		if ( $this->fxc_source === null ) {
-			$enumeration      = new FxcEnumerationRepository( $this->services->wpdb() );
-			$this->fxc_source = new FxcSource(
+	public function fxcm_source(): FxcSource {
+		if ( $this->fxcm_source === null ) {
+			$enumeration       = new FxcEnumerationRepository( $this->services->wpdb() );
+			$this->fxcm_source = new FxcSource(
 				$enumeration,
 				new FxcStoreReader( $this->tax->repository(), new CustomerProfile() ),
 				new FxcCatalogReader( $this->catalog->attributes(), $this->catalog->product_service() ),
@@ -210,7 +210,7 @@ final class MigrationServices {
 				new ReviewReader( 'fxc', ReviewKeys::fxc() ),
 			);
 		}
-		return $this->fxc_source;
+		return $this->fxcm_source;
 	}
 
 	public function woo_target(): WooTarget {
@@ -232,12 +232,12 @@ final class MigrationServices {
 		);
 	}
 
-	public function fxc_target(): FxcTarget {
-		if ( $this->fxc_target !== null ) {
-			return $this->fxc_target;
+	public function fxcm_target(): FxcTarget {
+		if ( $this->fxcm_target !== null ) {
+			return $this->fxcm_target;
 		}
-		$orders           = new FxcOrderWriter( $this->imports(), $this->catalog->product_service(), $this->services->sequence(), $this->services->clock(), new PermissionRepository( $this->services->wpdb() ) );
-		$this->fxc_target = new FxcTarget(
+		$orders            = new FxcOrderWriter( $this->imports(), $this->catalog->product_service(), $this->services->sequence(), $this->services->clock(), new PermissionRepository( $this->services->wpdb() ) );
+		$this->fxcm_target = new FxcTarget(
 			$this->services->transaction(),
 			new FxcStoreWriter( $this->tax->repository(), new CustomerProfile() ),
 			new FxcCatalogWriter( $this->catalog->attributes(), $this->catalog->product_service(), $this->catalog->variants() ),
@@ -250,6 +250,6 @@ final class MigrationServices {
 			new ReviewWriter( ReviewKeys::fxc(), static fn ( int $product ) => Reviews::instance()->refresh( $product ) ),
 			new FxcSubscriptionWriter( fn (): SubscriptionRepository => ( $this->subscriptions )()->repository(), $orders, $this->services->clock() ),
 		);
-		return $this->fxc_target;
+		return $this->fxcm_target;
 	}
 }

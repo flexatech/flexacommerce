@@ -14,7 +14,7 @@ use Flexa\Commerce\Support\Capabilities;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Serves `?fxc_invoice=<order id>&key=<order key>` (ADR-060): the
+ * Serves `?fxcm_invoice=<order id>&key=<order key>` (ADR-060): the
  * customer's invoice, to the holder of the order key or the signed-in
  * owner, when the invoice settings let customers see it. Staff who may
  * view orders always get it. With `&refund=<id>` it serves the credit
@@ -24,7 +24,7 @@ final class InvoiceHandler {
 	use HasInstance;
 
 	/** Literal in Plugin::boot(), which must not load this class on other requests. */
-	public const PARAM = 'fxc_invoice';
+	public const PARAM = 'fxcm_invoice';
 
 	public function handle(): void {
 		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- the order key is the credential; links come from emails and the order page.

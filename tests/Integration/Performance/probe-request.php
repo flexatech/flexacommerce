@@ -14,7 +14,7 @@
  * fixture classic theme in tests/fixtures/themes), `count` (a string;
  * the result's `counted` is how often it occurs in the page), and
  * `bare_types`: in
- * "off" mode, register a plain public `fxc_product` post type, so a
+ * "off" mode, register a plain public `fxcm_product` post type, so a
  * catalog URL is compared with a core archive or single post of the same
  * posts.
  */
@@ -23,103 +23,103 @@ declare(strict_types=1);
 
 // phpcs:disable -- test tooling, runs outside WordPress until wp-settings.php.
 
-[ , $fxc_uri, $fxc_mode, $fxc_out, $fxc_json ] = $argv + [ '', '/', 'off', '', '{}' ];
-$fxc_options = (array) json_decode( $fxc_json, true );
+[ , $fxcm_uri, $fxcm_mode, $fxcm_out, $fxcm_json ] = $argv + [ '', '/', 'off', '', '{}' ];
+$fxcm_options = (array) json_decode( $fxcm_json, true );
 
-$_SERVER['REQUEST_URI']     = $fxc_uri;
+$_SERVER['REQUEST_URI']     = $fxcm_uri;
 $_SERVER['HTTP_HOST']       = 'example.org';
 $_SERVER['SERVER_NAME']     = 'example.org';
 $_SERVER['SERVER_PORT']     = '80';
-$_SERVER['REQUEST_METHOD']  = (string) ( $fxc_options['method'] ?? 'GET' );
+$_SERVER['REQUEST_METHOD']  = (string) ( $fxcm_options['method'] ?? 'GET' );
 $_SERVER['SCRIPT_NAME']     = '/index.php';
 $_SERVER['PHP_SELF']        = '/index.php';
 $_SERVER['REMOTE_ADDR']     = '127.0.0.1';
 $_SERVER['HTTP_USER_AGENT'] = 'flexacommerce-probe';
 $_GET                       = [];
-parse_str( (string) parse_url( $fxc_uri, PHP_URL_QUERY ), $_GET );
+parse_str( (string) parse_url( $fxcm_uri, PHP_URL_QUERY ), $_GET );
 $_REQUEST = $_GET;
-$_COOKIE  = (array) ( $fxc_options['cookies'] ?? [] );
-foreach ( (array) ( $fxc_options['headers'] ?? [] ) as $fxc_name => $fxc_value ) {
-	$fxc_key             = strtoupper( str_replace( '-', '_', (string) $fxc_name ) );
-	$fxc_key             = in_array( $fxc_key, [ 'CONTENT_TYPE', 'CONTENT_LENGTH' ], true ) ? $fxc_key : 'HTTP_' . $fxc_key;
-	$_SERVER[ $fxc_key ] = (string) $fxc_value;
+$_COOKIE  = (array) ( $fxcm_options['cookies'] ?? [] );
+foreach ( (array) ( $fxcm_options['headers'] ?? [] ) as $fxcm_name => $fxcm_value ) {
+	$fxcm_key             = strtoupper( str_replace( '-', '_', (string) $fxcm_name ) );
+	$fxcm_key             = in_array( $fxcm_key, [ 'CONTENT_TYPE', 'CONTENT_LENGTH' ], true ) ? $fxcm_key : 'HTTP_' . $fxcm_key;
+	$_SERVER[ $fxcm_key ] = (string) $fxcm_value;
 }
-if ( isset( $fxc_options['body'] ) ) {
+if ( isset( $fxcm_options['body'] ) ) {
 	// WP_REST_Server::get_raw_data() reads this before php://input, which is empty in the CLI.
-	$GLOBALS['HTTP_RAW_POST_DATA'] = (string) $fxc_options['body'];
+	$GLOBALS['HTTP_RAW_POST_DATA'] = (string) $fxcm_options['body'];
 }
 
 define( 'WP_USE_THEMES', true );
 define( 'SAVEQUERIES', true );
 define( 'DISABLE_WP_CRON', true );
 
-$fxc_start   = hrtime( true );
-$fxc_plugin  = dirname( __DIR__, 3 ) . '/flexacommerce.php';
-$fxc_classes = get_declared_classes();
+$fxcm_start   = hrtime( true );
+$fxcm_plugin  = dirname( __DIR__, 3 ) . '/flexacommerce.php';
+$fxcm_classes = get_declared_classes();
 
 // The config sets $table_prefix, which wp-settings.php reads as a global.
 require dirname( __DIR__, 2 ) . '/wp-tests-config.php';
 
-$fxc_add = static function ( string $hook, callable $callback, int $priority = 10 ): void {
+$fxcm_add = static function ( string $hook, callable $callback, int $priority = 10 ): void {
 	$GLOBALS['wp_filter'][ $hook ][ $priority ][] = [
 		'function'      => $callback,
 		'accepted_args' => 1,
 	];
 };
-$fxc_add( 'option_active_plugins', static fn (): array => [] );
-$fxc_add( 'site_option_active_sitewide_plugins', static fn (): array => [] );
-$fxc_add( 'wp_redirect', static fn (): bool => false );
+$fxcm_add( 'option_active_plugins', static fn (): array => [] );
+$fxcm_add( 'site_option_active_sitewide_plugins', static fn (): array => [] );
+$fxcm_add( 'wp_redirect', static fn (): bool => false );
 
 // The test install points at a "default" theme that does not exist, which
 // renders nothing. Use the newest bundled theme so the page does real work.
-$fxc_themes = glob( ABSPATH . 'wp-content/themes/twenty*', GLOB_ONLYDIR ) ?: [];
-rsort( $fxc_themes );
-if ( ( $fxc_options['theme'] ?? '' ) === 'classic' ) {
-	$fxc_root = dirname( __DIR__, 2 ) . '/fixtures/themes';
-	$fxc_add( 'setup_theme', static fn () => register_theme_directory( $fxc_root ), 0 );
-	foreach ( [ 'template', 'stylesheet' ] as $fxc_option ) {
-		$fxc_add( 'pre_option_' . $fxc_option, static fn (): string => 'fxc-classic' );
-		$fxc_add( 'pre_option_' . $fxc_option . '_root', static fn (): string => $fxc_root );
+$fxcm_themes = glob( ABSPATH . 'wp-content/themes/twenty*', GLOB_ONLYDIR ) ?: [];
+rsort( $fxcm_themes );
+if ( ( $fxcm_options['theme'] ?? '' ) === 'classic' ) {
+	$fxcm_root = dirname( __DIR__, 2 ) . '/fixtures/themes';
+	$fxcm_add( 'setup_theme', static fn () => register_theme_directory( $fxcm_root ), 0 );
+	foreach ( [ 'template', 'stylesheet' ] as $fxcm_option ) {
+		$fxcm_add( 'pre_option_' . $fxcm_option, static fn (): string => 'fxc-classic' );
+		$fxcm_add( 'pre_option_' . $fxcm_option . '_root', static fn (): string => $fxcm_root );
 	}
-} elseif ( $fxc_themes !== [] ) {
-	$fxc_theme = basename( $fxc_themes[0] );
-	$fxc_add( 'pre_option_template', static fn (): string => $fxc_theme );
-	$fxc_add( 'pre_option_stylesheet', static fn (): string => $fxc_theme );
+} elseif ( $fxcm_themes !== [] ) {
+	$fxcm_theme = basename( $fxcm_themes[0] );
+	$fxcm_add( 'pre_option_template', static fn (): string => $fxcm_theme );
+	$fxcm_add( 'pre_option_stylesheet', static fn (): string => $fxcm_theme );
 }
-if ( isset( $fxc_options['per_page'] ) ) {
-	$fxc_per_page = (int) $fxc_options['per_page'];
-	$fxc_add( 'pre_option_posts_per_page', static fn (): int => $fxc_per_page );
+if ( isset( $fxcm_options['per_page'] ) ) {
+	$fxcm_per_page = (int) $fxcm_options['per_page'];
+	$fxcm_add( 'pre_option_posts_per_page', static fn (): int => $fxcm_per_page );
 }
 // Catalog pages set no cookie and no no-cache header (P11). The CLI keeps
 // no response headers, so record what goes through WordPress instead.
-$fxc_nocache = false;
-$fxc_headers = [];
-$fxc_add( 'nocache_headers', static function ( $headers ) use ( &$fxc_nocache ) {
-	$fxc_nocache = true;
+$fxcm_nocache = false;
+$fxcm_headers = [];
+$fxcm_add( 'nocache_headers', static function ( $headers ) use ( &$fxcm_nocache ) {
+	$fxcm_nocache = true;
 	return $headers;
 } );
-$fxc_add( 'wp_headers', static function ( $headers ) use ( &$fxc_headers ) {
-	$fxc_headers = (array) $headers;
+$fxcm_add( 'wp_headers', static function ( $headers ) use ( &$fxcm_headers ) {
+	$fxcm_headers = (array) $headers;
 	return $headers;
 }, PHP_INT_MAX );
-if ( $fxc_mode === 'off' && ! empty( $fxc_options['bare_types'] ) ) {
-	$fxc_add( 'init', static function (): void {
-		register_post_type( 'fxc_product', [ 'public' => true, 'has_archive' => true, 'rewrite' => false, 'query_var' => 'fxc_product' ] );
+if ( $fxcm_mode === 'off' && ! empty( $fxcm_options['bare_types'] ) ) {
+	$fxcm_add( 'init', static function (): void {
+		register_post_type( 'fxcm_product', [ 'public' => true, 'has_archive' => true, 'rewrite' => false, 'query_var' => 'fxcm_product' ] );
 	} );
 }
-if ( $fxc_mode === 'on' ) {
-	$fxc_add( 'muplugins_loaded', static function () use ( $fxc_plugin ): void {
-		require $fxc_plugin;
+if ( $fxcm_mode === 'on' ) {
+	$fxcm_add( 'muplugins_loaded', static function () use ( $fxcm_plugin ): void {
+		require $fxcm_plugin;
 	} );
 }
 
 register_shutdown_function(
-	static function () use ( $fxc_start, $fxc_out, $fxc_classes, $fxc_options, &$fxc_nocache, &$fxc_headers ): void {
+	static function () use ( $fxcm_start, $fxcm_out, $fxcm_classes, $fxcm_options, &$fxcm_nocache, &$fxcm_headers ): void {
 		$html = '';
 		while ( ob_get_level() > 0 ) {
 			$html .= (string) ob_get_clean();
 		}
-		$ms   = ( hrtime( true ) - $fxc_start ) / 1e6;
+		$ms   = ( hrtime( true ) - $fxcm_start ) / 1e6;
 		$peak = memory_get_peak_usage();
 
 		$queries = [];
@@ -195,13 +195,13 @@ register_shutdown_function(
 		}
 
 		file_put_contents(
-			$fxc_out,
+			$fxcm_out,
 			(string) json_encode(
 				[
 					'ms'        => round( $ms, 2 ),
 					'peak'      => $peak,
 					'queries'   => $queries,
-					'classes'   => count( get_declared_classes() ) - count( $fxc_classes ),
+					'classes'   => count( get_declared_classes() ) - count( $fxcm_classes ),
 					'own'       => $own,
 					'callbacks' => $callbacks,
 					'assets'    => $assets,
@@ -210,11 +210,11 @@ register_shutdown_function(
 					'html'      => strlen( $html ),
 					'status'    => http_response_code(),
 					'state'     => $state === [] ? 0 : strlen( (string) wp_json_encode( $state ) ),
-					'nocache'   => $fxc_nocache,
-					'headers'   => $fxc_headers,
+					'nocache'   => $fxcm_nocache,
+					'headers'   => $fxcm_headers,
 					'rest'      => $rest,
 					'template'  => basename( (string) ( $GLOBALS['template'] ?? '' ) ),
-					'counted'   => isset( $fxc_options['count'] ) ? substr_count( $html, (string) $fxc_options['count'] ) : 0,
+					'counted'   => isset( $fxcm_options['count'] ) ? substr_count( $html, (string) $fxcm_options['count'] ) : 0,
 				]
 			)
 		);

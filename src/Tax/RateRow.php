@@ -10,7 +10,7 @@ use Flexa\Commerce\Contracts\Tax\TaxRate;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * A row of fxc_tax_rates with its locations, as the Taxes screen, CSV and
+ * A row of fxcm_tax_rates with its locations, as the Taxes screen, CSV and
  * presets read and write it (doc 03 §4.13). Postcodes are normalized codes,
  * prefixes ending in `*`, or numeric ranges `from...to`.
  */
@@ -90,8 +90,8 @@ final class RateRow {
 	}
 
 	/**
-	 * @param array<string,mixed> $row       fxc_tax_rates row
-	 * @param list<array<string,mixed>> $locations its fxc_tax_rate_locations rows
+	 * @param array<string,mixed> $row       fxcm_tax_rates row
+	 * @param list<array<string,mixed>> $locations its fxcm_tax_rate_locations rows
 	 */
 	public static function from_row( array $row, array $locations = [] ): self {
 		$postcodes = [];

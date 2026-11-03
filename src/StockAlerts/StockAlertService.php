@@ -34,10 +34,10 @@ final class StockAlertService {
 	/** Sent and cancelled rows are kept this long. */
 	public const KEEP_DAYS = 90;
 
-	public const STOP_PARAM = 'fxc_stock_stop';
+	public const STOP_PARAM = 'fxcm_stock_stop';
 
 	/** The query arg that picks a value on the product page (ListSwatches::PICK). */
-	private const PICK = 'fxc_pick';
+	private const PICK = 'fxcm_pick';
 
 	/** @param \Closure(Product,Variant):bool $purchasable */
 	public function __construct(

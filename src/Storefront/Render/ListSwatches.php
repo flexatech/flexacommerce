@@ -27,7 +27,7 @@ defined( 'ABSPATH' ) || exit;
  */
 final class ListSwatches {
 	/** The query argument the product page reads its first choices from. */
-	public const PICK = 'fxc_pick';
+	public const PICK = 'fxcm_pick';
 
 	/**
 	 * @param list<AttributeChoice> $attributes

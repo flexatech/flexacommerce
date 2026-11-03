@@ -109,7 +109,7 @@ test( 'the customer changes the quantity, pauses and resumes from the account', 
 	await page.getByRole( 'button', { name: 'Place order' } ).click();
 	await expect( page.locator( '.fxc-order' ) ).toBeVisible( { timeout: 15_000 } );
 
-	await page.goto( `${ store.account }?fxc_subscriptions=1` );
+	await page.goto( `${ store.account }?fxcm_subscriptions=1` );
 	await page.locator( '.fxc-account__subscriptions' ).getByRole( 'link', { name: /Coffee club/ } ).first().click();
 	await page.getByLabel( 'Coffee club', { exact: true } ).fill( '2' );
 	await page.getByRole( 'button', { name: 'Update quantities' } ).click();
@@ -145,7 +145,7 @@ test( 'the customer switches to another size and pays the difference', async ( {
 	await page.getByRole( 'button', { name: 'Place order' } ).click();
 	await expect( page.locator( '.fxc-order' ) ).toBeVisible( { timeout: 15_000 } );
 
-	await page.goto( `${ store.account }?fxc_subscriptions=1` );
+	await page.goto( `${ store.account }?fxcm_subscriptions=1` );
 	await page.locator( '.fxc-account__subscriptions' ).getByRole( 'link', { name: /Coffee box/ } ).first().click();
 	const plan = page.getByRole( 'group', { name: 'Switch plan' } );
 	await plan.getByRole( 'combobox' ).selectOption( { label: `Large: ${ money( store.box.large ) } / month` } );
@@ -159,7 +159,7 @@ test( 'the customer switches to another size and pays the difference', async ( {
 	// Cash on delivery saves no card, so the difference is paid on the order's pay page.
 	await expect( page.locator( '.fxc-order__pay-form' ) ).toBeVisible( { timeout: 15_000 } );
 
-	await page.goto( `${ store.account }?fxc_subscriptions=1` );
+	await page.goto( `${ store.account }?fxcm_subscriptions=1` );
 	await page.locator( '.fxc-account__subscriptions' ).getByRole( 'link', { name: /Coffee box/ } ).first().click();
 	await expect( page.getByRole( 'link', { name: 'Pay for the switch' } ) ).toBeVisible();
 	await expect( page.getByRole( 'table', { name: 'Related orders' } ) ).toContainText( 'Plan switch' );

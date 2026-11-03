@@ -7,7 +7,7 @@ namespace Flexa\Commerce\GiftCards;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * One row of fxc_gift_cards (ADR-069). The code is stored normalized:
+ * One row of fxcm_gift_cards (ADR-069). The code is stored normalized:
  * upper case, no spaces or dashes. Amounts are in minor units of
  * `currency`. A card bought in an order keeps the order and item ids; a
  * card the merchant made has none. `deliver_at` holds the email back until

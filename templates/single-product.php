@@ -15,12 +15,12 @@ use Flexa\Commerce\Storefront\TemplateLoader;
 
 defined( 'ABSPATH' ) || exit;
 
-$fxc         = Storefront::instance();
-$fxc_wrapper = TemplateLoader::wrapper();
+$fxc          = Storefront::instance();
+$fxcm_wrapper = TemplateLoader::wrapper();
 
 get_header();
 ?>
-<?php echo $fxc_wrapper[0]; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- theme markup. ?>
+<?php echo $fxcm_wrapper[0]; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- theme markup. ?>
 <?php echo $fxc->part( 'breadcrumbs' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped markup. ?>
 <?php
 while ( have_posts() ) :
@@ -52,7 +52,7 @@ while ( have_posts() ) :
 	</article>
 <?php endwhile; ?>
 <?php
-echo $fxc_wrapper[1]; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- theme markup.
+echo $fxcm_wrapper[1]; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- theme markup.
 // Without a sidebar.php, get_sidebar() prints core's deprecated theme-compat
 // sidebar (Twenty Twenty-One has none). locate_template() would find that one too.
 if ( file_exists( get_stylesheet_directory() . '/sidebar.php' ) || file_exists( get_template_directory() . '/sidebar.php' ) ) {

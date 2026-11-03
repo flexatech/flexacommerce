@@ -10,7 +10,7 @@ use Flexa\Commerce\Database\Transaction;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Writes redacted entries to fxc_logs for one channel. The write waits until
+ * Writes redacted entries to fxcm_logs for one channel. The write waits until
  * no transaction is open, so a rollback cannot erase the entry that explains
  * it. When the table write fails the entry goes to the PHP error log.
  */

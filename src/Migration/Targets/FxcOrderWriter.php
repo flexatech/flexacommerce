@@ -36,12 +36,12 @@ defined( 'ABSPATH' ) || exit;
  */
 final class FxcOrderWriter {
 	/** Order meta naming the job that wrote the order; purge and the pending expiry read it. */
-	public const JOB_META = '_fxc_import_job';
+	public const JOB_META = '_fxcm_import_job';
 
-	public const SOURCE_META = '_fxc_source_id';
+	public const SOURCE_META = '_fxcm_source_id';
 
 	/** Order meta keeping the source's "stock reduced" flag, for a FlexaCommerce to WooCommerce job. */
-	public const STOCK_REDUCED_META = '_fxc_stock_reduced';
+	public const STOCK_REDUCED_META = '_fxcm_stock_reduced';
 
 	/** Unknown source meta is kept under this prefix (doc 05 §5.4). */
 	public const META_PREFIX = 'wc:';
@@ -112,7 +112,7 @@ final class FxcOrderWriter {
 
 		$row = [
 			'order_number'         => $number,
-			'order_key'            => substr( (string) ( $data['order_key'] ?? '' ), 0, 64 ) ?: 'fxc_' . wp_generate_password( 20, false ),
+			'order_key'            => substr( (string) ( $data['order_key'] ?? '' ), 0, 64 ) ?: 'fxcm_' . wp_generate_password( 20, false ),
 			'status'               => $status,
 			'payment_status'       => OrderStatus::payment_status( $total, $paid, $refunded ),
 			'needs_attention'      => $attention ? 1 : 0,

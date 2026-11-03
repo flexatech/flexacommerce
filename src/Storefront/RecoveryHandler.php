@@ -11,8 +11,8 @@ use Flexa\Commerce\Recovery\RecoveryService;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * The two links of a cart reminder (ADR-063). `?fxc_recover=<key>` puts the
- * left cart back and goes to the checkout. `?fxc_recover_stop=<key>` asks
+ * The two links of a cart reminder (ADR-063). `?fxcm_recover=<key>` puts the
+ * left cart back and goes to the checkout. `?fxcm_recover_stop=<key>` asks
  * first and stops the reminders on the posted answer, because mail
  * scanners open every link in a message.
  */
@@ -20,7 +20,7 @@ final class RecoveryHandler {
 	use HasInstance;
 
 	/** The stop form's nonce action. */
-	public const NONCE = 'fxc_recover_stop';
+	public const NONCE = 'fxcm_recover_stop';
 
 	public function handle(): void {
 		nocache_headers();

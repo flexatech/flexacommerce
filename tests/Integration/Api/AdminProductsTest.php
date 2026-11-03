@@ -118,7 +118,7 @@ final class AdminProductsTest extends CatalogTestCase {
 		$response = $this->send( 'DELETE', '/admin/products/' . $id, null, [ 'force' => true ] );
 		self::assertTrue( $response->get_data()['deleted'] );
 		self::assertNull( get_post( $id ) );
-		self::assertSame( '0', $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->prefix}fxc_variants WHERE product_id = %d", $id ) ) );
+		self::assertSame( '0', $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->prefix}fxcm_variants WHERE product_id = %d", $id ) ) );
 	}
 
 	public function test_contributors_cannot_publish_or_delete_others(): void {

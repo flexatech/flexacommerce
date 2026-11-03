@@ -13,7 +13,7 @@ defined( 'ABSPATH' ) || exit;
 
 /**
  * Gateways by id, built on first use and configured from their option
- * (doc 04 §2). Core ids and the `fxc_` prefix are reserved.
+ * (doc 04 §2). Core ids and the `fxcm_` prefix are reserved.
  */
 final class GatewayRegistryService implements GatewayRegistry {
 	public const CORE = [ 'cod', 'bacs', 'stripe', 'paypal' ];
@@ -38,7 +38,7 @@ final class GatewayRegistryService implements GatewayRegistry {
 		if ( preg_match( '/^[a-z0-9_]{1,64}$/', $id ) !== 1 ) {
 			throw new \InvalidArgumentException( sprintf( 'Invalid gateway id "%s".', $id ) );
 		}
-		if ( in_array( $id, self::CORE, true ) || str_starts_with( $id, 'fxc_' ) ) {
+		if ( in_array( $id, self::CORE, true ) || str_starts_with( $id, 'fxcm_' ) ) {
 			throw new DuplicateRegistration( sprintf( 'The gateway id "%s" is reserved.', $id ) );
 		}
 		if ( isset( $this->factories[ $id ] ) ) {
@@ -53,8 +53,8 @@ final class GatewayRegistryService implements GatewayRegistry {
 	 * ids() and available() leave it out.
 	 */
 	public function internal( string $id, callable $factory ): void {
-		if ( ! str_starts_with( $id, 'fxc_' ) || isset( $this->internal[ $id ] ) ) {
-			throw new DuplicateRegistration( sprintf( 'The internal gateway id "%s" is taken or lacks the fxc_ prefix.', $id ) );
+		if ( ! str_starts_with( $id, 'fxcm_' ) || isset( $this->internal[ $id ] ) ) {
+			throw new DuplicateRegistration( sprintf( 'The internal gateway id "%s" is taken or lacks the fxcm_ prefix.', $id ) );
 		}
 		$this->internal[ $id ] = $factory;
 	}

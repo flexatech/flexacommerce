@@ -13,7 +13,7 @@ use Flexa\Commerce\Support\Clock;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Storage for fxc_variants. Rows of one product are cached together in the
+ * Storage for fxcm_variants. Rows of one product are cached together in the
  * `flexacommerce_variants` object cache group, keyed by product id, so a
  * page of products costs one query (doc 02 §7.1).
  */
@@ -63,8 +63,9 @@ final class VariantRepository {
 	) {}
 
 	public function find( int $variant_id ): ?Variant {
-		$row = $this->wpdb->get_row(
-			$this->wpdb->prepare( 'SELECT * FROM %i WHERE id = %d', Schema::table( 'variants' ), $variant_id ),
+		$wpdb = $this->wpdb;
+		$row  = $wpdb->get_row(
+			$wpdb->prepare( 'SELECT * FROM %i WHERE id = %d', Schema::table( 'variants' ), $variant_id ),
 			ARRAY_A
 		);
 		return is_array( $row ) ? Variant::from_row( $row ) : null;
@@ -82,6 +83,7 @@ final class VariantRepository {
 	 * @return array<int,list<Variant>>
 	 */
 	public function for_products( array $product_ids ): array {
+		$wpdb        = $this->wpdb;
 		$product_ids = array_values( array_unique( array_filter( array_map( 'intval', $product_ids ), static fn ( int $id ): bool => $id > 0 ) ) );
 		if ( $product_ids === [] ) {
 			return [];
@@ -100,8 +102,9 @@ final class VariantRepository {
 
 		if ( $missing !== [] ) {
 			$placeholders = implode( ',', array_fill( 0, count( $missing ), '%d' ) );
-			$found        = $this->wpdb->get_results(
-				$this->wpdb->prepare(
+			$found        = $wpdb->get_results(
+				// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- placeholders and fixed SQL only; every value is a prepare() replacement.
+				$wpdb->prepare(
 					// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- placeholders only.
 					"SELECT * FROM %i WHERE product_id IN ({$placeholders}) ORDER BY product_id, is_base DESC, menu_order, id",
 					Schema::table( 'variants' ),
@@ -109,8 +112,8 @@ final class VariantRepository {
 				),
 				ARRAY_N
 			);
-			$keys = array_values( array_map( 'strval', (array) $this->wpdb->get_col_info( 'name' ) ) );
-			$this->wpdb->flush();
+			$keys = array_values( array_map( 'strval', (array) $wpdb->get_col_info( 'name' ) ) );
+			$wpdb->flush();
 			$product = array_search( 'product_id', $keys, true );
 			$grouped = array_fill_keys( $missing, [] );
 			foreach ( is_array( $found ) ? $found : [] as $row ) {
@@ -137,8 +140,9 @@ final class VariantRepository {
 
 	/** @return array<string,int> products per shipping class slug, variations counted with their product */
 	public function shipping_class_counts(): array {
-		$rows = $this->wpdb->get_results(
-			$this->wpdb->prepare( "SELECT shipping_class, COUNT(DISTINCT product_id) AS products FROM %i WHERE shipping_class <> '' GROUP BY shipping_class", Schema::table( 'variants' ) ),
+		$wpdb = $this->wpdb;
+		$rows = $wpdb->get_results(
+			$wpdb->prepare( "SELECT shipping_class, COUNT(DISTINCT product_id) AS products FROM %i WHERE shipping_class <> '' GROUP BY shipping_class", Schema::table( 'variants' ) ),
 			ARRAY_A
 		);
 		$out  = [];
@@ -150,12 +154,13 @@ final class VariantRepository {
 
 	/** Case-insensitive through the table collation, like the unique index. */
 	public function find_by_sku( string $sku ): ?Variant {
-		$sku = trim( $sku );
+		$wpdb = $this->wpdb;
+		$sku  = trim( $sku );
 		if ( $sku === '' ) {
 			return null;
 		}
-		$row = $this->wpdb->get_row(
-			$this->wpdb->prepare( 'SELECT * FROM %i WHERE sku = %s LIMIT 1', Schema::table( 'variants' ), $sku ),
+		$row = $wpdb->get_row(
+			$wpdb->prepare( 'SELECT * FROM %i WHERE sku = %s LIMIT 1', Schema::table( 'variants' ), $sku ),
 			ARRAY_A
 		);
 		return is_array( $row ) ? Variant::from_row( $row ) : null;
@@ -167,15 +172,16 @@ final class VariantRepository {
 	 * @return list<array{id:int,product_id:int,is_base:bool}>
 	 */
 	public function search_sku( string $text, int $limit ): array {
+		$wpdb = $this->wpdb;
 		$text = trim( $text );
 		if ( $text === '' ) {
 			return [];
 		}
-		$rows = $this->wpdb->get_results(
-			$this->wpdb->prepare(
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
 				'SELECT id, product_id, is_base FROM %i WHERE sku LIKE %s ORDER BY product_id, is_base DESC, menu_order, id LIMIT %d',
 				Schema::table( 'variants' ),
-				'%' . $this->wpdb->esc_like( $text ) . '%',
+				'%' . $wpdb->esc_like( $text ) . '%',
 				$limit
 			),
 			ARRAY_A
@@ -197,13 +203,15 @@ final class VariantRepository {
 	 * @return array<int,int> variant id => product id
 	 */
 	public function owners( array $variant_ids ): array {
+		$wpdb        = $this->wpdb;
 		$variant_ids = array_values( array_unique( array_filter( array_map( 'intval', $variant_ids ), static fn ( int $id ): bool => $id > 0 ) ) );
 		if ( $variant_ids === [] ) {
 			return [];
 		}
 		$placeholders = implode( ',', array_fill( 0, count( $variant_ids ), '%d' ) );
-		$rows         = $this->wpdb->get_results(
-			$this->wpdb->prepare(
+		$rows         = $wpdb->get_results(
+			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- placeholders and fixed SQL only; every value is a prepare() replacement.
+			$wpdb->prepare(
 				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- placeholders only.
 				"SELECT id, product_id FROM %i WHERE id IN ({$placeholders})",
 				Schema::table( 'variants' ),
@@ -220,24 +228,26 @@ final class VariantRepository {
 
 	/** @throws DuplicateSku|InvalidProduct|QueryFailed */
 	public function insert( Variant $variant ): int {
+		$wpdb = $this->wpdb;
 		$now  = $this->clock->db_now();
 		$data = $variant->to_row() + [
 			'created_at' => $now,
 			'updated_at' => $now,
 		];
-		$ok   = $this->write( fn (): int|false => $this->wpdb->insert( Schema::table( 'variants' ), $data, $this->formats( $data ) ) );
+		$ok   = $this->write( fn (): int|false => $wpdb->insert( Schema::table( 'variants' ), $data, $this->formats( $data ) ) );
 		if ( ! $ok ) {
 			throw $this->failure( $variant );
 		}
 		$this->flush( $variant->product_id );
-		return (int) $this->wpdb->insert_id;
+		return (int) $wpdb->insert_id;
 	}
 
 	/** @throws DuplicateSku|InvalidProduct|QueryFailed */
 	public function update( Variant $variant ): void {
+		$wpdb = $this->wpdb;
 		$data = $variant->to_row() + [ 'updated_at' => $this->clock->db_now() ];
 		$ok   = $this->write(
-			fn (): int|false => $this->wpdb->update( Schema::table( 'variants' ), $data, [ 'id' => $variant->id ], $this->formats( $data ), [ '%d' ] )
+			fn (): int|false => $wpdb->update( Schema::table( 'variants' ), $data, [ 'id' => $variant->id ], $this->formats( $data ), [ '%d' ] )
 		);
 		if ( ! $ok ) {
 			throw $this->failure( $variant );
@@ -253,9 +263,10 @@ final class VariantRepository {
 	 * @param list<int> $variant_ids
 	 */
 	public function release_unique_keys( int $product_id, array $variant_ids ): void {
+		$wpdb = $this->wpdb;
 		foreach ( $variant_ids as $id ) {
-			$result = $this->wpdb->query(
-				$this->wpdb->prepare(
+			$result = $wpdb->query(
+				$wpdb->prepare(
 					'UPDATE %i SET sku = NULL, combination_hash = %s WHERE id = %d AND product_id = %d',
 					Schema::table( 'variants' ),
 					sha1( 'release:' . $id ),
@@ -264,7 +275,7 @@ final class VariantRepository {
 				)
 			);
 			if ( $result === false ) {
-				throw QueryFailed::from_wpdb( $this->wpdb );
+				throw QueryFailed::from_wpdb( $wpdb );
 			}
 		}
 		$this->flush( $product_id );
@@ -272,13 +283,15 @@ final class VariantRepository {
 
 	/** @param list<int> $variant_ids */
 	public function delete_many( int $product_id, array $variant_ids ): int {
+		$wpdb        = $this->wpdb;
 		$variant_ids = array_values( array_filter( array_map( 'intval', $variant_ids ) ) );
 		if ( $variant_ids === [] ) {
 			return 0;
 		}
 		$placeholders = implode( ',', array_fill( 0, count( $variant_ids ), '%d' ) );
-		$deleted      = $this->wpdb->query(
-			$this->wpdb->prepare(
+		$deleted      = $wpdb->query(
+			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- placeholders and fixed SQL only; every value is a prepare() replacement.
+			$wpdb->prepare(
 				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- placeholders only.
 				"DELETE FROM %i WHERE product_id = %d AND is_base = 0 AND id IN ({$placeholders})",
 				Schema::table( 'variants' ),
@@ -287,7 +300,7 @@ final class VariantRepository {
 			)
 		);
 		if ( $deleted === false ) {
-			throw QueryFailed::from_wpdb( $this->wpdb );
+			throw QueryFailed::from_wpdb( $wpdb );
 		}
 		$this->flush( $product_id );
 		return (int) $deleted;
@@ -295,19 +308,21 @@ final class VariantRepository {
 
 	/** Variation rows only; the base row stays. */
 	public function delete_variations( int $product_id ): int {
-		$deleted = $this->wpdb->query(
-			$this->wpdb->prepare( 'DELETE FROM %i WHERE product_id = %d AND is_base = 0', Schema::table( 'variants' ), $product_id )
+		$wpdb    = $this->wpdb;
+		$deleted = $wpdb->query(
+			$wpdb->prepare( 'DELETE FROM %i WHERE product_id = %d AND is_base = 0', Schema::table( 'variants' ), $product_id )
 		);
 		if ( $deleted === false ) {
-			throw QueryFailed::from_wpdb( $this->wpdb );
+			throw QueryFailed::from_wpdb( $wpdb );
 		}
 		$this->flush( $product_id );
 		return (int) $deleted;
 	}
 
 	public function delete_for_product( int $product_id ): int {
-		$deleted = $this->wpdb->query(
-			$this->wpdb->prepare( 'DELETE FROM %i WHERE product_id = %d', Schema::table( 'variants' ), $product_id )
+		$wpdb    = $this->wpdb;
+		$deleted = $wpdb->query(
+			$wpdb->prepare( 'DELETE FROM %i WHERE product_id = %d', Schema::table( 'variants' ), $product_id )
 		);
 		$this->flush( $product_id );
 		return (int) $deleted;
@@ -319,9 +334,10 @@ final class VariantRepository {
 	 * statement.
 	 */
 	public function decrement_stock( int $variant_id, int $qty, int $product_id = 0 ): bool {
+		$wpdb       = $this->wpdb;
 		$product_id = $product_id > 0 ? $product_id : $this->product_of( $variant_id );
-		$affected   = $this->wpdb->query(
-			$this->wpdb->prepare(
+		$affected   = $wpdb->query(
+			$wpdb->prepare(
 				'UPDATE %i SET stock_quantity = stock_quantity - %d,
 					stock_status = CASE
 						WHEN stock_quantity > 0 THEN %s
@@ -342,7 +358,7 @@ final class VariantRepository {
 			)
 		);
 		if ( $affected === false ) {
-			throw QueryFailed::from_wpdb( $this->wpdb );
+			throw QueryFailed::from_wpdb( $wpdb );
 		}
 		$this->flush( $product_id );
 		return (int) $affected === 1;
@@ -350,9 +366,10 @@ final class VariantRepository {
 
 	/** Unconditional change; a negative `$qty` lowers the stock (admin adjustments). */
 	public function increment_stock( int $variant_id, int $qty, int $product_id = 0 ): void {
+		$wpdb       = $this->wpdb;
 		$product_id = $product_id > 0 ? $product_id : $this->product_of( $variant_id );
-		$affected   = $this->wpdb->query(
-			$this->wpdb->prepare(
+		$affected   = $wpdb->query(
+			$wpdb->prepare(
 				'UPDATE %i SET stock_quantity = stock_quantity + %d,
 					stock_status = CASE
 						WHEN stock_quantity > 0 THEN %s
@@ -371,7 +388,7 @@ final class VariantRepository {
 			)
 		);
 		if ( $affected === false ) {
-			throw QueryFailed::from_wpdb( $this->wpdb );
+			throw QueryFailed::from_wpdb( $wpdb );
 		}
 		$this->flush( $product_id );
 	}
@@ -385,6 +402,7 @@ final class VariantRepository {
 	 * @return array<int,array{product_id:int,manage_stock:bool,stock_quantity:?int,backorders:string,stock_status:string,low_stock_threshold:?int}>
 	 */
 	public function stock_rows( array $variant_ids, bool $lock = false ): array {
+		$wpdb        = $this->wpdb;
 		$variant_ids = array_values( array_unique( array_filter( array_map( 'intval', $variant_ids ), static fn ( int $id ): bool => $id > 0 ) ) );
 		if ( $variant_ids === [] ) {
 			return [];
@@ -392,8 +410,9 @@ final class VariantRepository {
 		sort( $variant_ids );
 		$placeholders = implode( ',', array_fill( 0, count( $variant_ids ), '%d' ) );
 		$suffix       = $lock ? ' FOR UPDATE' : '';
-		$found        = $this->wpdb->get_results(
-			$this->wpdb->prepare(
+		$found        = $wpdb->get_results(
+			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- placeholders and fixed SQL only; every value is a prepare() replacement.
+			$wpdb->prepare(
 				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- placeholders and a fixed suffix only.
 				"SELECT id, product_id, manage_stock, stock_quantity, backorders, stock_status, low_stock_threshold FROM %i WHERE id IN ({$placeholders}) ORDER BY id{$suffix}",
 				Schema::table( 'variants' ),
@@ -401,8 +420,8 @@ final class VariantRepository {
 			),
 			ARRAY_A
 		);
-		if ( ! is_array( $found ) || $this->wpdb->last_error !== '' ) {
-			throw QueryFailed::from_wpdb( $this->wpdb );
+		if ( ! is_array( $found ) || $wpdb->last_error !== '' ) {
+			throw QueryFailed::from_wpdb( $wpdb );
 		}
 		$out = [];
 		foreach ( $found as $row ) {
@@ -423,8 +442,9 @@ final class VariantRepository {
 	}
 
 	private function product_of( int $variant_id ): int {
-		return (int) $this->wpdb->get_var(
-			$this->wpdb->prepare( 'SELECT product_id FROM %i WHERE id = %d', Schema::table( 'variants' ), $variant_id )
+		$wpdb = $this->wpdb;
+		return (int) $wpdb->get_var(
+			$wpdb->prepare( 'SELECT product_id FROM %i WHERE id = %d', Schema::table( 'variants' ), $variant_id )
 		);
 	}
 
@@ -435,16 +455,18 @@ final class VariantRepository {
 	 * @param callable():(int|false) $write
 	 */
 	private function write( callable $write ): bool {
-		$suppressed = $this->wpdb->suppress_errors( true );
+		$wpdb       = $this->wpdb;
+		$suppressed = $wpdb->suppress_errors( true );
 		try {
 			return $write() !== false;
 		} finally {
-			$this->wpdb->suppress_errors( $suppressed );
+			$wpdb->suppress_errors( $suppressed );
 		}
 	}
 
 	private function failure( Variant $variant ): \RuntimeException {
-		$error = QueryFailed::from_wpdb( $this->wpdb );
+		$wpdb  = $this->wpdb;
+		$error = QueryFailed::from_wpdb( $wpdb );
 		if ( ! $error->is_duplicate_key() ) {
 			return $error;
 		}

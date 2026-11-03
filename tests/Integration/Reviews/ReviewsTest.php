@@ -6,6 +6,7 @@ namespace Flexa\Commerce\Tests\Integration\Reviews;
 
 use Flexa\Commerce\Catalog\PostTypes;
 use Flexa\Commerce\Database\Upgrades\V23PrefixedKeys;
+use Flexa\Commerce\Database\Upgrades\V24LongerPrefix;
 use Flexa\Commerce\Orders\OrderStatus;
 use Flexa\Commerce\Reviews\Reviews;
 use Flexa\Commerce\Support\Settings;
@@ -69,7 +70,7 @@ final class ReviewsTest extends OrderTestCase {
 
 		$refused = $this->post( $product, 0 );
 		self::assertWPError( $refused );
-		self::assertSame( 'fxc_review_rating', $refused->get_error_code() );
+		self::assertSame( 'fxcm_review_rating', $refused->get_error_code() );
 		self::assertSame( 400, $refused->get_error_data() );
 
 		wp_set_current_user( self::factory()->user->create( [ 'role' => 'administrator' ] ) );
@@ -79,7 +80,7 @@ final class ReviewsTest extends OrderTestCase {
 		wp_set_current_user( 0 );
 		$reply = $this->post( $product, 0, $review );
 		self::assertWPError( $reply );
-		self::assertSame( 'fxc_review_reply', $reply->get_error_code() );
+		self::assertSame( 'fxcm_review_reply', $reply->get_error_code() );
 
 		wp_set_current_user( self::factory()->user->create( [ 'role' => 'administrator' ] ) );
 		$answer = $this->post( $product, 0, $review );
@@ -101,7 +102,7 @@ final class ReviewsTest extends OrderTestCase {
 		self::assertSame( 'login', Reviews::instance()->refusal( $product ) );
 		$guest = $this->post( $product, 5 );
 		self::assertWPError( $guest );
-		self::assertSame( 'fxc_review_buyers', $guest->get_error_code() );
+		self::assertSame( 'fxcm_review_buyers', $guest->get_error_code() );
 		self::assertSame( 403, $guest->get_error_data() );
 
 		wp_set_current_user( $other );
@@ -134,7 +135,7 @@ final class ReviewsTest extends OrderTestCase {
 		self::assertTrue( comments_open( $post ) );
 		$refused = $this->post( $product, 5 );
 		self::assertWPError( $refused );
-		self::assertSame( 'fxc_reviews_off', $refused->get_error_code() );
+		self::assertSame( 'fxcm_reviews_off', $refused->get_error_code() );
 	}
 
 	public function test_the_page_shows_stars_reviews_and_the_form(): void {
@@ -212,9 +213,15 @@ final class ReviewsTest extends OrderTestCase {
 		$tag     = self::factory()->term->create( [ 'taxonomy' => 'category' ] );
 		update_term_meta( $term, 'thumbnail_id', 42 );
 		update_term_meta( $tag, 'thumbnail_id', 43 );
+		// The rows as they were before DB_VERSION 24, under the short prefix.
+		global $wpdb;
+		$wpdb->update( $wpdb->posts, [ 'post_type' => 'fxc_product' ], [ 'ID' => $product ] );
+		$wpdb->update( $wpdb->term_taxonomy, [ 'taxonomy' => 'fxc_product_cat' ], [ 'term_id' => $term ] );
 
 		( new V23PrefixedKeys() )->run();
 		( new V23PrefixedKeys() )->run();
+		( new V24LongerPrefix() )->run();
+		( new V24LongerPrefix() )->run();
 
 		self::assertSame( Reviews::TYPE, get_comment( $review )->comment_type );
 		self::assertSame( '3', get_comment_meta( $review, Reviews::META_RATING, true ) );

@@ -9,20 +9,22 @@ use Flexa\Commerce\Database\Schema;
 
 defined( 'ABSPATH' ) || exit;
 
-/** Storage for fxc_shipments (ADR-067). */
+/** Storage for fxcm_shipments (ADR-067). */
 // phpcs:disable WordPress.DB.DirectDatabaseQuery -- plugin table, all values prepared.
 final class ShipmentRepository {
 	public function __construct( private readonly \wpdb $wpdb ) {}
 
 	public function find( int $id ): ?Shipment {
-		$row = $this->wpdb->get_row( $this->wpdb->prepare( 'SELECT * FROM %i WHERE id = %d', Schema::table( 'shipments' ), $id ), ARRAY_A );
+		$wpdb = $this->wpdb;
+		$row  = $wpdb->get_row( $wpdb->prepare( 'SELECT * FROM %i WHERE id = %d', Schema::table( 'shipments' ), $id ), ARRAY_A );
 		return is_array( $row ) ? Shipment::from_row( $row ) : null;
 	}
 
 	/** @return list<Shipment> oldest first */
 	public function for_order( int $order_id ): array {
-		$rows = $this->wpdb->get_results(
-			$this->wpdb->prepare( 'SELECT * FROM %i WHERE order_id = %d ORDER BY shipped_at, id', Schema::table( 'shipments' ), $order_id ),
+		$wpdb = $this->wpdb;
+		$rows = $wpdb->get_results(
+			$wpdb->prepare( 'SELECT * FROM %i WHERE order_id = %d ORDER BY shipped_at, id', Schema::table( 'shipments' ), $order_id ),
 			ARRAY_A
 		);
 		return array_map( [ Shipment::class, 'from_row' ], is_array( $rows ) ? $rows : [] );
@@ -35,12 +37,14 @@ final class ShipmentRepository {
 	 * @return array<int,true>
 	 */
 	public function shipped( array $order_ids ): array {
+		$wpdb      = $this->wpdb;
 		$order_ids = array_values( array_unique( array_filter( array_map( 'intval', $order_ids ), static fn ( int $id ): bool => $id > 0 ) ) );
 		if ( $order_ids === [] ) {
 			return [];
 		}
-		$ids = $this->wpdb->get_col(
-			$this->wpdb->prepare(
+		$ids = $wpdb->get_col(
+			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- placeholders and fixed SQL only; every value is a prepare() replacement.
+			$wpdb->prepare(
 				'SELECT DISTINCT order_id FROM %i WHERE order_id IN (' . implode( ',', array_fill( 0, count( $order_ids ), '%d' ) ) . ')',
 				Schema::table( 'shipments' ),
 				...$order_ids
@@ -55,7 +59,8 @@ final class ShipmentRepository {
 	 * @return array{carrier:string,carrier_name:string}|null
 	 */
 	public function last_carrier(): ?array {
-		$row = $this->wpdb->get_row( $this->wpdb->prepare( 'SELECT carrier, carrier_name FROM %i ORDER BY id DESC LIMIT 1', Schema::table( 'shipments' ) ), ARRAY_A );
+		$wpdb = $this->wpdb;
+		$row  = $wpdb->get_row( $wpdb->prepare( 'SELECT carrier, carrier_name FROM %i ORDER BY id DESC LIMIT 1', Schema::table( 'shipments' ) ), ARRAY_A );
 		return is_array( $row ) ? [
 			'carrier'      => (string) $row['carrier'],
 			'carrier_name' => (string) $row['carrier_name'],
@@ -66,7 +71,8 @@ final class ShipmentRepository {
 	 * @param array{order_id:int,carrier:string,carrier_name:string,tracking_number:string,tracking_url:string,items:?array<int,int>,shipped_at:string,created_at:string} $row
 	 */
 	public function insert( array $row ): int {
-		$ok = $this->wpdb->insert(
+		$wpdb = $this->wpdb;
+		$ok   = $wpdb->insert(
 			Schema::table( 'shipments' ),
 			[
 				'order_id'        => $row['order_id'],
@@ -81,12 +87,13 @@ final class ShipmentRepository {
 			[ '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s' ]
 		);
 		if ( $ok === false ) {
-			throw QueryFailed::from_wpdb( $this->wpdb );
+			throw QueryFailed::from_wpdb( $wpdb );
 		}
-		return (int) $this->wpdb->insert_id;
+		return (int) $wpdb->insert_id;
 	}
 
 	public function delete( int $id ): bool {
-		return (int) $this->wpdb->delete( Schema::table( 'shipments' ), [ 'id' => $id ], [ '%d' ] ) > 0;
+		$wpdb = $this->wpdb;
+		return (int) $wpdb->delete( Schema::table( 'shipments' ), [ 'id' => $id ], [ '%d' ] ) > 0;
 	}
 }

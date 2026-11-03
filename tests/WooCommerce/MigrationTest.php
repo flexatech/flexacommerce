@@ -49,7 +49,7 @@ final class MigrationTest extends \WP_UnitTestCase {
 			[],
 			get_posts(
 				[
-					'post_type'   => 'fxc_product',
+					'post_type'   => 'fxcm_product',
 					'post_status' => 'any',
 				]
 			)
@@ -237,7 +237,7 @@ final class MigrationTest extends \WP_UnitTestCase {
 			[],
 			get_posts(
 				[
-					'post_type'   => 'fxc_product',
+					'post_type'   => 'fxcm_product',
 					'post_status' => 'any',
 				]
 			)
@@ -278,7 +278,7 @@ final class MigrationTest extends \WP_UnitTestCase {
 		$this->assertSame( '1800', $scarf['SCARF-W']['regular_price'] );
 
 		$this->assertNotSame( 0, $this->target( 'term', $this->store->terms['shirts'] ) );
-		$cats = wp_get_object_terms( $this->target( 'product', $this->store->products['tee'] ), 'fxc_product_cat', [ 'fields' => 'slugs' ] );
+		$cats = wp_get_object_terms( $this->target( 'product', $this->store->products['tee'] ), 'fxcm_product_cat', [ 'fields' => 'slugs' ] );
 		$this->assertSame( [ 'shirts' ], $cats );
 	}
 

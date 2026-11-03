@@ -10,7 +10,7 @@ use Flexa\Commerce\Database\Schema;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Storage for fxc_coupons and fxc_coupon_uses. A cart reads its coupons by
+ * Storage for fxcm_coupons and fxcm_coupon_uses. A cart reads its coupons by
  * code once per request; the usage count only moves inside the checkout
  * transaction (redeem) or the cancel transition (release).
  */
@@ -30,7 +30,8 @@ final class CouponRepository {
 	public function __construct( private readonly \wpdb $wpdb ) {}
 
 	public function find( int $id ): ?Coupon {
-		$row = $this->wpdb->get_row( $this->wpdb->prepare( 'SELECT * FROM %i WHERE id = %d', Schema::table( 'coupons' ), $id ), ARRAY_A );
+		$wpdb = $this->wpdb;
+		$row  = $wpdb->get_row( $wpdb->prepare( 'SELECT * FROM %i WHERE id = %d', Schema::table( 'coupons' ), $id ), ARRAY_A );
 		return is_array( $row ) ? Coupon::from_row( $row ) : null;
 	}
 
@@ -41,15 +42,16 @@ final class CouponRepository {
 	 * @return array<string,?Coupon>
 	 */
 	public function by_codes( array $codes ): array {
+		$wpdb    = $this->wpdb;
 		$missing = array_values( array_diff( $codes, array_keys( $this->by_code ) ) );
 		if ( $missing !== [] ) {
 			foreach ( $missing as $code ) {
 				$this->by_code[ $code ] = null;
 			}
 			$placeholders = implode( ',', array_fill( 0, count( $missing ), '%s' ) );
-			$rows         = $this->wpdb->get_results(
-				// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- one %s per code.
-				$this->wpdb->prepare( "SELECT * FROM %i WHERE code IN ({$placeholders})", Schema::table( 'coupons' ), ...$missing ),
+			$rows         = $wpdb->get_results(
+				// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- one %s per code.
+				$wpdb->prepare( "SELECT * FROM %i WHERE code IN ({$placeholders})", Schema::table( 'coupons' ), ...$missing ),
 				ARRAY_A
 			);
 			foreach ( is_array( $rows ) ? $rows : [] as $row ) {
@@ -71,12 +73,13 @@ final class CouponRepository {
 	 * @return list<Coupon>
 	 */
 	public function automatic(): array {
+		$wpdb = $this->wpdb;
 		if ( ! self::has_automatic() ) {
 			return [];
 		}
 		if ( $this->automatic === null ) {
-			$rows            = $this->wpdb->get_results(
-				$this->wpdb->prepare( 'SELECT * FROM %i WHERE automatic = 1 AND status = %s ORDER BY id', Schema::table( 'coupons' ), Coupon::ACTIVE ),
+			$rows            = $wpdb->get_results(
+				$wpdb->prepare( 'SELECT * FROM %i WHERE automatic = 1 AND status = %s ORDER BY id', Schema::table( 'coupons' ), Coupon::ACTIVE ),
 				ARRAY_A
 			);
 			$this->automatic = array_map( [ Coupon::class, 'from_row' ], is_array( $rows ) ? $rows : [] );
@@ -90,8 +93,9 @@ final class CouponRepository {
 	}
 
 	public function code_taken( string $code, int $except_id = 0 ): bool {
-		return (int) $this->wpdb->get_var(
-			$this->wpdb->prepare( 'SELECT COUNT(*) FROM %i WHERE code = %s AND id <> %d', Schema::table( 'coupons' ), trim( $code ), $except_id )
+		$wpdb = $this->wpdb;
+		return (int) $wpdb->get_var(
+			$wpdb->prepare( 'SELECT COUNT(*) FROM %i WHERE code = %s AND id <> %d', Schema::table( 'coupons' ), trim( $code ), $except_id )
 		) > 0;
 	}
 
@@ -100,12 +104,13 @@ final class CouponRepository {
 	 * @return array{coupons:list<Coupon>,total:int}
 	 */
 	public function query( array $args ): array {
+		$wpdb   = $this->wpdb;
 		$where  = [ '1=1' ];
 		$params = [ Schema::table( 'coupons' ) ];
 		$search = trim( (string) ( $args['search'] ?? '' ) );
 		if ( $search !== '' ) {
 			$where[]  = '(code LIKE %s OR description LIKE %s)';
-			$like     = '%' . $this->wpdb->esc_like( $search ) . '%';
+			$like     = '%' . $wpdb->esc_like( $search ) . '%';
 			$params[] = $like;
 			$params[] = $like;
 		}
@@ -119,12 +124,13 @@ final class CouponRepository {
 		$clause   = implode( ' AND ', $where );
 
 		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- the clause holds placeholders only.
-		$total = (int) $this->wpdb->get_var( $this->wpdb->prepare( "SELECT COUNT(*) FROM %i WHERE {$clause}", ...$params ) );
-		$rows  = $this->wpdb->get_results(
-			$this->wpdb->prepare( "SELECT * FROM %i WHERE {$clause} ORDER BY id DESC LIMIT %d OFFSET %d", ...[ ...$params, $per_page, ( $page - 1 ) * $per_page ] ),
+		$total = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM %i WHERE {$clause}", ...$params ) );
+		$rows  = $wpdb->get_results(
+			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- placeholders and fixed SQL only; every value is a prepare() replacement.
+			$wpdb->prepare( "SELECT * FROM %i WHERE {$clause} ORDER BY id DESC LIMIT %d OFFSET %d", ...[ ...$params, $per_page, ( $page - 1 ) * $per_page ] ),
 			ARRAY_A
 		);
-		// phpcs:enable
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
 
 		return [
 			'coupons' => array_map( [ Coupon::class, 'from_row' ], is_array( $rows ) ? $rows : [] ),
@@ -132,55 +138,60 @@ final class CouponRepository {
 		];
 	}
 
-	/** @param array<string,mixed> $fields columns of fxc_coupons except id, usage_count and the timestamps; `rules` is an array */
+	/** @param array<string,mixed> $fields columns of fxcm_coupons except id, usage_count and the timestamps; `rules` is an array */
 	public function insert( array $fields, string $now ): int {
-		$row = self::row( $fields ) + [
+		$wpdb = $this->wpdb;
+		$row  = self::row( $fields ) + [
 			'usage_count' => 0,
 			'created_at'  => $now,
 			'updated_at'  => $now,
 		];
-		if ( $this->wpdb->insert( Schema::table( 'coupons' ), $row ) === false ) {
-			throw new QueryFailed( 'Could not save the coupon: ' . $this->wpdb->last_error );
+		if ( $wpdb->insert( Schema::table( 'coupons' ), $row ) === false ) {
+			throw new QueryFailed( 'Could not save the coupon: ' . $wpdb->last_error );
 		}
-		$id = (int) $this->wpdb->insert_id;
+		$id = (int) $wpdb->insert_id;
 		$this->changed();
 		return $id;
 	}
 
 	/** @param array<string,mixed> $fields */
 	public function update( int $id, array $fields, string $now ): void {
-		$row = self::row( $fields ) + [ 'updated_at' => $now ];
-		if ( $this->wpdb->update( Schema::table( 'coupons' ), $row, [ 'id' => $id ] ) === false ) {
-			throw new QueryFailed( 'Could not save the coupon: ' . $this->wpdb->last_error );
+		$wpdb = $this->wpdb;
+		$row  = self::row( $fields ) + [ 'updated_at' => $now ];
+		if ( $wpdb->update( Schema::table( 'coupons' ), $row, [ 'id' => $id ] ) === false ) {
+			throw new QueryFailed( 'Could not save the coupon: ' . $wpdb->last_error );
 		}
 		$this->changed();
 	}
 
 	/** Deletes the coupon and its use rows. Orders keep their discount lines. */
 	public function delete( int $id ): void {
-		$this->wpdb->delete( Schema::table( 'coupon_uses' ), [ 'coupon_id' => $id ], [ '%d' ] );
-		$this->wpdb->delete( Schema::table( 'coupons' ), [ 'id' => $id ], [ '%d' ] );
+		$wpdb = $this->wpdb;
+		$wpdb->delete( Schema::table( 'coupon_uses' ), [ 'coupon_id' => $id ], [ '%d' ] );
+		$wpdb->delete( Schema::table( 'coupons' ), [ 'id' => $id ], [ '%d' ] );
 		$this->changed();
 	}
 
 	/** Drops the request caches and resets the automatic flag after a coupon is written. */
 	private function changed(): void {
+		$wpdb            = $this->wpdb;
 		$this->by_code   = [];
 		$this->automatic = null;
-		$count           = (int) $this->wpdb->get_var(
-			$this->wpdb->prepare( 'SELECT COUNT(*) FROM %i WHERE automatic = 1 AND status = %s', Schema::table( 'coupons' ), Coupon::ACTIVE )
+		$count           = (int) $wpdb->get_var(
+			$wpdb->prepare( 'SELECT COUNT(*) FROM %i WHERE automatic = 1 AND status = %s', Schema::table( 'coupons' ), Coupon::ACTIVE )
 		);
 		update_option( self::AUTOMATIC_OPTION, $count > 0 ? 1 : 0, true );
 	}
 
 	/** Orders that used the coupon by this account or this billing email. */
 	public function uses_by( int $coupon_id, int $user_id, string $email ): int {
+		$wpdb  = $this->wpdb;
 		$email = strtolower( trim( $email ) );
 		if ( $user_id <= 0 && $email === '' ) {
 			return 0;
 		}
-		return (int) $this->wpdb->get_var(
-			$this->wpdb->prepare(
+		return (int) $wpdb->get_var(
+			$wpdb->prepare(
 				'SELECT COUNT(*) FROM %i WHERE coupon_id = %d AND ((user_id = %d AND user_id > 0) OR (email = %s AND email <> %s))',
 				Schema::table( 'coupon_uses' ),
 				$coupon_id,
@@ -197,8 +208,9 @@ final class CouponRepository {
 	 * same coupon queue here and the per-customer count that follows is exact.
 	 */
 	public function take_use( int $coupon_id ): bool {
-		$changed = $this->wpdb->query(
-			$this->wpdb->prepare(
+		$wpdb    = $this->wpdb;
+		$changed = $wpdb->query(
+			$wpdb->prepare(
 				'UPDATE %i SET usage_count = usage_count + 1 WHERE id = %d AND status = %s AND (usage_limit = 0 OR usage_count < usage_limit)',
 				Schema::table( 'coupons' ),
 				$coupon_id,
@@ -206,13 +218,14 @@ final class CouponRepository {
 			)
 		);
 		if ( $changed === false ) {
-			throw new QueryFailed( 'Could not update the coupon usage: ' . $this->wpdb->last_error );
+			throw new QueryFailed( 'Could not update the coupon usage: ' . $wpdb->last_error );
 		}
 		return $changed === 1;
 	}
 
 	public function record_use( int $coupon_id, int $order_id, int $user_id, string $email, string $now ): void {
-		$ok = $this->wpdb->insert(
+		$wpdb = $this->wpdb;
+		$ok   = $wpdb->insert(
 			Schema::table( 'coupon_uses' ),
 			[
 				'coupon_id'  => $coupon_id,
@@ -224,7 +237,7 @@ final class CouponRepository {
 			[ '%d', '%d', '%d', '%s', '%s' ]
 		);
 		if ( $ok === false ) {
-			throw new QueryFailed( 'Could not record the coupon use: ' . $this->wpdb->last_error );
+			throw new QueryFailed( 'Could not record the coupon use: ' . $wpdb->last_error );
 		}
 	}
 
@@ -234,17 +247,18 @@ final class CouponRepository {
 	 * @return list<int>
 	 */
 	public function release_order( int $order_id ): array {
-		$ids = $this->wpdb->get_col(
-			$this->wpdb->prepare( 'SELECT coupon_id FROM %i WHERE order_id = %d FOR UPDATE', Schema::table( 'coupon_uses' ), $order_id )
+		$wpdb = $this->wpdb;
+		$ids  = $wpdb->get_col(
+			$wpdb->prepare( 'SELECT coupon_id FROM %i WHERE order_id = %d FOR UPDATE', Schema::table( 'coupon_uses' ), $order_id )
 		);
-		$ids = array_values( array_map( 'intval', $ids ) );
+		$ids  = array_values( array_map( 'intval', $ids ) );
 		if ( $ids === [] ) {
 			return [];
 		}
-		$this->wpdb->delete( Schema::table( 'coupon_uses' ), [ 'order_id' => $order_id ], [ '%d' ] );
+		$wpdb->delete( Schema::table( 'coupon_uses' ), [ 'order_id' => $order_id ], [ '%d' ] );
 		foreach ( $ids as $id ) {
-			$this->wpdb->query(
-				$this->wpdb->prepare( 'UPDATE %i SET usage_count = usage_count - 1 WHERE id = %d AND usage_count > 0', Schema::table( 'coupons' ), $id )
+			$wpdb->query(
+				$wpdb->prepare( 'UPDATE %i SET usage_count = usage_count - 1 WHERE id = %d AND usage_count > 0', Schema::table( 'coupons' ), $id )
 			);
 		}
 		return $ids;
@@ -256,8 +270,9 @@ final class CouponRepository {
 	 * @return list<string>
 	 */
 	public function used_by( int $coupon_id ): array {
-		$rows = $this->wpdb->get_results(
-			$this->wpdb->prepare( 'SELECT user_id, email FROM %i WHERE coupon_id = %d ORDER BY id', Schema::table( 'coupon_uses' ), $coupon_id ),
+		$wpdb = $this->wpdb;
+		$rows = $wpdb->get_results(
+			$wpdb->prepare( 'SELECT user_id, email FROM %i WHERE coupon_id = %d ORDER BY id', Schema::table( 'coupon_uses' ), $coupon_id ),
 			ARRAY_A
 		);
 		return array_map(
@@ -268,7 +283,8 @@ final class CouponRepository {
 
 	/** Sets the usage count of an imported coupon, which the editor never writes. */
 	public function set_usage_count( int $coupon_id, int $count ): void {
-		$this->wpdb->update( Schema::table( 'coupons' ), [ 'usage_count' => max( 0, $count ) ], [ 'id' => $coupon_id ], [ '%d' ], [ '%d' ] );
+		$wpdb = $this->wpdb;
+		$wpdb->update( Schema::table( 'coupons' ), [ 'usage_count' => max( 0, $count ) ], [ 'id' => $coupon_id ], [ '%d' ], [ '%d' ] );
 		$this->by_code   = [];
 		$this->automatic = null;
 	}
@@ -280,8 +296,9 @@ final class CouponRepository {
 	 * Existing rows are kept. Returns the rows added.
 	 */
 	public function backfill_uses( string $line_type, string $skip_status ): int {
-		$added = $this->wpdb->query(
-			$this->wpdb->prepare(
+		$wpdb  = $this->wpdb;
+		$added = $wpdb->query(
+			$wpdb->prepare(
 				'INSERT IGNORE INTO %i (coupon_id, order_id, user_id, email, created_at)
 				SELECT c.id, o.id, o.customer_id, LOWER(o.customer_email), o.created_at
 				FROM %i i JOIN %i o ON o.id = i.order_id JOIN %i c ON c.code = i.code
@@ -296,7 +313,7 @@ final class CouponRepository {
 			)
 		);
 		if ( $added === false ) {
-			throw new QueryFailed( 'Could not record the coupon uses: ' . $this->wpdb->last_error );
+			throw new QueryFailed( 'Could not record the coupon uses: ' . $wpdb->last_error );
 		}
 		return (int) $added;
 	}

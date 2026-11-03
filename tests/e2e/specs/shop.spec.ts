@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { expectAccessible, money, store } from './store';
 
-const items = ( page: Page ) => page.locator( '.type-fxc_product' );
+const items = ( page: Page ) => page.locator( '.type-fxcm_product' );
 
 /** The lowest price of each listed product, in cents. */
 async function prices( page: Page ): Promise< number[] > {
@@ -39,7 +39,7 @@ test( 'filters narrow the shop to a category', async ( { page }, info ) => {
 	const classes = await items( page ).evaluateAll( ( nodes ) => nodes.map( ( node ) => node.className ) );
 	expect( classes.length ).toBeGreaterThan( 0 );
 	for ( const name of classes ) {
-		expect( name ).toContain( `fxc_product_cat-${ store.category.slug }` );
+		expect( name ).toContain( `fxcm_product_cat-${ store.category.slug }` );
 	}
 } );
 

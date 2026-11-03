@@ -30,7 +30,7 @@ final class VatNumbersTest extends TaxTestCase {
 		global $wpdb;
 		remove_all_filters( 'pre_http_request' );
 		parent::tear_down();
-		$wpdb->query( "DELETE FROM {$wpdb->options} WHERE option_name LIKE '\\_transient\\_%fxc\\_vat\\_%' OR option_name LIKE '\\_transient\\_%fxc\\_rl\\_%'" ); // phpcs:ignore WordPress.DB
+		$wpdb->query( "DELETE FROM {$wpdb->options} WHERE option_name LIKE '\\_transient\\_%fxcm\\_vat\\_%' OR option_name LIKE '\\_transient\\_%fxcm\\_rl\\_%'" ); // phpcs:ignore WordPress.DB
 		$wpdb->query( 'COMMIT' );
 		wp_cache_flush();
 	}

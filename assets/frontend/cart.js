@@ -37,7 +37,7 @@ function readCount() {
 }
 
 /**
- * The products in the wishlist from the `fxc_wishlist_ids` cookie
+ * The products in the wishlist from the `fxcm_wishlist_ids` cookie
  * ("5:12.34"), or null when the cookie belongs to another user.
  */
 function readSaved() {

@@ -36,7 +36,7 @@ const FXC_SYN_PLACE = [
 ];
 
 /** @return array<string,string> */
-function fxc_syn_address( int $n ): array {
+function fxcm_syn_address( int $n ): array {
 	$place = FXC_SYN_PLACE[ $n % count( FXC_SYN_PLACE ) ];
 	return [
 		'first_name' => FXC_SYN_FIRST[ $n % count( FXC_SYN_FIRST ) ],
@@ -57,7 +57,7 @@ if ( $mode === 'customers' ) {
 	$hash  = wp_hash_password( 'bench' );
 	$caps  = serialize( [ 'customer' => true ] );
 	for ( $n = 1; $n <= $count; $n++ ) {
-		$address = fxc_syn_address( $n );
+		$address = fxcm_syn_address( $n );
 		$wpdb->insert(
 			$wpdb->users,
 			[
@@ -168,7 +168,7 @@ $from    = 1700000000; // 2023-11-14, orders spread over two years
 for ( $n = $first; $n < $last; $n++ ) {
 	$order    = new WC_Order();
 	$customer = mt_rand( 1, 100 ) <= 70 && $customers !== [] ? $customers[ mt_rand( 0, count( $customers ) - 1 ) ] : 0;
-	$address  = fxc_syn_address( $customer > 0 ? $customer : 100000 + $n );
+	$address  = fxcm_syn_address( $customer > 0 ? $customer : 100000 + $n );
 	$order->set_customer_id( $customer );
 	$order->set_currency( 'USD' );
 	$order->set_address( $address, 'billing' );

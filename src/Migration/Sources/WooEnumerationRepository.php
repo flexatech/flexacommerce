@@ -34,7 +34,8 @@ final class WooEnumerationRepository {
 
 	/** Table the order cursor reads, stored with the job so a storage switch is noticed. */
 	public function orders_table(): string {
-		return self::hpos() ? $this->wpdb->prefix . 'wc_orders' : $this->wpdb->posts;
+		$wpdb = $this->wpdb;
+		return self::hpos() ? $wpdb->prefix . 'wc_orders' : $wpdb->posts;
 	}
 
 	/**
@@ -45,35 +46,40 @@ final class WooEnumerationRepository {
 		'from' => null,
 		'to'   => null,
 	] ): array {
+		$wpdb = $this->wpdb;
 		if ( in_array( $stage, self::SINGLE, true ) || $stage === 'checkout' ) {
 			return $after < 1 && $upper >= 1 ? [ 1 ] : [];
 		}
 		$sql = match ( $stage ) {
-			'taxes'      => $this->wpdb->prepare( 'SELECT tax_rate_id FROM %i WHERE tax_rate_id > %d AND tax_rate_id <= %d ORDER BY tax_rate_id LIMIT %d', $this->wpdb->prefix . 'woocommerce_tax_rates', $after, $upper, $limit ),
-			'attributes' => $this->wpdb->prepare( 'SELECT attribute_id FROM %i WHERE attribute_id > %d AND attribute_id <= %d ORDER BY attribute_id LIMIT %d', $this->wpdb->prefix . 'woocommerce_attribute_taxonomies', $after, $upper, $limit ),
+			'taxes'      => $wpdb->prepare( 'SELECT tax_rate_id FROM %i WHERE tax_rate_id > %d AND tax_rate_id <= %d ORDER BY tax_rate_id LIMIT %d', $wpdb->prefix . 'woocommerce_tax_rates', $after, $upper, $limit ),
+			'attributes' => $wpdb->prepare( 'SELECT attribute_id FROM %i WHERE attribute_id > %d AND attribute_id <= %d ORDER BY attribute_id LIMIT %d', $wpdb->prefix . 'woocommerce_attribute_taxonomies', $after, $upper, $limit ),
 			'terms'      => $this->terms_sql( $after, $upper, $limit ),
-			'products'   => $this->wpdb->prepare( "SELECT ID FROM %i WHERE post_type = 'product' AND post_status NOT IN ('auto-draft', 'trash') AND ID > %d AND ID <= %d ORDER BY ID LIMIT %d", $this->wpdb->posts, $after, $upper, $limit ),
+			'products'   => $wpdb->prepare( "SELECT ID FROM %i WHERE post_type = 'product' AND post_status NOT IN ('auto-draft', 'trash') AND ID > %d AND ID <= %d ORDER BY ID LIMIT %d", $wpdb->posts, $after, $upper, $limit ),
 			'customers'  => $this->customers_sql( $after, $upper, $limit ),
 			'orders'     => $this->orders_sql( $after, $upper, $limit, $range ),
-			'coupons'    => $this->wpdb->prepare( "SELECT ID FROM %i WHERE post_type = 'shop_coupon' AND post_status NOT IN ('auto-draft', 'trash') AND ID > %d AND ID <= %d ORDER BY ID LIMIT %d", $this->wpdb->posts, $after, $upper, $limit ),
+			'coupons'    => $wpdb->prepare( "SELECT ID FROM %i WHERE post_type = 'shop_coupon' AND post_status NOT IN ('auto-draft', 'trash') AND ID > %d AND ID <= %d ORDER BY ID LIMIT %d", $wpdb->posts, $after, $upper, $limit ),
 			'options'    => $this->options_sql( $after, $upper, $limit ),
-			'reviews'    => $this->wpdb->prepare( "SELECT c.comment_ID FROM %i AS c INNER JOIN %i AS p ON p.ID = c.comment_post_ID WHERE p.post_type = 'product' AND c.comment_approved IN ('0', '1') AND c.comment_type IN ('review', 'comment') AND c.comment_ID > %d AND c.comment_ID <= %d ORDER BY c.comment_ID LIMIT %d", $this->wpdb->comments, $this->wpdb->posts, $after, $upper, $limit ),
+			'reviews'    => $wpdb->prepare( "SELECT c.comment_ID FROM %i AS c INNER JOIN %i AS p ON p.ID = c.comment_post_ID WHERE p.post_type = 'product' AND c.comment_approved IN ('0', '1') AND c.comment_type IN ('review', 'comment') AND c.comment_ID > %d AND c.comment_ID <= %d ORDER BY c.comment_ID LIMIT %d", $wpdb->comments, $wpdb->posts, $after, $upper, $limit ),
 			'subscriptions' => self::hpos()
-				? $this->wpdb->prepare( "SELECT id FROM %i WHERE type = 'shop_subscription' AND status NOT IN ('trash', 'auto-draft') AND id > %d AND id <= %d ORDER BY id LIMIT %d", $this->orders_table(), $after, $upper, $limit )
-				: $this->wpdb->prepare( "SELECT ID FROM %i WHERE post_type = 'shop_subscription' AND post_status NOT IN ('trash', 'auto-draft') AND ID > %d AND ID <= %d ORDER BY ID LIMIT %d", $this->wpdb->posts, $after, $upper, $limit ),
+				? $wpdb->prepare( "SELECT id FROM %i WHERE type = 'shop_subscription' AND status NOT IN ('trash', 'auto-draft') AND id > %d AND id <= %d ORDER BY id LIMIT %d", $this->orders_table(), $after, $upper, $limit )
+				// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- placeholders and fixed SQL only; every value is a prepare() replacement.
+				: $wpdb->prepare( "SELECT ID FROM %i WHERE post_type = 'shop_subscription' AND post_status NOT IN ('trash', 'auto-draft') AND ID > %d AND ID <= %d ORDER BY ID LIMIT %d", $wpdb->posts, $after, $upper, $limit ),
+			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- prepared above; WPCS cannot follow the variable.
 			default      => null,
 		};
 		if ( $sql === null ) {
 			return [];
 		}
-		$ids = $this->wpdb->get_col( $sql );
-		if ( $this->wpdb->last_error !== '' ) {
-			throw QueryFailed::from_wpdb( $this->wpdb );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- prepared above; WPCS cannot follow the variable.
+		$ids = $wpdb->get_col( $sql );
+		if ( $wpdb->last_error !== '' ) {
+			throw QueryFailed::from_wpdb( $wpdb );
 		}
 		return array_map( 'intval', $ids );
 	}
 
 	public function upper_id( string $stage ): int {
+		$wpdb = $this->wpdb;
 		if ( in_array( $stage, self::SINGLE, true ) ) {
 			return 1;
 		}
@@ -82,23 +88,26 @@ final class WooEnumerationRepository {
 			return WooCheckoutReader::exists() ? 1 : 0;
 		}
 		$sql = match ( $stage ) {
-			'taxes'      => $this->wpdb->prepare( 'SELECT MAX(tax_rate_id) FROM %i', $this->wpdb->prefix . 'woocommerce_tax_rates' ),
-			'attributes' => $this->wpdb->prepare( 'SELECT MAX(attribute_id) FROM %i', $this->wpdb->prefix . 'woocommerce_attribute_taxonomies' ),
-			'terms'      => $this->wpdb->prepare( 'SELECT MAX(term_id) FROM %i', $this->wpdb->term_taxonomy ),
-			'products'   => $this->wpdb->prepare( "SELECT MAX(ID) FROM %i WHERE post_type = 'product'", $this->wpdb->posts ),
-			'customers'  => $this->wpdb->prepare( 'SELECT MAX(ID) FROM %i', $this->wpdb->users ),
+			'taxes'      => $wpdb->prepare( 'SELECT MAX(tax_rate_id) FROM %i', $wpdb->prefix . 'woocommerce_tax_rates' ),
+			'attributes' => $wpdb->prepare( 'SELECT MAX(attribute_id) FROM %i', $wpdb->prefix . 'woocommerce_attribute_taxonomies' ),
+			'terms'      => $wpdb->prepare( 'SELECT MAX(term_id) FROM %i', $wpdb->term_taxonomy ),
+			'products'   => $wpdb->prepare( "SELECT MAX(ID) FROM %i WHERE post_type = 'product'", $wpdb->posts ),
+			'customers'  => $wpdb->prepare( 'SELECT MAX(ID) FROM %i', $wpdb->users ),
 			'orders'     => self::hpos()
-				? $this->wpdb->prepare( "SELECT MAX(id) FROM %i WHERE type = 'shop_order'", $this->orders_table() )
-				: $this->wpdb->prepare( "SELECT MAX(ID) FROM %i WHERE post_type = 'shop_order'", $this->wpdb->posts ),
-			'coupons'    => $this->wpdb->prepare( "SELECT MAX(ID) FROM %i WHERE post_type = 'shop_coupon'", $this->wpdb->posts ),
-			'options'    => $this->wpdb->prepare( "SELECT MAX(ID) FROM %i WHERE post_type IN ('product', 'global_product_addon')", $this->wpdb->posts ),
-			'reviews'    => $this->wpdb->prepare( 'SELECT MAX(comment_ID) FROM %i', $this->wpdb->comments ),
+				? $wpdb->prepare( "SELECT MAX(id) FROM %i WHERE type = 'shop_order'", $this->orders_table() )
+				: $wpdb->prepare( "SELECT MAX(ID) FROM %i WHERE post_type = 'shop_order'", $wpdb->posts ),
+			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- placeholders and fixed SQL only; every value is a prepare() replacement.
+			'coupons'    => $wpdb->prepare( "SELECT MAX(ID) FROM %i WHERE post_type = 'shop_coupon'", $wpdb->posts ),
+			'options'    => $wpdb->prepare( "SELECT MAX(ID) FROM %i WHERE post_type IN ('product', 'global_product_addon')", $wpdb->posts ),
+			'reviews'    => $wpdb->prepare( 'SELECT MAX(comment_ID) FROM %i', $wpdb->comments ),
 			'subscriptions' => self::hpos()
-				? $this->wpdb->prepare( "SELECT MAX(id) FROM %i WHERE type = 'shop_subscription'", $this->orders_table() )
-				: $this->wpdb->prepare( "SELECT MAX(ID) FROM %i WHERE post_type = 'shop_subscription'", $this->wpdb->posts ),
+				? $wpdb->prepare( "SELECT MAX(id) FROM %i WHERE type = 'shop_subscription'", $this->orders_table() )
+				: $wpdb->prepare( "SELECT MAX(ID) FROM %i WHERE post_type = 'shop_subscription'", $wpdb->posts ),
+			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- prepared above; WPCS cannot follow the variable.
 			default      => null,
 		};
-		return $sql === null ? 0 : (int) $this->wpdb->get_var( $sql );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- prepared above; WPCS cannot follow the variable.
+		return $sql === null ? 0 : (int) $wpdb->get_var( $sql );
 	}
 
 	/** @param array{from:?string,to:?string} $range */
@@ -127,8 +136,9 @@ final class WooEnumerationRepository {
 
 	/** @return list<array{type:string,code:string}> location rows of one WooCommerce tax rate */
 	public function tax_rate_locations( int $rate_id ): array {
-		$rows = $this->wpdb->get_results(
-			$this->wpdb->prepare( 'SELECT location_type AS type, location_code AS code FROM %i WHERE tax_rate_id = %d ORDER BY location_id', $this->wpdb->prefix . 'woocommerce_tax_rate_locations', $rate_id ),
+		$wpdb = $this->wpdb;
+		$rows = $wpdb->get_results(
+			$wpdb->prepare( 'SELECT location_type AS type, location_code AS code FROM %i WHERE tax_rate_id = %d ORDER BY location_id', $wpdb->prefix . 'woocommerce_tax_rate_locations', $rate_id ),
 			ARRAY_A
 		);
 		return array_map(
@@ -142,13 +152,14 @@ final class WooEnumerationRepository {
 
 	/** @return array<string,int> product type => products */
 	public function product_types(): array {
-		$rows = $this->wpdb->get_results(
-			$this->wpdb->prepare(
+		$wpdb = $this->wpdb;
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
 				"SELECT t.slug, COUNT(*) AS n FROM %i p JOIN %i tr ON tr.object_id = p.ID JOIN %i tt ON tt.term_taxonomy_id = tr.term_taxonomy_id AND tt.taxonomy = 'product_type' JOIN %i t ON t.term_id = tt.term_id WHERE p.post_type = 'product' AND p.post_status NOT IN ('auto-draft', 'trash') GROUP BY t.slug",
-				$this->wpdb->posts,
-				$this->wpdb->term_relationships,
-				$this->wpdb->term_taxonomy,
-				$this->wpdb->terms
+				$wpdb->posts,
+				$wpdb->term_relationships,
+				$wpdb->term_taxonomy,
+				$wpdb->terms
 			),
 			ARRAY_A
 		);
@@ -161,11 +172,12 @@ final class WooEnumerationRepository {
 
 	/** @return list<array{sku:string,ids:list<int>}> SKUs used by more than one product or variation, case-insensitive */
 	public function duplicate_skus( int $limit = 100 ): array {
-		$rows = $this->wpdb->get_results(
-			$this->wpdb->prepare(
+		$wpdb = $this->wpdb;
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
 				"SELECT LOWER(m.meta_value) AS sku, GROUP_CONCAT(p.ID ORDER BY p.ID) AS ids FROM %i m JOIN %i p ON p.ID = m.post_id WHERE m.meta_key = '_sku' AND m.meta_value <> '' AND p.post_type IN ('product', 'product_variation') AND p.post_status NOT IN ('auto-draft', 'trash') GROUP BY LOWER(m.meta_value) HAVING COUNT(*) > 1 ORDER BY MIN(p.ID) LIMIT %d",
-				$this->wpdb->postmeta,
-				$this->wpdb->posts,
+				$wpdb->postmeta,
+				$wpdb->posts,
 				$limit
 			),
 			ARRAY_A
@@ -181,10 +193,12 @@ final class WooEnumerationRepository {
 
 	/** @return array<string,int> order status (with `wc-`) => orders */
 	public function order_statuses(): array {
+		$wpdb = $this->wpdb;
 		$sql  = self::hpos()
-			? $this->wpdb->prepare( "SELECT status, COUNT(*) AS n FROM %i WHERE type = 'shop_order' GROUP BY status", $this->orders_table() )
-			: $this->wpdb->prepare( "SELECT post_status AS status, COUNT(*) AS n FROM %i WHERE post_type = 'shop_order' GROUP BY post_status", $this->wpdb->posts );
-		$rows = $this->wpdb->get_results( $sql, ARRAY_A );
+			? $wpdb->prepare( "SELECT status, COUNT(*) AS n FROM %i WHERE type = 'shop_order' GROUP BY status", $this->orders_table() )
+			: $wpdb->prepare( "SELECT post_status AS status, COUNT(*) AS n FROM %i WHERE post_type = 'shop_order' GROUP BY post_status", $wpdb->posts );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- prepared above; WPCS cannot follow the variable.
+		$rows = $wpdb->get_results( $sql, ARRAY_A );
 		$out  = [];
 		foreach ( $rows ?: [] as $row ) {
 			$out[ (string) $row['status'] ] = (int) $row['n'];
@@ -201,16 +215,18 @@ final class WooEnumerationRepository {
 	 * @return array<string,string> key => value, the first row of each key
 	 */
 	public function subscription_meta( int $id, array $keys ): array {
+		$wpdb = $this->wpdb;
 		if ( $keys === [] ) {
 			return [];
 		}
 		$in  = implode( ', ', array_fill( 0, count( $keys ), '%s' ) );
 		$sql = self::hpos()
-			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $in is placeholders only.
-			? $this->wpdb->prepare( "SELECT meta_key, meta_value FROM %i WHERE order_id = %d AND meta_key IN ({$in}) ORDER BY id", $this->wpdb->prefix . 'wc_orders_meta', $id, ...$keys )
-			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $in is placeholders only.
-			: $this->wpdb->prepare( "SELECT meta_key, meta_value FROM %i WHERE post_id = %d AND meta_key IN ({$in}) ORDER BY meta_id", $this->wpdb->postmeta, $id, ...$keys );
-		$rows = $this->wpdb->get_results( $sql, ARRAY_A );
+			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- $in is placeholders only.
+			? $wpdb->prepare( "SELECT meta_key, meta_value FROM %i WHERE order_id = %d AND meta_key IN ({$in}) ORDER BY id", $wpdb->prefix . 'wc_orders_meta', $id, ...$keys )
+			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- $in is placeholders only.
+			: $wpdb->prepare( "SELECT meta_key, meta_value FROM %i WHERE post_id = %d AND meta_key IN ({$in}) ORDER BY meta_id", $wpdb->postmeta, $id, ...$keys );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- prepared above; WPCS cannot follow the variable.
+		$rows = $wpdb->get_results( $sql, ARRAY_A );
 		$out  = [];
 		foreach ( $rows ?: [] as $row ) {
 			$out[ (string) $row['meta_key'] ] ??= (string) $row['meta_value'];
@@ -225,10 +241,12 @@ final class WooEnumerationRepository {
 	 * @return list<array{order_id:int,relation:string}> oldest first
 	 */
 	public function subscription_orders( int $id ): array {
+		$wpdb = $this->wpdb;
 		$sql  = self::hpos()
-			? $this->wpdb->prepare( "SELECT m.order_id AS order_id, m.meta_key AS meta_key FROM %i m INNER JOIN %i o ON o.id = m.order_id AND o.type = 'shop_order' WHERE m.meta_key IN ('_subscription_renewal', '_subscription_switch') AND m.meta_value = %s ORDER BY m.order_id", $this->wpdb->prefix . 'wc_orders_meta', $this->orders_table(), (string) $id )
-			: $this->wpdb->prepare( "SELECT m.post_id AS order_id, m.meta_key AS meta_key FROM %i m INNER JOIN %i p ON p.ID = m.post_id AND p.post_type = 'shop_order' WHERE m.meta_key IN ('_subscription_renewal', '_subscription_switch') AND m.meta_value = %s ORDER BY m.post_id", $this->wpdb->postmeta, $this->wpdb->posts, (string) $id );
-		$rows = $this->wpdb->get_results( $sql, ARRAY_A );
+			? $wpdb->prepare( "SELECT m.order_id AS order_id, m.meta_key AS meta_key FROM %i m INNER JOIN %i o ON o.id = m.order_id AND o.type = 'shop_order' WHERE m.meta_key IN ('_subscription_renewal', '_subscription_switch') AND m.meta_value = %s ORDER BY m.order_id", $wpdb->prefix . 'wc_orders_meta', $this->orders_table(), (string) $id )
+			: $wpdb->prepare( "SELECT m.post_id AS order_id, m.meta_key AS meta_key FROM %i m INNER JOIN %i p ON p.ID = m.post_id AND p.post_type = 'shop_order' WHERE m.meta_key IN ('_subscription_renewal', '_subscription_switch') AND m.meta_value = %s ORDER BY m.post_id", $wpdb->postmeta, $wpdb->posts, (string) $id );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- prepared above; WPCS cannot follow the variable.
+		$rows = $wpdb->get_results( $sql, ARRAY_A );
 		$out  = [];
 		foreach ( $rows ?: [] as $row ) {
 			$out[] = [
@@ -246,17 +264,19 @@ final class WooEnumerationRepository {
 	 * @return array{methods:array<string,int>,manual:int,paypal_plans:int}
 	 */
 	public function subscription_payments(): array {
+		$wpdb  = $this->wpdb;
 		$live  = [ 'wc-active', 'wc-on-hold', 'wc-pending', 'wc-pending-cancel' ];
 		$in    = implode( ', ', array_fill( 0, count( $live ), '%s' ) );
 		$hpos  = self::hpos();
-		$meta  = $hpos ? $this->wpdb->prefix . 'wc_orders_meta' : $this->wpdb->postmeta;
+		$meta  = $hpos ? $wpdb->prefix . 'wc_orders_meta' : $wpdb->postmeta;
 		$owner = $hpos ? 'order_id' : 'post_id';
 		$base  = $hpos
-			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $in is placeholders only.
-			? $this->wpdb->prepare( "SELECT id AS id, payment_method AS method FROM %i WHERE type = 'shop_subscription' AND status IN ({$in})", $this->orders_table(), ...$live )
-			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $in is placeholders only.
-			: $this->wpdb->prepare( "SELECT p.ID AS id, COALESCE(m.meta_value, '') AS method FROM %i p LEFT JOIN %i m ON m.post_id = p.ID AND m.meta_key = '_payment_method' WHERE p.post_type = 'shop_subscription' AND p.post_status IN ({$in})", $this->wpdb->posts, $this->wpdb->postmeta, ...$live );
-		$rows    = $this->wpdb->get_results( $base, ARRAY_A );
+			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- $in is placeholders only.
+			? $wpdb->prepare( "SELECT id AS id, payment_method AS method FROM %i WHERE type = 'shop_subscription' AND status IN ({$in})", $this->orders_table(), ...$live )
+			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- $in is placeholders only.
+			: $wpdb->prepare( "SELECT p.ID AS id, COALESCE(m.meta_value, '') AS method FROM %i p LEFT JOIN %i m ON m.post_id = p.ID AND m.meta_key = '_payment_method' WHERE p.post_type = 'shop_subscription' AND p.post_status IN ({$in})", $wpdb->posts, $wpdb->postmeta, ...$live );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- prepared above; WPCS cannot follow the variable.
+		$rows    = $wpdb->get_results( $base, ARRAY_A );
 		$methods = [];
 		$ids     = [];
 		foreach ( $rows ?: [] as $row ) {
@@ -264,13 +284,13 @@ final class WooEnumerationRepository {
 			$methods[ $method ] = ( $methods[ $method ] ?? 0 ) + 1;
 			$ids[]              = (int) $row['id'];
 		}
-		$flag = function ( string $key, string $value ) use ( $ids, $meta, $owner ): int {
+		$flag = function ( string $key, string $value ) use ( $wpdb, $ids, $meta, $owner ): int {
 			$total = 0;
 			foreach ( array_chunk( $ids, 1000 ) as $chunk ) {
 				$in     = implode( ', ', array_fill( 0, count( $chunk ), '%d' ) );
-				$total += (int) $this->wpdb->get_var(
-					// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $in is placeholders only.
-					$this->wpdb->prepare( "SELECT COUNT(DISTINCT %i) FROM %i WHERE meta_key = %s AND meta_value LIKE %s AND %i IN ({$in})", $owner, $meta, $key, $value, $owner, ...$chunk )
+				$total += (int) $wpdb->get_var(
+					// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- $in is placeholders only.
+					$wpdb->prepare( "SELECT COUNT(DISTINCT %i) FROM %i WHERE meta_key = %s AND meta_value LIKE %s AND %i IN ({$in})", $owner, $meta, $key, $value, $owner, ...$chunk )
 				);
 			}
 			return $total;
@@ -284,10 +304,12 @@ final class WooEnumerationRepository {
 
 	/** @return array<string,int> currency => orders */
 	public function order_currencies(): array {
+		$wpdb = $this->wpdb;
 		$sql  = self::hpos()
-			? $this->wpdb->prepare( "SELECT currency, COUNT(*) AS n FROM %i WHERE type = 'shop_order' GROUP BY currency", $this->orders_table() )
-			: $this->wpdb->prepare( "SELECT m.meta_value AS currency, COUNT(*) AS n FROM %i p JOIN %i m ON m.post_id = p.ID AND m.meta_key = '_order_currency' WHERE p.post_type = 'shop_order' GROUP BY m.meta_value", $this->wpdb->posts, $this->wpdb->postmeta );
-		$rows = $this->wpdb->get_results( $sql, ARRAY_A );
+			? $wpdb->prepare( "SELECT currency, COUNT(*) AS n FROM %i WHERE type = 'shop_order' GROUP BY currency", $this->orders_table() )
+			: $wpdb->prepare( "SELECT m.meta_value AS currency, COUNT(*) AS n FROM %i p JOIN %i m ON m.post_id = p.ID AND m.meta_key = '_order_currency' WHERE p.post_type = 'shop_order' GROUP BY m.meta_value", $wpdb->posts, $wpdb->postmeta );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- prepared above; WPCS cannot follow the variable.
+		$rows = $wpdb->get_results( $sql, ARRAY_A );
 		$out  = [];
 		foreach ( $rows ?: [] as $row ) {
 			$out[ (string) $row['currency'] ] = (int) $row['n'];
@@ -308,11 +330,12 @@ final class WooEnumerationRepository {
 	}
 
 	public function active_webhooks(): int {
-		$table = $this->wpdb->prefix . 'wc_webhooks';
-		if ( $this->wpdb->get_var( $this->wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) !== $table ) {
+		$wpdb  = $this->wpdb;
+		$table = $wpdb->prefix . 'wc_webhooks';
+		if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) !== $table ) {
 			return 0;
 		}
-		return (int) $this->wpdb->get_var( $this->wpdb->prepare( "SELECT COUNT(*) FROM %i WHERE status = 'active'", $table ) );
+		return (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM %i WHERE status = 'active'", $table ) );
 	}
 
 	/** @return list<int> a few order ids, for the order number sample */
@@ -321,7 +344,8 @@ final class WooEnumerationRepository {
 	}
 
 	public function shipping_zones(): int {
-		return (int) $this->wpdb->get_var( $this->wpdb->prepare( 'SELECT COUNT(*) FROM %i', $this->wpdb->prefix . 'woocommerce_shipping_zones' ) );
+		$wpdb = $this->wpdb;
+		return (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM %i', $wpdb->prefix . 'woocommerce_shipping_zones' ) );
 	}
 
 	/**
@@ -331,15 +355,16 @@ final class WooEnumerationRepository {
 	 * @return list<int>
 	 */
 	public function addon_products( int $product_id ): array {
-		$ids = $this->wpdb->get_col(
-			$this->wpdb->prepare(
+		$wpdb = $this->wpdb;
+		$ids  = $wpdb->get_col(
+			$wpdb->prepare(
 				"SELECT p.ID FROM %i p JOIN %i m ON m.post_id = p.ID AND m.meta_key = '_product_addons'
 				WHERE p.post_type = 'product' AND p.post_status NOT IN ('auto-draft', 'trash')
 				AND m.meta_value = ( SELECT meta_value FROM %i WHERE post_id = %d AND meta_key = '_product_addons' LIMIT 1 )
 				ORDER BY p.ID",
-				$this->wpdb->posts,
-				$this->wpdb->postmeta,
-				$this->wpdb->postmeta,
+				$wpdb->posts,
+				$wpdb->postmeta,
+				$wpdb->postmeta,
 				$product_id
 			)
 		);
@@ -352,12 +377,13 @@ final class WooEnumerationRepository {
 	 * @return list<int>
 	 */
 	public function addon_excluded_products(): array {
-		$ids = $this->wpdb->get_col(
-			$this->wpdb->prepare(
+		$wpdb = $this->wpdb;
+		$ids  = $wpdb->get_col(
+			$wpdb->prepare(
 				"SELECT p.ID FROM %i p JOIN %i m ON m.post_id = p.ID AND m.meta_key = '_product_addons_exclude_global' AND m.meta_value = '1'
 				WHERE p.post_type = 'product' AND p.post_status NOT IN ('auto-draft', 'trash') ORDER BY p.ID",
-				$this->wpdb->posts,
-				$this->wpdb->postmeta
+				$wpdb->posts,
+				$wpdb->postmeta
 			)
 		);
 		return array_map( 'intval', $ids );
@@ -369,7 +395,8 @@ final class WooEnumerationRepository {
 	 * same list share one option set.
 	 */
 	private function options_sql( int $after, int $upper, int $limit ): string {
-		return (string) $this->wpdb->prepare(
+		$wpdb = $this->wpdb;
+		return (string) $wpdb->prepare(
 			"SELECT id FROM (
 				SELECT ID AS id FROM %i WHERE post_type = 'global_product_addon' AND post_status NOT IN ('auto-draft', 'trash')
 				UNION ALL
@@ -377,9 +404,9 @@ final class WooEnumerationRepository {
 				WHERE p.post_type = 'product' AND p.post_status NOT IN ('auto-draft', 'trash') AND m.meta_value NOT IN ('', 'a:0:{}')
 				GROUP BY MD5(m.meta_value)
 			) addons WHERE id > %d AND id <= %d ORDER BY id LIMIT %d",
-			$this->wpdb->posts,
-			$this->wpdb->posts,
-			$this->wpdb->postmeta,
+			$wpdb->posts,
+			$wpdb->posts,
+			$wpdb->postmeta,
 			$after,
 			$upper,
 			$limit
@@ -387,11 +414,12 @@ final class WooEnumerationRepository {
 	}
 
 	private function terms_sql( int $after, int $upper, int $limit ): string {
+		$wpdb = $this->wpdb;
 		// Attribute value taxonomies are pa_*; underscores are LIKE wildcards, so escape them.
-		return (string) $this->wpdb->prepare(
+		return (string) $wpdb->prepare(
 			"SELECT DISTINCT term_id FROM %i WHERE ( taxonomy IN ('product_cat', 'product_tag') OR taxonomy LIKE %s ) AND term_id > %d AND term_id <= %d ORDER BY term_id LIMIT %d",
-			$this->wpdb->term_taxonomy,
-			$this->wpdb->esc_like( 'pa_' ) . '%',
+			$wpdb->term_taxonomy,
+			$wpdb->esc_like( 'pa_' ) . '%',
 			$after,
 			$upper,
 			$limit
@@ -399,20 +427,24 @@ final class WooEnumerationRepository {
 	}
 
 	private function customers_sql( int $after, int $upper, int $limit ): string {
-		$in = implode( ', ', array_fill( 0, count( self::CUSTOMER_KEYS ), '%s' ) );
-		return (string) $this->wpdb->prepare(
+		$wpdb = $this->wpdb;
+		$in   = implode( ', ', array_fill( 0, count( self::CUSTOMER_KEYS ), '%s' ) );
+		// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- placeholders and fixed SQL only; every value is a prepare() replacement.
+		return (string) $wpdb->prepare(
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- prepared above; WPCS cannot follow the variable.
 			"SELECT DISTINCT user_id FROM %i WHERE meta_key IN ({$in}) AND meta_value <> '' AND user_id > %d AND user_id <= %d ORDER BY user_id LIMIT %d",
-			$this->wpdb->usermeta,
+			$wpdb->usermeta,
 			...[ ...self::CUSTOMER_KEYS, $after, $upper, $limit ]
 		);
 	}
 
 	/** @param array{from:?string,to:?string} $range */
 	private function orders_sql( int $after, int $upper, int $limit, array $range ): string {
+		$wpdb = $this->wpdb;
 		$from = $range['from'] ?? null;
 		$to   = $range['to'] ?? null;
 		if ( self::hpos() ) {
-			return (string) $this->wpdb->prepare(
+			return (string) $wpdb->prepare(
 				"SELECT id FROM %i WHERE type = 'shop_order' AND status NOT IN ('wc-checkout-draft', 'auto-draft') AND id > %d AND id <= %d AND date_created_gmt >= %s AND date_created_gmt <= %s ORDER BY id LIMIT %d",
 				$this->orders_table(),
 				$after,
@@ -422,9 +454,9 @@ final class WooEnumerationRepository {
 				$limit
 			);
 		}
-		return (string) $this->wpdb->prepare(
+		return (string) $wpdb->prepare(
 			"SELECT ID FROM %i WHERE post_type = 'shop_order' AND post_status NOT IN ('wc-checkout-draft', 'auto-draft') AND ID > %d AND ID <= %d AND post_date_gmt >= %s AND post_date_gmt <= %s ORDER BY ID LIMIT %d",
-			$this->wpdb->posts,
+			$wpdb->posts,
 			$after,
 			$upper,
 			$from ?? '0000-00-00 00:00:00',

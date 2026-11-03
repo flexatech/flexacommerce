@@ -680,7 +680,7 @@ final class OrdersEndpoint extends Endpoint {
 	private static function permission( WP_REST_Request $request ): Permission|WP_Error {
 		$permission = Plugin::instance()->downloads()->permissions()->find( (int) $request->get_param( 'permission' ) );
 		if ( $permission === null || $permission->order_id !== (int) $request->get_param( 'id' ) ) {
-			return new WP_Error( 'fxc_download_not_found', __( 'This download permission does not exist on this order.', 'flexacommerce' ), [ 'status' => 404 ] );
+			return new WP_Error( 'fxcm_download_not_found', __( 'This download permission does not exist on this order.', 'flexacommerce' ), [ 'status' => 404 ] );
 		}
 		return $permission;
 	}
@@ -914,7 +914,7 @@ final class OrdersEndpoint extends Endpoint {
 	 */
 	private static function vat_rows( int $order_id ): array {
 		$orders = Plugin::instance()->orders()->orders();
-		$raw    = json_decode( (string) $orders->get_meta( $order_id, '_fxc_vat_check' ), true );
+		$raw    = json_decode( (string) $orders->get_meta( $order_id, '_fxcm_vat_check' ), true );
 		$check  = is_array( $raw ) ? VatCheck::from_array( $raw ) : null;
 		if ( $check === null ) {
 			return [];
@@ -927,7 +927,7 @@ final class OrdersEndpoint extends Endpoint {
 		if ( $check->name !== '' ) {
 			$value .= ' (' . $check->name . ')';
 		}
-		$value .= '. ' . ( $orders->get_meta( $order_id, '_fxc_reverse_charge' ) === '1'
+		$value .= '. ' . ( $orders->get_meta( $order_id, '_fxcm_reverse_charge' ) === '1'
 			? __( 'No VAT charged (reverse charge).', 'flexacommerce' )
 			: __( 'VAT charged.', 'flexacommerce' ) );
 		return [

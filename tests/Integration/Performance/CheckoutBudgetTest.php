@@ -90,10 +90,10 @@ final class CheckoutBudgetTest extends TestCase {
 		$cod = Plugin::instance()->payments()->gateways()->get( 'cod' );
 		self::assertNotNull( $cod );
 		Plugin::instance()->payments()->gateways()->settings()->save( $cod, [ 'enabled' => true ] );
-		$zones          = ( new ZoneRepository() )->save(
+		$zones         = ( new ZoneRepository() )->save(
 			[ new Zone( 0, 'US', [ 'country:US' ], [], [ new MethodInstance( 0, 'flat_rate', true, [ 'cost' => 500 ] ) ] ) ]
 		);
-		self::$rate_id  = 'flat_rate:' . $zones[0]->methods[0]->instance_id;
+		self::$rate_id = 'flat_rate:' . $zones[0]->methods[0]->instance_id;
 		// A real checkout page, as on a store: its URL goes into the response and the emails.
 		self::$page        = (int) wp_insert_post(
 			[
@@ -128,7 +128,7 @@ final class CheckoutBudgetTest extends TestCase {
 			wp_delete_post( $id, true );
 		}
 		$wpdb->query( 'DELETE FROM ' . Schema::table( 'sessions' ) ); // phpcs:ignore WordPress.DB
-		$wpdb->query( "DELETE FROM {$wpdb->options} WHERE option_name LIKE '\\_transient\\_%fxc\\_mail\\_%'" ); // phpcs:ignore WordPress.DB
+		$wpdb->query( "DELETE FROM {$wpdb->options} WHERE option_name LIKE '\\_transient\\_%fxcm\\_mail\\_%'" ); // phpcs:ignore WordPress.DB
 		self::clear_rate_limits();
 		wp_unschedule_hook( Cron::SEND_EMAIL );
 		Settings::update(
@@ -188,7 +188,7 @@ final class CheckoutBudgetTest extends TestCase {
 			true,
 			[
 				'method'  => 'POST',
-				'cookies' => [ 'fxc_session' => $session ],
+				'cookies' => [ 'fxcm_session' => $session ],
 				'headers' => [
 					'Content-Type' => 'application/json',
 					'Origin'       => home_url(),

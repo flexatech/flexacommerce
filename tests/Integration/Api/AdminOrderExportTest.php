@@ -45,7 +45,7 @@ final class AdminOrderExportTest extends OrderTestCase {
 		Plugin::instance()->orders()->shipment_service()->add( $order->id, 'ups', '', '1Z999', '', null, '', false, false, TransitionContext::admin() );
 		Plugin::instance()->orders()->orders()->set_meta(
 			$order->id,
-			'_fxc_fields',
+			'_fxcm_fields',
 			(string) wp_json_encode(
 				[
 					[

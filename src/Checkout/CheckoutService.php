@@ -64,10 +64,10 @@ defined( 'ABSPATH' ) || exit;
  * a repeated submit with the same checkout token returns the first order.
  */
 final class CheckoutService {
-	public const RETURN_ARG = 'fxc_return';
+	public const RETURN_ARG = 'fxcm_return';
 
 	/** User meta: the checkout token of the checkout that made the account (ADR-073). */
-	public const ACCOUNT_TOKEN = '_fxc_checkout_token';
+	public const ACCOUNT_TOKEN = '_fxcm_checkout_token';
 
 	/** Wallets an express button pays with (ADR-053), named on the order. */
 	public const WALLETS = [
@@ -518,9 +518,9 @@ final class CheckoutService {
 		$reverse = $vat !== null && $this->vat()->reverse_charge( $vat );
 		if ( $vat !== null ) {
 			$addresses['meta'][ '_billing_' . FieldSchema::VAT ] = $vat->number;
-			$addresses['meta']['_fxc_vat_check']                 = (string) wp_json_encode( $vat->to_array() );
+			$addresses['meta']['_fxcm_vat_check']                = (string) wp_json_encode( $vat->to_array() );
 			if ( $reverse ) {
-				$addresses['meta']['_fxc_reverse_charge'] = '1';
+				$addresses['meta']['_fxcm_reverse_charge'] = '1';
 			}
 		}
 		if ( $errors === [] ) {
@@ -1351,8 +1351,8 @@ final class CheckoutService {
 		}
 		$wallet = $request->gateway_input['express'] ?? '';
 		if ( $gateway !== null && is_string( $wallet ) && isset( self::WALLETS[ $wallet ] ) ) {
-			$title                = sprintf( '%1$s (%2$s)', $title, self::WALLETS[ $wallet ] );
-			$meta['_fxc_express'] = $wallet;
+			$title                 = sprintf( '%1$s (%2$s)', $title, self::WALLETS[ $wallet ] );
+			$meta['_fxcm_express'] = $wallet;
 		}
 
 		return new NewOrder(
@@ -1376,7 +1376,7 @@ final class CheckoutService {
 			discount_total: $discount,
 			fee_total: $fees,
 			tax_total: $quote->tax->amount,
-			meta: $quote->taxes?->exempt === true ? $meta + [ '_fxc_tax_exempt' => '1' ] : $meta,
+			meta: $quote->taxes?->exempt === true ? $meta + [ '_fxcm_tax_exempt' => '1' ] : $meta,
 			prices_include_tax: $quote->prices_include_tax,
 			attention: self::tax_attention( $quote ),
 		);

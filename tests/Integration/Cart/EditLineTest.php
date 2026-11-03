@@ -185,7 +185,7 @@ final class EditLineTest extends CartTestCase {
 		$_SERVER['HTTP_REFERER'] = home_url( '/shop/shirt/' );
 		$_POST                   = [
 			'action'           => FormHandler::ACTION,
-			'fxc_op'           => 'add',
+			'fxcm_op'          => 'add',
 			FormHandler::FIELD => $cart->nonce()->create( 0, '', $cart->sessions()->token() ),
 			'product_id'       => (string) $id,
 			'attributes'       => [ 'l:size' => 'm' ],

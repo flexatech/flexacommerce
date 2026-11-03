@@ -9,7 +9,7 @@ use Flexa\Commerce\Database\Schema;
 
 defined( 'ABSPATH' ) || exit;
 
-/** Storage for fxc_transactions. Writes run inside the caller's transaction. */
+/** Storage for fxcm_transactions. Writes run inside the caller's transaction. */
 // phpcs:disable WordPress.DB.DirectDatabaseQuery -- plugin table, all values prepared, transactions are not object-cached.
 final class TransactionRepository {
 	private const JSON_FLAGS = JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR;
@@ -17,21 +17,26 @@ final class TransactionRepository {
 	public function __construct( private readonly \wpdb $wpdb ) {}
 
 	public function find( int $id, bool $lock = false ): ?Transaction {
-		$sql = 'SELECT * FROM %i WHERE id = %d' . ( $lock ? ' FOR UPDATE' : '' );
-		$row = $this->wpdb->get_row( $this->wpdb->prepare( $sql, Schema::table( 'transactions' ), $id ), ARRAY_A );
+		$wpdb = $this->wpdb;
+		$sql  = 'SELECT * FROM %i WHERE id = %d' . ( $lock ? ' FOR UPDATE' : '' );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- placeholders and fixed SQL only; every value is a prepare() replacement.
+		$row = $wpdb->get_row( $wpdb->prepare( $sql, Schema::table( 'transactions' ), $id ), ARRAY_A );
 		return is_array( $row ) ? Transaction::from_row( $row ) : null;
 	}
 
 	public function find_by_reference( string $gateway, string $reference, bool $lock = false ): ?Transaction {
-		$sql = 'SELECT * FROM %i WHERE gateway = %s AND gateway_reference = %s' . ( $lock ? ' FOR UPDATE' : '' );
-		$row = $this->wpdb->get_row( $this->wpdb->prepare( $sql, Schema::table( 'transactions' ), $gateway, $reference ), ARRAY_A );
+		$wpdb = $this->wpdb;
+		$sql  = 'SELECT * FROM %i WHERE gateway = %s AND gateway_reference = %s' . ( $lock ? ' FOR UPDATE' : '' );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- placeholders and fixed SQL only; every value is a prepare() replacement.
+		$row = $wpdb->get_row( $wpdb->prepare( $sql, Schema::table( 'transactions' ), $gateway, $reference ), ARRAY_A );
 		return is_array( $row ) ? Transaction::from_row( $row ) : null;
 	}
 
 	/** @return list<Transaction> oldest first */
 	public function for_order( int $order_id ): array {
-		$rows = $this->wpdb->get_results(
-			$this->wpdb->prepare( 'SELECT * FROM %i WHERE order_id = %d ORDER BY id', Schema::table( 'transactions' ), $order_id ),
+		$wpdb = $this->wpdb;
+		$rows = $wpdb->get_results(
+			$wpdb->prepare( 'SELECT * FROM %i WHERE order_id = %d ORDER BY id', Schema::table( 'transactions' ), $order_id ),
 			ARRAY_A
 		);
 		return array_map( static fn ( array $row ): Transaction => Transaction::from_row( $row ), $rows ?: [] );
@@ -56,7 +61,8 @@ final class TransactionRepository {
 		array $refund_lines = [],
 		array $data = [],
 	): int {
-		$ok = $this->wpdb->insert(
+		$wpdb = $this->wpdb;
+		$ok   = $wpdb->insert(
 			Schema::table( 'transactions' ),
 			[
 				'order_id'          => $order_id,
@@ -78,9 +84,9 @@ final class TransactionRepository {
 			[ '%d', '%d', '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s' ]
 		);
 		if ( $ok === false ) {
-			throw QueryFailed::from_wpdb( $this->wpdb );
+			throw QueryFailed::from_wpdb( $wpdb );
 		}
-		return (int) $this->wpdb->insert_id;
+		return (int) $wpdb->insert_id;
 	}
 
 	/**
@@ -123,8 +129,9 @@ final class TransactionRepository {
 
 	/** @param array<string,mixed> $fields */
 	private function update( int $id, array $fields ): void {
-		if ( $this->wpdb->update( Schema::table( 'transactions' ), $fields, [ 'id' => $id ] ) === false ) {
-			throw QueryFailed::from_wpdb( $this->wpdb );
+		$wpdb = $this->wpdb;
+		if ( $wpdb->update( Schema::table( 'transactions' ), $fields, [ 'id' => $id ] ) === false ) {
+			throw QueryFailed::from_wpdb( $wpdb );
 		}
 	}
 }

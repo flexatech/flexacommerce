@@ -12,7 +12,7 @@ use Flexa\Commerce\Database\Transaction;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Stock of product option choices (ADR-040), in fxc_option_stock. A choice
+ * Stock of product option choices (ADR-040), in fxcm_option_stock. A choice
  * is named `<set>-<field>-<choice>`; only choices that track stock have a
  * row. As with variants, every decrement is one conditional UPDATE, so two
  * buyers of the last one cannot both succeed. Orders call take() and

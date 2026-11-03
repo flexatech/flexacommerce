@@ -22,7 +22,7 @@ defined( 'ABSPATH' ) || exit;
  * PDF invoices and packing slips (ADR-060). An order gets its invoice
  * number the first time an invoice is made for it (by the admin, an email
  * that carries it, or the customer's link) and keeps it. Numbers come from
- * fxc_sequences, so they are unique and increasing; a yearly reset uses a
+ * fxcm_sequences, so they are unique and increasing; a yearly reset uses a
  * counter per year.
  *
  * Each succeeded refund can have a credit note (ADR-064) with its own
@@ -222,8 +222,8 @@ final class InvoiceService {
 
 	public function customer_url( Order $order, int $refund_id = 0 ): string {
 		$args = [
-			'fxc_invoice' => $order->id,
-			'key'         => $order->order_key,
+			'fxcm_invoice' => $order->id,
+			'key'          => $order->order_key,
 		];
 		if ( $refund_id > 0 ) {
 			$args['refund'] = $refund_id;
@@ -267,7 +267,7 @@ final class InvoiceService {
 	private function vat( Order $order ): array {
 		return [
 			'number'         => (string) $this->orders->get_meta( $order->id, '_billing_vat_number' ),
-			'reverse_charge' => $this->orders->get_meta( $order->id, '_fxc_reverse_charge' ) === '1',
+			'reverse_charge' => $this->orders->get_meta( $order->id, '_fxcm_reverse_charge' ) === '1',
 		];
 	}
 

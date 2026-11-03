@@ -166,7 +166,7 @@ final class AdminOrdersTest extends OrderTestCase {
 	public function test_order_routes_check_the_order_capabilities(): void {
 		$order = $this->place( [ $this->simple( 1000, 5 ) => 1 ] );
 		$user  = self::factory()->user->create( [ 'role' => 'subscriber' ] );
-		get_userdata( $user )->add_cap( 'view_fxc_orders' );
+		get_userdata( $user )->add_cap( 'view_fxcm_orders' );
 		wp_set_current_user( $user );
 
 		self::assertSame( 200, $this->send( 'GET', '/admin/orders/' . $order->id )->get_status() );

@@ -261,6 +261,6 @@ final class OrderServiceTest extends OrderTestCase {
 		self::assertSame( '{"a":1}', $reader->get_meta( $order->id, 'acme_ref' ) );
 		self::assertSame( $order->order_number, $reader->find_by_number( $order->order_number )?->number );
 		$this->expectException( \InvalidArgumentException::class );
-		$reader->set_meta( $order->id, '_fxc_secret', 'x' );
+		$reader->set_meta( $order->id, '_fxcm_secret', 'x' );
 	}
 }

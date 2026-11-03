@@ -19,7 +19,7 @@ defined( 'ABSPATH' ) || exit;
  */
 interface RecurringGateway extends PaymentGateway {
 	/** The query arg setup_url() adds to `$return_url` with the reference for finish_setup(). */
-	public const SETUP_ARG = 'fxc_setup';
+	public const SETUP_ARG = 'fxcm_setup';
 
 	/** The method a paid payment saved for later, read from the provider; null if it saved none. */
 	public function saved_method( string $reference ): ?SavedMethod;

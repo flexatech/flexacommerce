@@ -10,7 +10,7 @@
 	const { __ } = wp.i18n;
 	const ServerSideRender = wp.serverSideRender;
 
-	const PRODUCT = 'fxc_product';
+	const PRODUCT = 'fxcm_product';
 
 	// What the editor shows while a block renders nothing, so it can still be found and picked.
 	const EMPTY = {

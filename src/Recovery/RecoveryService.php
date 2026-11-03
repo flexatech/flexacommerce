@@ -24,7 +24,7 @@ defined( 'ABSPATH' ) || exit;
 
 /**
  * Abandoned cart recovery (ADR-063). The five-minute cron looks at carts of
- * known shoppers that went quiet, keeps a copy of each in fxc_recoveries
+ * known shoppers that went quiet, keeps a copy of each in fxcm_recoveries
  * and sends the reminders when they fall due. An order by the same email or
  * account settles the row: recovered when a reminder or a link reached the
  * shopper, else the row goes. Nothing here runs on a shopper's request
@@ -43,9 +43,9 @@ final class RecoveryService {
 	/** Settled rows are kept this long for the stats. */
 	public const KEEP_DAYS = 90;
 
-	public const RECOVER_PARAM = 'fxc_recover';
+	public const RECOVER_PARAM = 'fxcm_recover';
 
-	public const STOP_PARAM = 'fxc_recover_stop';
+	public const STOP_PARAM = 'fxcm_recover_stop';
 
 	/**
 	 * @param \Closure():CartService  $cart

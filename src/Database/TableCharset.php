@@ -29,6 +29,6 @@ final class TableCharset {
 		if ( $charset !== null || ! is_string( $table ) || ! $wpdb instanceof \wpdb || $wpdb->charset === '' || ! $wpdb->has_cap( 'collation' ) ) {
 			return $charset;
 		}
-		return str_starts_with( strtolower( $table ), strtolower( $wpdb->prefix . 'fxc_' ) ) ? $wpdb->charset : $charset;
+		return str_starts_with( strtolower( $table ), strtolower( $wpdb->prefix . 'fxcm_' ) ) ? $wpdb->charset : $charset;
 	}
 }

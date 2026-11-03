@@ -17,7 +17,7 @@ defined( 'ABSPATH' ) || exit;
  */
 // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- schema DDL on plugin-owned tables, no user input.
 final class Schema {
-	public const DB_VERSION        = '23';
+	public const DB_VERSION        = '24';
 	public const DB_VERSION_OPTION = 'flexacommerce_db_version';
 	public const OPTION_PREFIX     = 'flexacommerce_';
 
@@ -33,12 +33,13 @@ final class Schema {
 		2  => Upgrades\V2VariationTaxClass::class,
 		8  => Upgrades\V8CheckoutLayout::class,
 		23 => Upgrades\V23PrefixedKeys::class,
+		24 => Upgrades\V24LongerPrefix::class,
 	];
 
 	/** Full table name for a short name such as `orders`. */
 	public static function table( string $name ): string {
 		global $wpdb;
-		return $wpdb->prefix . 'fxc_' . $name;
+		return $wpdb->prefix . 'fxcm_' . $name;
 	}
 
 	/** @return list<string> short names */
@@ -49,7 +50,7 @@ final class Schema {
 	/** @return array<string,string> short name => CREATE TABLE statement */
 	public static function definitions(): array {
 		global $wpdb;
-		$p       = $wpdb->prefix . 'fxc_';
+		$p       = $wpdb->prefix . 'fxcm_';
 		$charset = $wpdb->get_charset_collate();
 
 		return [
@@ -629,6 +630,12 @@ final class Schema {
 		try {
 			require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 
+			// Before dbDelta, which would otherwise create the new tables empty (ADR-087).
+			$installed = self::installed_version();
+			if ( $installed > 0 && $installed < 24 ) {
+				Upgrades\V24LongerPrefix::rename_tables( self::tables() );
+			}
+
 			$changes = [];
 			foreach ( self::definitions() as $sql ) {
 				foreach ( dbDelta( $sql ) as $message ) {
@@ -673,7 +680,7 @@ final class Schema {
 	public static function status(): array {
 		global $wpdb;
 		$rows = $wpdb->get_results(
-			$wpdb->prepare( 'SHOW TABLE STATUS LIKE %s', $wpdb->esc_like( $wpdb->prefix . 'fxc_' ) . '%' ),
+			$wpdb->prepare( 'SHOW TABLE STATUS LIKE %s', $wpdb->esc_like( $wpdb->prefix . 'fxcm_' ) . '%' ),
 			ARRAY_A
 		);
 
@@ -740,7 +747,7 @@ final class Schema {
 	 */
 	public static function site_tables_to_drop( array $tables ): array {
 		foreach ( self::tables() as $short ) {
-			$tables[ 'fxc_' . $short ] = self::table( $short );
+			$tables[ 'fxcm_' . $short ] = self::table( $short );
 		}
 		return $tables;
 	}

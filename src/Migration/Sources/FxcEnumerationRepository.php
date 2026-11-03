@@ -32,15 +32,16 @@ final class FxcEnumerationRepository {
 		'from' => null,
 		'to'   => null,
 	] ): array {
+		$wpdb = $this->wpdb;
 		if ( in_array( $stage, self::SINGLE, true ) ) {
 			return $after < 1 && $upper >= 1 ? [ 1 ] : [];
 		}
 		$sql = match ( $stage ) {
-			'taxes'      => $this->wpdb->prepare( 'SELECT id FROM %i WHERE id > %d AND id <= %d ORDER BY id LIMIT %d', Schema::table( 'tax_rates' ), $after, $upper, $limit ),
-			'attributes' => $this->wpdb->prepare( 'SELECT term_id FROM %i WHERE taxonomy = %s AND parent = 0 AND term_id > %d AND term_id <= %d ORDER BY term_id LIMIT %d', $this->wpdb->term_taxonomy, PostTypes::ATTRIBUTE, $after, $upper, $limit ),
-			'terms'      => $this->wpdb->prepare(
+			'taxes'      => $wpdb->prepare( 'SELECT id FROM %i WHERE id > %d AND id <= %d ORDER BY id LIMIT %d', Schema::table( 'tax_rates' ), $after, $upper, $limit ),
+			'attributes' => $wpdb->prepare( 'SELECT term_id FROM %i WHERE taxonomy = %s AND parent = 0 AND term_id > %d AND term_id <= %d ORDER BY term_id LIMIT %d', $wpdb->term_taxonomy, PostTypes::ATTRIBUTE, $after, $upper, $limit ),
+			'terms'      => $wpdb->prepare(
 				'SELECT term_id FROM %i WHERE ( taxonomy IN (%s, %s) OR ( taxonomy = %s AND parent > 0 ) ) AND term_id > %d AND term_id <= %d ORDER BY term_id LIMIT %d',
-				$this->wpdb->term_taxonomy,
+				$wpdb->term_taxonomy,
 				PostTypes::CATEGORY,
 				PostTypes::TAG,
 				PostTypes::ATTRIBUTE,
@@ -48,17 +49,17 @@ final class FxcEnumerationRepository {
 				$upper,
 				$limit
 			),
-			'products'   => $this->wpdb->prepare( "SELECT ID FROM %i WHERE post_type = %s AND post_status NOT IN ('auto-draft', 'trash') AND ID > %d AND ID <= %d ORDER BY ID LIMIT %d", $this->wpdb->posts, PostTypes::PRODUCT, $after, $upper, $limit ),
-			'customers'  => $this->wpdb->prepare(
+			'products'   => $wpdb->prepare( "SELECT ID FROM %i WHERE post_type = %s AND post_status NOT IN ('auto-draft', 'trash') AND ID > %d AND ID <= %d ORDER BY ID LIMIT %d", $wpdb->posts, PostTypes::PRODUCT, $after, $upper, $limit ),
+			'customers'  => $wpdb->prepare(
 				"SELECT DISTINCT user_id FROM %i WHERE meta_key IN (%s, %s) AND meta_value <> '' AND user_id > %d AND user_id <= %d ORDER BY user_id LIMIT %d",
-				$this->wpdb->usermeta,
-				$this->wpdb->get_blog_prefix() . CustomerProfile::META['billing'],
-				$this->wpdb->get_blog_prefix() . CustomerProfile::META['shipping'],
+				$wpdb->usermeta,
+				$wpdb->get_blog_prefix() . CustomerProfile::META['billing'],
+				$wpdb->get_blog_prefix() . CustomerProfile::META['shipping'],
 				$after,
 				$upper,
 				$limit
 			),
-			'orders'     => $this->wpdb->prepare(
+			'orders'     => $wpdb->prepare(
 				'SELECT id FROM %i WHERE id > %d AND id <= %d AND created_at >= %s AND created_at <= %s ORDER BY id LIMIT %d',
 				Schema::table( 'orders' ),
 				$after,
@@ -67,35 +68,38 @@ final class FxcEnumerationRepository {
 				$range['to'] ?? '9999-12-31 23:59:59',
 				$limit
 			),
-			'coupons'    => $this->wpdb->prepare( 'SELECT id FROM %i WHERE id > %d AND id <= %d ORDER BY id LIMIT %d', Schema::table( 'coupons' ), $after, $upper, $limit ),
-			'reviews'    => $this->wpdb->prepare( "SELECT c.comment_ID FROM %i AS c INNER JOIN %i AS p ON p.ID = c.comment_post_ID WHERE p.post_type = %s AND c.comment_approved IN ('0', '1') AND c.comment_type = %s AND c.comment_ID > %d AND c.comment_ID <= %d ORDER BY c.comment_ID LIMIT %d", $this->wpdb->comments, $this->wpdb->posts, PostTypes::PRODUCT, Reviews::TYPE, $after, $upper, $limit ),
+			'coupons'    => $wpdb->prepare( 'SELECT id FROM %i WHERE id > %d AND id <= %d ORDER BY id LIMIT %d', Schema::table( 'coupons' ), $after, $upper, $limit ),
+			'reviews'    => $wpdb->prepare( "SELECT c.comment_ID FROM %i AS c INNER JOIN %i AS p ON p.ID = c.comment_post_ID WHERE p.post_type = %s AND c.comment_approved IN ('0', '1') AND c.comment_type = %s AND c.comment_ID > %d AND c.comment_ID <= %d ORDER BY c.comment_ID LIMIT %d", $wpdb->comments, $wpdb->posts, PostTypes::PRODUCT, Reviews::TYPE, $after, $upper, $limit ),
 			default      => null,
 		};
 		if ( $sql === null ) {
 			return [];
 		}
-		$ids = $this->wpdb->get_col( $sql );
-		if ( $this->wpdb->last_error !== '' ) {
-			throw QueryFailed::from_wpdb( $this->wpdb );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- prepared above; WPCS cannot follow the variable.
+		$ids = $wpdb->get_col( $sql );
+		if ( $wpdb->last_error !== '' ) {
+			throw QueryFailed::from_wpdb( $wpdb );
 		}
 		return array_map( 'intval', $ids );
 	}
 
 	public function upper_id( string $stage ): int {
+		$wpdb = $this->wpdb;
 		if ( in_array( $stage, self::SINGLE, true ) ) {
 			return 1;
 		}
 		$sql = match ( $stage ) {
-			'taxes'                => $this->wpdb->prepare( 'SELECT MAX(id) FROM %i', Schema::table( 'tax_rates' ) ),
-			'attributes', 'terms'  => $this->wpdb->prepare( 'SELECT MAX(term_id) FROM %i', $this->wpdb->term_taxonomy ),
-			'products'             => $this->wpdb->prepare( 'SELECT MAX(ID) FROM %i WHERE post_type = %s', $this->wpdb->posts, PostTypes::PRODUCT ),
-			'customers'            => $this->wpdb->prepare( 'SELECT MAX(ID) FROM %i', $this->wpdb->users ),
-			'orders'               => $this->wpdb->prepare( 'SELECT MAX(id) FROM %i', Schema::table( 'orders' ) ),
-			'coupons'              => $this->wpdb->prepare( 'SELECT MAX(id) FROM %i', Schema::table( 'coupons' ) ),
-			'reviews'              => $this->wpdb->prepare( 'SELECT MAX(comment_ID) FROM %i', $this->wpdb->comments ),
+			'taxes'                => $wpdb->prepare( 'SELECT MAX(id) FROM %i', Schema::table( 'tax_rates' ) ),
+			'attributes', 'terms'  => $wpdb->prepare( 'SELECT MAX(term_id) FROM %i', $wpdb->term_taxonomy ),
+			'products'             => $wpdb->prepare( 'SELECT MAX(ID) FROM %i WHERE post_type = %s', $wpdb->posts, PostTypes::PRODUCT ),
+			'customers'            => $wpdb->prepare( 'SELECT MAX(ID) FROM %i', $wpdb->users ),
+			'orders'               => $wpdb->prepare( 'SELECT MAX(id) FROM %i', Schema::table( 'orders' ) ),
+			'coupons'              => $wpdb->prepare( 'SELECT MAX(id) FROM %i', Schema::table( 'coupons' ) ),
+			'reviews'              => $wpdb->prepare( 'SELECT MAX(comment_ID) FROM %i', $wpdb->comments ),
 			default                => null,
 		};
-		return $sql === null ? 0 : (int) $this->wpdb->get_var( $sql );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- prepared above; WPCS cannot follow the variable.
+		return $sql === null ? 0 : (int) $wpdb->get_var( $sql );
 	}
 
 	/** @param array{from:?string,to:?string} $range */
@@ -124,26 +128,29 @@ final class FxcEnumerationRepository {
 	 * @return array{order:array<string,mixed>,items:list<array<string,mixed>>,addresses:list<array<string,mixed>>,history:list<array<string,mixed>>,meta:list<array<string,mixed>>,transactions:list<array<string,mixed>>,downloads:list<array<string,mixed>>,shipments:list<array<string,mixed>>}|null
 	 */
 	public function order( int $order_id ): ?array {
-		$order = $this->wpdb->get_row( $this->wpdb->prepare( 'SELECT * FROM %i WHERE id = %d', Schema::table( 'orders' ), $order_id ), ARRAY_A );
+		$wpdb  = $this->wpdb;
+		$order = $wpdb->get_row( $wpdb->prepare( 'SELECT * FROM %i WHERE id = %d', Schema::table( 'orders' ), $order_id ), ARRAY_A );
 		if ( ! is_array( $order ) ) {
 			return null;
 		}
-		$rows = fn ( string $sql ): array => $this->wpdb->get_results( $sql, ARRAY_A ) ?: [];
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- prepared above; WPCS cannot follow the variable.
+		$rows = fn ( string $sql ): array => $wpdb->get_results( $sql, ARRAY_A ) ?: [];
 		return [
 			'order'        => $order,
-			'items'        => $rows( $this->wpdb->prepare( 'SELECT * FROM %i WHERE order_id = %d ORDER BY position, id', Schema::table( 'order_items' ), $order_id ) ),
-			'addresses'    => $rows( $this->wpdb->prepare( 'SELECT * FROM %i WHERE order_id = %d ORDER BY id', Schema::table( 'order_addresses' ), $order_id ) ),
-			'history'      => $rows( $this->wpdb->prepare( 'SELECT * FROM %i WHERE order_id = %d ORDER BY created_at, id', Schema::table( 'order_history' ), $order_id ) ),
-			'meta'         => $rows( $this->wpdb->prepare( 'SELECT meta_key, meta_value FROM %i WHERE order_id = %d ORDER BY id', Schema::table( 'order_meta' ), $order_id ) ),
-			'transactions' => $rows( $this->wpdb->prepare( 'SELECT * FROM %i WHERE order_id = %d ORDER BY id', Schema::table( 'transactions' ), $order_id ) ),
-			'downloads'    => $rows( $this->wpdb->prepare( 'SELECT * FROM %i WHERE order_id = %d ORDER BY order_item_id, id', Schema::table( 'downloads' ), $order_id ) ),
-			'shipments'    => $rows( $this->wpdb->prepare( 'SELECT * FROM %i WHERE order_id = %d ORDER BY shipped_at, id', Schema::table( 'shipments' ), $order_id ) ),
+			'items'        => $rows( $wpdb->prepare( 'SELECT * FROM %i WHERE order_id = %d ORDER BY position, id', Schema::table( 'order_items' ), $order_id ) ),
+			'addresses'    => $rows( $wpdb->prepare( 'SELECT * FROM %i WHERE order_id = %d ORDER BY id', Schema::table( 'order_addresses' ), $order_id ) ),
+			'history'      => $rows( $wpdb->prepare( 'SELECT * FROM %i WHERE order_id = %d ORDER BY created_at, id', Schema::table( 'order_history' ), $order_id ) ),
+			'meta'         => $rows( $wpdb->prepare( 'SELECT meta_key, meta_value FROM %i WHERE order_id = %d ORDER BY id', Schema::table( 'order_meta' ), $order_id ) ),
+			'transactions' => $rows( $wpdb->prepare( 'SELECT * FROM %i WHERE order_id = %d ORDER BY id', Schema::table( 'transactions' ), $order_id ) ),
+			'downloads'    => $rows( $wpdb->prepare( 'SELECT * FROM %i WHERE order_id = %d ORDER BY order_item_id, id', Schema::table( 'downloads' ), $order_id ) ),
+			'shipments'    => $rows( $wpdb->prepare( 'SELECT * FROM %i WHERE order_id = %d ORDER BY shipped_at, id', Schema::table( 'shipments' ), $order_id ) ),
 		];
 	}
 
 	/** @return array<string,int> currency => orders */
 	public function order_currencies(): array {
-		$rows = $this->wpdb->get_results( $this->wpdb->prepare( 'SELECT currency, COUNT(*) AS n FROM %i GROUP BY currency', Schema::table( 'orders' ) ), ARRAY_A );
+		$wpdb = $this->wpdb;
+		$rows = $wpdb->get_results( $wpdb->prepare( 'SELECT currency, COUNT(*) AS n FROM %i GROUP BY currency', Schema::table( 'orders' ) ), ARRAY_A );
 		$out  = [];
 		foreach ( $rows ?: [] as $row ) {
 			$out[ (string) $row['currency'] ] = (int) $row['n'];
@@ -153,12 +160,14 @@ final class FxcEnumerationRepository {
 
 	/** Subscriptions stay here on the way back (ADR-079); the preflight says so. */
 	public function subscription_count(): int {
-		return (int) $this->wpdb->get_var( $this->wpdb->prepare( 'SELECT COUNT(*) FROM %i', Schema::table( 'subscriptions' ) ) );
+		$wpdb = $this->wpdb;
+		return (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM %i', Schema::table( 'subscriptions' ) ) );
 	}
 
 	/** @return array<string,int> status => orders */
 	public function order_statuses(): array {
-		$rows = $this->wpdb->get_results( $this->wpdb->prepare( 'SELECT status, COUNT(*) AS n FROM %i GROUP BY status', Schema::table( 'orders' ) ), ARRAY_A );
+		$wpdb = $this->wpdb;
+		$rows = $wpdb->get_results( $wpdb->prepare( 'SELECT status, COUNT(*) AS n FROM %i GROUP BY status', Schema::table( 'orders' ) ), ARRAY_A );
 		$out  = [];
 		foreach ( $rows ?: [] as $row ) {
 			$out[ (string) $row['status'] ] = (int) $row['n'];

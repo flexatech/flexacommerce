@@ -9,7 +9,7 @@ use Flexa\Commerce\Contracts\Orders\OrderItemView;
 
 defined( 'ABSPATH' ) || exit;
 
-/** A row of fxc_order_items. Amounts are minor units of the order currency. */
+/** A row of fxcm_order_items. Amounts are minor units of the order currency. */
 final class OrderItem {
 	public const PRODUCT  = 'product';
 	public const SHIPPING = 'shipping';

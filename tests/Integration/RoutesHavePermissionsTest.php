@@ -73,7 +73,7 @@ final class RoutesHavePermissionsTest extends \WP_UnitTestCase {
 	}
 
 	public function test_catalog_routes_reject_anonymous_and_subscribers(): void {
-		$product = self::factory()->post->create( [ 'post_type' => 'fxc_product' ] );
+		$product = self::factory()->post->create( [ 'post_type' => 'fxcm_product' ] );
 		foreach ( [ '/admin/products/' . $product, '/admin/products/' . $product . '/variants', '/admin/attributes' ] as $path ) {
 			wp_set_current_user( 0 );
 			$response = $this->server->dispatch( new \WP_REST_Request( 'GET', '/flexacommerce/v1' . $path ) );
@@ -94,8 +94,8 @@ final class RoutesHavePermissionsTest extends \WP_UnitTestCase {
 	}
 
 	public function test_store_manager_can_edit_products_but_not_settings(): void {
-		wp_set_current_user( self::factory()->user->create( [ 'role' => 'fxc_store_manager' ] ) );
-		$product = self::factory()->post->create( [ 'post_type' => 'fxc_product' ] );
+		wp_set_current_user( self::factory()->user->create( [ 'role' => 'fxcm_store_manager' ] ) );
+		$product = self::factory()->post->create( [ 'post_type' => 'fxcm_product' ] );
 
 		$response = $this->server->dispatch( new \WP_REST_Request( 'GET', '/flexacommerce/v1/admin/products/' . $product ) );
 		self::assertSame( 200, $response->get_status() );

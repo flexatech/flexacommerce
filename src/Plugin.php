@@ -118,7 +118,7 @@ final class Plugin {
 			Privacy\Privacy::instance()->register();
 			add_action( 'admin_notices', [ Storefront\TemplateLoader::class, 'notice' ] );
 			// phpcs:ignore WordPress.Security.NonceVerification.Missing -- routing only; the media upload checks its own nonce.
-			if ( isset( $_POST['fxc_download'] ) ) {
+			if ( isset( $_POST['fxcm_download'] ) ) {
 				add_filter( 'upload_dir', [ Storefront\DownloadHandler::class, 'upload_dir' ] );
 			}
 		} else {
@@ -127,19 +127,19 @@ final class Plugin {
 			add_action( 'pre_get_posts', [ $this, 'on_pre_get_posts' ] );
 			add_action( 'template_redirect', [ $this, 'on_template_redirect' ] );
 			// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- routing only; the token is checked by the handler. The literal keeps the class unloaded elsewhere (P1).
-			if ( isset( $_GET['fxc_download'] ) ) {
+			if ( isset( $_GET['fxcm_download'] ) ) {
 				add_action( 'init', [ $this, 'on_download' ], 20 );
 			}
 			// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- routing only; the order key is checked by the handler (ADR-060).
-			if ( isset( $_GET['fxc_invoice'] ) ) {
+			if ( isset( $_GET['fxcm_invoice'] ) ) {
 				add_action( 'init', [ $this, 'on_invoice' ], 20 );
 			}
 			// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- routing only; the handler checks the key and the stop form's nonce (ADR-063).
-			if ( isset( $_GET['fxc_recover'] ) || isset( $_GET['fxc_recover_stop'] ) ) {
+			if ( isset( $_GET['fxcm_recover'] ) || isset( $_GET['fxcm_recover_stop'] ) ) {
 				add_action( 'init', [ $this, 'on_recover' ], 20 );
 			}
 			// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- routing only; the handler checks the key and the stop form's nonce (ADR-065).
-			if ( isset( $_GET['fxc_stock_stop'] ) ) {
+			if ( isset( $_GET['fxcm_stock_stop'] ) ) {
 				add_action( 'init', [ $this, 'on_stock_stop' ], 20 );
 			}
 			// A posted comment form: the review hooks, for this request only (ADR-056).
@@ -723,7 +723,7 @@ final class Plugin {
 			Storefront\CheckoutPage::instance()->handle();
 		}
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- routing only; OrderLookup checks the origin. The literal keeps the class unloaded elsewhere (P1).
-		if ( isset( $_POST['fxc_order_lookup'] ) ) {
+		if ( isset( $_POST['fxcm_order_lookup'] ) ) {
 			self::no_page_cache();
 			Storefront\OrderLookup::instance()->handle();
 		}
@@ -757,7 +757,7 @@ final class Plugin {
 	 */
 	private static function is_checkout_request(): bool {
 		// phpcs:disable WordPress.Security.NonceVerification -- routing only; CheckoutPage verifies.
-		if ( isset( $_POST['fxc_checkout'] ) || isset( $_POST['fxc_pay'] ) || isset( $_GET['order-received'] ) || isset( $_GET['order-pay'] ) ) {
+		if ( isset( $_POST['fxcm_checkout'] ) || isset( $_POST['fxcm_pay'] ) || isset( $_GET['order-received'] ) || isset( $_GET['order-pay'] ) ) {
 			return true;
 		}
 		// phpcs:enable

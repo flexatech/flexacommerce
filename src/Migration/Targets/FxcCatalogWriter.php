@@ -42,11 +42,11 @@ defined( 'ABSPATH' ) || exit;
  */
 final class FxcCatalogWriter {
 	/** Post meta holding the source meta the mapping does not cover. */
-	public const IMPORT_META = '_fxc_import';
+	public const IMPORT_META = '_fxcm_import';
 
-	public const ORDERBY_META = '_fxc_orderby';
+	public const ORDERBY_META = '_fxcm_orderby';
 
-	public const ARCHIVES_META = '_fxc_archives';
+	public const ARCHIVES_META = '_fxcm_archives';
 
 	private const POST_STATUSES = [ 'publish', 'draft', 'pending', 'private', 'future' ];
 
@@ -444,9 +444,9 @@ final class FxcCatalogWriter {
 					$problems[] = Problem::warning( 'missing_attribute', sprintf( 'The attribute "%s" was not imported and was left out.', (string) ( $attribute['name'] ?? $key ) ), [ 'attribute' => $key ] );
 					continue;
 				}
-				$fxc_key = Combination::global_key( $term_id );
-				$ids     = [];
-				$lookup  = [];
+				$fxcm_key = Combination::global_key( $term_id );
+				$ids      = [];
+				$lookup   = [];
 				foreach ( $values as $value ) {
 					$id = $map->target_id( Record::TERM, Ref::parse( is_string( $value ) ? $value : null )->id ?? '' );
 					if ( $id > 0 && $this->attributes->value( $term_id, $id ) !== null ) {
@@ -462,10 +462,10 @@ final class FxcCatalogWriter {
 					'value_term_ids'    => array_values( array_unique( $ids ) ),
 				];
 			} else {
-				$name    = trim( (string) ( $attribute['name'] ?? '' ) );
-				$fxc_key = Combination::local_key( $name );
-				$lookup  = [];
-				$clean   = [];
+				$name     = trim( (string) ( $attribute['name'] ?? '' ) );
+				$fxcm_key = Combination::local_key( $name );
+				$lookup   = [];
+				$clean    = [];
 				foreach ( $values as $value ) {
 					$slug = Combination::local_value( (string) $value );
 					if ( $slug === '' || isset( $lookup[ (string) $value ] ) || in_array( $slug, $lookup, true ) ) {
@@ -480,18 +480,18 @@ final class FxcCatalogWriter {
 					'values' => $clean,
 				];
 			}
-			if ( isset( $keys[ $fxc_key ] ) ) {
+			if ( isset( $keys[ $fxcm_key ] ) ) {
 				$problems[] = Problem::warning( 'duplicate_attribute', sprintf( 'The attribute "%s" is listed twice; the second one was left out.', (string) ( $attribute['name'] ?? $key ) ) );
 				continue;
 			}
-			$keys[ $fxc_key ] = true;
-			$entry           += [
+			$keys[ $fxcm_key ] = true;
+			$entry            += [
 				'visible'   => (bool) ( $attribute['visible'] ?? true ),
 				'variation' => (bool) ( $attribute['variation'] ?? false ),
 			];
-			$raw[]            = $entry;
+			$raw[]             = $entry;
 			if ( $entry['variation'] ) {
-				$axes[ $key ] = [ $fxc_key, $lookup ];
+				$axes[ $key ] = [ $fxcm_key, $lookup ];
 			}
 		}
 		return [ $raw, $axes ];
@@ -508,23 +508,23 @@ final class FxcCatalogWriter {
 			if ( ! isset( $axes[ $key ] ) ) {
 				return null;
 			}
-			[ $fxc_key, $lookup ] = $axes[ $key ];
+			[ $fxcm_key, $lookup ] = $axes[ $key ];
 			if ( $value === Combination::WILDCARD ) {
-				$pairs[ $fxc_key ] = Combination::WILDCARD;
+				$pairs[ $fxcm_key ] = Combination::WILDCARD;
 				continue;
 			}
 			$mapped = $lookup[ (string) $value ] ?? null;
-			if ( $mapped === null && ! str_starts_with( $fxc_key, 'g:' ) ) {
+			if ( $mapped === null && ! str_starts_with( $fxcm_key, 'g:' ) ) {
 				$slug   = Combination::local_value( (string) $value );
 				$mapped = in_array( $slug, $lookup, true ) ? $slug : null;
 			}
 			if ( $mapped === null ) {
 				return null;
 			}
-			$pairs[ $fxc_key ] = $mapped;
+			$pairs[ $fxcm_key ] = $mapped;
 		}
-		foreach ( $axes as [ $fxc_key ] ) {
-			$pairs[ $fxc_key ] ??= Combination::WILDCARD;
+		foreach ( $axes as [ $fxcm_key ] ) {
+			$pairs[ $fxcm_key ] ??= Combination::WILDCARD;
 		}
 		try {
 			return $pairs === [] ? null : Combination::from_array( $pairs );

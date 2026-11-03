@@ -23,8 +23,8 @@ defined( 'ABSPATH' ) || exit;
  * fires for it; the source history is written as order notes.
  */
 final class WooOrderWriter {
-	public const SOURCE_META = '_fxc_source_id';
-	public const NUMBER_META = '_fxc_order_number';
+	public const SOURCE_META = '_fxcm_source_id';
+	public const NUMBER_META = '_fxcm_order_number';
 	/** The key sequential-number plugins read (doc 05 §10). */
 	public const PLUGIN_NUMBER_META = '_order_number';
 	/** Built-in carrier keys => the Shipment Tracking provider slugs (ADR-067). */

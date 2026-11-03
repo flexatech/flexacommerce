@@ -9,7 +9,7 @@ use Flexa\Commerce\Database\Schema;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Storage for fxc_logs. Rows are already redacted when they get here.
+ * Storage for fxcm_logs. Rows are already redacted when they get here.
  */
 // phpcs:disable WordPress.DB.DirectDatabaseQuery -- plugin table, all values prepared.
 final class LogRepository {
@@ -23,9 +23,10 @@ final class LogRepository {
 
 	/** @param non-empty-list<array{0:string,1:string,2:?string,3:string}> $rows level, message, context, created_at */
 	public function insert_many( string $channel, array $rows ): bool {
+		$wpdb = $this->wpdb;
 		if ( count( $rows ) === 1 ) {
 			[ $level, $message, $context, $created_at ] = $rows[0];
-			return $this->wpdb->insert(
+			return $wpdb->insert(
 				Schema::table( 'logs' ),
 				[
 					'level'      => $level,
@@ -44,8 +45,9 @@ final class LogRepository {
 			array_push( $args, $level, substr( $channel, 0, 64 ), $message, ...( $context === null ? [ $created_at ] : [ $context, $created_at ] ) );
 		}
 		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- $values holds placeholders only.
-		$sql = $this->wpdb->prepare( 'INSERT INTO %i (level, channel, message, context, created_at) VALUES ' . implode( ', ', $values ), ...$args );
-		return $this->wpdb->query( $sql ) !== false;
+		$sql = $wpdb->prepare( 'INSERT INTO %i (level, channel, message, context, created_at) VALUES ' . implode( ', ', $values ), ...$args );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- prepared above; WPCS cannot follow the variable.
+		return $wpdb->query( $sql ) !== false;
 	}
 
 	/**
@@ -53,6 +55,7 @@ final class LogRepository {
 	 * @return array{items:list<array{id:int,level:string,channel:string,message:string,context:mixed,created_at:string}>,total:int}
 	 */
 	public function list( array $filters, int $page = 1, int $per_page = 50 ): array {
+		$wpdb  = $this->wpdb;
 		$where = [ '1=1' ];
 		$args  = [ Schema::table( 'logs' ) ];
 		if ( ( $filters['level'] ?? '' ) !== '' ) {
@@ -65,18 +68,18 @@ final class LogRepository {
 		}
 		if ( ( $filters['search'] ?? '' ) !== '' ) {
 			$where[] = 'message LIKE %s';
-			$args[]  = '%' . $this->wpdb->esc_like( (string) $filters['search'] ) . '%';
+			$args[]  = '%' . $wpdb->esc_like( (string) $filters['search'] ) . '%';
 		}
 		$sql = 'FROM %i WHERE ' . implode( ' AND ', $where );
 
-		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- $sql is built from fixed fragments above.
-		$total = (int) $this->wpdb->get_var( $this->wpdb->prepare( "SELECT COUNT(*) {$sql}", ...$args ) );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- $sql is built from fixed fragments above.
+		$total = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) {$sql}", ...$args ) );
 
 		$per_page = max( 1, min( 200, $per_page ) );
 		$offset   = ( max( 1, $page ) - 1 ) * $per_page;
-		$rows     = $this->wpdb->get_results(
-			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- as above.
-			$this->wpdb->prepare( "SELECT * {$sql} ORDER BY id DESC LIMIT %d OFFSET %d", ...[ ...$args, $per_page, $offset ] ),
+		$rows     = $wpdb->get_results(
+			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- as above.
+			$wpdb->prepare( "SELECT * {$sql} ORDER BY id DESC LIMIT %d OFFSET %d", ...[ ...$args, $per_page, $offset ] ),
 			ARRAY_A
 		);
 
@@ -100,16 +103,18 @@ final class LogRepository {
 
 	/** @return list<string> */
 	public function channels(): array {
-		$rows = $this->wpdb->get_col(
-			$this->wpdb->prepare( 'SELECT DISTINCT channel FROM %i ORDER BY channel', Schema::table( 'logs' ) )
+		$wpdb = $this->wpdb;
+		$rows = $wpdb->get_col(
+			$wpdb->prepare( 'SELECT DISTINCT channel FROM %i ORDER BY channel', Schema::table( 'logs' ) )
 		);
 		return array_values( array_map( 'strval', $rows ) );
 	}
 
 	/** Deletes at most one batch so a cron run stays short; returns rows deleted. */
 	public function purge_older_than( string $cutoff, int $limit = self::PURGE_BATCH ): int {
-		$deleted = $this->wpdb->query(
-			$this->wpdb->prepare(
+		$wpdb    = $this->wpdb;
+		$deleted = $wpdb->query(
+			$wpdb->prepare(
 				'DELETE FROM %i WHERE created_at < %s ORDER BY id LIMIT %d',
 				Schema::table( 'logs' ),
 				$cutoff,
@@ -120,6 +125,7 @@ final class LogRepository {
 	}
 
 	public function clear(): int {
-		return (int) $this->wpdb->query( $this->wpdb->prepare( 'DELETE FROM %i', Schema::table( 'logs' ) ) );
+		$wpdb = $this->wpdb;
+		return (int) $wpdb->query( $wpdb->prepare( 'DELETE FROM %i', Schema::table( 'logs' ) ) );
 	}
 }

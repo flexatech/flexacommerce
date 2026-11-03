@@ -55,7 +55,7 @@ final class WooCatalogReader {
 		'_product_version',
 		'_transient_wc_count_comments',
 		'total_sales',
-		'_fxc_source_id',
+		'_fxcm_source_id',
 		'_children',
 		'_product_url',
 		'_button_text',
@@ -313,7 +313,7 @@ final class WooCatalogReader {
 		$dropped = [];
 		foreach ( $meta as $key => $values ) {
 			$key = (string) $key;
-			if ( in_array( $key, $mapped, true ) || str_starts_with( $key, 'attribute_' ) || str_starts_with( $key, '_fxc_' ) ) {
+			if ( in_array( $key, $mapped, true ) || str_starts_with( $key, 'attribute_' ) || str_starts_with( $key, '_fxcm_' ) ) {
 				continue;
 			}
 			$list = [];

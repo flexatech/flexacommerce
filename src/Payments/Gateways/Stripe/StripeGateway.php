@@ -50,7 +50,7 @@ final class StripeGateway extends AbstractPaymentGateway implements ConnectedGat
 	private const MANDATE = [ 'acss_debit', 'au_becs_debit', 'bacs_debit', 'sepa_debit', 'us_bank_account' ];
 
 	/** User option with the user's Stripe customer, per mode (ADR-074). */
-	public const CUSTOMER_OPTION = '_fxc_stripe_customer_';
+	public const CUSTOMER_OPTION = '_fxcm_stripe_customer_';
 
 	public function __construct( private readonly string $api_base = StripeClient::BASE ) {}
 

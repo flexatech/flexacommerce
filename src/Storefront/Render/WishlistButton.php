@@ -14,7 +14,7 @@ defined( 'ABSPATH' ) || exit;
 /**
  * The heart button under the add-to-cart form (ADR-066). The markup is
  * the same for every visitor, so product pages and lists stay cacheable:
- * the store reads the `fxc_wishlist_ids` cookie and sets `aria-pressed`.
+ * the store reads the `fxcm_wishlist_ids` cookie and sets `aria-pressed`.
  * Without scripts the button posts to admin-post.php and always saves.
  */
 final class WishlistButton {

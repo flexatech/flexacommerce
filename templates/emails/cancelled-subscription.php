@@ -11,7 +11,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-$fxc_sub = $args['subscription'];
+$fxcm_sub = $args['subscription'];
 ?>
 <p style="margin:0;">
 	<?php
@@ -19,8 +19,8 @@ $fxc_sub = $args['subscription'];
 		sprintf(
 			/* translators: 1: subscription number, 2: customer email. */
 			__( 'Subscription #%1$d of %2$s was cancelled.', 'flexacommerce' ),
-			$fxc_sub->id,
-			$fxc_sub->customer_email
+			$fxcm_sub->id,
+			$fxcm_sub->customer_email
 		)
 	);
 	?>

@@ -11,7 +11,7 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Header cart link with the item count. The server never reads the session
  * here, so the markup is the same for every visitor and catalog pages stay
- * cacheable (P11). The script reads the count from the `fxc_cart_count`
+ * cacheable (P11). The script reads the count from the `fxcm_cart_count`
  * cookie, and asks `store/cart` only for a logged-in shopper whose browser
  * has no count yet (doc 10 Q19).
  */

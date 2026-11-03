@@ -116,7 +116,7 @@ final class ShippingServiceTest extends TestCase {
 		$registry = new MethodRegistry();
 		$factory  = static fn (): ShippingMethod => new BrokenMethod();
 		$registry->register( 'acme_broken', $factory );
-		foreach ( [ 'flat_rate', 'fxc_x', 'acme_broken' ] as $type ) {
+		foreach ( [ 'flat_rate', 'fxcm_x', 'acme_broken' ] as $type ) {
 			try {
 				$registry->register( $type, $factory );
 				self::fail( 'Accepted ' . $type );

@@ -110,11 +110,11 @@ Yes. The two plugins use separate tables and do not share data. FlexaCommerce > 
 
 = Does it work with page caching? =
 
-Yes. Shop, category, tag, search and product pages are the same for every visitor and can be cached. Browsing them sets no cookie and sends no `no-cache` header. The mini-cart reads the item count from the `fxc_cart_count` cookie in the browser, so a cached page still shows the right count.
+Yes. Shop, category, tag, search and product pages are the same for every visitor and can be cached. Browsing them sets no cookie and sends no `no-cache` header. The mini-cart reads the item count from the `fxcm_cart_count` cookie in the browser, so a cached page still shows the right count.
 
 The cart, checkout and account pages differ per visitor. FlexaCommerce sends `no-cache` headers on them and defines `DONOTCACHEPAGE`, which WP Super Cache, W3 Total Cache, LiteSpeed Cache and most other cache plugins respect. If your cache ignores both (some server and CDN caches do), exclude those three pages by URL, along with any URL that has `order-received` or `order-pay` in its query string.
 
-Do not make the cache skip every page when the `fxc_session` cookie is present. That cookie exists once a visitor adds something to the cart, and skipping on it turns off caching of the whole shop for every visitor who has a cart.
+Do not make the cache skip every page when the `fxcm_session` cookie is present. That cookie exists once a visitor adds something to the cart, and skipping on it turns off caching of the whole shop for every visitor who has a cart.
 
 = A store page is missing or shows nothing. What do I do? =
 

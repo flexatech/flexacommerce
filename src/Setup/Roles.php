@@ -9,7 +9,7 @@ use Flexa\Commerce\Support\Capabilities;
 defined( 'ABSPATH' ) || exit;
 
 final class Roles {
-	public const STORE_MANAGER = 'fxc_store_manager';
+	public const STORE_MANAGER = 'fxcm_store_manager';
 
 	/** Raise when the capability set changes; Activator::maybe_upgrade() then reinstalls. */
 	public const VERSION = 2;

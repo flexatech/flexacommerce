@@ -50,21 +50,24 @@ final class ImportRepository {
 
 	/** Id of the order holding a number, trashed ones included (the index covers them). */
 	public function order_with_number( string $number ): int {
-		return (int) $this->wpdb->get_var(
-			$this->wpdb->prepare( 'SELECT id FROM %i WHERE order_number = %s', Schema::table( 'orders' ), $number )
+		$wpdb = $this->wpdb;
+		return (int) $wpdb->get_var(
+			$wpdb->prepare( 'SELECT id FROM %i WHERE order_number = %s', Schema::table( 'orders' ), $number )
 		);
 	}
 
 	public function order_exists( int $order_id ): bool {
-		return $order_id > 0 && (int) $this->wpdb->get_var(
-			$this->wpdb->prepare( 'SELECT COUNT(*) FROM %i WHERE id = %d', Schema::table( 'orders' ), $order_id )
+		$wpdb = $this->wpdb;
+		return $order_id > 0 && (int) $wpdb->get_var(
+			$wpdb->prepare( 'SELECT COUNT(*) FROM %i WHERE id = %d', Schema::table( 'orders' ), $order_id )
 		) > 0;
 	}
 
 	/** @return array{order_number:string,status:string,currency:string,total:int,tax_total:int,amount_refunded:int,product_lines:int}|null */
 	public function order_summary( int $order_id ): ?array {
-		$row = $this->wpdb->get_row(
-			$this->wpdb->prepare(
+		$wpdb = $this->wpdb;
+		$row  = $wpdb->get_row(
+			$wpdb->prepare(
 				"SELECT o.order_number, o.status, o.currency, o.total, o.tax_total, o.amount_refunded, (SELECT COUNT(*) FROM %i i WHERE i.order_id = o.id AND i.type = 'product') AS product_lines FROM %i o WHERE o.id = %d",
 				Schema::table( 'order_items' ),
 				Schema::table( 'orders' ),
@@ -88,8 +91,9 @@ final class ImportRepository {
 
 	/** @return array<string,int> currency => orders */
 	public function order_currencies(): array {
-		$rows = $this->wpdb->get_results(
-			$this->wpdb->prepare( 'SELECT currency, COUNT(*) AS n FROM %i GROUP BY currency', Schema::table( 'orders' ) ),
+		$wpdb = $this->wpdb;
+		$rows = $wpdb->get_results(
+			$wpdb->prepare( 'SELECT currency, COUNT(*) AS n FROM %i GROUP BY currency', Schema::table( 'orders' ) ),
 			ARRAY_A
 		);
 		$out  = [];
@@ -100,8 +104,9 @@ final class ImportRepository {
 	}
 
 	public function updated_at( int $order_id ): ?string {
-		$value = $this->wpdb->get_var(
-			$this->wpdb->prepare( 'SELECT updated_at FROM %i WHERE id = %d', Schema::table( 'orders' ), $order_id )
+		$wpdb  = $this->wpdb;
+		$value = $wpdb->get_var(
+			$wpdb->prepare( 'SELECT updated_at FROM %i WHERE id = %d', Schema::table( 'orders' ), $order_id )
 		);
 		return is_string( $value ) ? $value : null;
 	}
@@ -112,33 +117,36 @@ final class ImportRepository {
 	 * @param array<string,int|string|null> $row column => value
 	 */
 	public function save_order( int $order_id, array $row ): int {
+		$wpdb  = $this->wpdb;
 		$table = Schema::table( 'orders' );
 		if ( $order_id > 0 ) {
-			if ( $this->wpdb->update( $table, $row, [ 'id' => $order_id ] ) === false ) {
-				throw QueryFailed::from_wpdb( $this->wpdb );
+			if ( $wpdb->update( $table, $row, [ 'id' => $order_id ] ) === false ) {
+				throw QueryFailed::from_wpdb( $wpdb );
 			}
 			return $order_id;
 		}
-		if ( $this->wpdb->insert( $table, $row ) === false ) {
-			throw QueryFailed::from_wpdb( $this->wpdb );
+		if ( $wpdb->insert( $table, $row ) === false ) {
+			throw QueryFailed::from_wpdb( $wpdb );
 		}
-		return (int) $this->wpdb->insert_id;
+		return (int) $wpdb->insert_id;
 	}
 
 	public function clear_children( int $order_id ): void {
+		$wpdb = $this->wpdb;
 		foreach ( self::CHILDREN as $name ) {
-			if ( $this->wpdb->query( $this->wpdb->prepare( 'DELETE FROM %i WHERE order_id = %d', Schema::table( $name ), $order_id ) ) === false ) {
-				throw QueryFailed::from_wpdb( $this->wpdb );
+			if ( $wpdb->query( $wpdb->prepare( 'DELETE FROM %i WHERE order_id = %d', Schema::table( $name ), $order_id ) ) === false ) {
+				throw QueryFailed::from_wpdb( $wpdb );
 			}
 		}
 	}
 
 	/** The order and everything under it. False when it was gone already. */
 	public function delete_order( int $order_id ): bool {
+		$wpdb = $this->wpdb;
 		$this->clear_children( $order_id );
-		$deleted = $this->wpdb->query( $this->wpdb->prepare( 'DELETE FROM %i WHERE id = %d', Schema::table( 'orders' ), $order_id ) );
+		$deleted = $wpdb->query( $wpdb->prepare( 'DELETE FROM %i WHERE id = %d', Schema::table( 'orders' ), $order_id ) );
 		if ( $deleted === false ) {
-			throw QueryFailed::from_wpdb( $this->wpdb );
+			throw QueryFailed::from_wpdb( $wpdb );
 		}
 		return $deleted > 0;
 	}
@@ -152,6 +160,7 @@ final class ImportRepository {
 	 * @return list<int>
 	 */
 	public function insert_items( int $order_id, array $items ): array {
+		$wpdb = $this->wpdb;
 		if ( $items === [] ) {
 			return [];
 		}
@@ -172,11 +181,12 @@ final class ImportRepository {
 			}
 		}
 		$sql = 'INSERT INTO %i (order_id, ' . implode( ', ', array_keys( self::ITEM_COLUMNS ) ) . ') VALUES ' . implode( ', ', $values );
-		if ( $this->wpdb->query( $this->wpdb->prepare( $sql, ...$args ) ) === false ) {
-			throw QueryFailed::from_wpdb( $this->wpdb );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- placeholders and fixed SQL only; every value is a prepare() replacement.
+		if ( $wpdb->query( $wpdb->prepare( $sql, ...$args ) ) === false ) {
+			throw QueryFailed::from_wpdb( $wpdb );
 		}
-		$ids = $this->wpdb->get_col(
-			$this->wpdb->prepare( 'SELECT id FROM %i WHERE order_id = %d ORDER BY position, id', $table, $order_id )
+		$ids = $wpdb->get_col(
+			$wpdb->prepare( 'SELECT id FROM %i WHERE order_id = %d ORDER BY position, id', $table, $order_id )
 		);
 		return array_map( 'intval', $ids );
 	}
@@ -185,6 +195,7 @@ final class ImportRepository {
 	 * @param list<array{type:string,message:string,customer_visible:bool,actor_type:string,actor_id:int,from_status:?string,to_status:?string,context:array<string,mixed>,created_at:string}> $rows
 	 */
 	public function insert_history( int $order_id, array $rows ): void {
+		$wpdb = $this->wpdb;
 		if ( $rows === [] ) {
 			return;
 		}
@@ -207,13 +218,15 @@ final class ImportRepository {
 			);
 		}
 		$sql = 'INSERT INTO %i (order_id, type, from_status, to_status, message, customer_visible, actor_type, actor_id, context, created_at) VALUES ' . implode( ', ', $values );
-		if ( $this->wpdb->query( $this->wpdb->prepare( $sql, ...$args ) ) === false ) {
-			throw QueryFailed::from_wpdb( $this->wpdb );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- placeholders and fixed SQL only; every value is a prepare() replacement.
+		if ( $wpdb->query( $wpdb->prepare( $sql, ...$args ) ) === false ) {
+			throw QueryFailed::from_wpdb( $wpdb );
 		}
 	}
 
 	/** @param list<AddressView> $addresses */
 	public function save_addresses( int $order_id, array $addresses ): void {
+		$wpdb = $this->wpdb;
 		if ( $addresses === [] ) {
 			return;
 		}
@@ -228,13 +241,15 @@ final class ImportRepository {
 			}
 		}
 		$sql = 'INSERT INTO %i (order_id, type, ' . implode( ', ', self::ADDRESS_COLUMNS ) . ') VALUES ' . implode( ', ', $values );
-		if ( $this->wpdb->query( $this->wpdb->prepare( $sql, ...$args ) ) === false ) {
-			throw QueryFailed::from_wpdb( $this->wpdb );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- placeholders and fixed SQL only; every value is a prepare() replacement.
+		if ( $wpdb->query( $wpdb->prepare( $sql, ...$args ) ) === false ) {
+			throw QueryFailed::from_wpdb( $wpdb );
 		}
 	}
 
 	/** @param array<string,string> $meta */
 	public function insert_meta( int $order_id, array $meta ): void {
+		$wpdb = $this->wpdb;
 		if ( $meta === [] ) {
 			return;
 		}
@@ -245,8 +260,9 @@ final class ImportRepository {
 			array_push( $args, $order_id, (string) $key, $value );
 		}
 		$sql = 'INSERT INTO %i (order_id, meta_key, meta_value) VALUES ' . implode( ', ', $values );
-		if ( $this->wpdb->query( $this->wpdb->prepare( $sql, ...$args ) ) === false ) {
-			throw QueryFailed::from_wpdb( $this->wpdb );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- placeholders and fixed SQL only; every value is a prepare() replacement.
+		if ( $wpdb->query( $wpdb->prepare( $sql, ...$args ) ) === false ) {
+			throw QueryFailed::from_wpdb( $wpdb );
 		}
 	}
 
@@ -256,25 +272,28 @@ final class ImportRepository {
 	 * @param list<array{carrier:string,carrier_name:string,tracking_number:string,tracking_url:string,shipped_at:string}> $rows
 	 */
 	public function insert_shipments( int $order_id, array $rows, string $created ): void {
+		$wpdb = $this->wpdb;
 		foreach ( $rows as $row ) {
-			if ( $this->wpdb->insert( Schema::table( 'shipments' ), [ 'order_id' => $order_id ] + $row + [ 'created_at' => $created ] ) === false ) {
-				throw QueryFailed::from_wpdb( $this->wpdb );
+			if ( $wpdb->insert( Schema::table( 'shipments' ), [ 'order_id' => $order_id ] + $row + [ 'created_at' => $created ] ) === false ) {
+				throw QueryFailed::from_wpdb( $wpdb );
 			}
 		}
 	}
 
 	/** @param array<string,int|string|null> $row column => value; arrays are not accepted, encode them first */
 	public function insert_transaction( array $row ): int {
-		if ( $this->wpdb->insert( Schema::table( 'transactions' ), $row ) === false ) {
-			throw QueryFailed::from_wpdb( $this->wpdb );
+		$wpdb = $this->wpdb;
+		if ( $wpdb->insert( Schema::table( 'transactions' ), $row ) === false ) {
+			throw QueryFailed::from_wpdb( $wpdb );
 		}
-		return (int) $this->wpdb->insert_id;
+		return (int) $wpdb->insert_id;
 	}
 
 	/** A gateway reference held by a transaction of another order. */
 	public function reference_taken( string $gateway, string $reference, int $order_id ): bool {
-		return (int) $this->wpdb->get_var(
-			$this->wpdb->prepare(
+		$wpdb = $this->wpdb;
+		return (int) $wpdb->get_var(
+			$wpdb->prepare(
 				'SELECT COUNT(*) FROM %i WHERE gateway = %s AND gateway_reference = %s AND order_id <> %d',
 				Schema::table( 'transactions' ),
 				$gateway,
@@ -290,11 +309,12 @@ final class ImportRepository {
 	 * @return list<int>
 	 */
 	public function orders_of_job( int $job_id, int $after, int $limit ): array {
-		$ids = $this->wpdb->get_col(
-			$this->wpdb->prepare(
+		$wpdb = $this->wpdb;
+		$ids  = $wpdb->get_col(
+			$wpdb->prepare(
 				'SELECT order_id FROM %i WHERE meta_key = %s AND meta_value = %s AND order_id > %d ORDER BY order_id LIMIT %d',
 				Schema::table( 'order_meta' ),
-				'_fxc_import_job',
+				'_fxcm_import_job',
 				(string) $job_id,
 				$after,
 				$limit

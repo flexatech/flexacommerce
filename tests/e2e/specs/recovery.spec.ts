@@ -54,7 +54,7 @@ test( 'a guest cart left at checkout gets a reminder whose link brings it back',
 	// The link opened in a fresh browser fills its cart and goes to the checkout.
 	const other = await browser.newContext( { baseURL: info.project.use.baseURL, extraHTTPHeaders: info.project.use.extraHTTPHeaders } );
 	const back = await other.newPage();
-	await back.goto( `/?fxc_recover=${ key }` );
+	await back.goto( `/?fxcm_recover=${ key }` );
 	await expect( back ).toHaveURL( new RegExp( new URL( store.checkout ).pathname ) );
 	await expect( back.getByText( store.simple.name ).first() ).toBeVisible();
 	await expect( back.locator( '#fxc-billing-email' ) ).toHaveValue( email );

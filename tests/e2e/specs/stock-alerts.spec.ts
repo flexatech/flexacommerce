@@ -66,7 +66,7 @@ test( 'the restock sends one email, and its link stops the emails', async ( { pa
 	const again = await restock( page, store.soldout.id );
 	expect( again.subjects ).not.toContain( `${ store.soldout.name } is back in stock` );
 
-	await page.goto( `/?fxc_stock_stop=${ mine?.key }` );
+	await page.goto( `/?fxcm_stock_stop=${ mine?.key }` );
 	await expect( page.getByText( 'Stop the emails about products you asked to hear about when they are back in stock?' ) ).toBeVisible();
 	await page.getByRole( 'button', { name: 'Stop back-in-stock emails' } ).click();
 	await expect( page.getByText( 'You will get no more back-in-stock emails for the products you asked about.' ) ).toBeVisible();

@@ -11,7 +11,7 @@ use Flexa\Commerce\Contracts\Orders\OrderView;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * A row of fxc_orders with its items and addresses. Search results carry no
+ * A row of fxcm_orders with its items and addresses. Search results carry no
  * items (`items_loaded` false).
  */
 final class Order {

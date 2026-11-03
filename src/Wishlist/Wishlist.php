@@ -7,8 +7,8 @@ namespace Flexa\Commerce\Wishlist;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * One row of fxc_wishlists (ADR-066). A customer has one list; a guest's
- * list is found by the hash of the `fxc_wishlist` cookie and moves to the
+ * One row of fxcm_wishlists (ADR-066). A customer has one list; a guest's
+ * list is found by the hash of the `fxcm_wishlist` cookie and moves to the
  * account at the first signed-in visit. The share key opens a read-only
  * copy for anyone with the link.
  */

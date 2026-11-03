@@ -34,7 +34,7 @@ final class ShopQuery {
 	public const CATEGORY_FILTER = 'filter_cat';
 
 	/** Query var of a meta sort: [ meta key, SQL cast, descending ]. */
-	private const ORDER_META = 'fxc_order_meta';
+	private const ORDER_META = 'fxcm_order_meta';
 
 	public const FILTER_PREFIX = 'filter_';
 
@@ -51,7 +51,7 @@ final class ShopQuery {
 	 * the `posts_where` filter that reads it; a query with
 	 * `suppress_filters` ignores it.
 	 */
-	public const VISIBILITY_VAR = 'fxc_visibility';
+	public const VISIBILITY_VAR = 'fxcm_visibility';
 
 	/** Visibilities left out of the catalog and of search (doc 03 §3.3). */
 	private const HIDDEN_IN = [
@@ -199,7 +199,7 @@ final class ShopQuery {
 		}
 		[ $first, $second ] = self::HIDDEN_IN[ $context ];
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table names only.
-		return (string) $wpdb->prepare( " AND NOT EXISTS ( SELECT 1 FROM {$wpdb->postmeta} AS fxc_visibility WHERE fxc_visibility.post_id = {$wpdb->posts}.ID AND fxc_visibility.meta_key = %s AND fxc_visibility.meta_value IN ( %s, %s ) )", ProductRepository::META_VISIBILITY, $first, $second );
+		return (string) $wpdb->prepare( " AND NOT EXISTS ( SELECT 1 FROM {$wpdb->postmeta} AS fxcm_visibility WHERE fxcm_visibility.post_id = {$wpdb->posts}.ID AND fxcm_visibility.meta_key = %s AND fxcm_visibility.meta_value IN ( %s, %s ) )", ProductRepository::META_VISIBILITY, $first, $second );
 	}
 
 	private function sort( \WP_Query $query, string $sort ): void {
@@ -244,8 +244,8 @@ final class ShopQuery {
 	}
 
 	/**
-	 * Sorts by a number in product meta (`_fxc_price_min/max`, doc 03 §8;
-	 * `_fxc_rating`, ADR-056), keeping products without it, last. A meta
+	 * Sorts by a number in product meta (`_fxcm_price_min/max`, doc 03 §8;
+	 * `_fxcm_rating`, ADR-056), keeping products without it, last. A meta
 	 * query cannot: with EXISTS OR NOT EXISTS it joins every meta row of a
 	 * product without the key and sorts it by whichever comes first.
 	 */
@@ -269,8 +269,8 @@ final class ShopQuery {
 		}
 		[ $key, $cast, $desc ] = $order;
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table names only.
-		$clauses['join']   .= (string) $wpdb->prepare( " LEFT JOIN {$wpdb->postmeta} AS fxc_sort ON ( fxc_sort.post_id = {$wpdb->posts}.ID AND fxc_sort.meta_key = %s )", (string) $key );
-		$clauses['orderby'] = 'fxc_sort.meta_value IS NULL, CAST( fxc_sort.meta_value AS ' . $cast . ' ) ' . ( $desc ? 'DESC' : 'ASC' ) . ( $clauses['orderby'] !== '' ? ', ' . $clauses['orderby'] : '' );
+		$clauses['join']   .= (string) $wpdb->prepare( " LEFT JOIN {$wpdb->postmeta} AS fxcm_sort ON ( fxcm_sort.post_id = {$wpdb->posts}.ID AND fxcm_sort.meta_key = %s )", (string) $key );
+		$clauses['orderby'] = 'fxcm_sort.meta_value IS NULL, CAST( fxcm_sort.meta_value AS ' . $cast . ' ) ' . ( $desc ? 'DESC' : 'ASC' ) . ( $clauses['orderby'] !== '' ? ', ' . $clauses['orderby'] : '' );
 		return $clauses;
 	}
 
@@ -335,7 +335,7 @@ final class ShopQuery {
 
 		$meta = [];
 		if ( isset( $filters[ self::STOCK_FILTER ] ) ) {
-			$meta['fxc_stock_filter'] = [
+			$meta['fxcm_stock_filter'] = [
 				'key'     => ProductRepository::META_STOCK_STATUS,
 				'value'   => $filters[ self::STOCK_FILTER ],
 				'compare' => 'IN',
@@ -344,7 +344,7 @@ final class ShopQuery {
 		[ $low, $high ] = self::stored_range( $price );
 		// A product matches when its price range meets the asked one.
 		if ( $low !== null ) {
-			$meta['fxc_price_low'] = [
+			$meta['fxcm_price_low'] = [
 				'key'     => ProductRepository::META_PRICE_MAX,
 				'value'   => $low,
 				'compare' => '>=',
@@ -352,7 +352,7 @@ final class ShopQuery {
 			];
 		}
 		if ( $high !== null ) {
-			$meta['fxc_price_high'] = [
+			$meta['fxcm_price_high'] = [
 				'key'     => ProductRepository::META_PRICE_MIN,
 				'value'   => $high,
 				'compare' => '<=',
@@ -362,7 +362,7 @@ final class ShopQuery {
 		if ( $meta !== [] ) {
 			$own  = $query->get( 'meta_query' );
 			$meta = array_merge( is_array( $own ) ? $own : [], $meta );
-			$query->set( 'meta_query', $meta ); // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- `_fxc_price_min/max` and `_fxc_stock_status` exist for the shop (doc 03 §8).
+			$query->set( 'meta_query', $meta ); // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- `_fxcm_price_min/max` and `_fxcm_stock_status` exist for the shop (doc 03 §8).
 		}
 	}
 

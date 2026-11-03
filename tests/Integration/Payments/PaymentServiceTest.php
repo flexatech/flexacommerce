@@ -57,7 +57,7 @@ final class PaymentServiceTest extends OrderTestCase {
 				self::assertStringContainsString( 'Invalid gateway id', $e->getMessage() );
 			}
 		}
-		foreach ( [ 'cod', 'bacs', 'fxc_card', FakeGateway::ID ] as $id ) {
+		foreach ( [ 'cod', 'bacs', 'fxcm_card', FakeGateway::ID ] as $id ) {
 			try {
 				$gateways->register( $id, $factory );
 				self::fail( 'Accepted ' . $id );

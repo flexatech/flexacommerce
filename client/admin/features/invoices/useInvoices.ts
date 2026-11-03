@@ -100,7 +100,7 @@ export function useCreateInvoice(orderId: number) {
 /** The admin-post URL that streams the PDF of one or more orders. */
 export function invoicePdfUrl(orderIds: number[], document: InvoiceDocument): string {
     const { adminUrl, restNonce } = getPluginGlobal();
-    const query = new URLSearchParams({ action: "fxc_invoice", orders: orderIds.join(","), document, _wpnonce: restNonce });
+    const query = new URLSearchParams({ action: "fxcm_invoice", orders: orderIds.join(","), document, _wpnonce: restNonce });
     return `${adminUrl.replace(/admin\.php$/, "admin-post.php")}?${query.toString()}`;
 }
 
@@ -108,7 +108,7 @@ export function invoicePdfUrl(orderIds: number[], document: InvoiceDocument): st
 export function creditNotePdfUrl(orderId: number, refundId: number): string {
     const { adminUrl, restNonce } = getPluginGlobal();
     const query = new URLSearchParams({
-        action: "fxc_invoice",
+        action: "fxcm_invoice",
         orders: String(orderId),
         document: "credit_note",
         refund: String(refundId),

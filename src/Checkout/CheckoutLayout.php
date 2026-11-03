@@ -104,7 +104,7 @@ final class CheckoutLayout {
 	public const PREVIEW_TTL = 3600;
 
 	/** Query argument of the preview link; its value is a nonce for PREVIEW_NONCE. */
-	public const PREVIEW_ARG   = 'fxc_preview';
+	public const PREVIEW_ARG   = 'fxcm_preview';
 	public const PREVIEW_NONCE = 'flexacommerce-checkout-preview';
 
 	/** `when.shipping`: any cart, a cart that ships, a cart that does not. */

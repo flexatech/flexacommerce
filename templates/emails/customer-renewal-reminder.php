@@ -12,7 +12,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-$fxc_url = $args['subscription_url'] !== '' ? $args['subscription_url'] : $args['data']->customer_url( $args['order'] );
+$fxcm_url = $args['subscription_url'] !== '' ? $args['subscription_url'] : $args['data']->customer_url( $args['order'] );
 ?>
 <p style="margin:0;">
 	<?php
@@ -57,8 +57,8 @@ $fxc_url = $args['subscription_url'] !== '' ? $args['subscription_url'] : $args[
 		</tr>
 	<?php endif; ?>
 </table>
-<?php if ( $fxc_url !== '' ) : ?>
-	<p style="margin:24px 0 0;"><a href="<?php echo esc_url( $fxc_url ); ?>" style="display:inline-block;padding:10px 18px;background:#18181b;color:#ffffff;border-radius:6px;text-decoration:none;font-weight:600;font-size:14px;"><?php esc_html_e( 'Manage your subscription', 'flexacommerce' ); ?></a></p>
+<?php if ( $fxcm_url !== '' ) : ?>
+	<p style="margin:24px 0 0;"><a href="<?php echo esc_url( $fxcm_url ); ?>" style="display:inline-block;padding:10px 18px;background:#18181b;color:#ffffff;border-radius:6px;text-decoration:none;font-weight:600;font-size:14px;"><?php esc_html_e( 'Manage your subscription', 'flexacommerce' ); ?></a></p>
 	<?php if ( $args['subscription_url'] !== '' ) : ?>
 		<p style="margin:8px 0 0;font-size:13px;color:#71717a;"><?php esc_html_e( 'You can change the payment method or cancel from that page before the renewal.', 'flexacommerce' ); ?></p>
 	<?php endif; ?>

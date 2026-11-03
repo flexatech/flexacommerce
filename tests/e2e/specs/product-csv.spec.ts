@@ -18,7 +18,7 @@ test( 'products export to CSV and a CSV row imports as a new product', async ( {
 	test.skip( info.project.name !== 'tt5', 'admin screen, theme independent' );
 
 	await logInAsAdmin( page );
-	await page.goto( '/wp-admin/edit.php?post_type=fxc_product' );
+	await page.goto( '/wp-admin/edit.php?post_type=fxcm_product' );
 	// Headless Chromium stops animation frames after a link click away from
 	// the product list (core links too), so the spec follows the href.
 	const exportLink = page.locator( '.wrap' ).getByRole( 'link', { name: 'Export', exact: true } );

@@ -67,16 +67,16 @@ final class CouponCartTest extends CouponTestCase {
 		$plain = $this->simple( 1000 );
 		$sale  = $this->simple( 1000 );
 		$this->save( $sale, [ 'base' => [ 'sale_price' => 800 ] ] );
-		$parent = self::factory()->term->create( [ 'taxonomy' => 'fxc_product_cat' ] );
+		$parent = self::factory()->term->create( [ 'taxonomy' => 'fxcm_product_cat' ] );
 		$child  = self::factory()->term->create(
 			[
-				'taxonomy' => 'fxc_product_cat',
+				'taxonomy' => 'fxcm_product_cat',
 				'parent'   => $parent,
 			]
 		);
 		$this->track_term( $parent );
 		$this->track_term( $child );
-		wp_set_object_terms( $plain, [ $child ], 'fxc_product_cat' );
+		wp_set_object_terms( $plain, [ $child ], 'fxcm_product_cat' );
 
 		$this->coupon( 'ONLY', Coupon::PERCENT, 5000, [ 'product_ids' => [ $plain ] ] );
 		$this->coupon( 'NOSALE', Coupon::PERCENT, 5000, [ 'exclude_sale_items' => true ] );

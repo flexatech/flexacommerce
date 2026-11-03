@@ -44,7 +44,7 @@ test( 'invoice settings save and an order gets its invoice PDF and packing slip'
 
 	// Cash on delivery orders are processing, so the guest gets the link.
 	const link = page.locator( '.fxc-order__invoice' ).getByRole( 'link', { name: 'Download invoice (PDF)' } );
-	await expect( link ).toHaveAttribute( 'href', new RegExp( `fxc_invoice=${ orderId }&key=` ) );
+	await expect( link ).toHaveAttribute( 'href', new RegExp( `fxcm_invoice=${ orderId }&key=` ) );
 	expect( await fetchPdf( page, ( await link.getAttribute( 'href' ) ) as string ) ).toMatchObject( { status: 200, head: '%PDF-' } );
 
 	await logInAsAdmin( page );

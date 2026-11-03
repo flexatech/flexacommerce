@@ -14,15 +14,15 @@ use Flexa\Commerce\Support\Clock;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Storage and matching for fxc_tax_rates and fxc_tax_rate_locations (doc 03
+ * Storage and matching for fxcm_tax_rates and fxcm_tax_rate_locations (doc 03
  * §4.13, doc 02 §7.12.3). Matched rates are cached per location and class in
- * the `fxc_tax` group under a version key that every write bumps, so one
+ * the `fxcm_tax` group under a version key that every write bumps, so one
  * location costs at most one query per request, and none with a persistent
  * object cache.
  */
 // phpcs:disable WordPress.DB.DirectDatabaseQuery -- plugin tables, all values prepared, cache handled here.
 final class TaxRateRepository {
-	public const CACHE_GROUP = 'fxc_tax';
+	public const CACHE_GROUP = 'fxcm_tax';
 
 	/** Rows per multi-row INSERT of location rows. */
 	private const INSERT_CHUNK = 500;
@@ -85,6 +85,7 @@ final class TaxRateRepository {
 	 * @return array<string,list<TaxRate>>
 	 */
 	private function query_matching( TaxLocation $location, array $classes ): array {
+		$wpdb        = $this->wpdb;
 		$rates_table = Schema::table( 'tax_rates' );
 		$loc_table   = Schema::table( 'tax_rate_locations' );
 		$class_in    = implode( ',', array_fill( 0, count( $classes ), '%s' ) );
@@ -118,13 +119,13 @@ final class TaxRateRepository {
 			array_push( $args, $location->city, ...$where_args );
 		}
 
-		$rows = $this->wpdb->get_results(
-			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- table names from Schema, values are placeholders.
-			$this->wpdb->prepare( implode( ' UNION ALL ', $branches ), ...$args ),
+		$rows = $wpdb->get_results(
+			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- table names from Schema, values are placeholders.
+			$wpdb->prepare( implode( ' UNION ALL ', $branches ), ...$args ),
 			ARRAY_A
 		);
 		if ( ! is_array( $rows ) ) {
-			throw QueryFailed::from_wpdb( $this->wpdb );
+			throw QueryFailed::from_wpdb( $wpdb );
 		}
 
 		/** @var array<int,array{row:array<string,mixed>,types:array<string,true>}> $found */
@@ -214,8 +215,9 @@ final class TaxRateRepository {
 	}
 
 	public function find( int $id ): ?RateRow {
-		$row = $this->wpdb->get_row(
-			$this->wpdb->prepare( 'SELECT * FROM %i WHERE id = %d', Schema::table( 'tax_rates' ), $id ),
+		$wpdb = $this->wpdb;
+		$row  = $wpdb->get_row(
+			$wpdb->prepare( 'SELECT * FROM %i WHERE id = %d', Schema::table( 'tax_rates' ), $id ),
 			ARRAY_A
 		);
 		if ( ! is_array( $row ) ) {
@@ -231,13 +233,14 @@ final class TaxRateRepository {
 	 * @return array{rows:list<RateRow>,total:int}
 	 */
 	public function page( string $tax_class, string $search = '', int $page = 1, int $per_page = 100 ): array {
+		$wpdb     = $this->wpdb;
 		$per_page = max( 1, min( 500, $per_page ) );
 		$offset   = ( max( 1, $page ) - 1 ) * $per_page;
-		$where    = $this->wpdb->prepare( 'r.tax_class = %s', $tax_class );
+		$where    = $wpdb->prepare( 'r.tax_class = %s', $tax_class );
 		$search   = trim( $search );
 		if ( $search !== '' ) {
-			$like   = '%' . $this->wpdb->esc_like( strtoupper( $search ) ) . '%';
-			$where .= $this->wpdb->prepare(
+			$like   = '%' . $wpdb->esc_like( strtoupper( $search ) ) . '%';
+			$where .= $wpdb->prepare(
 				' AND (r.country LIKE %s OR r.state LIKE %s OR UPPER(r.name) LIKE %s OR EXISTS (SELECT 1 FROM %i s WHERE s.rate_id = r.id AND s.code LIKE %s))',
 				$like,
 				$like,
@@ -247,12 +250,12 @@ final class TaxRateRepository {
 			);
 		}
 		$table = Schema::table( 'tax_rates' );
-		$total = (int) $this->wpdb->get_var(
+		$total = (int) $wpdb->get_var(
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $where is prepared above.
-			$this->wpdb->prepare( "SELECT COUNT(*) FROM %i r WHERE {$where}", $table )
+			$wpdb->prepare( "SELECT COUNT(*) FROM %i r WHERE {$where}", $table )
 		);
-		$rows = $this->wpdb->get_results(
-			$this->wpdb->prepare(
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
 				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $where is prepared above.
 				"SELECT r.* FROM %i r WHERE {$where} ORDER BY r.rate_order, r.id LIMIT %d OFFSET %d",
 				$table,
@@ -273,16 +276,17 @@ final class TaxRateRepository {
 	 * @return list<RateRow>
 	 */
 	public function all( ?string $tax_class = null, ?string $source = null ): array {
+		$wpdb  = $this->wpdb;
 		$where = '1=1';
 		if ( $tax_class !== null ) {
-			$where .= $this->wpdb->prepare( ' AND tax_class = %s', $tax_class );
+			$where .= $wpdb->prepare( ' AND tax_class = %s', $tax_class );
 		}
 		if ( $source !== null ) {
-			$where .= $this->wpdb->prepare( ' AND source = %s', $source );
+			$where .= $wpdb->prepare( ' AND source = %s', $source );
 		}
-		$rows = $this->wpdb->get_results(
+		$rows = $wpdb->get_results(
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $where is prepared above.
-			$this->wpdb->prepare( "SELECT * FROM %i WHERE {$where} ORDER BY tax_class, rate_order, id", Schema::table( 'tax_rates' ) ),
+			$wpdb->prepare( "SELECT * FROM %i WHERE {$where} ORDER BY tax_class, rate_order, id", Schema::table( 'tax_rates' ) ),
 			ARRAY_A
 		);
 		return $this->hydrate( is_array( $rows ) ? $rows : [] );
@@ -290,8 +294,9 @@ final class TaxRateRepository {
 
 	/** @return array<string,int> number of rates per class slug */
 	public function counts(): array {
-		$rows = $this->wpdb->get_results(
-			$this->wpdb->prepare( 'SELECT tax_class, COUNT(*) AS n FROM %i GROUP BY tax_class', Schema::table( 'tax_rates' ) ),
+		$wpdb = $this->wpdb;
+		$rows = $wpdb->get_results(
+			$wpdb->prepare( 'SELECT tax_class, COUNT(*) AS n FROM %i GROUP BY tax_class', Schema::table( 'tax_rates' ) ),
 			ARRAY_A
 		);
 		$out  = [];
@@ -359,9 +364,10 @@ final class TaxRateRepository {
 	 * @throws QueryFailed
 	 */
 	public function replace_source( string $source, array $rows ): int {
+		$wpdb = $this->wpdb;
 		return $this->transaction->run(
-			function () use ( $source, $rows ): int {
-				$this->delete_where( $this->wpdb->prepare( 'source = %s', $source ) );
+			function () use ( $wpdb, $source, $rows ): int {
+				$this->delete_where( $wpdb->prepare( 'source = %s', $source ) );
 				foreach ( $rows as $row ) {
 					$this->write( $row, false );
 				}
@@ -376,25 +382,28 @@ final class TaxRateRepository {
 	 * @throws QueryFailed
 	 */
 	public function delete( array $ids ): int {
-		$ids = array_values( array_unique( array_filter( array_map( 'intval', $ids ), static fn ( int $id ): bool => $id > 0 ) ) );
+		$wpdb = $this->wpdb;
+		$ids  = array_values( array_unique( array_filter( array_map( 'intval', $ids ), static fn ( int $id ): bool => $id > 0 ) ) );
 		if ( $ids === [] ) {
 			return 0;
 		}
 		$in = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
 		return $this->transaction->run(
-			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- placeholders only.
-			fn (): int => $this->delete_where( $this->wpdb->prepare( "id IN ({$in})", ...$ids ) )
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- placeholders only.
+			fn (): int => $this->delete_where( $wpdb->prepare( "id IN ({$in})", ...$ids ) )
 		);
 	}
 
 	/** @throws QueryFailed */
 	public function delete_class( string $tax_class ): int {
-		return $this->transaction->run( fn (): int => $this->delete_where( $this->wpdb->prepare( 'tax_class = %s', $tax_class ) ) );
+		$wpdb = $this->wpdb;
+		return $this->transaction->run( fn (): int => $this->delete_where( $wpdb->prepare( 'tax_class = %s', $tax_class ) ) );
 	}
 
 	/** @throws QueryFailed */
 	public function delete_source( string $source ): int {
-		return $this->transaction->run( fn (): int => $this->delete_where( $this->wpdb->prepare( 'source = %s', $source ) ) );
+		$wpdb = $this->wpdb;
+		return $this->transaction->run( fn (): int => $this->delete_where( $wpdb->prepare( 'source = %s', $source ) ) );
 	}
 
 	/** The cache version; every write moves it, which orphans every cached match. */
@@ -414,6 +423,7 @@ final class TaxRateRepository {
 
 	/** @throws QueryFailed */
 	private function write( RateRow $row, bool $bump = true ): RateRow {
+		$wpdb      = $this->wpdb;
 		$table     = Schema::table( 'tax_rates' );
 		$locations = $row->location_rows();
 		$now       = $this->clock->db_now();
@@ -434,23 +444,23 @@ final class TaxRateRepository {
 		$formats   = [ '%s', '%s', '%s', '%d', '%s', '%d', '%d', '%d', '%d', '%d', '%s', '%s' ];
 		$id        = $row->id;
 		if ( $id > 0 ) {
-			$ok = $this->wpdb->update( $table, $data, [ 'id' => $id ], $formats, [ '%d' ] );
+			$ok = $wpdb->update( $table, $data, [ 'id' => $id ], $formats, [ '%d' ] );
 			if ( $ok === false ) {
-				throw QueryFailed::from_wpdb( $this->wpdb );
+				throw QueryFailed::from_wpdb( $wpdb );
 			}
-			$this->check( $this->wpdb->query( $this->wpdb->prepare( 'DELETE FROM %i WHERE rate_id = %d', Schema::table( 'tax_rate_locations' ), $id ) ) );
+			$this->check( $wpdb->query( $wpdb->prepare( 'DELETE FROM %i WHERE rate_id = %d', Schema::table( 'tax_rate_locations' ), $id ) ) );
 		} else {
 			if ( $data['rate_order'] === 0 ) {
-				$data['rate_order'] = 1 + (int) $this->wpdb->get_var(
-					$this->wpdb->prepare( 'SELECT COALESCE(MAX(rate_order), 0) FROM %i WHERE tax_class = %s', $table, $row->tax_class )
+				$data['rate_order'] = 1 + (int) $wpdb->get_var(
+					$wpdb->prepare( 'SELECT COALESCE(MAX(rate_order), 0) FROM %i WHERE tax_class = %s', $table, $row->tax_class )
 				);
 			}
 			$data['created_at'] = $now;
 			$formats[]          = '%s';
-			if ( $this->wpdb->insert( $table, $data, $formats ) === false ) {
-				throw QueryFailed::from_wpdb( $this->wpdb );
+			if ( $wpdb->insert( $table, $data, $formats ) === false ) {
+				throw QueryFailed::from_wpdb( $wpdb );
 			}
-			$id = (int) $this->wpdb->insert_id;
+			$id = (int) $wpdb->insert_id;
 		}
 		$this->insert_locations( $id, $locations );
 		if ( $bump ) {
@@ -464,6 +474,7 @@ final class TaxRateRepository {
 	 * @throws QueryFailed
 	 */
 	private function insert_locations( int $rate_id, array $locations ): void {
+		$wpdb = $this->wpdb;
 		foreach ( array_chunk( $locations, self::INSERT_CHUNK ) as $chunk ) {
 			$values = [];
 			$args   = [ Schema::table( 'tax_rate_locations' ) ];
@@ -477,9 +488,9 @@ final class TaxRateRepository {
 				}
 			}
 			$this->check(
-				$this->wpdb->query(
-					$this->wpdb->prepare(
-						// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- placeholders only.
+				$wpdb->query(
+					$wpdb->prepare(
+						// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared -- placeholders only.
 						'INSERT INTO %i (rate_id, type, code, range_from, range_to) VALUES ' . implode( ',', $values ),
 						...$args
 					)
@@ -489,14 +500,15 @@ final class TaxRateRepository {
 	}
 
 	/**
-	 * @param string $where a prepared condition on fxc_tax_rates
+	 * @param string $where a prepared condition on fxcm_tax_rates
 	 * @throws QueryFailed
 	 */
 	private function delete_where( string $where ): int {
+		$wpdb  = $this->wpdb;
 		$rates = Schema::table( 'tax_rates' );
 		$this->check(
-			$this->wpdb->query(
-				$this->wpdb->prepare(
+			$wpdb->query(
+				$wpdb->prepare(
 					// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $where is prepared by the caller.
 					"DELETE FROM %i WHERE rate_id IN (SELECT id FROM %i WHERE {$where})",
 					Schema::table( 'tax_rate_locations' ),
@@ -504,9 +516,9 @@ final class TaxRateRepository {
 				)
 			)
 		);
-		$deleted = $this->wpdb->query(
+		$deleted = $wpdb->query(
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $where is prepared by the caller.
-			$this->wpdb->prepare( "DELETE FROM %i WHERE {$where}", $rates )
+			$wpdb->prepare( "DELETE FROM %i WHERE {$where}", $rates )
 		);
 		$this->check( $deleted );
 		$this->bump();
@@ -515,8 +527,9 @@ final class TaxRateRepository {
 
 	/** @throws QueryFailed */
 	private function check( int|bool $result ): void {
+		$wpdb = $this->wpdb;
 		if ( $result === false ) {
-			throw QueryFailed::from_wpdb( $this->wpdb );
+			throw QueryFailed::from_wpdb( $wpdb );
 		}
 	}
 
@@ -535,14 +548,16 @@ final class TaxRateRepository {
 	 * @return array<int,list<array<string,mixed>>>
 	 */
 	private function locations( array $rate_ids ): array {
+		$wpdb = $this->wpdb;
 		if ( $rate_ids === [] ) {
 			return [];
 		}
 		$out = [];
 		foreach ( array_chunk( $rate_ids, 1000 ) as $chunk ) {
 			$in   = implode( ',', array_fill( 0, count( $chunk ), '%d' ) );
-			$rows = $this->wpdb->get_results(
-				$this->wpdb->prepare(
+			$rows = $wpdb->get_results(
+				// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- placeholders and fixed SQL only; every value is a prepare() replacement.
+				$wpdb->prepare(
 					// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- placeholders only.
 					"SELECT rate_id, type, code, range_from, range_to FROM %i WHERE rate_id IN ({$in}) ORDER BY id",
 					Schema::table( 'tax_rate_locations' ),

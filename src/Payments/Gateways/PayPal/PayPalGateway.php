@@ -61,7 +61,7 @@ final class PayPalGateway extends AbstractPaymentGateway implements ConnectedGat
 	private const COLORS = [ 'gold', 'blue', 'silver', 'white', 'black' ];
 
 	/** The setup token a My Account approval is waiting for, by the random key in its return URL. */
-	private const SETUP_TRANSIENT = 'fxc_paypal_setup_';
+	private const SETUP_TRANSIENT = 'fxcm_paypal_setup_';
 
 	/** @var array<string,array<string,mixed>> PayPal orders read in this request */
 	private array $orders = [];

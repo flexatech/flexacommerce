@@ -187,7 +187,7 @@ final class TaxBudgetTest extends TestCase {
 		foreach ( [ 'tax_rate_locations', 'tax_rates', 'sessions' ] as $table ) {
 			$wpdb->query( 'DELETE FROM ' . Schema::table( $table ) ); // phpcs:ignore WordPress.DB
 		}
-		$wpdb->query( "DELETE FROM {$wpdb->options} WHERE option_name LIKE '\\_transient\\_%fxc\\_mail\\_%'" ); // phpcs:ignore WordPress.DB
+		$wpdb->query( "DELETE FROM {$wpdb->options} WHERE option_name LIKE '\\_transient\\_%fxcm\\_mail\\_%'" ); // phpcs:ignore WordPress.DB
 		self::clear_rate_limits();
 		wp_unschedule_hook( Cron::SEND_EMAIL );
 		wp_delete_post( self::$page, true );
@@ -241,7 +241,7 @@ final class TaxBudgetTest extends TestCase {
 		foreach ( [ 1, 10 ] as $lines ) {
 			$token        = $this->cart( $lines )[2];
 			$uri          = '/?rest_route=/' . FLEXACOMMERCE_REST_NAMESPACE . '/store/cart';
-			[ $off, $on ] = $this->both( $uri, [ 'cookies' => [ 'fxc_session' => $token ] ] );
+			[ $off, $on ] = $this->both( $uri, [ 'cookies' => [ 'fxcm_session' => $token ] ] );
 			self::assertSame( 200, $on['status'] );
 			self::assertSame( $lines, $on['rest']['item_count'] ?? null, 'The probe did not read the cart.' );
 			self::assertGreaterThan( 0, $on['rest']['totals']['tax']['amount'] ?? 0, 'The cart response carries no tax.' );
@@ -259,7 +259,7 @@ final class TaxBudgetTest extends TestCase {
 		$uri          = '/?rest_route=/' . FLEXACOMMERCE_REST_NAMESPACE . '/store/cart/items';
 		$add          = static fn (): array => [
 			'method'  => 'POST',
-			'cookies' => [ 'fxc_session' => $token ],
+			'cookies' => [ 'fxcm_session' => $token ],
 			'headers' => [
 				'Content-Type' => 'application/json',
 				'Origin'       => home_url(),
@@ -469,7 +469,7 @@ final class TaxBudgetTest extends TestCase {
 			true,
 			[
 				'method'  => 'POST',
-				'cookies' => [ 'fxc_session' => $session ],
+				'cookies' => [ 'fxcm_session' => $session ],
 				'headers' => [
 					'Content-Type' => 'application/json',
 					'Origin'       => home_url(),

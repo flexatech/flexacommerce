@@ -10,7 +10,7 @@ defined( 'ABSPATH' ) || exit;
 
 /**
  * The files a downloadable variant sells (ADR-058), kept as JSON in
- * fxc_variants.downloads. Each file has a stable id that order permissions
+ * fxcm_variants.downloads. Each file has a stable id that order permissions
  * point at, the name the customer sees and a reference: a URL or an
  * absolute path. A local file must sit under an allowed folder (the uploads
  * folder unless `flexacommerce.downloads.allowed_paths` adds more) and have

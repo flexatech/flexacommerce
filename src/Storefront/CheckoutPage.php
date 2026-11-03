@@ -35,9 +35,9 @@ defined( 'ABSPATH' ) || exit;
 final class CheckoutPage {
 	use HasInstance;
 
-	public const PLACE   = 'fxc_checkout';
-	public const PAY     = 'fxc_pay';
-	public const REFRESH = 'fxc_refresh';
+	public const PLACE   = 'fxcm_checkout';
+	public const PAY     = 'fxcm_pay';
+	public const REFRESH = 'fxcm_refresh';
 
 	/** @var array<string,mixed> */
 	private array $posted = [];

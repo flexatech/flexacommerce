@@ -413,7 +413,7 @@ final class AdminCheckout {
 			discount_total: $discount,
 			fee_total: $fees,
 			tax_total: $quote->tax->amount,
-			meta: $quote->taxes?->exempt === true ? [ '_fxc_tax_exempt' => '1' ] : [],
+			meta: $quote->taxes?->exempt === true ? [ '_fxcm_tax_exempt' => '1' ] : [],
 			prices_include_tax: $quote->prices_include_tax,
 			attention: CheckoutService::tax_attention( $quote ),
 		);

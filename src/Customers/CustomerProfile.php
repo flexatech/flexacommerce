@@ -10,7 +10,7 @@ defined( 'ABSPATH' ) || exit;
 
 /**
  * The saved addresses of an account holder (doc 03 §7): user options
- * `fxc_billing` and `fxc_shipping`, JSON with the fields of an order
+ * `fxcm_billing` and `fxcm_shipping`, JSON with the fields of an order
  * address. User options carry the site's table prefix, so on a network
  * each store keeps its own addresses for the same user. Checkout fills them in for a logged-in customer and saves the
  * ones used; the account page edits them.
@@ -19,12 +19,12 @@ final class CustomerProfile {
 	public const TYPES = [ 'billing', 'shipping' ];
 
 	public const META = [
-		'billing'  => 'fxc_billing',
-		'shipping' => 'fxc_shipping',
+		'billing'  => 'fxcm_billing',
+		'shipping' => 'fxcm_shipping',
 	];
 
 	/** User option set to '1' for an account the store does not charge tax (doc 02 §7.12). */
-	public const TAX_EXEMPT_META = 'fxc_tax_exempt';
+	public const TAX_EXEMPT_META = 'fxcm_tax_exempt';
 
 	public function address( int $user_id, string $type ): ?AddressView {
 		if ( $user_id <= 0 || ! isset( self::META[ $type ] ) ) {

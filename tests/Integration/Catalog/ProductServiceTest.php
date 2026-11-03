@@ -77,7 +77,7 @@ final class ProductServiceTest extends CatalogTestCase {
 		// Pretend the start time has passed.
 		update_post_meta( $id, ProductRepository::META_NEXT_CHANGE, gmdate( 'Y-m-d H:i:s', time() - 60 ) );
 		global $wpdb;
-		$wpdb->update( $wpdb->prefix . 'fxc_variants', [ 'sale_from' => gmdate( 'Y-m-d H:i:s', time() - 60 ) ], [ 'product_id' => $id ] );
+		$wpdb->update( $wpdb->prefix . 'fxcm_variants', [ 'sale_from' => gmdate( 'Y-m-d H:i:s', time() - 60 ) ], [ 'product_id' => $id ] );
 
 		self::assertGreaterThanOrEqual( 1, $this->service()->refresh_due_prices() );
 		self::assertSame( '800', get_post_meta( $id, ProductRepository::META_PRICE_MIN, true ) );
@@ -117,7 +117,7 @@ final class ProductServiceTest extends CatalogTestCase {
 		self::assertSame( 6, $again->skipped );
 
 		// Global value terms are assigned to the post for tax queries.
-		$terms = wp_get_object_terms( $id, 'fxc_attribute', [ 'fields' => 'ids' ] );
+		$terms = wp_get_object_terms( $id, 'fxcm_attribute', [ 'fields' => 'ids' ] );
 		self::assertEqualsCanonicalizing( [ $red, $blue ], array_map( 'intval', $terms ) );
 	}
 

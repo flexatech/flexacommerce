@@ -16,7 +16,7 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Product reviews into either store (doc 05 §5.9, ADR-056), as comments on
  * the imported product with the store's own types and meta keys: `review`
- * with replies of type `comment` in WooCommerce, `fxc_review` for both in
+ * with replies of type `comment` in WooCommerce, `fxcm_review` for both in
  * FlexaCommerce. Comments are written directly, past the comment form
  * checks, and the product's rating summary is rebuilt after.
  */

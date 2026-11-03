@@ -10,7 +10,7 @@ defined( 'ABSPATH' ) || exit;
 
 /**
  * Who may see an order (doc 02 §7.5): the holder of its key, the logged-in
- * owner, or staff with view_fxc_orders.
+ * owner, or staff with view_fxcm_orders.
  */
 final class OrderAccess {
 	public static function new_key(): string {

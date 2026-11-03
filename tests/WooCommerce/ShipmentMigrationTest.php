@@ -59,17 +59,17 @@ final class ShipmentMigrationTest extends \WP_UnitTestCase {
 		$job = $this->run_job( Direction::WC_TO_FXC );
 		$this->assertContains( $job->status, JobStatus::FINISHED, (string) wp_json_encode( $this->service->log( $job->id ) ) );
 
-		$fxc_order = $this->local_id( $order_id );
-		$shipments = Plugin::instance()->orders()->shipments()->for_order( $fxc_order );
+		$fxcm_order = $this->local_id( $order_id );
+		$shipments  = Plugin::instance()->orders()->shipments()->for_order( $fxcm_order );
 		$this->assertCount( 2, $shipments );
 		$this->assertSame( [ 'ups', 'UPS', '1Z999AA10123456784', 'https://www.ups.com/track?tracknum=1Z999AA10123456784', '2026-01-01 00:00:00' ], [ $shipments[0]->carrier, $shipments[0]->carrier_name, $shipments[0]->tracking_number, $shipments[0]->tracking_url, $shipments[0]->shipped_at ] );
 		$this->assertSame( [ '', 'Local Courier', 'https://courier.example/t/AB12' ], [ $shipments[1]->carrier, $shipments[1]->carrier_name, $shipments[1]->tracking_url ] );
 		global $wpdb;
-		$copied = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM %i WHERE order_id = %d AND meta_key = %s', Schema::table( 'order_meta' ), $fxc_order, '_wc_shipment_tracking_items' ) );
+		$copied = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM %i WHERE order_id = %d AND meta_key = %s', Schema::table( 'order_meta' ), $fxcm_order, '_wc_shipment_tracking_items' ) );
 		$this->assertSame( 0, $copied, 'the meta became rows, not a copy' );
 
 		// Back to WooCommerce.
-		$wpdb->query( $wpdb->prepare( 'UPDATE %i SET updated_at = DATE_ADD(updated_at, INTERVAL 1 HOUR) WHERE id = %d', Schema::table( 'orders' ), $fxc_order ) );
+		$wpdb->query( $wpdb->prepare( 'UPDATE %i SET updated_at = DATE_ADD(updated_at, INTERVAL 1 HOUR) WHERE id = %d', Schema::table( 'orders' ), $fxcm_order ) );
 		$back = $this->run_job( Direction::FXC_TO_WC );
 		$this->assertContains( $back->status, JobStatus::FINISHED, (string) wp_json_encode( $this->service->log( $back->id ) ) );
 

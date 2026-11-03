@@ -13,7 +13,7 @@ defined( 'ABSPATH' ) || exit;
 final class NewOrder {
 	/**
 	 * @param list<NewOrderItem>   $items
-	 * @param array<string,string> $meta      written to fxc_order_meta (extra checkout fields)
+	 * @param array<string,string> $meta      written to fxcm_order_meta (extra checkout fields)
 	 * @param ?string              $attention set needs_attention with this history note (tax fallback)
 	 */
 	public function __construct(

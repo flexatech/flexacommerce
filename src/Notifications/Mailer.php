@@ -29,7 +29,7 @@ defined( 'ABSPATH' ) || exit;
  * @phpstan-type Outgoing array{email:string,title:string,order_id:?int,recipients:list<string>,subject:string,html:string,context?:array<string,mixed>}
  */
 final class Mailer {
-	private const QUEUE_PREFIX = 'fxc_mail_';
+	private const QUEUE_PREFIX = 'fxcm_mail_';
 
 	public function __construct(
 		private readonly EmailTemplates $templates,

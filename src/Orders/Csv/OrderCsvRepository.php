@@ -28,9 +28,11 @@ final class OrderCsvRepository {
 
 	/** @return array{until:int,total:int} the newest matching id and how many orders match */
 	public function scope( OrderQuery $query ): array {
+		$wpdb             = $this->wpdb;
 		[ $where, $args ] = $query->where();
-		$row              = $this->wpdb->get_row(
-			$this->wpdb->prepare( "SELECT COUNT(*) AS n, MAX(id) AS until FROM %i WHERE {$where}", Schema::table( 'orders' ), ...$args ),
+		$row              = $wpdb->get_row(
+			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- placeholders and fixed SQL only; every value is a prepare() replacement.
+			$wpdb->prepare( "SELECT COUNT(*) AS n, MAX(id) AS until FROM %i WHERE {$where}", Schema::table( 'orders' ), ...$args ),
 			ARRAY_A
 		);
 		return [
@@ -41,17 +43,19 @@ final class OrderCsvRepository {
 
 	/** @return list<Order> with lines and addresses, oldest first */
 	public function page( OrderQuery $query, int $after, int $until, int $limit ): array {
+		$wpdb             = $this->wpdb;
 		[ $where, $args ] = $query->where();
-		$rows             = $this->wpdb->get_results(
-			$this->wpdb->prepare(
+		$rows             = $wpdb->get_results(
+			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- placeholders and fixed SQL only; every value is a prepare() replacement.
+			$wpdb->prepare(
 				"SELECT * FROM %i WHERE {$where} AND id > %d AND id <= %d ORDER BY id LIMIT %d",
 				Schema::table( 'orders' ),
 				...[ ...$args, $after, $until, $limit ]
 			),
 			ARRAY_A
 		);
-		$rows             = is_array( $rows ) ? $rows : [];
-		$ids              = array_map( static fn ( array $row ): int => (int) $row['id'], $rows );
+		$rows = is_array( $rows ) ? $rows : [];
+		$ids  = array_map( static fn ( array $row ): int => (int) $row['id'], $rows );
 		if ( $ids === [] ) {
 			return [];
 		}
@@ -127,8 +131,10 @@ final class OrderCsvRepository {
 	 * @return list<array<string,mixed>>
 	 */
 	private function in( string $sql, array $before, array $ids ): array {
+		$wpdb = $this->wpdb;
 		$sql  = sprintf( $sql, implode( ',', array_fill( 0, count( $ids ), '%d' ) ) );
-		$rows = $this->wpdb->get_results( $this->wpdb->prepare( $sql, ...[ ...$before, ...$ids ] ), ARRAY_A );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- placeholders and fixed SQL only; every value is a prepare() replacement.
+		$rows = $wpdb->get_results( $wpdb->prepare( $sql, ...[ ...$before, ...$ids ] ), ARRAY_A );
 		return is_array( $rows ) ? $rows : [];
 	}
 }

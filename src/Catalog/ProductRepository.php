@@ -7,27 +7,27 @@ namespace Flexa\Commerce\Catalog;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Product-level data: the post, its `_fxc_*` meta and its rows in
- * fxc_variants (through VariantRepository). Uses only the WordPress post
+ * Product-level data: the post, its `_fxcm_*` meta and its rows in
+ * fxcm_variants (through VariantRepository). Uses only the WordPress post
  * and meta APIs.
  */
 final class ProductRepository {
-	public const META_TYPE         = '_fxc_type';
-	public const META_ATTRIBUTES   = '_fxc_attributes';
-	public const META_GALLERY      = '_fxc_gallery_ids';
-	public const META_VIDEO        = '_fxc_gallery_video';
-	public const META_VISIBILITY   = '_fxc_visibility';
-	public const META_FEATURED     = '_fxc_featured';
-	public const META_PRICE_MIN    = '_fxc_price_min';
-	public const META_PRICE_MAX    = '_fxc_price_max';
-	public const META_STOCK_STATUS = '_fxc_stock_status';
-	public const META_NEXT_CHANGE  = '_fxc_next_price_change';
-	public const META_CHILDREN     = '_fxc_children';
-	public const META_GROUPED_IN   = '_fxc_grouped_in';
-	public const META_PRODUCT_URL  = '_fxc_product_url';
-	public const META_BUTTON_TEXT  = '_fxc_button_text';
-	public const META_BUNDLE       = '_fxc_bundle';
-	public const META_BUNDLED_IN   = '_fxc_bundled_in';
+	public const META_TYPE         = '_fxcm_type';
+	public const META_ATTRIBUTES   = '_fxcm_attributes';
+	public const META_GALLERY      = '_fxcm_gallery_ids';
+	public const META_VIDEO        = '_fxcm_gallery_video';
+	public const META_VISIBILITY   = '_fxcm_visibility';
+	public const META_FEATURED     = '_fxcm_featured';
+	public const META_PRICE_MIN    = '_fxcm_price_min';
+	public const META_PRICE_MAX    = '_fxcm_price_max';
+	public const META_STOCK_STATUS = '_fxcm_stock_status';
+	public const META_NEXT_CHANGE  = '_fxcm_next_price_change';
+	public const META_CHILDREN     = '_fxcm_children';
+	public const META_GROUPED_IN   = '_fxcm_grouped_in';
+	public const META_PRODUCT_URL  = '_fxcm_product_url';
+	public const META_BUTTON_TEXT  = '_fxcm_button_text';
+	public const META_BUNDLE       = '_fxcm_bundle';
+	public const META_BUNDLED_IN   = '_fxcm_bundled_in';
 
 	private const JSON_FLAGS = JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR;
 	private const JSON_MAX   = 65536;
@@ -282,8 +282,8 @@ final class ProductRepository {
 	}
 
 	/**
-	 * Recomputes `_fxc_price_min`/`_fxc_price_max` (active prices of enabled,
-	 * priced, sellable rows), `_fxc_stock_status` and `_fxc_next_price_change`
+	 * Recomputes `_fxcm_price_min`/`_fxcm_price_max` (active prices of enabled,
+	 * priced, sellable rows), `_fxcm_stock_status` and `_fxcm_next_price_change`
 	 * (doc 03 §3.3, §3.7).
 	 */
 	public function sync_denormalized( int $product_id, string $now ): void {

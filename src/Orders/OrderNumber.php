@@ -10,7 +10,7 @@ use Flexa\Commerce\Support\Settings;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Order numbers from fxc_sequences (doc 03 §2.7). Allocated outside the
+ * Order numbers from fxcm_sequences (doc 03 §2.7). Allocated outside the
  * checkout transaction, so a failed checkout leaves a gap; numbers are never
  * reused.
  */

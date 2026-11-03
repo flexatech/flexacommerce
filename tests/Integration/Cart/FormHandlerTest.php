@@ -134,7 +134,7 @@ final class FormHandlerTest extends CartTestCase {
 
 	public function test_hidden_fields_carry_a_valid_nonce(): void {
 		$html = FormHandler::hidden_fields( 'add' );
-		self::assertMatchesRegularExpression( '/name="fxc_nonce" value="[0-9a-f]{24}"/', $html );
+		self::assertMatchesRegularExpression( '/name="fxcm_nonce" value="[0-9a-f]{24}"/', $html );
 	}
 
 	/** @param array<string,mixed> $fields */
@@ -142,7 +142,7 @@ final class FormHandlerTest extends CartTestCase {
 		$cart  = Plugin::instance()->cart();
 		$_POST = [
 			'action'           => FormHandler::ACTION,
-			'fxc_op'           => $operation,
+			'fxcm_op'          => $operation,
 			FormHandler::FIELD => $nonce ?? $cart->nonce()->create( 0, '', $cart->sessions()->token() ),
 		] + $fields;
 		// A fresh request: new services, the same cookie.

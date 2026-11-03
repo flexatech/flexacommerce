@@ -14,17 +14,17 @@ declare(strict_types=1);
 
 require dirname( __DIR__ ) . '/vendor/yoast/phpunit-polyfills/phpunitpolyfills-autoload.php';
 
-$fxc_wc_dir     = rtrim( (string) ( getenv( 'FXC_WOOCOMMERCE_DIR' ) ?: __DIR__ . '/.cache/woocommerce' ), '/' );
-$fxc_wc_storage = (string) ( getenv( 'FXC_WC_STORAGE' ) ?: 'hpos' );
-if ( ! is_file( $fxc_wc_dir . '/woocommerce.php' ) ) {
-	fwrite( STDERR, "WooCommerce not found in {$fxc_wc_dir}. Run tools/fetch-woocommerce.sh first.\n" );
+$fxcm_wc_dir     = rtrim( (string) ( getenv( 'FXC_WOOCOMMERCE_DIR' ) ?: __DIR__ . '/.cache/woocommerce' ), '/' );
+$fxcm_wc_storage = (string) ( getenv( 'FXC_WC_STORAGE' ) ?: 'hpos' );
+if ( ! is_file( $fxcm_wc_dir . '/woocommerce.php' ) ) {
+	fwrite( STDERR, "WooCommerce not found in {$fxcm_wc_dir}. Run tools/fetch-woocommerce.sh first.\n" );
 	exit( 1 );
 }
-if ( ! in_array( $fxc_wc_storage, [ 'legacy', 'hpos', 'sync' ], true ) ) {
+if ( ! in_array( $fxcm_wc_storage, [ 'legacy', 'hpos', 'sync' ], true ) ) {
 	fwrite( STDERR, "FXC_WC_STORAGE must be legacy, hpos or sync.\n" );
 	exit( 1 );
 }
-define( 'FXC_TESTS_WC_STORAGE', $fxc_wc_storage );
+define( 'FXC_TESTS_WC_STORAGE', $fxcm_wc_storage );
 
 putenv( 'WP_TESTS_TABLE_PREFIX=wctests_' );
 putenv( 'WP_PHPUNIT__TESTS_CONFIG=' . __DIR__ . '/wp-tests-config.php' );
@@ -34,8 +34,8 @@ require $tests_dir . '/includes/functions.php';
 
 tests_add_filter(
 	'muplugins_loaded',
-	static function () use ( $fxc_wc_dir ): void {
-		require $fxc_wc_dir . '/woocommerce.php';
+	static function () use ( $fxcm_wc_dir ): void {
+		require $fxcm_wc_dir . '/woocommerce.php';
 		require dirname( __DIR__ ) . '/flexacommerce.php';
 	}
 );

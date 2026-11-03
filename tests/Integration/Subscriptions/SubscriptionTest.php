@@ -342,12 +342,12 @@ final class SubscriptionTest extends OrderTestCase {
 		$other = self::factory()->user->create();
 
 		wp_set_current_user( $this->user );
-		$_GET = [ 'fxc_subscriptions' => '1' ];
+		$_GET = [ 'fxcm_subscriptions' => '1' ];
 		$html = $this->account()->render();
 		self::assertStringContainsString( 'aria-current="page">Subscriptions', $html );
-		self::assertStringContainsString( 'fxc_view_subscription=' . $row->id, $html );
+		self::assertStringContainsString( 'fxcm_view_subscription=' . $row->id, $html );
 
-		$_GET = [ 'fxc_view_subscription' => (string) $row->id ];
+		$_GET = [ 'fxcm_view_subscription' => (string) $row->id ];
 		$html = $this->account()->render();
 		self::assertStringContainsString( 'Test product', $html );
 		self::assertStringContainsString( 'subscription_do', $html );
@@ -499,7 +499,7 @@ final class SubscriptionTest extends OrderTestCase {
 		$this->subs()->run();
 
 		wp_set_current_user( $this->user );
-		$_GET = [ 'fxc_view_subscription' => (string) $row->id ];
+		$_GET = [ 'fxcm_view_subscription' => (string) $row->id ];
 		$html = $this->account()->render();
 		self::assertStringContainsString( 'Visa ending in 4242, charged automatically', $html );
 		self::assertStringContainsString( 'The automatic payment for your renewal failed. We will try again on', $html );
@@ -522,7 +522,7 @@ final class SubscriptionTest extends OrderTestCase {
 		self::assertSame( 'https://checkout.stripe.com/c/pay/cs_setup', $this->redirected() );
 		$setup = FakeStripe::calls_to( 'POST', 'checkout/sessions' )[0]['body'];
 		self::assertSame( [ 'setup', 'cus_ada', 'subscription-' . $row->id ], [ $setup['mode'], $setup['customer'], $setup['client_reference_id'] ] );
-		self::assertStringContainsString( 'fxc_setup={CHECKOUT_SESSION_ID}', $setup['success_url'] );
+		self::assertStringContainsString( 'fxcm_setup={CHECKOUT_SESSION_ID}', $setup['success_url'] );
 
 		FakeStripe::$routes['GET checkout/sessions/cs_setup'] = [
 			200,
@@ -542,8 +542,8 @@ final class SubscriptionTest extends OrderTestCase {
 		FakeStripe::$routes['POST payment_intents']           = [ 200, self::intent( 'pi_new_card', 'succeeded', 1500 ) ];
 		$_POST = [];
 		$_GET  = [
-			'fxc_view_subscription' => (string) $row->id,
-			'fxc_setup'             => 'cs_setup',
+			'fxcm_view_subscription' => (string) $row->id,
+			'fxcm_setup'             => 'cs_setup',
 		];
 		self::assertStringContainsString( 'subscription_card_paid', $this->redirected() );
 		$row = $this->subs()->find( $row->id );
@@ -552,8 +552,8 @@ final class SubscriptionTest extends OrderTestCase {
 
 		// A session for another subscription is refused.
 		$_GET = [
-			'fxc_view_subscription' => (string) $row?->id,
-			'fxc_setup'             => 'cs_other',
+			'fxcm_view_subscription' => (string) $row?->id,
+			'fxcm_setup'             => 'cs_other',
 		];
 		FakeStripe::$routes['GET checkout/sessions/cs_other'] = [ 200, [ 'client_reference_id' => 'subscription-999' ] + FakeStripe::$routes['GET checkout/sessions/cs_setup'][1] ];
 		$this->account()->handle();
@@ -642,7 +642,7 @@ final class SubscriptionTest extends OrderTestCase {
 		$this->subs()->run();
 
 		wp_set_current_user( $this->user );
-		$_GET = [ 'fxc_view_subscription' => (string) $row->id ];
+		$_GET = [ 'fxcm_view_subscription' => (string) $row->id ];
 		self::assertStringContainsString( 'PayPal (ada@example.com), charged automatically', $this->account()->render() );
 
 		FakePayPal::$routes['POST v3/vault/setup-tokens'] = [
@@ -665,8 +665,8 @@ final class SubscriptionTest extends OrderTestCase {
 		self::assertSame( [ 'id' => 'PPCUS1' ], $setup['customer'] );
 		self::assertSame( [ 'MERCHANT', 'ada@example.com' ], [ $setup['payment_source']['paypal']['usage_type'], $setup['payment_source']['paypal']['email_address'] ] );
 		parse_str( (string) wp_parse_url( $setup['payment_source']['paypal']['experience_context']['return_url'], PHP_URL_QUERY ), $back );
-		$key = (string) ( $back['fxc_setup'] ?? '' );
-		self::assertSame( (string) $row->id, $back['fxc_view_subscription'] ?? '' );
+		$key = (string) ( $back['fxcm_setup'] ?? '' );
+		self::assertSame( (string) $row->id, $back['fxcm_view_subscription'] ?? '' );
 		self::assertMatchesRegularExpression( '/^[a-z0-9]{24}$/', $key );
 
 		FakePayPal::$routes['POST v3/vault/payment-tokens'] = [
@@ -680,9 +680,9 @@ final class SubscriptionTest extends OrderTestCase {
 		FakePayPal::$routes['POST v2/checkout/orders']      = [ 201, self::pp_paid( 'PPR2', '' ) ];
 		$_POST = [];
 		$_GET  = [
-			'fxc_view_subscription' => (string) $row->id,
-			'fxc_setup'             => $key,
-			'approval_token_id'     => 'SETUP1',
+			'fxcm_view_subscription' => (string) $row->id,
+			'fxcm_setup'             => $key,
+			'approval_token_id'      => 'SETUP1',
 		];
 		self::assertStringContainsString( 'subscription_card_paid', $this->redirected() );
 		self::assertSame(
@@ -700,7 +700,7 @@ final class SubscriptionTest extends OrderTestCase {
 		FakePayPal::$calls = [];
 		$this->account()->handle();
 		set_transient(
-			'fxc_paypal_setup_' . str_repeat( 'a', 24 ),
+			'fxcm_paypal_setup_' . str_repeat( 'a', 24 ),
 			[
 				'token' => 'SETUP9',
 				'tag'   => 'subscription-999',
@@ -708,11 +708,11 @@ final class SubscriptionTest extends OrderTestCase {
 			],
 			HOUR_IN_SECONDS
 		);
-		$_GET['fxc_setup'] = str_repeat( 'a', 24 );
+		$_GET['fxcm_setup'] = str_repeat( 'a', 24 );
 		$this->account()->handle();
 		self::assertSame( [], FakePayPal::calls_to( 'POST', 'v3/vault/payment-tokens' ) );
 		self::assertSame( 'VAULT2', $this->subs()->find( (int) $row?->id )?->payment_token );
-		delete_transient( 'fxc_paypal_setup_' . str_repeat( 'a', 24 ) );
+		delete_transient( 'fxcm_paypal_setup_' . str_repeat( 'a', 24 ) );
 		$_GET = [];
 		unset( $_SERVER['HTTP_REFERER'] );
 	}
@@ -922,7 +922,7 @@ final class SubscriptionTest extends OrderTestCase {
 		$row = $this->only( $order );
 		wp_set_current_user( $this->user );
 		$_SERVER['HTTP_REFERER'] = home_url( '/my-account/' );
-		$_GET                    = [ 'fxc_view_subscription' => (string) $row->id ];
+		$_GET                    = [ 'fxcm_view_subscription' => (string) $row->id ];
 		$html                    = $this->account()->render();
 		self::assertStringContainsString( 'name="subscription_qty[0]"', $html );
 		self::assertStringContainsString( 'Update quantities', $html );
@@ -1253,7 +1253,7 @@ final class SubscriptionTest extends OrderTestCase {
 		);
 		wp_set_current_user( $this->user );
 		$_SERVER['HTTP_REFERER'] = home_url( '/my-account/' );
-		$_GET                    = [ 'fxc_view_subscription' => (string) $row->id ];
+		$_GET                    = [ 'fxcm_view_subscription' => (string) $row->id ];
 		$html                    = $this->account()->render();
 		self::assertStringContainsString( 'name="subscription_variant[0]"', $html );
 		self::assertStringContainsString( 'Review the switch', $html );
@@ -1327,7 +1327,7 @@ final class SubscriptionTest extends OrderTestCase {
 		}
 
 		wp_set_current_user( $this->user );
-		$_GET = [ 'fxc_view_subscription' => (string) $row->id ];
+		$_GET = [ 'fxcm_view_subscription' => (string) $row->id ];
 		$html = $this->account()->render();
 		self::assertStringContainsString( 'moving to our new store system', $html );
 		self::assertStringNotContainsString( 'subscription_do', $html, 'No forms while it moves.' );

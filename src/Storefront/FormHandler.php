@@ -31,7 +31,7 @@ defined( 'ABSPATH' ) || exit;
 final class FormHandler {
 	public const ACTION = 'flexacommerce_cart';
 	public const RESULT = 'fxc-cart';
-	public const FIELD  = 'fxc_nonce';
+	public const FIELD  = 'fxcm_nonce';
 
 	/** Which notices a component shows: the cart's, or the wishlist button's (ADR-066). */
 	public const SCOPE_CART     = 'cart';
@@ -41,7 +41,7 @@ final class FormHandler {
 		$cart  = Plugin::instance()->cart();
 		$nonce = $cart->nonce()->create( get_current_user_id(), wp_get_session_token(), $cart->sessions()->token() );
 		return sprintf(
-			'<input type="hidden" name="action" value="%1$s"><input type="hidden" name="fxc_op" value="%2$s"><input type="hidden" name="%3$s" value="%4$s">',
+			'<input type="hidden" name="action" value="%1$s"><input type="hidden" name="fxcm_op" value="%2$s"><input type="hidden" name="%3$s" value="%4$s">',
 			esc_attr( self::ACTION ),
 			esc_attr( $operation ),
 			esc_attr( self::FIELD ),
@@ -60,7 +60,7 @@ final class FormHandler {
 			self::redirect( $back, 'expired' );
 		}
 
-		$operation = isset( $_POST['fxc_op'] ) ? sanitize_key( wp_unslash( $_POST['fxc_op'] ) ) : '';
+		$operation = isset( $_POST['fxcm_op'] ) ? sanitize_key( wp_unslash( $_POST['fxcm_op'] ) ) : '';
 		$user      = get_current_user_id();
 		$service   = $cart->cart();
 		$product   = isset( $_POST['product_id'] ) ? absint( $_POST['product_id'] ) : 0;

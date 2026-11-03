@@ -27,7 +27,7 @@ final class Menu {
 	public const EMAIL_DESIGN = self::SLUG . '-email-design';
 
 	/** Reviews::TYPE written out, so building the menu loads no Reviews class. */
-	private const REVIEW_TYPE = 'fxc_review';
+	private const REVIEW_TYPE = 'fxcm_review';
 
 	/** Core's comments screen, filtered to product reviews (ADR-056). */
 	private const REVIEWS = 'edit-comments.php?comment_type=' . self::REVIEW_TYPE;

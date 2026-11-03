@@ -40,7 +40,7 @@ final class WishlistTest extends CartTestCase {
 	public function tear_down(): void {
 		global $wpdb;
 		( new RateLimiter() )->reset( WishlistService::LIMIT, self::IP );
-		unset( $_COOKIE[ WishlistCookies::TOKEN ], $_COOKIE[ WishlistCookies::IDS ], $_GET['fxc_wishlist'] );
+		unset( $_COOKIE[ WishlistCookies::TOKEN ], $_COOKIE[ WishlistCookies::IDS ], $_GET['fxcm_wishlist'] );
 		$_POST = [];
 		unset( $_SERVER['HTTP_REFERER'] );
 		( new \ReflectionProperty( Plugin::class, 'wishlist' ) )->setValue( Plugin::instance(), null );
@@ -169,14 +169,14 @@ final class WishlistTest extends CartTestCase {
 		self::assertNull( $this->wishlist()->shared( 'nope' ) );
 		self::assertNull( $this->wishlist()->shared( str_repeat( 'a', 32 ) ) );
 
-		$_GET['fxc_wishlist'] = $list->share_key;
-		$html                 = AccountPage::instance()->render();
+		$_GET['fxcm_wishlist'] = $list->share_key;
+		$html                  = AccountPage::instance()->render();
 		self::assertStringContainsString( 'Shared wishlist', $html );
 		self::assertStringContainsString( get_the_title( $mug ), $html );
 		self::assertStringNotContainsString( 'Ada Lovelace', $html );
 		self::assertStringNotContainsString( 'wishlist_remove', $html, 'A visitor cannot change it.' );
 
-		$_GET['fxc_wishlist'] = str_repeat( 'b', 32 );
+		$_GET['fxcm_wishlist'] = str_repeat( 'b', 32 );
 		self::assertStringContainsString( 'This wishlist link does not work any more.', AccountPage::instance()->render() );
 	}
 
@@ -281,7 +281,7 @@ final class WishlistTest extends CartTestCase {
 		$mug  = $this->simple();
 		$html = do_shortcode( '[flexacommerce_add_to_cart id="' . $mug . '"]' );
 		self::assertStringContainsString( 'fxc-wishlist-button', $html );
-		self::assertStringContainsString( 'name="fxc_op" value="wishlist_add"', $html );
+		self::assertStringContainsString( 'name="fxcm_op" value="wishlist_add"', $html );
 		self::assertStringContainsString( 'actions.toggleWishlist', $html );
 		self::assertStringNotContainsString( 'aria-pressed="true"', $html, 'The markup is the same for every visitor.' );
 
@@ -291,16 +291,16 @@ final class WishlistTest extends CartTestCase {
 
 		// A guest sees their own list at the endpoint.
 		$this->wishlist()->add( 0, $mug );
-		$_GET['fxc_wishlist'] = '1';
-		$guest                = AccountPage::instance()->render();
+		$_GET['fxcm_wishlist'] = '1';
+		$guest                 = AccountPage::instance()->render();
 		self::assertStringContainsString( get_the_title( $mug ), $guest );
 		self::assertStringContainsString( 'to keep your wishlist on every device', $guest );
 		self::assertStringContainsString( 'wishlist_remove', $guest );
 
 		$user = self::factory()->user->create();
 		wp_set_current_user( $user );
-		$_GET['fxc_wishlist'] = '1';
-		$own                  = AccountPage::instance()->render();
+		$_GET['fxcm_wishlist'] = '1';
+		$own                   = AccountPage::instance()->render();
 		self::assertStringContainsString( 'fxc-wishlist', $own );
 		self::assertStringContainsString( get_the_title( $mug ), $own, 'The guest list came along.' );
 		self::assertStringContainsString( 'fxc-account__nav', $own );
@@ -363,7 +363,7 @@ final class WishlistTest extends CartTestCase {
 		$cart  = Plugin::instance()->cart();
 		$_POST = [
 			'action'           => FormHandler::ACTION,
-			'fxc_op'           => $operation,
+			'fxcm_op'          => $operation,
 			FormHandler::FIELD => $cart->nonce()->create( get_current_user_id(), wp_get_session_token(), $cart->sessions()->token() ),
 			'product_id'       => (string) $product,
 		];

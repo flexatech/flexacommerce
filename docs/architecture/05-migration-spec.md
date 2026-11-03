@@ -8,8 +8,8 @@ Status: **Approved 2026-10-24**. Covers WooCommerce → FlexaCommerce and FlexaC
 2. **Both directions use one pipeline:** `Source adapter → canonical record → validate → resolve ids → Target adapter`. The four adapters are the only code that knows either store's storage.
 3. **Read and write WooCommerce through its CRUD API** (`wc_get_product`, `wc_get_order`, `WC_Product_*`, `WC_Order`, `wc_create_refund`). The only direct SQL against WooCommerce tables is id enumeration for cursors. CRUD is what keeps legacy storage, HPOS and HPOS compatibility mode (sync on) correct without branching per storage.
 4. **Historical import has no side effects:** no emails, no payments, no stock movement, no webhooks we can control (§8.3).
-5. **Idempotent and resumable.** Every imported entity is recorded in `fxc_id_map`. A batch that crashes is re-run safely.
-6. **Never silently drop data.** Anything not mapped is preserved in an import bucket or reported in `fxc_migration_log`.
+5. **Idempotent and resumable.** Every imported entity is recorded in `fxcm_id_map`. A batch that crashes is re-run safely.
+6. **Never silently drop data.** Anything not mapped is preserved in an import bucket or reported in `fxcm_migration_log`.
 
 ## 2. Verified WooCommerce facts that shape the design
 
@@ -173,9 +173,9 @@ Migration\
   Targets\
     WooTarget              canonical → WooCommerce CRUD (inside ImportGuard)
     FxcTarget              canonical → FlexaCommerce repositories in import mode
-  JobRepository            fxc_migration_jobs / fxc_migration_log access
+  JobRepository            fxcm_migration_jobs / fxcm_migration_log access
   Verifier                 verification report (§9.1)
-  IdMap                    fxc_id_map access, resolve( ref ) / remember( ... )
+  IdMap                    fxcm_id_map access, resolve( ref ) / remember( ... )
   ImportGuard              side-effect suppression (§8.3)
   Transport\FileExport     writes one store as a JSONL file (§4.6)
   Transport\FileIndex      sidecar index of a JSONL file: id → byte offset per stage
@@ -191,9 +191,9 @@ Defined in doc 03 §4.11. Usage:
 
 | Table | Use |
 |---|---|
-| `fxc_id_map` | One row per imported entity, shared by both directions. `remote_system = 'wc'`, `entity` (`attribute`, `term`, `product`, `variant`, `order`, `order_item`, `transaction`, `customer`), `remote_id` (WooCommerce id), `local_id` (FlexaCommerce id). `origin` = `wc` if the entity was created by WC→FXC, `fxc` if created by FXC→WC. `checksum` is the canonical checksum at the time of the last import, used for change detection. |
-| `fxc_migration_jobs` | Job state machine, options, cursor, counters, lease. |
-| `fxc_migration_log` | Warnings and errors per entity. Info-level rows only in dry runs or with `verbose` option. |
+| `fxcm_id_map` | One row per imported entity, shared by both directions. `remote_system = 'wc'`, `entity` (`attribute`, `term`, `product`, `variant`, `order`, `order_item`, `transaction`, `customer`), `remote_id` (WooCommerce id), `local_id` (FlexaCommerce id). `origin` = `wc` if the entity was created by WC→FXC, `fxc` if created by FXC→WC. `checksum` is the canonical checksum at the time of the last import, used for change detection. |
+| `fxcm_migration_jobs` | Job state machine, options, cursor, counters, lease. |
+| `fxcm_migration_log` | Warnings and errors per entity. Info-level rows only in dry runs or with `verbose` option. |
 
 Both directions share the same map, so a product imported WC→FXC and later exported FXC→WC updates the original WooCommerce product instead of creating a duplicate (the round trip in §10).
 
@@ -215,12 +215,12 @@ draft ──preflight ok──► ready ──start──► running ⇄ paused
   - Orders HPOS: `SELECT id FROM {wc_orders} WHERE type = 'shop_order' AND status <> 'wc-checkout-draft' AND id > %d AND id <= %d ORDER BY id LIMIT %d`.
   - Orders legacy: same on `{posts}` with `post_type = 'shop_order'`.
   - Subscriptions: same on `{wc_orders}` with `type = 'shop_subscription'` (HPOS) or `{posts}` with `post_type = 'shop_subscription'` (legacy), trash and auto-drafts left out. The schedule meta, the linked renewal and switch orders (`_subscription_renewal`, `_subscription_switch`) and the preflight counts are read from the same tables, so the stage works with WooCommerce Subscriptions off.
-  - FlexaCommerce side: same keyset pattern on `fxc_orders.id` and `fxc_product` posts.
+  - FlexaCommerce side: same keyset pattern on `fxcm_orders.id` and `fxcm_product` posts.
 - Batch sizes (defaults, adjustable): products 50, orders 100 (50 when sync is on). Each batch stops early at **20 s wall time**, when its memory has **grown by 64 MB** since the batch started (`memory_budget`), or when memory in use reaches **80 % of `memory_limit`**, whichever comes first, and persists the cursor after every entity. The checks run after each entity, so a batch always does at least one. The budget counts growth, not total use, because the loaded site alone can be near 128 MB (about 110 MB for WordPress with WooCommerce 11.2.1 in WP-CLI, measured 2026-10-26): as an absolute cap, a site with many plugins would run one entity per batch. P9 (doc 06 §3) is still the batch's peak, `memory_get_peak_usage()` after a reset at batch start, measured on the bench store; the batch result also reports the growth. Preflight warns when `memory_limit` leaves less than the budget above what the site already uses.
 - Between batches: `wp_cache_flush_runtime()` (WP 6.0+) and WooCommerce object cache cleanup to keep memory flat.
 - Lease: `lock_token` + `locked_until` (now + 60 s). A batch extends the lease. A second runner (admin tab + Action Scheduler) cannot run the same job; an expired lease can be taken over (crash recovery).
 - Drivers: admin screen (REST `admin/migrations/{id}/batch`, polled), WP-CLI `wp flexacommerce migrate run <job>` (loops batches, recommended for > 10,000 orders), Action Scheduler (`flexacommerce.migration.batch`), all calling `Runner::run_batch()`.
-- Per entity: one DB transaction on the FlexaCommerce side. WooCommerce CRUD writes cannot share our transaction reliably (plugins hook into saves), so on FXC→WC an entity is written, then its id map row; a crash between the two is detected on resume by a lookup on `_fxc_source_id` meta that WooTarget writes on every entity it creates (§8.1).
+- Per entity: one DB transaction on the FlexaCommerce side. WooCommerce CRUD writes cannot share our transaction reliably (plugins hook into saves), so on FXC→WC an entity is written, then its id map row; a crash between the two is detected on resume by a lookup on `_fxcm_source_id` meta that WooTarget writes on every entity it creates (§8.1).
 
 ### 4.5 Workflow (admin and CLI)
 
@@ -300,9 +300,9 @@ Files live in `uploads/flexacommerce-imports`, which carries `.htaccess`, `index
 
 | WooCommerce | FlexaCommerce |
 |---|---|
-| `wc_get_attribute_taxonomies()` row (`attribute_id`, `attribute_label`, `attribute_name`, `attribute_orderby`) | top-level `fxc_attribute` term (name = label, slug = `attribute_name`, term meta `_fxc_orderby`) |
+| `wc_get_attribute_taxonomies()` row (`attribute_id`, `attribute_label`, `attribute_name`, `attribute_orderby`) | top-level `fxcm_attribute` term (name = label, slug = `attribute_name`, term meta `_fxcm_orderby`) |
 | `pa_{name}` terms (with hierarchy flattened, order meta) | child terms of that attribute term, slug preserved when no other attribute uses it (all values share one taxonomy, so WordPress suffixes a taken slug), `order` meta preserved |
-| `product_cat` / `product_tag` terms | `fxc_product_cat` / `fxc_product_tag`: name, slug, description, parent, `thumbnail_id` term meta (`_fxc_thumbnail_id` on FlexaCommerce categories), display order |
+| `product_cat` / `product_tag` terms | `fxcm_product_cat` / `fxcm_product_tag`: name, slug, description, parent, `thumbnail_id` term meta (`_fxcm_thumbnail_id` on FlexaCommerce categories), display order |
 
 Slug collisions inside a target taxonomy are impossible for a fresh store; on re-run the id map is used, not the slug.
 
@@ -310,27 +310,27 @@ Slug collisions inside a target taxonomy are impossible for a fresh store; on re
 
 | WooCommerce (`'edit'` context) | FlexaCommerce |
 |---|---|
-| post fields (title, content, excerpt, slug, status, dates, author, menu_order, comment_status) | new `fxc_product` post, same values (`post_name` identical, so URLs can stay identical after cutover) |
-| `get_type()` `simple` / `variable` / `grouped` / `external` | `_fxc_type`. Other types → skipped and reported (§7). The type is read from the `product_type` term, since `get_type()` says `simple` while WooCommerce Subscriptions is off. |
+| post fields (title, content, excerpt, slug, status, dates, author, menu_order, comment_status) | new `fxcm_product` post, same values (`post_name` identical, so URLs can stay identical after cutover) |
+| `get_type()` `simple` / `variable` / `grouped` / `external` | `_fxcm_type`. Other types → skipped and reported (§7). The type is read from the `product_type` term, since `get_type()` says `simple` while WooCommerce Subscriptions is off. |
 | WooCommerce Subscriptions `subscription` / `variable-subscription` with `_subscription_period`, `_subscription_period_interval`, `_subscription_length`, `_subscription_trial_length` + `_subscription_trial_period`, `_subscription_sign_up_fee` | a simple or variable product with a plan on the variant (ADR-073, ADR-079). The length in periods becomes a number of payments (length ÷ interval), the trial becomes days (a week is 7, a month 30, a year 365; at most 730), and values out of range are clamped with `plan_clamped`. `_subscription_limit`, `_subscription_one_time_shipping` and `_subscription_payment_sync_date` have no match and are dropped. |
-| grouped: `get_children()` | `_fxc_children`, resolved through the mapping in the same order; a child that did not move is left out with `child_skipped` (ADR-062) |
-| external: `get_product_url()`, `get_button_text()` | `_fxc_product_url`, `_fxc_button_text`; an invalid URL becomes empty with `url_skipped`. FXC→WC saves the product with no stock management. |
-| `get_image_id()`, `get_gallery_image_ids()` | `_thumbnail_id`, `_fxc_gallery_ids` (same attachment ids, same site) |
-| `get_catalog_visibility()`, `get_featured()` | `_fxc_visibility`, `_fxc_featured` |
-| `get_attributes()` (`WC_Product_Attribute`: id, name, options, visible, variation, position) | `_fxc_attributes` definitions + global value terms set on the post |
+| grouped: `get_children()` | `_fxcm_children`, resolved through the mapping in the same order; a child that did not move is left out with `child_skipped` (ADR-062) |
+| external: `get_product_url()`, `get_button_text()` | `_fxcm_product_url`, `_fxcm_button_text`; an invalid URL becomes empty with `url_skipped`. FXC→WC saves the product with no stock management. |
+| `get_image_id()`, `get_gallery_image_ids()` | `_thumbnail_id`, `_fxcm_gallery_ids` (same attachment ids, same site) |
+| `get_catalog_visibility()`, `get_featured()` | `_fxcm_visibility`, `_fxcm_featured` |
+| `get_attributes()` (`WC_Product_Attribute`: id, name, options, visible, variation, position) | `_fxcm_attributes` definitions + global value terms set on the post |
 | simple: SKU, prices, sale dates, stock fields, weight, dimensions, tax class, tax status | base variant row (`tax_status`, `tax_class`; doc 03 §4.1) |
 | variable: parent SKU, parent stock fields, weight/dimensions | base variant row (not purchasable) |
 | `WC_Product_Variation`: `get_attributes()` (empty value → `*`), status `publish`/`private` → `enabled`, prices, `get_manage_stock()` (`'parent'` → `stock_from_base = 1`), stock, image, description, menu_order | variation rows; sale end + 1 s (WooCommerce's end is inclusive), position after sorting by `menu_order` then id written as `menu_order` (doc 03 §3.9) |
 | weight/dimension units (`woocommerce_weight_unit`, `woocommerce_dimension_unit`) | converted to g / mm with string arithmetic, 3 decimals |
 | `get_virtual()`, `get_downloadable()`, `get_downloads()` (id, name, file), `get_download_limit()`, `get_download_expiry()` (0 or `-1` → null, no limit) | `is_virtual`, `is_downloadable`, `downloads` JSON on the variant row, file ids kept (ADR-058). A file outside the allowed folders or with a disallowed type is dropped with `download_dropped`. |
 | `get_reviews_allowed()`, reviews (comments) | comment_status copied; reviews move in the `reviews` stage (§5.11) |
-| unknown postmeta (not `_` WooCommerce-core keys listed in the adapter's allow list) | `_fxc_import` bucket |
+| unknown postmeta (not `_` WooCommerce-core keys listed in the adapter's allow list) | `_fxcm_import` bucket |
 
-Derived after save: `_fxc_price_min/max`, `_fxc_stock_status`.
+Derived after save: `_fxcm_price_min/max`, `_fxcm_stock_status`.
 
 ### 5.3 Customers
 
-Same site, so customers are already WordPress users. The stage maps WooCommerce user meta (`billing_first_name` … `billing_phone`, `shipping_*`) to `fxc_billing` / `fxc_shipping` JSON. It never creates or deletes users. Guest customers exist only on orders.
+Same site, so customers are already WordPress users. The stage maps WooCommerce user meta (`billing_first_name` … `billing_phone`, `shipping_*`) to `fxcm_billing` / `fxcm_shipping` JSON. It never creates or deletes users. Guest customers exist only on orders.
 
 ### 5.4 Orders
 
@@ -341,7 +341,7 @@ Same site, so customers are already WordPress users. The stage maps WooCommerce 
 | status `wc-*` | §5.6 |
 | `get_currency()`, `get_prices_include_tax()` | `currency`, `currency_exponent`, `prices_include_tax` |
 | totals: `get_subtotal()`, `get_discount_total()`, `get_shipping_total()`, `get_total_fees()`, `get_total_tax()`, `get_total()` | order totals. Source `total` wins; recomputed difference > 0 logs `totals_mismatch` warning. |
-| billing/shipping getters | `fxc_order_addresses` rows; `customer_email`, `customer_name` denormalized |
+| billing/shipping getters | `fxcm_order_addresses` rows; `customer_email`, `customer_name` denormalized |
 | `get_customer_id()` | `customer_id` (0 → NULL) |
 | `get_customer_ip_address()`, `get_customer_note()`, `get_created_via()` | same columns, `created_via` kept as source value |
 | dates created/modified/paid/completed | `created_at`, `updated_at`, `paid_at`, `completed_at` (UTC) |
@@ -352,14 +352,14 @@ Same site, so customers are already WordPress users. The stage maps WooCommerce 
 | shipping / fee items | `shipping` / `fee` lines |
 | coupon items | `discount` lines (`code`, `total` = discount amount). Informational: the amounts are already inside product lines. |
 | tax items | `tax` lines, one per WooCommerce tax item: `code` = rate code, `name` = label, `total` = tax + shipping tax, `meta` = `{rate_id (mapped, or 0 if the rate no longer exists), rate, compound, items_tax, shipping_tax}`. The order `tax_total` stays the source of truth; per-line `meta.taxes` comes from the item's `taxes` array when present. |
-| tax classes (`wc_tax_rate_classes`), rates with locations (`woocommerce_tax_rates`, `woocommerce_tax_rate_locations`), tax options (doc 02 §7.12.1) | `flexacommerce_settings.tax_classes`, `fxc_tax_rates` and `fxc_tax_rate_locations` with `source = 'migration'`, tax settings; rate ids recorded in the id map. Rate percent strings are parsed with string arithmetic (`"7.2500"` → `72500`). FXC→WC writes the same tables through `WC_Tax::_insert_tax_rate()`. |
+| tax classes (`wc_tax_rate_classes`), rates with locations (`woocommerce_tax_rates`, `woocommerce_tax_rate_locations`), tax options (doc 02 §7.12.1) | `flexacommerce_settings.tax_classes`, `fxcm_tax_rates` and `fxcm_tax_rate_locations` with `source = 'migration'`, tax settings; rate ids recorded in the id map. Rate percent strings are parsed with string arithmetic (`"7.2500"` → `72500`). FXC→WC writes the same tables through `WC_Tax::_insert_tax_rate()`. |
 | paid order (date paid set, or status processing/completed/refunded, total > 0) | one `payment` transaction: `method = import`, `succeeded`, gateway = `payment_method`, `gateway_reference` = `get_transaction_id()` or NULL, `idempotency_key = import:wc:{order_id}:payment` |
 | `get_refunds()` | `refund` transactions (`method = import`, `succeeded`), `refund_lines` from refund items, amounts, reason, date; `amount_refunded`, `payment_status` derived |
-| order notes (`wc_get_order_notes()`) | `fxc_order_history` rows, `type = note`, `customer_visible` from `is_customer_note`, `actor_type = migration`, original date and author name in `context` |
+| order notes (`wc_get_order_notes()`) | `fxcm_order_history` rows, `type = note`, `customer_visible` from `is_customer_note`, `actor_type = migration`, original date and author name in `context` |
 | (always) | one history row `type = import` naming the job |
-| `woocommerce_downloadable_product_permissions` rows | `fxc_downloads` rows (ADR-058): same file id, `downloads_remaining`, `access_expires`, `download_count`, email and customer; a new token. Line meta gets `virtual` and `downloadable`. A row for a product that was not imported is skipped with `download_skipped`. Orders are not granted again. |
-| `_wc_shipment_tracking_items` order meta (the Shipment Tracking extension and the plugins that write the same meta) | `fxc_shipments` rows (ADR-067): `tracking_provider` slugs `ups`, `usps`, `fedex`, `dhl`, `dhl-express`, `dhl-us`, `dhl-ecommerce`, `canada-post`, `royal-mail`, `australia-post` become the built-in carriers and get their link; a `custom_tracking_provider` keeps its name and `custom_tracking_link`; any other slug keeps its name with no link. `date_shipped` → `shipped_at`; every shipment covers the whole order. FXC→WC writes the meta back in the same shape (custom provider for carriers outside that list). |
-| unknown order meta | `fxc_order_meta`, key prefixed `wc:` (e.g. `wc:_billing_vat_number`), restored without the prefix on FXC→WC |
+| `woocommerce_downloadable_product_permissions` rows | `fxcm_downloads` rows (ADR-058): same file id, `downloads_remaining`, `access_expires`, `download_count`, email and customer; a new token. Line meta gets `virtual` and `downloadable`. A row for a product that was not imported is skipped with `download_skipped`. Orders are not granted again. |
+| `_wc_shipment_tracking_items` order meta (the Shipment Tracking extension and the plugins that write the same meta) | `fxcm_shipments` rows (ADR-067): `tracking_provider` slugs `ups`, `usps`, `fedex`, `dhl`, `dhl-express`, `dhl-us`, `dhl-ecommerce`, `canada-post`, `royal-mail`, `australia-post` become the built-in carriers and get their link; a `custom_tracking_provider` keeps its name and `custom_tracking_link`; any other slug keeps its name with no link. `date_shipped` → `shipped_at`; every shipment covers the whole order. FXC→WC writes the meta back in the same shape (custom provider for carriers outside that list). |
+| unknown order meta | `fxcm_order_meta`, key prefixed `wc:` (e.g. `wc:_billing_vat_number`), restored without the prefix on FXC→WC |
 
 ### 5.5 Preflight checks
 
@@ -414,7 +414,7 @@ A second run replaces the zones and methods it created, in place; zones and meth
 
 ### 5.8 Coupons
 
-The `coupons` stage runs after orders; only `reviews` (§5.11) comes later. One `coupon` record per `shop_coupon` post (auto-drafts and trash are skipped) or `fxc_coupons` row. Amounts are decimals: a percentage as a number of percent (`12.5`), money in the store currency. FlexaCommerce keeps a percentage in hundredths and money in minor units; more decimals than that are rounded with the warning `coupon_rounded`. Products, variations and categories are references, and the coupon depends on them, so they are imported first.
+The `coupons` stage runs after orders; only `reviews` (§5.11) comes later. One `coupon` record per `shop_coupon` post (auto-drafts and trash are skipped) or `fxcm_coupons` row. Amounts are decimals: a percentage as a number of percent (`12.5`), money in the store currency. FlexaCommerce keeps a percentage in hundredths and money in minor units; more decimals than that are rounded with the warning `coupon_rounded`. Products, variations and categories are references, and the coupon depends on them, so they are imported first.
 
 - Status: a published WooCommerce coupon is `active`; any other status is `disabled`. FXC→WC writes `publish` or `draft`.
 - Copied as they are: code, description, type (`percent`, `fixed_cart`, `fixed_product`), amount, expiry, minimum and maximum spend, usage limit and count, per-customer limit, item limit (`limit_usage_to_x_items`), individual use, exclude sale items, product and category rules (both lists), allowed emails. WooCommerce keeps codes in lower case.
@@ -456,7 +456,7 @@ A second run replaces the sections again from the extension, so changes made in 
 
 ### 5.11 Product reviews
 
-The `reviews` stage runs last, in both directions (ADR-056). Both stores keep reviews as comments on the product with the rating and the verified flag in comment meta, so one record shape serves both; `Migration\ReviewKeys` holds each store's keys (WooCommerce: type `review`, replies `comment`, meta `rating`/`verified`; FlexaCommerce: type `fxc_review` for both, meta `_fxc_review_rating`/`_fxc_review_verified`).
+The `reviews` stage runs last, in both directions (ADR-056). Both stores keep reviews as comments on the product with the rating and the verified flag in comment meta, so one record shape serves both; `Migration\ReviewKeys` holds each store's keys (WooCommerce: type `review`, replies `comment`, meta `rating`/`verified`; FlexaCommerce: type `fxcm_review` for both, meta `_fxcm_review_rating`/`_fxcm_review_verified`).
 
 - Records: one `review` per approved or held comment of type `review` or `comment` on a product. Spam and trash stay behind. The record holds the product and, for a reply, the review it answers (both references the record depends on), the customer (`wp:user:ID`), the author's name and email, the text, the rating (1 to 5, top-level only), the verified flag, whether it is approved, and the date.
 - Target: a comment on the imported product with the same date and author. A top-level review is type `review`; a reply is `comment` in WooCommerce and `review` in FlexaCommerce. A held review stays held. The customer is kept when the user exists (on another site, matched by email). The product's rating summary is rebuilt after each write.
@@ -471,7 +471,7 @@ The `subscriptions` stage runs last, WC→FXC only (ADR-079). It reads WooCommer
 
 - Records: one `subscription` per `shop_subscription` order with a `_billing_period`. It holds the status, currency, tax mode, customer, period and interval, the schedule dates (`_schedule_start`, `_schedule_trial_end`, `_schedule_next_payment`, `_schedule_end`, `_schedule_cancelled`), the lines, totals and addresses as for an order, the notes, the linked orders (the parent and every order with `_subscription_renewal` or `_subscription_switch` naming it, each with whether it was paid) and the payment. It depends on its products, customer and orders.
 - Payment: Stripe (`stripe`) gives `_stripe_customer_id` and `_stripe_source_id`, or the subscription's or the customer's saved Stripe token; the label is built like a Stripe one ("Visa ending in 4242"). PayPal Payments (`ppcp-gateway`) gives the customer's vault token and `_ppcp_target_customer_id` (ADR-078). `_requires_manual_renewal`, any other gateway or no token found means the renewals are paid by hand (`manual_renewals`). A subscription with `ppcp_subscription` is billed by a PayPal plan; it comes over with no method and the warning `paypal_plan`.
-- Target: one `fxc_subscriptions` row (doc 03 §4.22) with `billing_held` 1, its `fxc_subscription_orders` links and the events `note` (one per note) and `imported`. Statuses map one to one; `switched` becomes `cancelled`, and an unknown status `on-hold` with `custom_status`. `billed` counts the paid renewals, plus the parent when it was paid and did not only start a trial. The end date becomes a length: the payments made plus those left before `_schedule_end` (an expired row keeps the payments made). `anchor_day` is the day of the next payment. The snapshot is the subscription's lines and totals, so a renewal costs what it cost in WooCommerce. A product that was not imported rejects the record (`missing_product`); a missing order is left out with `missing_order`.
+- Target: one `fxcm_subscriptions` row (doc 03 §4.22) with `billing_held` 1, its `fxcm_subscription_orders` links and the events `note` (one per note) and `imported`. Statuses map one to one; `switched` becomes `cancelled`, and an unknown status `on-hold` with `custom_status`. `billed` counts the paid renewals, plus the parent when it was paid and did not only start a trial. The end date becomes a length: the payments made plus those left before `_schedule_end` (an expired row keeps the payments made). `anchor_day` is the day of the next payment. The snapshot is the subscription's lines and totals, so a renewal costs what it cost in WooCommerce. A product that was not imported rejects the record (`missing_product`); a missing order is left out with `missing_order`.
 - Held billing: a held row does not renew, remind, retry or end, and neither the customer nor the merchant can change it. My Account shows it with a note, and Orders > Subscriptions lists it with a banner. **Start billing** there (REST `POST admin/subscriptions/start-billing`), or the cutover when it reopens checkout (§9.2 step 8), releases all held rows; it is refused while WooCommerce Subscriptions is active, so a renewal is never charged by both. An active row whose payment day passed in between renews on the next cron run, and its later payments fall on that day of the month.
 - A second run updates a held row in place. A row whose billing started is FlexaCommerce's: the record is skipped with `billing_started` and the row is never written again.
 
@@ -504,8 +504,8 @@ Errors reject one entity, never the batch. A job ends `completed_with_warnings` 
 | Bundles and other product types (grouped and external move since ADR-062, subscription products since ADR-079) | skipped, listed in report with ids and edit links. FlexaCommerce bundles (ADR-071) stay behind on a copy to WooCommerce, which has no bundle type; preflight warns with `bundles_skipped` and their count, and orders that sold them keep their lines. |
 | Downloadable/virtual flags, files, limit and expiry | imported on the variant (§5.2), permissions with the order (§5.4), ADR-058 |
 | Product reviews | imported in the `reviews` stage (§5.11) |
-| Product add-on and SEO plugin meta | `_fxc_import` bucket on the product, round-tripped on FXC→WC; the official Product Add-ons data also becomes option sets (§5.9) |
-| Unknown order and item meta | `fxc_order_meta` (`wc:` prefix) and item `meta` JSON, round-tripped |
+| Product add-on and SEO plugin meta | `_fxcm_import` bucket on the product, round-tripped on FXC→WC; the official Product Add-ons data also becomes option sets (§5.9) |
+| Unknown order and item meta | `fxcm_order_meta` (`wc:` prefix) and item `meta` JSON, round-tripped |
 | Payment gateway settings | not migrated in MVP (tax rates and classes are, since ADR-020; shipping zones are, see §5.7; coupons are, see §5.8) |
 | WooCommerce Subscriptions | imported in the `subscriptions` stage with billing held (§5.12, ADR-079). FlexaCommerce subscriptions stay behind on a copy to WooCommerce. |
 | Memberships, bookings | not migrated, warning if their plugins are active |
@@ -516,7 +516,7 @@ Errors reject one entity, never the batch. A job ends `completed_with_warnings` 
 ### 8.1 Idempotency
 
 - An entity with an id map row is **updated** (if changed and policy allows) and never created twice.
-- FXC→WC: WooTarget writes `_fxc_source_id` meta (`fxc:{entity}:{id}`) on every WooCommerce product, variation and order it creates, in the same save. Resume after a crash looks up this meta before creating, which closes the gap between the WooCommerce save and the id map insert.
+- FXC→WC: WooTarget writes `_fxcm_source_id` meta (`fxc:{entity}:{id}`) on every WooCommerce product, variation and order it creates, in the same save. Resume after a crash looks up this meta before creating, which closes the gap between the WooCommerce save and the id map insert.
 - WC→FXC: the entity and its id map row are written in one FlexaCommerce transaction.
 
 ### 8.2 Resumability
@@ -585,10 +585,10 @@ Rollback before step 5: nothing changed for WooCommerce. After step 5: reactivat
 - Products: `WC_Product_Simple` / `WC_Product_Variable` + `WC_Product_Variation` objects, attributes via `WC_Product_Attribute` (global attributes created with `wc_create_attribute()` when missing), `*` → empty attribute value, `stock_from_base` → variation `manage_stock = 'parent'`. Saved with `$product->save()`; `WC_Product_Variable::sync( $id )` after variations.
 - If the product came from WooCommerce originally (`origin = wc` in id map), the original WooCommerce product is **updated**, not duplicated.
 - Orders: `new WC_Order()`, set every field and the final status, `set_order_stock_reduced()`, then `save()` (F5). Items via `WC_Order_Item_*` with `_reduced_stock` meta. Refunds with `wc_create_refund( refund_payment false, restock_items false )` (F9), after which the final status is re-asserted with `set_status()` + `save()` inside ImportGuard if a refund action changed it. Notes with `add_order_note()` and their dates corrected with `wp_update_comment()`.
-- Order numbers: WooCommerce core shows the order id. The FlexaCommerce number is stored in `_order_number` meta (the convention used by common sequential-number plugins) and `_fxc_order_number`. [Assumption: acceptable; see Q12.]
+- Order numbers: WooCommerce core shows the order id. The FlexaCommerce number is stored in `_order_number` meta (the convention used by common sequential-number plugins) and `_fxcm_order_number`. [Assumption: acceptable; see Q12.]
 - `order_key` preserved (`set_order_key()`), so customer links keep working.
 - Downloads: flags and files through `set_virtual()`, `set_downloadable()`, `set_downloads()` (a file WooCommerce refuses, for example outside its approved directories, drops the files with `download_dropped`), limit and expiry. Permissions become `WC_Customer_Download` rows with their counts, and the order is marked as granted so WooCommerce does not grant again.
-- Customers: `fxc_billing` / `fxc_shipping` → WooCommerce user meta, only for keys that are empty in WooCommerce unless `source_wins`.
+- Customers: `fxcm_billing` / `fxcm_shipping` → WooCommerce user meta, only for keys that are empty in WooCommerce unless `source_wins`.
 
 ## 11. Test plan (summary; details in doc 06 §5)
 

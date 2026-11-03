@@ -26,7 +26,7 @@ final class WooSubscriptionReader {
 	private const SCHEDULE = [ '_billing_period', '_billing_interval', '_schedule_start', '_schedule_trial_end', '_schedule_next_payment', '_schedule_end', '_schedule_cancelled', '_requires_manual_renewal', '_stripe_customer_id', '_stripe_source_id', 'ppcp_subscription' ];
 
 	/** Subscription meta covered by the mapping. */
-	private const MAPPED_META = [ '_billing_period', '_billing_interval', '_schedule_start', '_schedule_trial_end', '_schedule_next_payment', '_schedule_end', '_schedule_cancelled', '_schedule_payment_retry', '_requires_manual_renewal', '_stripe_customer_id', '_stripe_source_id', 'ppcp_subscription', '_payment_tokens', '_subscription_renewal_order_ids_cache', '_subscription_resubscribe_order_ids_cache', '_subscription_switch_order_ids_cache', '_order_version', '_fxc_source_id', '_edit_lock', '_edit_last' ];
+	private const MAPPED_META = [ '_billing_period', '_billing_interval', '_schedule_start', '_schedule_trial_end', '_schedule_next_payment', '_schedule_end', '_schedule_cancelled', '_schedule_payment_retry', '_requires_manual_renewal', '_stripe_customer_id', '_stripe_source_id', 'ppcp_subscription', '_payment_tokens', '_subscription_renewal_order_ids_cache', '_subscription_resubscribe_order_ids_cache', '_subscription_switch_order_ids_cache', '_order_version', '_fxcm_source_id', '_edit_lock', '_edit_last' ];
 
 	private const PAID_STATUSES = [ 'processing', 'completed', 'refunded' ];
 

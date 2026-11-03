@@ -13,33 +13,33 @@
 
 defined( 'ABSPATH' ) || exit;
 
-$fxc_rows = $args['to_customer'] ? $args['data']->shipments( $args['order'], $args['shipment'] ?? null ) : [];
-if ( $fxc_rows === [] ) {
+$fxcm_rows = $args['to_customer'] ? $args['data']->shipments( $args['order'], $args['shipment'] ?? null ) : [];
+if ( $fxcm_rows === [] ) {
 	return;
 }
-$fxc_cell = 'padding:10px 0;border-bottom:1px solid #e4e4e7;vertical-align:top;';
+$fxcm_cell = 'padding:10px 0;border-bottom:1px solid #e4e4e7;vertical-align:top;';
 ?>
 <h2 style="margin:24px 0 8px;font-size:16px;font-weight:600;color:#18181b;"><?php esc_html_e( 'Tracking', 'flexacommerce' ); ?></h2>
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="font-size:14px;">
-	<?php foreach ( $fxc_rows as $fxc_row ) : ?>
+	<?php foreach ( $fxcm_rows as $fxcm_row ) : ?>
 		<tr>
-			<td style="<?php echo esc_attr( $fxc_cell ); ?>color:#3f3f46;">
-				<strong><?php echo esc_html( $fxc_row['carrier'] ); ?></strong>
+			<td style="<?php echo esc_attr( $fxcm_cell ); ?>color:#3f3f46;">
+				<strong><?php echo esc_html( $fxcm_row['carrier'] ); ?></strong>
 				<br><span style="color:#71717a;font-size:12px;">
 				<?php
 				/* translators: %s: date. */
-				echo esc_html( sprintf( __( 'Shipped %s', 'flexacommerce' ), $fxc_row['date'] ) );
+				echo esc_html( sprintf( __( 'Shipped %s', 'flexacommerce' ), $fxcm_row['date'] ) );
 				?>
 				</span>
-				<?php foreach ( $fxc_row['items'] as $fxc_item ) : ?>
-					<br><span style="color:#71717a;font-size:12px;"><?php echo esc_html( $fxc_item['name'] . ' × ' . $fxc_item['quantity'] ); ?></span>
+				<?php foreach ( $fxcm_row['items'] as $fxcm_item ) : ?>
+					<br><span style="color:#71717a;font-size:12px;"><?php echo esc_html( $fxcm_item['name'] . ' × ' . $fxcm_item['quantity'] ); ?></span>
 				<?php endforeach; ?>
 			</td>
-			<td style="<?php echo esc_attr( $fxc_cell ); ?>text-align:right;">
-				<?php if ( $fxc_row['number'] !== '' && $fxc_row['url'] !== '' ) : ?>
-					<a href="<?php echo esc_url( $fxc_row['url'] ); ?>" style="color:#18181b;font-weight:600;"><?php echo esc_html( $fxc_row['number'] ); ?></a>
-				<?php elseif ( $fxc_row['number'] !== '' ) : ?>
-					<span style="color:#18181b;font-weight:600;"><?php echo esc_html( $fxc_row['number'] ); ?></span>
+			<td style="<?php echo esc_attr( $fxcm_cell ); ?>text-align:right;">
+				<?php if ( $fxcm_row['number'] !== '' && $fxcm_row['url'] !== '' ) : ?>
+					<a href="<?php echo esc_url( $fxcm_row['url'] ); ?>" style="color:#18181b;font-weight:600;"><?php echo esc_html( $fxcm_row['number'] ); ?></a>
+				<?php elseif ( $fxcm_row['number'] !== '' ) : ?>
+					<span style="color:#18181b;font-weight:600;"><?php echo esc_html( $fxcm_row['number'] ); ?></span>
 				<?php endif; ?>
 			</td>
 		</tr>

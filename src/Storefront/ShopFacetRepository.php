@@ -116,6 +116,6 @@ final class ShopFacetRepository {
 	 * now and then returned rows the subquery leaves out.
 	 */
 	private static function inside( string $prepared, string $ids_sql ): string {
-		return str_replace( '( FXC_IDS )', '( SELECT fxc_ids.ID FROM ( ' . $ids_sql . ' ) AS fxc_ids )', $prepared );
+		return str_replace( '( FXC_IDS )', '( SELECT fxcm_ids.ID FROM ( ' . $ids_sql . ' ) AS fxcm_ids )', $prepared );
 	}
 }

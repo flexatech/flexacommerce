@@ -252,7 +252,7 @@ final class CheckoutForm {
 		// hidden required control would block the submit; the server checks it.
 		$html .= self::fields( $type, $fields, $values, is_array( $state['countries'] ?? null ) ? $state['countries'] : [], $errors, $type !== 'shipping', $country );
 		if ( $type === 'billing' ) {
-			$html .= '<p class="fxc-checkout__refresh"><button type="submit" name="fxc_refresh" value="1" formnovalidate class="fxc-checkout__refresh-button" data-fxc-refresh>' . esc_html__( 'Update shipping and totals', 'flexacommerce' ) . '</button></p>';
+			$html .= '<p class="fxc-checkout__refresh"><button type="submit" name="fxcm_refresh" value="1" formnovalidate class="fxc-checkout__refresh-button" data-fxc-refresh>' . esc_html__( 'Update shipping and totals', 'flexacommerce' ) . '</button></p>';
 		}
 		return $html . '</fieldset>';
 	}

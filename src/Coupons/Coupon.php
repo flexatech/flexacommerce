@@ -9,7 +9,7 @@ use Flexa\Commerce\Support\Conditions;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * A row of fxc_coupons (doc 03 §4.17). Amounts are in the minor unit; a
+ * A row of fxcm_coupons (doc 03 §4.17). Amounts are in the minor unit; a
  * percent coupon holds hundredths of a percent (1000 = 10 %). Dates are UTC
  * `datetime` values. The product and category rules and the allowed emails
  * live in the `rules` JSON column. A free-shipping coupon turns on the
@@ -58,7 +58,7 @@ final class Coupon {
 	 * @param list<int>    $category_ids
 	 * @param list<int>    $exclude_category_ids
 	 * @param list<string> $emails               billing emails allowed to use it, `*` wildcards allowed; empty is everyone
-	 * @param list<int>    $variant_ids          single variations (fxc_variants ids) the coupon applies to
+	 * @param list<int>    $variant_ids          single variations (fxcm_variants ids) the coupon applies to
 	 * @param list<int>    $exclude_variant_ids
 	 * @param int          $item_limit           units a percent or per-product coupon discounts at most, the dearest first; 0 is every unit
 	 * @param int          $buy_qty              buy X get Y: units bought per set (X)

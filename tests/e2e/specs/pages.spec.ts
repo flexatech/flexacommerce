@@ -58,7 +58,7 @@ test( 'pages: the Shop row adds filters beside the shop list', async ( { page },
 		const form = page.getByRole( 'form', { name: 'Filter products' } );
 		await expect( form ).toBeVisible();
 		const side = await form.boundingBox();
-		const grid = await page.locator( '.type-fxc_product' ).first().boundingBox();
+		const grid = await page.locator( '.type-fxcm_product' ).first().boundingBox();
 		expect( side && grid && side.x < grid.x ).toBe( true );
 		await expect( page.locator( '.fxc-filters-toggle > summary' ) ).toBeHidden();
 		await expectAccessible( page, info, 'shop with filters' );

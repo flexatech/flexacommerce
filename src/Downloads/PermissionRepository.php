@@ -11,7 +11,7 @@ use Flexa\Commerce\Orders\OrderStatus;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Download permissions in fxc_downloads (ADR-058). A grant inserts one row
+ * Download permissions in fxcm_downloads (ADR-058). A grant inserts one row
  * per order line and file and skips rows that exist, so granting twice is
  * harmless. A download takes one from `downloads_remaining` in a single
  * conditional UPDATE, so two requests cannot both use the last one.
@@ -63,19 +63,25 @@ final class PermissionRepository {
 	}
 
 	public function find( int $id ): ?Permission {
-		return $this->one( $this->wpdb->prepare( 'SELECT ' . self::COLUMNS . ' FROM %i WHERE id = %d', Schema::table( 'downloads' ), $id ) );
+		$wpdb = $this->wpdb;
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- placeholders and fixed SQL only; every value is a prepare() replacement.
+		return $this->one( $wpdb->prepare( 'SELECT ' . self::COLUMNS . ' FROM %i WHERE id = %d', Schema::table( 'downloads' ), $id ) );
 	}
 
 	public function find_by_token( string $token ): ?Permission {
+		$wpdb = $this->wpdb;
 		if ( preg_match( '/^[a-f0-9]{32}$/', $token ) !== 1 ) {
 			return null;
 		}
-		return $this->one( $this->wpdb->prepare( 'SELECT ' . self::COLUMNS . ' FROM %i WHERE token = %s', Schema::table( 'downloads' ), $token ) );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- placeholders and fixed SQL only; every value is a prepare() replacement.
+		return $this->one( $wpdb->prepare( 'SELECT ' . self::COLUMNS . ' FROM %i WHERE token = %s', Schema::table( 'downloads' ), $token ) );
 	}
 
 	/** @return list<Permission> in the order of the lines, then the files */
 	public function for_order( int $order_id ): array {
-		return $this->many( $this->wpdb->prepare( 'SELECT ' . self::COLUMNS . ' FROM %i WHERE order_id = %d ORDER BY order_item_id, id', Schema::table( 'downloads' ), $order_id ) );
+		$wpdb = $this->wpdb;
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- placeholders and fixed SQL only; every value is a prepare() replacement.
+		return $this->many( $wpdb->prepare( 'SELECT ' . self::COLUMNS . ' FROM %i WHERE order_id = %d ORDER BY order_item_id, id', Schema::table( 'downloads' ), $order_id ) );
 	}
 
 	/**
@@ -99,7 +105,9 @@ final class PermissionRepository {
 
 	/** @return list<Permission> */
 	public function for_email( string $email, int $limit = 500, int $offset = 0 ): array {
-		return $this->many( $this->wpdb->prepare( 'SELECT ' . self::COLUMNS . ' FROM %i WHERE email = %s ORDER BY id LIMIT %d OFFSET %d', Schema::table( 'downloads' ), $email, $limit, $offset ) );
+		$wpdb = $this->wpdb;
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- placeholders and fixed SQL only; every value is a prepare() replacement.
+		return $this->many( $wpdb->prepare( 'SELECT ' . self::COLUMNS . ' FROM %i WHERE email = %s ORDER BY id LIMIT %d OFFSET %d', Schema::table( 'downloads' ), $email, $limit, $offset ) );
 	}
 
 	/**
@@ -196,9 +204,10 @@ final class PermissionRepository {
 			$sql = $wpdb->prepare( 'DELETE FROM %i WHERE variant_id = %d', Schema::table( 'downloads' ), $variant_id );
 		} else {
 			$marks = implode( ', ', array_fill( 0, count( $keep ), '%s' ) );
-			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- $marks holds placeholders only.
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- $marks holds placeholders only.
 			$sql = $wpdb->prepare( "DELETE FROM %i WHERE variant_id = %d AND file_id NOT IN ({$marks})", Schema::table( 'downloads' ), $variant_id, ...$keep );
 		}
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- prepared above; WPCS cannot follow the variable.
 		$done = $wpdb->query( $sql );
 		if ( $done === false ) {
 			throw QueryFailed::from_wpdb( $wpdb );
@@ -207,15 +216,17 @@ final class PermissionRepository {
 	}
 
 	private function one( string $sql ): ?Permission {
-		$row = $this->wpdb->get_row( $sql, ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- prepared by the caller.
+		$wpdb = $this->wpdb;
+		$row  = $wpdb->get_row( $sql, ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- prepared by the caller.
 		return is_array( $row ) ? Permission::from_row( $row ) : null;
 	}
 
 	/** @return list<Permission> */
 	private function many( string $sql ): array {
-		$rows = $this->wpdb->get_results( $sql, ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- prepared by the caller.
+		$wpdb = $this->wpdb;
+		$rows = $wpdb->get_results( $sql, ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- prepared by the caller.
 		if ( ! is_array( $rows ) ) {
-			throw QueryFailed::from_wpdb( $this->wpdb );
+			throw QueryFailed::from_wpdb( $wpdb );
 		}
 		return array_map( static fn ( array $row ): Permission => Permission::from_row( $row ), $rows );
 	}

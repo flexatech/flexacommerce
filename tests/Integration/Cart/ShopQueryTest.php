@@ -54,7 +54,7 @@ final class ShopQueryTest extends CartTestCase {
 			'none'  => $this->product(),
 		];
 		// Other meta of an unpriced product must not decide where it sorts.
-		update_post_meta( $ids['none'], '_fxc_test_number', '99999' );
+		update_post_meta( $ids['none'], '_fxcm_test_number', '99999' );
 
 		$this->go_to(
 			add_query_arg(

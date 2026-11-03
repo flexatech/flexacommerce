@@ -100,7 +100,7 @@ final class EuVatCheckoutTest extends TaxTestCase {
 		delete_option( GatewaySettings::PREFIX . 'cod' );
 		delete_option( ZoneRepository::OPTION );
 		parent::tear_down();
-		$wpdb->query( "DELETE FROM {$wpdb->options} WHERE option_name LIKE '\\_transient\\_%fxc\\_vat\\_%' OR option_name LIKE '\\_transient\\_%fxc\\_rl\\_%'" ); // phpcs:ignore WordPress.DB
+		$wpdb->query( "DELETE FROM {$wpdb->options} WHERE option_name LIKE '\\_transient\\_%fxcm\\_vat\\_%' OR option_name LIKE '\\_transient\\_%fxcm\\_rl\\_%'" ); // phpcs:ignore WordPress.DB
 		$wpdb->query( 'COMMIT' );
 		wp_cache_flush();
 	}
@@ -124,9 +124,9 @@ final class EuVatCheckoutTest extends TaxTestCase {
 		self::assertSame( 0, $order->tax_total );
 		self::assertSame( 2500, $order->total );
 		$meta = Plugin::instance()->orders()->orders();
-		self::assertSame( '1', $meta->get_meta( $order->id, '_fxc_reverse_charge' ) );
+		self::assertSame( '1', $meta->get_meta( $order->id, '_fxcm_reverse_charge' ) );
 		self::assertSame( 'FR40303265045', $meta->get_meta( $order->id, '_billing_vat_number' ) );
-		$check = json_decode( (string) $meta->get_meta( $order->id, '_fxc_vat_check' ), true );
+		$check = json_decode( (string) $meta->get_meta( $order->id, '_fxcm_vat_check' ), true );
 		self::assertSame( [ 'valid', 'ACME' ], [ $check['status'] ?? '', $check['name'] ?? '' ] );
 	}
 
@@ -154,7 +154,7 @@ final class EuVatCheckoutTest extends TaxTestCase {
 		] + self::BILLING;
 		$order   = $checkout->place_order( $this->request( $token, 2975, 'DE123456789', $billing ) )->order;
 		self::assertSame( 475, $order->tax_total );
-		self::assertNull( Plugin::instance()->orders()->orders()->get_meta( $order->id, '_fxc_reverse_charge' ) );
+		self::assertNull( Plugin::instance()->orders()->orders()->get_meta( $order->id, '_fxcm_reverse_charge' ) );
 	}
 
 	public function test_an_unregistered_number_stops_the_order(): void {

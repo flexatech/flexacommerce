@@ -6,7 +6,7 @@ import { download, type CsvRow } from "./csv";
 import type { ExportPage, ImportResult, ImportSummary, MapResponse } from "./types";
 
 export function productsUrl(): string {
-    return getPluginGlobal().adminUrl.replace(/admin\.php$/, "edit.php?post_type=fxc_product");
+    return getPluginGlobal().adminUrl.replace(/admin\.php$/, "edit.php?post_type=fxcm_product");
 }
 
 /** Rows per import request; a product's variations stay in its batch. */

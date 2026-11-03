@@ -136,7 +136,7 @@ final class TaxGoldenTest extends TaxTestCase {
 			'lines'        => $lines,
 		];
 		if ( $case['exempt'] ) {
-			self::assertSame( '1', Plugin::instance()->orders()->orders()->get_meta( $order->id, '_fxc_tax_exempt' ) );
+			self::assertSame( '1', Plugin::instance()->orders()->orders()->get_meta( $order->id, '_fxcm_tax_exempt' ) );
 		}
 		if ( isset( self::INTENDED[ $case['id'] ] ) ) {
 			self::assertNotSame( $case['expected'], $actual, 'WooCommerce now agrees; drop the case from INTENDED.' );

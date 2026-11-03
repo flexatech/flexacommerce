@@ -9,7 +9,7 @@ defined( 'ABSPATH' ) || exit;
 /**
  * The result of checking one EU VAT number (ADR-086). `number` carries its
  * VIES prefix (EL for Greece); `country` is the ISO code (GR). Kept on the
- * order as `_fxc_vat_check` so the merchant can show what was checked.
+ * order as `_fxcm_vat_check` so the merchant can show what was checked.
  */
 final class VatCheck {
 	/** VIES says the number is registered. */

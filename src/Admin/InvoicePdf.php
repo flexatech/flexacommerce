@@ -12,14 +12,14 @@ use Flexa\Commerce\Support\Capabilities;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * `admin-post.php?action=fxc_invoice&orders=1,2&document=invoice` (ADR-060):
+ * `admin-post.php?action=fxcm_invoice&orders=1,2&document=invoice` (ADR-060):
  * the invoices or packing slips of up to 100 orders in one PDF, for staff
  * who may view orders. The admin app signs the link with its REST nonce.
  * `document=credit_note&refund=<id>` gives the credit note of one refund
  * of the first order (ADR-064).
  */
 final class InvoicePdf {
-	public const ACTION = 'fxc_invoice';
+	public const ACTION = 'fxcm_invoice';
 
 	public static function handle(): void {
 		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- verified on the next line.

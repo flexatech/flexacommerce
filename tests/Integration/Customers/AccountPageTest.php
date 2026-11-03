@@ -126,7 +126,7 @@ final class AccountPageTest extends OrderTestCase {
 		self::assertSame( [ 'view-order', '7' ], AccountPage::current() );
 
 		$this->set_permalink_structure( '' );
-		self::assertStringContainsString( 'fxc_orders=2', AccountPage::url( 'orders', '2' ) );
+		self::assertStringContainsString( 'fxcm_orders=2', AccountPage::url( 'orders', '2' ) );
 	}
 
 	public function test_orders_lists_only_the_customers_own_orders(): void {
@@ -135,7 +135,7 @@ final class AccountPageTest extends OrderTestCase {
 		$other   = $this->owned( $this->place( [ $product => 2 ] ), self::factory()->user->create() );
 
 		wp_set_current_user( $this->user );
-		$_GET = [ 'fxc_orders' => '1' ];
+		$_GET = [ 'fxcm_orders' => '1' ];
 		$html = AccountPage::instance()->render();
 
 		self::assertStringContainsString( 'aria-current="page">Orders', $html );
@@ -151,7 +151,7 @@ final class AccountPageTest extends OrderTestCase {
 		$this->orders()->add_note( $order->id, 'Customer called twice.', false, $ctx );
 
 		wp_set_current_user( $this->user );
-		$_GET = [ 'fxc_view_order' => (string) $order->id ];
+		$_GET = [ 'fxcm_view_order' => (string) $order->id ];
 		$html = AccountPage::instance()->render();
 		self::assertStringContainsString( 'Order details', $html );
 		self::assertStringContainsString( 'Packed and on its way.', $html );
@@ -165,7 +165,7 @@ final class AccountPageTest extends OrderTestCase {
 
 	public function test_saving_an_address(): void {
 		wp_set_current_user( $this->user );
-		$_GET = [ 'fxc_edit_address' => 'billing' ];
+		$_GET = [ 'fxcm_edit_address' => 'billing' ];
 		$html = AccountPage::instance()->render();
 		self::assertStringContainsString( 'name="billing[first_name]"', $html );
 
@@ -186,7 +186,7 @@ final class AccountPageTest extends OrderTestCase {
 		self::assertNotNull( $saved );
 		self::assertSame( 'Sacramento', $saved->city );
 
-		$_GET = [ 'fxc_edit_address' => '' ];
+		$_GET = [ 'fxcm_edit_address' => '' ];
 		self::assertStringContainsString( 'Sacramento', AccountPage::instance()->render() );
 	}
 
@@ -200,7 +200,7 @@ final class AccountPageTest extends OrderTestCase {
 					'country'    => 'US',
 				],
 			],
-			[ 'fxc_edit_address' => 'billing' ]
+			[ 'fxcm_edit_address' => 'billing' ]
 		);
 		self::assertNull( $location );
 		$html = AccountPage::instance()->render();
@@ -275,7 +275,7 @@ final class AccountPageTest extends OrderTestCase {
 	 * @param array<string,string> $get
 	 */
 	private function post( string $action, array $fields, array $get = [] ): ?string {
-		$_GET  = $get !== [] ? $get : [ $action === 'address' ? 'fxc_edit_address' : 'fxc_edit_account' => $action === 'address' ? 'billing' : '1' ];
+		$_GET  = $get !== [] ? $get : [ $action === 'address' ? 'fxcm_edit_address' : 'fxcm_edit_account' => $action === 'address' ? 'billing' : '1' ];
 		$_POST = $fields + [
 			AccountPage::ACTION => $action,
 			AccountPage::NONCE  => wp_create_nonce( AccountPage::ACTION . '_' . $action ),

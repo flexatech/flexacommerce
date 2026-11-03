@@ -11,19 +11,19 @@
 
 defined( 'ABSPATH' ) || exit;
 
-$fxc_order = $args['order'];
-$fxc_url   = $args['to_customer'] ? $args['data']->customer_url( $fxc_order ) : $args['data']->admin_url( $fxc_order );
+$fxcm_order = $args['order'];
+$fxcm_url   = $args['to_customer'] ? $args['data']->customer_url( $fxcm_order ) : $args['data']->admin_url( $fxcm_order );
 ?>
 <p style="margin:0;">
 	<?php
 	/* translators: 1: order number, 2: customer name or email. */
-	echo esc_html( sprintf( __( 'The payment for order #%1$s from %2$s failed. The order is marked as failed.', 'flexacommerce' ), $fxc_order->number, $fxc_order->customer_name !== '' ? $fxc_order->customer_name : $fxc_order->customer_email ) );
+	echo esc_html( sprintf( __( 'The payment for order #%1$s from %2$s failed. The order is marked as failed.', 'flexacommerce' ), $fxcm_order->number, $fxcm_order->customer_name !== '' ? $fxcm_order->customer_name : $fxcm_order->customer_email ) );
 	?>
 </p>
 <?php
 echo $args['templates']->render( 'parts/order-details', $args ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped template.
-if ( $fxc_url !== '' ) :
+if ( $fxcm_url !== '' ) :
 	?>
-	<p style="margin:24px 0 0;"><a href="<?php echo esc_url( $fxc_url ); ?>" style="display:inline-block;padding:10px 18px;background:#18181b;color:#ffffff;border-radius:6px;text-decoration:none;font-weight:600;font-size:14px;"><?php echo $args['to_customer'] ? esc_html__( 'View your order', 'flexacommerce' ) : esc_html__( 'Open the order', 'flexacommerce' ); ?></a></p>
+	<p style="margin:24px 0 0;"><a href="<?php echo esc_url( $fxcm_url ); ?>" style="display:inline-block;padding:10px 18px;background:#18181b;color:#ffffff;border-radius:6px;text-decoration:none;font-weight:600;font-size:14px;"><?php echo $args['to_customer'] ? esc_html__( 'View your order', 'flexacommerce' ) : esc_html__( 'Open the order', 'flexacommerce' ); ?></a></p>
 	<?php
 endif;

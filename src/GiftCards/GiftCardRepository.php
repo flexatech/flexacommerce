@@ -10,7 +10,7 @@ use Flexa\Commerce\Database\Schema;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Storage for fxc_gift_cards and fxc_gift_card_activity (ADR-069). Balance
+ * Storage for fxcm_gift_cards and fxcm_gift_card_activity (ADR-069). Balance
  * changes lock the card row first and run inside the caller's transaction.
  */
 // phpcs:disable WordPress.DB.DirectDatabaseQuery -- plugin tables, all values prepared; balances change at checkout and refunds, so they are not object-cached.
@@ -18,19 +18,25 @@ final class GiftCardRepository {
 	public function __construct( private readonly \wpdb $wpdb ) {}
 
 	public function find( int $id, bool $lock = false ): ?GiftCard {
-		$sql = 'SELECT * FROM %i WHERE id = %d' . ( $lock ? ' FOR UPDATE' : '' );
-		return $this->one( $this->wpdb->prepare( $sql, Schema::table( 'gift_cards' ), $id ) );
+		$wpdb = $this->wpdb;
+		$sql  = 'SELECT * FROM %i WHERE id = %d' . ( $lock ? ' FOR UPDATE' : '' );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- placeholders and fixed SQL only; every value is a prepare() replacement.
+		return $this->one( $wpdb->prepare( $sql, Schema::table( 'gift_cards' ), $id ) );
 	}
 
 	public function find_by_code( string $code, bool $lock = false ): ?GiftCard {
-		$sql = 'SELECT * FROM %i WHERE code = %s' . ( $lock ? ' FOR UPDATE' : '' );
-		return $this->one( $this->wpdb->prepare( $sql, Schema::table( 'gift_cards' ), $code ) );
+		$wpdb = $this->wpdb;
+		$sql  = 'SELECT * FROM %i WHERE code = %s' . ( $lock ? ' FOR UPDATE' : '' );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- placeholders and fixed SQL only; every value is a prepare() replacement.
+		return $this->one( $wpdb->prepare( $sql, Schema::table( 'gift_cards' ), $code ) );
 	}
 
 	/** The store credit of a customer (ADR-072). */
 	public function for_user( int $user_id, bool $lock = false ): ?GiftCard {
-		$sql = 'SELECT * FROM %i WHERE user_id = %d' . ( $lock ? ' FOR UPDATE' : '' );
-		return $this->one( $this->wpdb->prepare( $sql, Schema::table( 'gift_cards' ), $user_id ) );
+		$wpdb = $this->wpdb;
+		$sql  = 'SELECT * FROM %i WHERE user_id = %d' . ( $lock ? ' FOR UPDATE' : '' );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- placeholders and fixed SQL only; every value is a prepare() replacement.
+		return $this->one( $wpdb->prepare( $sql, Schema::table( 'gift_cards' ), $user_id ) );
 	}
 
 	/**
@@ -40,13 +46,14 @@ final class GiftCardRepository {
 	 * @return array<int,GiftCard> by user id
 	 */
 	public function for_users( array $user_ids ): array {
+		$wpdb = $this->wpdb;
 		if ( $user_ids === [] ) {
 			return [];
 		}
 		$in  = implode( ',', array_fill( 0, count( $user_ids ), '%d' ) );
 		$out = [];
-		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $in is placeholders only.
-		foreach ( $this->many( $this->wpdb->prepare( "SELECT * FROM %i WHERE user_id IN ({$in})", Schema::table( 'gift_cards' ), ...$user_ids ) ) as $card ) {
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- $in is placeholders only.
+		foreach ( $this->many( $wpdb->prepare( "SELECT * FROM %i WHERE user_id IN ({$in})", Schema::table( 'gift_cards' ), ...$user_ids ) ) as $card ) {
 			$out[ (int) $card->user_id ] = $card;
 		}
 		return $out;
@@ -57,13 +64,14 @@ final class GiftCardRepository {
 	 * @return array<string,GiftCard> by code
 	 */
 	public function by_codes( array $codes ): array {
+		$wpdb = $this->wpdb;
 		if ( $codes === [] ) {
 			return [];
 		}
 		$in  = implode( ',', array_fill( 0, count( $codes ), '%s' ) );
 		$out = [];
-		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $in is placeholders only.
-		foreach ( $this->many( $this->wpdb->prepare( "SELECT * FROM %i WHERE code IN ({$in})", Schema::table( 'gift_cards' ), ...$codes ) ) as $card ) {
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- $in is placeholders only.
+		foreach ( $this->many( $wpdb->prepare( "SELECT * FROM %i WHERE code IN ({$in})", Schema::table( 'gift_cards' ), ...$codes ) ) as $card ) {
 			$out[ $card->code ] = $card;
 		}
 		return $out;
@@ -71,33 +79,37 @@ final class GiftCardRepository {
 
 	/** @return list<GiftCard> cards bought in the order */
 	public function for_order( int $order_id ): array {
-		return $this->many( $this->wpdb->prepare( 'SELECT * FROM %i WHERE order_id = %d ORDER BY id', Schema::table( 'gift_cards' ), $order_id ) );
+		$wpdb = $this->wpdb;
+		return $this->many( $wpdb->prepare( 'SELECT * FROM %i WHERE order_id = %d ORDER BY id', Schema::table( 'gift_cards' ), $order_id ) );
 	}
 
 	/** @param array<string,mixed> $fields column => value, without id and the dates */
 	public function insert( array $fields, string $now ): int {
-		$row = $fields + [
+		$wpdb = $this->wpdb;
+		$row  = $fields + [
 			'created_at' => $now,
 			'updated_at' => $now,
 		];
-		if ( $this->wpdb->insert( Schema::table( 'gift_cards' ), $row, self::formats( $row ) ) === false ) {
-			throw QueryFailed::from_wpdb( $this->wpdb );
+		if ( $wpdb->insert( Schema::table( 'gift_cards' ), $row, self::formats( $row ) ) === false ) {
+			throw QueryFailed::from_wpdb( $wpdb );
 		}
-		return (int) $this->wpdb->insert_id;
+		return (int) $wpdb->insert_id;
 	}
 
 	/** @param array<string,mixed> $fields */
 	public function update( int $id, array $fields, string $now ): void {
-		$row = $fields + [ 'updated_at' => $now ];
-		if ( $this->wpdb->update( Schema::table( 'gift_cards' ), $row, [ 'id' => $id ], self::formats( $row ), [ '%d' ] ) === false ) {
-			throw QueryFailed::from_wpdb( $this->wpdb );
+		$wpdb = $this->wpdb;
+		$row  = $fields + [ 'updated_at' => $now ];
+		if ( $wpdb->update( Schema::table( 'gift_cards' ), $row, [ 'id' => $id ], self::formats( $row ), [ '%d' ] ) === false ) {
+			throw QueryFailed::from_wpdb( $wpdb );
 		}
 	}
 
 	/** @return list<GiftCard> cards whose email waits for its day */
 	public function due_delivery( string $now, int $limit ): array {
+		$wpdb = $this->wpdb;
 		return $this->many(
-			$this->wpdb->prepare(
+			$wpdb->prepare(
 				'SELECT * FROM %i WHERE delivered_at IS NULL AND deliver_at IS NOT NULL AND deliver_at <= %s AND status = %s AND recipient_email <> %s ORDER BY deliver_at, id LIMIT %d',
 				Schema::table( 'gift_cards' ),
 				$now,
@@ -109,8 +121,9 @@ final class GiftCardRepository {
 	}
 
 	public function add_activity( int $card_id, string $type, int $amount, int $balance_after, ?int $order_id, ?int $transaction_id, string $note, ?int $user_id, string $now ): int {
-		$ok = $this->wpdb->query(
-			$this->wpdb->prepare(
+		$wpdb = $this->wpdb;
+		$ok   = $wpdb->query(
+			$wpdb->prepare(
 				'INSERT INTO %i (gift_card_id, type, amount, balance_after, order_id, transaction_id, note, user_id, created_at) VALUES (%d, %s, %d, %d, NULLIF(%d, 0), NULLIF(%d, 0), %s, NULLIF(%d, 0), %s)',
 				Schema::table( 'gift_card_activity' ),
 				$card_id,
@@ -125,15 +138,16 @@ final class GiftCardRepository {
 			)
 		);
 		if ( $ok === false ) {
-			throw QueryFailed::from_wpdb( $this->wpdb );
+			throw QueryFailed::from_wpdb( $wpdb );
 		}
-		return (int) $this->wpdb->insert_id;
+		return (int) $wpdb->insert_id;
 	}
 
 	/** @return list<GiftCardActivity> newest first */
 	public function activity( int $card_id, int $limit = 1000 ): array {
-		$rows = $this->wpdb->get_results(
-			$this->wpdb->prepare( 'SELECT * FROM %i WHERE gift_card_id = %d ORDER BY id DESC LIMIT %d', Schema::table( 'gift_card_activity' ), $card_id, $limit ),
+		$wpdb = $this->wpdb;
+		$rows = $wpdb->get_results(
+			$wpdb->prepare( 'SELECT * FROM %i WHERE gift_card_id = %d ORDER BY id DESC LIMIT %d', Schema::table( 'gift_card_activity' ), $card_id, $limit ),
 			ARRAY_A
 		);
 		return array_map( static fn ( array $row ): GiftCardActivity => GiftCardActivity::from_row( $row ), is_array( $rows ) ? $rows : [] );
@@ -141,8 +155,9 @@ final class GiftCardRepository {
 
 	/** Whether a row of this type already records the transaction, so a retried refund credits once. */
 	public function has_activity( int $card_id, string $type, int $transaction_id ): bool {
-		return $this->wpdb->get_var(
-			$this->wpdb->prepare(
+		$wpdb = $this->wpdb;
+		return $wpdb->get_var(
+			$wpdb->prepare(
 				'SELECT 1 FROM %i WHERE gift_card_id = %d AND type = %s AND transaction_id = %d LIMIT 1',
 				Schema::table( 'gift_card_activity' ),
 				$card_id,
@@ -156,28 +171,29 @@ final class GiftCardRepository {
 	 * @return array{rows:list<GiftCard>,total:int}
 	 */
 	public function page( string $search, string $status, int $page, int $per_page, string $now ): array {
+		$wpdb = $this->wpdb;
 		// Store credit has its own place on the customer (ADR-072).
 		$where = [ 'user_id IS NULL' ];
 		if ( $search !== '' ) {
 			$code    = GiftCard::normalize( $search );
-			$like    = '%' . $this->wpdb->esc_like( $search ) . '%';
-			$where[] = $this->wpdb->prepare( '(code LIKE %s OR recipient_email LIKE %s OR recipient_name LIKE %s OR order_id = %d)', '%' . $this->wpdb->esc_like( $code ) . '%', $like, $like, ctype_digit( $search ) ? (int) $search : 0 );
+			$like    = '%' . $wpdb->esc_like( $search ) . '%';
+			$where[] = $wpdb->prepare( '(code LIKE %s OR recipient_email LIKE %s OR recipient_name LIKE %s OR order_id = %d)', '%' . $wpdb->esc_like( $code ) . '%', $like, $like, ctype_digit( $search ) ? (int) $search : 0 );
 		}
 		if ( $status === 'expired' ) {
-			$where[] = $this->wpdb->prepare( 'expires_at IS NOT NULL AND expires_at <= %s', $now );
+			$where[] = $wpdb->prepare( 'expires_at IS NOT NULL AND expires_at <= %s', $now );
 		} elseif ( $status === 'used' ) {
 			$where[] = 'balance <= 0';
 		} elseif ( in_array( $status, GiftCard::STATUSES, true ) ) {
-			$where[] = $this->wpdb->prepare( 'status = %s', $status );
+			$where[] = $wpdb->prepare( 'status = %s', $status );
 		}
 		$sql   = 'WHERE ' . implode( ' AND ', $where );
 		$table = Schema::table( 'gift_cards' );
-		$total = (int) $this->wpdb->get_var(
+		$total = (int) $wpdb->get_var(
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $sql is prepared above.
-			$this->wpdb->prepare( "SELECT COUNT(*) FROM %i {$sql}", $table )
+			$wpdb->prepare( "SELECT COUNT(*) FROM %i {$sql}", $table )
 		);
 		$rows = $this->many(
-			$this->wpdb->prepare(
+			$wpdb->prepare(
 				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $sql is prepared above.
 				"SELECT * FROM %i {$sql} ORDER BY id DESC LIMIT %d OFFSET %d",
 				$table,
@@ -193,13 +209,15 @@ final class GiftCardRepository {
 
 	/** @return list<GiftCard> cards sent to the address */
 	public function for_email( string $email ): array {
-		return $this->many( $this->wpdb->prepare( 'SELECT * FROM %i WHERE recipient_email = %s ORDER BY id', Schema::table( 'gift_cards' ), $email ) );
+		$wpdb = $this->wpdb;
+		return $this->many( $wpdb->prepare( 'SELECT * FROM %i WHERE recipient_email = %s ORDER BY id', Schema::table( 'gift_cards' ), $email ) );
 	}
 
 	/** Clears the recipient on the address's cards; the codes and balances stay usable. */
 	public function anonymize_email( string $email, string $now ): int {
-		return (int) $this->wpdb->query(
-			$this->wpdb->prepare(
+		$wpdb = $this->wpdb;
+		return (int) $wpdb->query(
+			$wpdb->prepare(
 				"UPDATE %i SET recipient_email = '', recipient_name = '', sender_name = '', message = NULL, updated_at = %s WHERE recipient_email = %s",
 				Schema::table( 'gift_cards' ),
 				$now,
@@ -218,13 +236,15 @@ final class GiftCardRepository {
 	}
 
 	private function one( string $sql ): ?GiftCard {
-		$row = $this->wpdb->get_row( $sql, ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- prepared by the caller.
+		$wpdb = $this->wpdb;
+		$row  = $wpdb->get_row( $sql, ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- prepared by the caller.
 		return is_array( $row ) ? GiftCard::from_row( $row ) : null;
 	}
 
 	/** @return list<GiftCard> */
 	private function many( string $sql ): array {
-		$rows = $this->wpdb->get_results( $sql, ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- prepared by the caller.
+		$wpdb = $this->wpdb;
+		$rows = $wpdb->get_results( $sql, ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- prepared by the caller.
 		return array_map( static fn ( array $row ): GiftCard => GiftCard::from_row( $row ), is_array( $rows ) ? $rows : [] );
 	}
 }

@@ -7,7 +7,7 @@
  * button stays and the shopper pays on PayPal's page instead.
  */
 function loadPayPal( url ) {
-	const loaded = ( window.fxcPayPal ??= {} );
+	const loaded = ( window.fxcmPayPal ??= {} );
 	loaded[ url ] ??= new Promise( ( resolve, reject ) => {
 		const script = document.createElement( 'script' );
 		script.src = url;

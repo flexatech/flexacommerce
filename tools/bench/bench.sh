@@ -140,7 +140,7 @@ checkout_state() { # store [lines]
 	local ids
 	ids=$(php -r '$e = json_decode(file_get_contents($argv[1]), true); echo implode(",", array_slice($e["ids"], 0, (int) $argv[2]));' "$HERE/out/checkout-$1.json" "${2:-5}")
 	if [ "$1" = fxc ]; then
-		sql "USE bench_fxc; SELECT 'orders', COUNT(*) FROM wp_fxc_orders; SELECT CONCAT('stock_', product_id), stock_quantity FROM wp_fxc_variants WHERE product_id IN ($ids) ORDER BY product_id;"
+		sql "USE bench_fxc; SELECT 'orders', COUNT(*) FROM wp_fxcm_orders; SELECT CONCAT('stock_', product_id), stock_quantity FROM wp_fxcm_variants WHERE product_id IN ($ids) ORDER BY product_id;"
 	else
 		sql "USE bench_$1; SELECT 'orders', COUNT(*) FROM wp_wc_orders WHERE type = 'shop_order'; SELECT CONCAT('stock_', post_id), CAST(meta_value AS SIGNED) FROM wp_postmeta WHERE meta_key = '_stock' AND post_id IN ($ids) ORDER BY post_id;"
 	fi

@@ -11,7 +11,7 @@ use Flexa\Commerce\StockAlerts\StockAlertService;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * The stop link of a back-in-stock email (ADR-065). `?fxc_stock_stop=<key>`
+ * The stop link of a back-in-stock email (ADR-065). `?fxcm_stock_stop=<key>`
  * asks first and cancels the address's waiting alerts on the posted
  * answer, because mail scanners open every link in a message.
  */
@@ -19,7 +19,7 @@ final class StockAlertHandler {
 	use HasInstance;
 
 	/** The stop form's nonce action. */
-	public const NONCE = 'fxc_stock_stop';
+	public const NONCE = 'fxcm_stock_stop';
 
 	public function handle(): void {
 		nocache_headers();

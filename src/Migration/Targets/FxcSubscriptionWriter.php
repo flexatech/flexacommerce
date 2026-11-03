@@ -27,7 +27,7 @@ use Flexa\Commerce\Support\Settings;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * WooCommerce Subscriptions subscriptions into fxc_subscriptions (ADR-079).
+ * WooCommerce Subscriptions subscriptions into fxcm_subscriptions (ADR-079).
  * A row comes in with billing held: WooCommerce Subscriptions may still be
  * charging it, so nothing renews here until the merchant starts billing.
  * A row already released is left alone. Runs inside the target's

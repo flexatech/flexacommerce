@@ -203,7 +203,7 @@ export interface GenerateResult {
     product: ProductData;
 }
 
-/** A term of the `fxc_attribute` taxonomy as listed by `admin/attributes`. */
+/** A term of the `fxcm_attribute` taxonomy as listed by `admin/attributes`. */
 export interface AttributeTerm {
     id: number;
     name: string;

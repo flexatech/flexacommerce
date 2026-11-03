@@ -102,7 +102,7 @@ final class CheckoutPageTest extends OrderTestCase {
 		$this->add( $product, 1 );
 
 		$html = do_shortcode( '[flexacommerce_checkout]' );
-		self::assertStringContainsString( 'name="fxc_checkout"', $html );
+		self::assertStringContainsString( 'name="fxcm_checkout"', $html );
 		self::assertStringContainsString( 'name="billing[email]"', $html );
 		self::assertStringContainsString( 'value="' . $this->rate_id . '"', $html );
 		self::assertStringContainsString( 'name="expected_total" value="1500"', $html );
@@ -168,7 +168,7 @@ final class CheckoutPageTest extends OrderTestCase {
 		$_SERVER['HTTP_ORIGIN'] = 'https://evil.test';
 		self::assertNull( $this->post( $this->form( $token ) ) );
 		unset( $_SERVER['HTTP_ORIGIN'] );
-		self::assertNull( $this->post( $this->form( $token, [ 'fxc_nonce' => 'stale' ] ) ) );
+		self::assertNull( $this->post( $this->form( $token, [ 'fxcm_nonce' => 'stale' ] ) ) );
 
 		self::assertStringContainsString( 'Your session has expired', CheckoutPage::instance()->render() );
 		self::assertNull( $this->orders()->find_by_checkout_token( $token ) );
@@ -178,7 +178,7 @@ final class CheckoutPageTest extends OrderTestCase {
 		$this->add( $this->simple( 1000, 5 ), 1 );
 		$token = $this->token( do_shortcode( '[flexacommerce_checkout]' ) );
 
-		self::assertNull( $this->post( $this->form( $token, [ 'fxc_refresh' => '1' ] ) ) );
+		self::assertNull( $this->post( $this->form( $token, [ 'fxcm_refresh' => '1' ] ) ) );
 		self::assertNull( $this->orders()->find_by_checkout_token( $token ) );
 		self::assertSame( 'VA', Plugin::instance()->cart()->cart()->state( 0 )->cart->destination['state'] );
 	}
@@ -224,13 +224,13 @@ final class CheckoutPageTest extends OrderTestCase {
 		self::assertStringContainsString( 'order-pay=', $location );
 
 		$html = $this->visit( $location );
-		self::assertStringContainsString( 'name="fxc_pay"', $html );
+		self::assertStringContainsString( 'name="fxcm_pay"', $html );
 		self::assertStringContainsString( 'value="cod"', $html );
 
 		$this->get_args( $location );
 		$_POST = [
-			'fxc_pay'        => '1',
-			'fxc_nonce'      => $this->nonce(),
+			'fxcm_pay'       => '1',
+			'fxcm_nonce'     => $this->nonce(),
 			'payment_method' => 'cod',
 		];
 		$done  = $this->handle();
@@ -642,8 +642,8 @@ final class CheckoutPageTest extends OrderTestCase {
 	 */
 	private function form( string $token, array $overrides = [] ): array {
 		return $overrides + [
-			'fxc_checkout'   => '1',
-			'fxc_nonce'      => $this->nonce(),
+			'fxcm_checkout'  => '1',
+			'fxcm_nonce'     => $this->nonce(),
 			'checkout_token' => $token,
 			'billing'        => self::BILLING,
 			'shipping_rate'  => $this->rate_id,

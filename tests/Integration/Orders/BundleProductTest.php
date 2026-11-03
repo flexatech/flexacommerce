@@ -261,7 +261,7 @@ final class BundleProductTest extends OrderTestCase {
 		[ $sized, $ids ] = $this->sized();
 		$catalog         = Plugin::instance()->catalog();
 		$targets         = new RuleTargets( $catalog->products(), $catalog->variants() );
-		update_post_meta( $tee, '_fxc_search_probe', '1' );
+		update_post_meta( $tee, '_fxcm_search_probe', '1' );
 		$this->save( $tee, [ 'base' => [ 'sku' => $this->sku( 'PROBE' ) ] ] );
 		$this->save( $sized, [ 'base' => [ 'sku' => $this->sku( 'SIZED' ) ] ] );
 

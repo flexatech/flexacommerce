@@ -45,15 +45,15 @@ final class SubscriptionService {
 	public const BATCH = 25;
 
 	/** User meta set on a customer's first subscription, so other accounts read no table. */
-	public const USER_META = '_fxc_has_subscriptions';
+	public const USER_META = '_fxcm_has_subscriptions';
 
 	/** Order meta naming the subscription a renewal order bills. */
-	public const ORDER_META = '_fxc_subscription';
+	public const ORDER_META = '_fxcm_subscription';
 
 	public const CREATED_VIA = 'subscription';
 
 	/** Order meta of a switch order: the snapshot it moves the subscription to once paid (ADR-077). */
-	public const SWITCH_META = '_fxc_subscription_switch';
+	public const SWITCH_META = '_fxcm_subscription_switch';
 
 	/** Days to the next automatic try after each failed one; after the last, the customer pays from the email (ADR-074). */
 	public const RETRY_DAYS = [ 1, 2, 4 ];
@@ -1016,7 +1016,7 @@ final class SubscriptionService {
 			}
 			[ $subtotal, $shipping, $discount, $fee, $tax, $incl ] = [ $new->subtotal, $new->shipping_total, $new->discount_total, $new->fee_total - $credit, $new->tax_total, $new->prices_include_tax ];
 		}
-		$method = str_starts_with( $row->payment_method, 'fxc_' ) ? '' : $row->payment_method;
+		$method = str_starts_with( $row->payment_method, 'fxcm_' ) ? '' : $row->payment_method;
 		return new NewOrder(
 			status: OrderStatus::PENDING,
 			currency: $row->currency,
@@ -1368,7 +1368,7 @@ final class SubscriptionService {
 	private function renewal_order( Subscription $row ): NewOrder {
 		$snapshot = $row->snapshot ?? throw new \InvalidArgumentException( 'No snapshot.' );
 		// An internal gateway paid the first order (a gift card); the shopper picks one on the pay page.
-		$method = str_starts_with( $row->payment_method, 'fxc_' ) ? '' : $row->payment_method;
+		$method = str_starts_with( $row->payment_method, 'fxcm_' ) ? '' : $row->payment_method;
 		return new NewOrder(
 			status: $snapshot->total > 0 ? OrderStatus::PENDING : OrderStatus::PROCESSING,
 			currency: $row->currency,

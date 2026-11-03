@@ -191,7 +191,7 @@ final class DownloadsTest extends OrderTestCase {
 		$view = new Account( new CustomerProfile(), Plugin::instance()->checkout()->service() );
 		$html = $view->downloads( $this->user );
 		self::assertStringContainsString( 'Ebook', $html );
-		self::assertStringContainsString( 'fxc_download=', $html );
+		self::assertStringContainsString( 'fxcm_download=', $html );
 		self::assertStringContainsString( 'No downloads yet.', $view->downloads( self::factory()->user->create() ) );
 	}
 

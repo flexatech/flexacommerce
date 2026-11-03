@@ -16,13 +16,13 @@ use Flexa\Commerce\Support\ShopLayout;
 
 defined( 'ABSPATH' ) || exit;
 
-$fxc         = Storefront::instance();
-$fxc_wrapper = TemplateLoader::wrapper();
-$fxc_side    = ShopLayout::side();
+$fxc          = Storefront::instance();
+$fxcm_wrapper = TemplateLoader::wrapper();
+$fxcm_side    = ShopLayout::side();
 
 get_header();
 ?>
-<?php echo $fxc_wrapper[0]; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- theme markup. ?>
+<?php echo $fxcm_wrapper[0]; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- theme markup. ?>
 <?php echo $fxc->part( 'breadcrumbs' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped markup. ?>
 <header class="fxc-shop__header page-header">
 	<?php if ( is_post_type_archive() ) : ?>
@@ -32,8 +32,8 @@ get_header();
 		<?php the_archive_description( '<div class="fxc-shop__description archive-description">', '</div>' ); ?>
 	<?php endif; ?>
 </header>
-<?php if ( $fxc_side !== 'off' ) : ?>
-<div class="fxc-shop-classic fxc-shop-classic--filters-<?php echo esc_attr( $fxc_side ); ?>">
+<?php if ( $fxcm_side !== 'off' ) : ?>
+<div class="fxc-shop-classic fxc-shop-classic--filters-<?php echo esc_attr( $fxcm_side ); ?>">
 	<aside class="fxc-shop-classic__sidebar">
 		<?php echo $fxc->render_block( 'product-filters', [ 'collapsible' => true ], null ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped markup. ?>
 	</aside>
@@ -59,12 +59,12 @@ get_header();
 <?php else : ?>
 	<p class="fxc-shop__empty"><?php esc_html_e( 'No products found.', 'flexacommerce' ); ?></p>
 <?php endif; ?>
-<?php if ( $fxc_side !== 'off' ) : ?>
+<?php if ( $fxcm_side !== 'off' ) : ?>
 	</div>
 </div>
 <?php endif; ?>
 <?php
-echo $fxc_wrapper[1]; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- theme markup.
+echo $fxcm_wrapper[1]; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- theme markup.
 // Without a sidebar.php, get_sidebar() prints core's deprecated theme-compat
 // sidebar (Twenty Twenty-One has none). locate_template() would find that one too.
 if ( file_exists( get_stylesheet_directory() . '/sidebar.php' ) || file_exists( get_template_directory() . '/sidebar.php' ) ) {

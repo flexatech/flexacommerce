@@ -9,7 +9,7 @@ use Flexa\Commerce\Database\Schema;
 
 defined( 'ABSPATH' ) || exit;
 
-/** Storage for fxc_order_history: append-only. */
+/** Storage for fxcm_order_history: append-only. */
 // phpcs:disable WordPress.DB.DirectDatabaseQuery -- plugin table, all values prepared, append-only log.
 final class HistoryRepository {
 	public const TYPES = [ 'status', 'note', 'payment', 'refund', 'stock', 'email', 'system', 'import', 'shipment' ];
@@ -31,8 +31,9 @@ final class HistoryRepository {
 		?string $to_status = null,
 		array $context = [],
 	): int {
-		$ok = $this->wpdb->query(
-			$this->wpdb->prepare(
+		$wpdb = $this->wpdb;
+		$ok   = $wpdb->query(
+			$wpdb->prepare(
 				'INSERT INTO %i (order_id, type, from_status, to_status, message, customer_visible, actor_type, actor_id, context, created_at) VALUES (%d, %s, NULLIF(%s, %s), NULLIF(%s, %s), %s, %d, %s, NULLIF(%d, 0), NULLIF(%s, %s), %s)',
 				Schema::table( 'order_history' ),
 				$order_id,
@@ -51,17 +52,19 @@ final class HistoryRepository {
 			)
 		);
 		if ( $ok === false ) {
-			throw QueryFailed::from_wpdb( $this->wpdb );
+			throw QueryFailed::from_wpdb( $wpdb );
 		}
-		return (int) $this->wpdb->insert_id;
+		return (int) $wpdb->insert_id;
 	}
 
 	/**
 	 * @return list<array{id:int,type:string,from_status:?string,to_status:?string,message:string,customer_visible:bool,actor_type:string,actor_id:?int,context:array<string,mixed>,created_at:string}>
 	 */
 	public function for_order( int $order_id, bool $customer_visible_only = false ): array {
+		$wpdb = $this->wpdb;
 		$sql  = 'SELECT * FROM %i WHERE order_id = %d' . ( $customer_visible_only ? ' AND customer_visible = 1' : '' ) . ' ORDER BY id DESC';
-		$rows = $this->wpdb->get_results( $this->wpdb->prepare( $sql, Schema::table( 'order_history' ), $order_id ), ARRAY_A );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- placeholders and fixed SQL only; every value is a prepare() replacement.
+		$rows = $wpdb->get_results( $wpdb->prepare( $sql, Schema::table( 'order_history' ), $order_id ), ARRAY_A );
 		$out  = [];
 		foreach ( $rows ?: [] as $row ) {
 			$context = json_decode( (string) ( $row['context'] ?? '' ), true );

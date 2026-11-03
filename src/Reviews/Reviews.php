@@ -20,14 +20,14 @@ defined( 'ABSPATH' ) || exit;
 final class Reviews {
 	use HasInstance;
 
-	public const TYPE          = 'fxc_review';
-	public const META_RATING   = '_fxc_review_rating';
-	public const META_VERIFIED = '_fxc_review_verified';
+	public const TYPE          = 'fxcm_review';
+	public const META_RATING   = '_fxcm_review_rating';
+	public const META_VERIFIED = '_fxcm_review_verified';
 
 	/** Product meta: the average rating, the number of rated reviews and the reviews per star. */
-	public const META_AVERAGE = '_fxc_rating';
-	public const META_COUNT   = '_fxc_review_count';
-	public const META_COUNTS  = '_fxc_rating_counts';
+	public const META_AVERAGE = '_fxcm_rating';
+	public const META_COUNT   = '_fxcm_review_count';
+	public const META_COUNTS  = '_fxcm_rating_counts';
 
 	/** Who may review: nobody, anyone (with the Discussion settings), customers who bought the product. */
 	public const OFF    = 'off';
@@ -150,17 +150,17 @@ final class Reviews {
 		}
 		$mode = self::mode();
 		if ( $mode === self::OFF ) {
-			return new \WP_Error( 'fxc_reviews_off', __( 'This store does not take reviews.', 'flexacommerce' ), 403 );
+			return new \WP_Error( 'fxcm_reviews_off', __( 'This store does not take reviews.', 'flexacommerce' ), 403 );
 		}
 		if ( (int) ( $data['comment_parent'] ?? 0 ) > 0 ) {
-			return new \WP_Error( 'fxc_review_reply', __( 'Only the store can reply to a review.', 'flexacommerce' ), 403 );
+			return new \WP_Error( 'fxcm_review_reply', __( 'Only the store can reply to a review.', 'flexacommerce' ), 403 );
 		}
 		$meta = is_array( $data['comment_meta'] ?? null ) ? $data['comment_meta'] : [];
 		if ( ! isset( $meta[ self::META_RATING ] ) ) {
-			return new \WP_Error( 'fxc_review_rating', __( 'Please choose a rating for your review.', 'flexacommerce' ), 400 );
+			return new \WP_Error( 'fxcm_review_rating', __( 'Please choose a rating for your review.', 'flexacommerce' ), 400 );
 		}
 		if ( $mode === self::BUYERS && ( (int) ( $data['user_id'] ?? 0 ) === 0 || empty( $meta[ self::META_VERIFIED ] ) ) ) {
-			return new \WP_Error( 'fxc_review_buyers', __( 'Only logged-in customers who bought this product can review it.', 'flexacommerce' ), 403 );
+			return new \WP_Error( 'fxcm_review_buyers', __( 'Only logged-in customers who bought this product can review it.', 'flexacommerce' ), 403 );
 		}
 		return $approved;
 	}

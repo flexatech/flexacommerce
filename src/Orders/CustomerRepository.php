@@ -29,11 +29,12 @@ final class CustomerRepository implements CustomerHistory {
 	public function __construct( private readonly \wpdb $wpdb ) {}
 
 	public function order_count( int $user_id ): int {
+		$wpdb = $this->wpdb;
 		if ( $user_id <= 0 ) {
 			return 0;
 		}
-		return (int) $this->wpdb->get_var(
-			$this->wpdb->prepare(
+		return (int) $wpdb->get_var(
+			$wpdb->prepare(
 				'SELECT COUNT(*) FROM %i WHERE customer_id = %d AND status IN (%s, %s) AND deleted_at IS NULL',
 				Schema::table( 'orders' ),
 				$user_id,
@@ -44,11 +45,12 @@ final class CustomerRepository implements CustomerHistory {
 	}
 
 	public function spent( int $user_id ): int {
+		$wpdb = $this->wpdb;
 		if ( $user_id <= 0 ) {
 			return 0;
 		}
-		return (int) $this->wpdb->get_var(
-			$this->wpdb->prepare(
+		return (int) $wpdb->get_var(
+			$wpdb->prepare(
 				'SELECT COALESCE( SUM( amount_paid - amount_refunded ), 0 ) FROM %i WHERE customer_id = %d AND currency = %s AND deleted_at IS NULL',
 				Schema::table( 'orders' ),
 				$user_id,
@@ -59,13 +61,15 @@ final class CustomerRepository implements CustomerHistory {
 
 	/** @param list<int> $product_ids */
 	public function bought( int $user_id, array $product_ids ): bool {
+		$wpdb        = $this->wpdb;
 		$product_ids = array_values( array_filter( array_map( 'intval', $product_ids ), static fn ( int $id ): bool => $id > 0 ) );
 		if ( $user_id <= 0 || $product_ids === [] ) {
 			return false;
 		}
 		$placeholders = implode( ',', array_fill( 0, count( $product_ids ), '%d' ) );
-		return (bool) $this->wpdb->get_var(
-			$this->wpdb->prepare(
+		return (bool) $wpdb->get_var(
+			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- placeholders and fixed SQL only; every value is a prepare() replacement.
+			$wpdb->prepare(
 				"SELECT 1 FROM %i o JOIN %i i ON i.order_id = o.id
 				WHERE o.customer_id = %d AND o.status IN (%s, %s) AND o.deleted_at IS NULL
 					AND i.type = %s AND i.product_id IN ({$placeholders}) LIMIT 1",
@@ -88,6 +92,7 @@ final class CustomerRepository implements CustomerHistory {
 	 * @return array{items:list<array{customer_id:int,email:string,name:string,orders:int,spent:int,first_order:string,last_order:string}>,total:int}
 	 */
 	public function search( string $currency, string $type = '', string $search = '', string $orderby = 'last_order', string $order = 'desc', int $page = 1, int $per_page = 20 ): array {
+		$wpdb  = $this->wpdb;
 		$table = Schema::table( 'orders' );
 		$where = [ 'deleted_at IS NULL', 'anonymized_at IS NULL', "( COALESCE( customer_id, 0 ) > 0 OR customer_email <> '' )" ];
 		$args  = [];
@@ -99,15 +104,16 @@ final class CustomerRepository implements CustomerHistory {
 		$having = '';
 		$search = trim( $search );
 		if ( $search !== '' ) {
-			$like   = $this->wpdb->esc_like( strtolower( $search ) );
+			$like   = $wpdb->esc_like( strtolower( $search ) );
 			$having = 'HAVING SUM( customer_email LIKE %s OR customer_name LIKE %s ) > 0';
 			$hargs  = [ $like . '%', '%' . $like . '%' ];
 		}
 		$where = implode( ' AND ', $where );
 		$key   = self::KEY;
 
-		$total = (int) $this->wpdb->get_var(
-			$this->wpdb->prepare(
+		$total = (int) $wpdb->get_var(
+			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- placeholders and fixed SQL only; every value is a prepare() replacement.
+			$wpdb->prepare(
 				"SELECT COUNT(*) FROM ( SELECT {$key} AS ckey FROM %i WHERE {$where} GROUP BY ckey {$having} ) AS customers",
 				$table,
 				...[ ...$args, ...( $hargs ?? [] ) ]
@@ -122,8 +128,9 @@ final class CustomerRepository implements CustomerHistory {
 
 		$column    = in_array( $orderby, self::ORDER_BY, true ) ? $orderby : 'last_order';
 		$direction = $order === 'asc' ? 'ASC' : 'DESC';
-		$rows      = $this->wpdb->get_results(
-			$this->wpdb->prepare(
+		$rows      = $wpdb->get_results(
+			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- placeholders and fixed SQL only; every value is a prepare() replacement.
+			$wpdb->prepare(
 				"SELECT {$key} AS ckey, MAX( COALESCE( customer_id, 0 ) ) AS customer_id, COUNT(*) AS orders,
 					SUM( IF( currency = %s, amount_paid - amount_refunded, 0 ) ) AS spent,
 					MIN( created_at ) AS first_order, MAX( created_at ) AS last_order, MAX( id ) AS last_id
@@ -161,15 +168,17 @@ final class CustomerRepository implements CustomerHistory {
 	 * @return array<int,array{0:string,1:string}>
 	 */
 	private function latest_contact( array $ids ): array {
+		$wpdb = $this->wpdb;
 		if ( $ids === [] ) {
 			return [];
 		}
 		$placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
-		$rows         = $this->wpdb->get_results(
-			$this->wpdb->prepare( "SELECT id, customer_email, customer_name FROM %i WHERE id IN ({$placeholders})", Schema::table( 'orders' ), ...$ids ),
+		$rows         = $wpdb->get_results(
+			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- placeholders and fixed SQL only; every value is a prepare() replacement.
+			$wpdb->prepare( "SELECT id, customer_email, customer_name FROM %i WHERE id IN ({$placeholders})", Schema::table( 'orders' ), ...$ids ),
 			ARRAY_A
 		) ?: [];
-		$out          = [];
+		$out = [];
 		foreach ( $rows as $row ) {
 			$out[ (int) $row['id'] ] = [ (string) $row['customer_email'], (string) $row['customer_name'] ];
 		}

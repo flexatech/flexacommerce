@@ -21,10 +21,10 @@ Status: **Approved 2026-10-24**. All performance numbers in this document are **
 | Capability | Grants | Default roles |
 |---|---|---|
 | `manage_flexacommerce` | settings, gateways, shipping, migration, status/logs, uninstall data option | administrator |
-| `view_fxc_orders` | order list and detail, customers list | administrator, fxc_store_manager |
-| `edit_fxc_orders` | transitions, notes, addresses, record payment, cancel | administrator, fxc_store_manager |
-| `refund_fxc_orders` | refunds (separate because it moves money) | administrator, fxc_store_manager |
-| `fxc_product` CPT caps (`edit_fxc_products`, ...) | catalog | administrator, fxc_store_manager |
+| `view_fxcm_orders` | order list and detail, customers list | administrator, fxcm_store_manager |
+| `edit_fxcm_orders` | transitions, notes, addresses, record payment, cancel | administrator, fxcm_store_manager |
+| `refund_fxcm_orders` | refunds (separate because it moves money) | administrator, fxcm_store_manager |
+| `fxcm_product` CPT caps (`edit_fxcm_products`, ...) | catalog | administrator, fxcm_store_manager |
 
 Every check goes through `Support\Capabilities` with filters `flexacommerce.capabilities.{name}` (house rule). Multisite super admins pass through core `map_meta_cap` behavior.
 
@@ -46,8 +46,8 @@ WordPress nonces are tied to the user id and session token. For logged-out visit
 - The first add-to-cart (no session yet) is allowed with checks 1 and 2 only. The worst case of a forged first request is an item placed in a visitor's cart, which is accepted as low impact.
 - Checkout additionally requires the `checkout_token` issued with the form and bound to the session, which works as a CSRF token and an idempotency key.
 - No-JS form posts (`admin-post.php`) use a hidden HMAC token with the same construction, plus the Origin/Referer check.
-- Cookie `fxc_session`: `HttpOnly`, `Secure` when the site is HTTPS, `SameSite=Lax`, path `COOKIEPATH`.
-- Cookies `fxc_wishlist` and `fxc_wishlist_ids` (ADR-066) are set only by a wishlist save or removal, never on a catalog view. `fxc_wishlist` carries a guest list's random token: `HttpOnly`, `Secure` on HTTPS, `SameSite=Lax`, 90 days; the database keeps only its SHA-256 hash. `fxc_wishlist_ids` is readable by scripts and holds the owner's user id and the saved product ids, nothing secret, so a cached page can draw the filled heart.
+- Cookie `fxcm_session`: `HttpOnly`, `Secure` when the site is HTTPS, `SameSite=Lax`, path `COOKIEPATH`.
+- Cookies `fxcm_wishlist` and `fxcm_wishlist_ids` (ADR-066) are set only by a wishlist save or removal, never on a catalog view. `fxcm_wishlist` carries a guest list's random token: `HttpOnly`, `Secure` on HTTPS, `SameSite=Lax`, 90 days; the database keeps only its SHA-256 hash. `fxcm_wishlist_ids` is readable by scripts and holds the owner's user id and the saved product ids, nothing secret, so a cached page can draw the filled heart.
 - Gift card codes (ADR-069) are 16 characters from a 27-character alphabet made with `random_int()` (about 76 bits), so guessing is ruled out by the code space and the `gift_card_ip` limit together. Only a code with the right shape is looked up, and a wrong one counts against the limit. Outside the admin screen a code is masked to its last four characters: in the cart, at checkout, in order notes and payment rows, and in the privacy export. A balance changes only with the card row locked inside the transaction that records the change, so two orders cannot spend the same money; a refund credit is keyed on its refund transaction, so a retried refund adds once.
 - Subscriptions (ADR-073): a shopper sees and changes only their own rows (`SubscriptionService::owned()` checks the customer id; another account gets "Subscription not found"), and the cancel and keep buttons are account forms with the usual HMAC token. A guest checkout with a plan makes an account only for an email that has none; an email that has one must log in, so a checkout cannot attach a subscription to someone else's account. The admin routes need the view orders capability to read and edit orders to act or move a payment. Renewals bill the snapshot taken at checkout, so a later price change in the catalog never charges an existing subscriber more. Automatic renewals (ADR-074) store only the gateway's customer and method ids and a card label, never card data, and the eraser clears them with an ended row. A card is saved only for an order that holds a plan. Changing the card is an account form with the HMAC token; the return from Stripe has no nonce (the shopper comes back from another site) and is trusted only after the session is read with the secret key: it must be complete, in setup mode, and name this subscription in `client_reference_id`, and the row must belong to the logged-in account. Each off-session charge carries the idempotency key of its own payment row. If the request dies after Stripe charged but before the answer was stored, the payment row stays pending with no reference; the cron does not charge that order again on its own (it only retries a charge Stripe declined), and the next charge of the same order (the merchant's "Charge the saved method now", or a later retry) reuses that row and its idempotency key, so Stripe returns the first charge instead of taking the money twice. Tests: FakeStripe integration for the saved card, renewal charge, three retries, admin charge and card change; stripe-mock contract for the off-session, saved-method and setup requests.
 - Store credit (ADR-072) never shows its code: the cart, checkout and scripts see `store-credit`, the code typed by hand counts as a wrong code against `gift_card_ip`, and a redeem checks that the order belongs to the card's owner. Changing a balance needs the edit orders capability and a reason; reading it needs view orders.
@@ -79,7 +79,7 @@ Order key (32 random bytes) + `hash_equals()`, `Cache-Control: private, no-store
 
 ### 2.7.1 Download links (ADR-058)
 
-- The 32-character random token in `?fxc_download=` is the credential; it works without signing in so email links work, and `flexacommerce.downloads.require_login` can require the buyer's account. Tokens are unique per order line and file and are never derived from ids.
+- The 32-character random token in `?fxcm_download=` is the credential; it works without signing in so email links work, and `flexacommerce.downloads.require_login` can require the buyer's account. Tokens are unique per order line and file and are never derived from ids.
 - Links work only while the order is processing or completed, within the limit and before the expiry. Responses send `nocache_headers()` and `X-Robots-Tag: noindex, nofollow`.
 - Local files must sit under the uploads folder (filter `flexacommerce.downloads.allowed_paths`) with a file type WordPress allows, so a product cannot serve `wp-config.php` or a file outside the site.
 - Uploads from the product editor go to `uploads/flexacommerce_uploads`, which has an `.htaccess` that denies every request and an empty `index.html`. On nginx, which ignores `.htaccess`, the store needs an equivalent `deny` rule. A redirect cannot reach that folder, so its files are streamed instead.
@@ -99,8 +99,8 @@ Order key (32 random bytes) + `hash_equals()`, `Cache-Control: private, no-store
 
 ### 2.7.3 PDF invoices (ADR-060)
 
-- `?fxc_invoice=<id>&key=<key>` needs the order key or the signed-in owner (`OrderAccess::can_view`), and the invoice setting must allow it: "When the order is paid" (paid, processing, completed or refunded and not free), "After you make the invoice" or "Never". An anonymized order never serves one. Every refusal is the same 404, so the response does not tell whether the order exists. Staff who may view orders always get it.
-- The admin PDF (`admin-post.php?action=fxc_invoice`) checks a `wp_rest` nonce and the view orders capability; the order routes need view orders to read and edit orders to assign a number, the settings routes the manage capability. A logo must be an image attachment.
+- `?fxcm_invoice=<id>&key=<key>` needs the order key or the signed-in owner (`OrderAccess::can_view`), and the invoice setting must allow it: "When the order is paid" (paid, processing, completed or refunded and not free), "After you make the invoice" or "Never". An anonymized order never serves one. Every refusal is the same 404, so the response does not tell whether the order exists. Staff who may view orders always get it.
+- The admin PDF (`admin-post.php?action=fxcm_invoice`) checks a `wp_rest` nonce and the view orders capability; the order routes need view orders to read and edit orders to assign a number, the settings routes the manage capability. A logo must be an image attachment.
 - PDF responses send `nocache_headers()`, `X-Content-Type-Options: nosniff` and `X-Robots-Tag: noindex, nofollow`, with an inline `Content-Disposition` and a file name from `sanitize_file_name()`.
 - Email attachments are written to a random folder under `get_temp_dir()` and deleted with the folder after `wp_mail()`, sent or not.
 

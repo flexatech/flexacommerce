@@ -31,7 +31,7 @@ final class ShipmentTest extends OrderTestCase {
 		foreach ( Plugin::instance()->notifications()->emails() as $email ) {
 			delete_option( EmailSettings::PREFIX . $email->id() );
 		}
-		$wpdb->query( "DELETE FROM {$wpdb->options} WHERE option_name LIKE '\\_transient\\_%fxc\\_mail\\_%'" ); // phpcs:ignore WordPress.DB
+		$wpdb->query( "DELETE FROM {$wpdb->options} WHERE option_name LIKE '\\_transient\\_%fxcm\\_mail\\_%'" ); // phpcs:ignore WordPress.DB
 		wp_cache_flush();
 		$wpdb->query( 'COMMIT' ); // phpcs:ignore WordPress.DB
 	}

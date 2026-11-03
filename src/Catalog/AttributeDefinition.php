@@ -7,9 +7,9 @@ namespace Flexa\Commerce\Catalog;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * One entry of the `_fxc_attributes` product meta (doc 03 §3.1).
+ * One entry of the `_fxcm_attributes` product meta (doc 03 §3.1).
  *
- * Global attributes point at a top-level `fxc_attribute` term and store the
+ * Global attributes point at a top-level `fxcm_attribute` term and store the
  * ids of the value terms they use (ADR-006). Local attributes exist only on
  * this product and store their display values.
  */

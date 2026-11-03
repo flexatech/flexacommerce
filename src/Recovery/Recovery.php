@@ -7,7 +7,7 @@ namespace Flexa\Commerce\Recovery;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * One row of fxc_recoveries (ADR-063): a cart a known shopper left, as it
+ * One row of fxcm_recoveries (ADR-063): a cart a known shopper left, as it
  * was when the cron last looked. `cart` is the stored cart (lines and
  * coupons) and what the email lists. `reminder` is the next reminder to
  * send, 0 to 2, or 3 when all have had their turn. The token is the

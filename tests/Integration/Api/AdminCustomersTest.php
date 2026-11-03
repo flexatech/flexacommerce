@@ -132,7 +132,7 @@ final class AdminCustomersTest extends OrderTestCase {
 		$viewer  = self::factory()->user->create( [ 'role' => 'subscriber' ] );
 		$granted = get_userdata( $viewer );
 		self::assertInstanceOf( \WP_User::class, $granted );
-		$granted->add_cap( 'view_fxc_orders' );
+		$granted->add_cap( 'view_fxcm_orders' );
 		wp_set_current_user( $viewer );
 
 		self::assertSame( 403, $this->patch( $user, true )->get_status() );

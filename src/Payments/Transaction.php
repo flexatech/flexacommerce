@@ -10,7 +10,7 @@ use Flexa\Commerce\Contracts\Payments\TransactionView;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * One row of fxc_transactions: a single attempt to move money (doc 02 §7.7).
+ * One row of fxcm_transactions: a single attempt to move money (doc 02 §7.7).
  * A retry is a new row; a refund is a row of type refund.
  */
 final class Transaction {

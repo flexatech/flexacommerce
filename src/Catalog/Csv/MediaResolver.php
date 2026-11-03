@@ -9,11 +9,11 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Turns an image cell (a URL or an attachment ID) into an attachment. An
  * image of this site is found by its URL; another URL is downloaded once
- * and remembered by `_fxc_source_url`, so importing the file again reuses
+ * and remembered by `_fxcm_source_url`, so importing the file again reuses
  * the copy.
  */
 final class MediaResolver {
-	public const SOURCE_META = '_fxc_source_url';
+	public const SOURCE_META = '_fxcm_source_url';
 
 	/** @var array<string,int> */
 	private array $seen = [];

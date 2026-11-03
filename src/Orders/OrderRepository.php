@@ -11,8 +11,8 @@ use Flexa\Commerce\Database\Schema;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Storage for fxc_orders, fxc_order_items, fxc_order_addresses and
- * fxc_order_meta. Writes run inside the caller's transaction.
+ * Storage for fxcm_orders, fxcm_order_items, fxcm_order_addresses and
+ * fxcm_order_meta. Writes run inside the caller's transaction.
  */
 // phpcs:disable WordPress.DB.DirectDatabaseQuery -- plugin tables, all values prepared, orders are not object-cached.
 final class OrderRepository {
@@ -24,14 +24,17 @@ final class OrderRepository {
 
 	/** Order row, items and addresses: three queries. `lock` takes the row FOR UPDATE. */
 	public function find( int $order_id, bool $lock = false ): ?Order {
-		$sql = 'SELECT * FROM %i WHERE id = %d AND deleted_at IS NULL' . ( $lock ? ' FOR UPDATE' : '' );
-		$row = $this->wpdb->get_row( $this->wpdb->prepare( $sql, Schema::table( 'orders' ), $order_id ), ARRAY_A );
+		$wpdb = $this->wpdb;
+		$sql  = 'SELECT * FROM %i WHERE id = %d AND deleted_at IS NULL' . ( $lock ? ' FOR UPDATE' : '' );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- placeholders and fixed SQL only; every value is a prepare() replacement.
+		$row = $wpdb->get_row( $wpdb->prepare( $sql, Schema::table( 'orders' ), $order_id ), ARRAY_A );
 		return is_array( $row ) ? $this->hydrate( $row ) : null;
 	}
 
 	public function find_by_number( string $order_number ): ?Order {
-		$row = $this->wpdb->get_row(
-			$this->wpdb->prepare( 'SELECT * FROM %i WHERE order_number = %s AND deleted_at IS NULL', Schema::table( 'orders' ), $order_number ),
+		$wpdb = $this->wpdb;
+		$row  = $wpdb->get_row(
+			$wpdb->prepare( 'SELECT * FROM %i WHERE order_number = %s AND deleted_at IS NULL', Schema::table( 'orders' ), $order_number ),
 			ARRAY_A
 		);
 		return is_array( $row ) ? $this->hydrate( $row ) : null;
@@ -44,8 +47,10 @@ final class OrderRepository {
 	 * for an exclusive lock there deadlocks the losers against each other.
 	 */
 	public function find_by_checkout_token( string $token, bool $lock = false ): ?Order {
-		$row = $this->wpdb->get_row(
-			$this->wpdb->prepare( 'SELECT * FROM %i WHERE checkout_token = %s' . ( $lock ? ' LOCK IN SHARE MODE' : '' ), Schema::table( 'orders' ), $token ),
+		$wpdb = $this->wpdb;
+		$row  = $wpdb->get_row(
+			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- placeholders and fixed SQL only; every value is a prepare() replacement.
+			$wpdb->prepare( 'SELECT * FROM %i WHERE checkout_token = %s' . ( $lock ? ' LOCK IN SHARE MODE' : '' ), Schema::table( 'orders' ), $token ),
 			ARRAY_A
 		);
 		return is_array( $row ) ? $this->hydrate( $row ) : null;
@@ -58,8 +63,9 @@ final class OrderRepository {
 	 * @return list<Order> without items
 	 */
 	public function stale_pending( string $older_than, int $limit ): array {
-		$rows = $this->wpdb->get_results(
-			$this->wpdb->prepare(
+		$wpdb = $this->wpdb;
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
 				'SELECT * FROM %i o WHERE status = %s AND created_at < %s AND deleted_at IS NULL AND created_via NOT IN (%s, %s) AND NOT EXISTS ( SELECT 1 FROM %i m WHERE m.order_id = o.id AND m.meta_key = %s ) ORDER BY created_at, id LIMIT %d',
 				Schema::table( 'orders' ),
 				OrderStatus::PENDING,
@@ -68,7 +74,7 @@ final class OrderRepository {
 				// A renewal waits for the customer to pay it (ADR-073).
 				'subscription',
 				Schema::table( 'order_meta' ),
-				'_fxc_import_job',
+				'_fxcm_import_job',
 				$limit
 			),
 			ARRAY_A
@@ -80,17 +86,19 @@ final class OrderRepository {
 	 * @return array{orders:list<Order>,total:int} rows without items
 	 */
 	public function search( OrderQuery $query ): array {
+		$wpdb             = $this->wpdb;
 		[ $where, $args ] = $query->where();
 		$table            = Schema::table( 'orders' );
-		$total            = (int) $this->wpdb->get_var( $this->wpdb->prepare( "SELECT COUNT(*) FROM %i WHERE {$where}", $table, ...$args ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- built from fixed fragments in OrderQuery.
+		$total            = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM %i WHERE {$where}", $table, ...$args ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- built from fixed fragments in OrderQuery.
 		if ( $total === 0 ) {
 			return [
 				'orders' => [],
 				'total'  => 0,
 			];
 		}
-		$rows = $this->wpdb->get_results(
-			$this->wpdb->prepare(
+		$rows = $wpdb->get_results(
+			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- placeholders and fixed SQL only; every value is a prepare() replacement.
+			$wpdb->prepare(
 				"SELECT * FROM %i WHERE {$where} ORDER BY {$query->order_by()} LIMIT %d OFFSET %d", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- see above.
 				$table,
 				...[ ...$args, $query->per_page, ( $query->page - 1 ) * $query->per_page ]
@@ -105,8 +113,9 @@ final class OrderRepository {
 
 	/** @return array<string,int> status => count, for the list tabs */
 	public function count_by_status(): array {
-		$rows   = $this->wpdb->get_results(
-			$this->wpdb->prepare( 'SELECT status, COUNT(*) AS n FROM %i WHERE deleted_at IS NULL GROUP BY status', Schema::table( 'orders' ) ),
+		$wpdb   = $this->wpdb;
+		$rows   = $wpdb->get_results(
+			$wpdb->prepare( 'SELECT status, COUNT(*) AS n FROM %i WHERE deleted_at IS NULL GROUP BY status', Schema::table( 'orders' ) ),
 			ARRAY_A
 		);
 		$counts = [];
@@ -117,8 +126,9 @@ final class OrderRepository {
 	}
 
 	public function count_needs_attention(): int {
-		return (int) $this->wpdb->get_var(
-			$this->wpdb->prepare( 'SELECT COUNT(*) FROM %i WHERE needs_attention = 1 AND deleted_at IS NULL', Schema::table( 'orders' ) )
+		$wpdb = $this->wpdb;
+		return (int) $wpdb->get_var(
+			$wpdb->prepare( 'SELECT COUNT(*) FROM %i WHERE needs_attention = 1 AND deleted_at IS NULL', Schema::table( 'orders' ) )
 		);
 	}
 
@@ -127,9 +137,10 @@ final class OrderRepository {
 	 * token is already used (a resubmitted checkout).
 	 */
 	public function insert( NewOrder $order, string $number, string $key, string $now ): int {
-		$suppressed = $this->wpdb->suppress_errors( true );
+		$wpdb       = $this->wpdb;
+		$suppressed = $wpdb->suppress_errors( true );
 		try {
-			$ok = $this->wpdb->insert(
+			$ok = $wpdb->insert(
 				Schema::table( 'orders' ),
 				[
 					'order_number'         => $number,
@@ -161,16 +172,16 @@ final class OrderRepository {
 				[ '%s', '%s', '%s', '%s', '%s', '%d', '%d', '%d', '%d', '%d', '%d', '%d', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s' ]
 			);
 		} finally {
-			$this->wpdb->suppress_errors( $suppressed );
+			$wpdb->suppress_errors( $suppressed );
 		}
 		if ( $ok === false ) {
-			$error = QueryFailed::from_wpdb( $this->wpdb );
+			$error = QueryFailed::from_wpdb( $wpdb );
 			if ( $error->is_duplicate_key() && $order->checkout_token !== null && str_contains( $error->getMessage(), 'checkout_token' ) ) {
 				return 0;
 			}
 			throw $error;
 		}
-		$order_id = (int) $this->wpdb->insert_id;
+		$order_id = (int) $wpdb->insert_id;
 		$this->insert_items( $order_id, $order->items );
 		$this->save_addresses( $order_id, array_values( array_filter( [ $order->billing, $order->shipping ] ) ) );
 		$this->insert_meta( $order_id, $order->meta );
@@ -183,8 +194,9 @@ final class OrderRepository {
 	 * stay. Runs inside the caller's transaction.
 	 */
 	public function replace_contents( int $order_id, NewOrder $order, string $now ): void {
-		if ( $this->wpdb->query( $this->wpdb->prepare( 'DELETE FROM %i WHERE order_id = %d', Schema::table( 'order_items' ), $order_id ) ) === false ) {
-			throw QueryFailed::from_wpdb( $this->wpdb );
+		$wpdb = $this->wpdb;
+		if ( $wpdb->query( $wpdb->prepare( 'DELETE FROM %i WHERE order_id = %d', Schema::table( 'order_items' ), $order_id ) ) === false ) {
+			throw QueryFailed::from_wpdb( $wpdb );
 		}
 		$this->insert_items( $order_id, $order->items );
 		$this->update(
@@ -211,21 +223,23 @@ final class OrderRepository {
 		if ( $order->shipping === null ) {
 			$this->delete_address( $order_id, 'shipping' );
 		}
-		if ( isset( $order->meta['_fxc_tax_exempt'] ) ) {
-			$this->set_meta( $order_id, '_fxc_tax_exempt', $order->meta['_fxc_tax_exempt'] );
+		if ( isset( $order->meta['_fxcm_tax_exempt'] ) ) {
+			$this->set_meta( $order_id, '_fxcm_tax_exempt', $order->meta['_fxcm_tax_exempt'] );
 		} else {
-			$this->delete_meta( $order_id, '_fxc_tax_exempt' );
+			$this->delete_meta( $order_id, '_fxcm_tax_exempt' );
 		}
 	}
 
 	public function delete_address( int $order_id, string $type ): void {
-		if ( $this->wpdb->query( $this->wpdb->prepare( 'DELETE FROM %i WHERE order_id = %d AND type = %s', Schema::table( 'order_addresses' ), $order_id, $type ) ) === false ) {
-			throw QueryFailed::from_wpdb( $this->wpdb );
+		$wpdb = $this->wpdb;
+		if ( $wpdb->query( $wpdb->prepare( 'DELETE FROM %i WHERE order_id = %d AND type = %s', Schema::table( 'order_addresses' ), $order_id, $type ) ) === false ) {
+			throw QueryFailed::from_wpdb( $wpdb );
 		}
 	}
 
 	/** @param array<string,string> $meta */
 	private function insert_meta( int $order_id, array $meta ): void {
+		$wpdb = $this->wpdb;
 		if ( $meta === [] ) {
 			return;
 		}
@@ -236,13 +250,15 @@ final class OrderRepository {
 			array_push( $args, $order_id, (string) $key, $value );
 		}
 		$sql = 'INSERT INTO %i (order_id, meta_key, meta_value) VALUES ' . implode( ', ', $values );
-		if ( $this->wpdb->query( $this->wpdb->prepare( $sql, ...$args ) ) === false ) {
-			throw QueryFailed::from_wpdb( $this->wpdb );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- placeholders and fixed SQL only; every value is a prepare() replacement.
+		if ( $wpdb->query( $wpdb->prepare( $sql, ...$args ) ) === false ) {
+			throw QueryFailed::from_wpdb( $wpdb );
 		}
 	}
 
 	/** @param list<NewOrderItem> $items */
 	private function insert_items( int $order_id, array $items ): void {
+		$wpdb = $this->wpdb;
 		if ( $items === [] ) {
 			return;
 		}
@@ -272,8 +288,9 @@ final class OrderRepository {
 			);
 		}
 		$sql = 'INSERT INTO %i (order_id, type, position, product_id, variant_id, code, name, sku, attributes, quantity, unit_price, subtotal, discount_total, tax_total, total, meta) VALUES ' . implode( ', ', $values );
-		if ( $this->wpdb->query( $this->wpdb->prepare( $sql, ...$args ) ) === false ) {
-			throw QueryFailed::from_wpdb( $this->wpdb );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- placeholders and fixed SQL only; every value is a prepare() replacement.
+		if ( $wpdb->query( $wpdb->prepare( $sql, ...$args ) ) === false ) {
+			throw QueryFailed::from_wpdb( $wpdb );
 		}
 	}
 
@@ -289,6 +306,7 @@ final class OrderRepository {
 	 * @param list<AddressView> $addresses
 	 */
 	public function save_addresses( int $order_id, array $addresses ): void {
+		$wpdb = $this->wpdb;
 		if ( $addresses === [] ) {
 			return;
 		}
@@ -307,11 +325,12 @@ final class OrderRepository {
 				$args[] = (string) ( $data[ $column ] ?? '' );
 			}
 		}
-		$names = implode( ', ', array_map( static fn ( string $c ): string => '`' . $c . '`', $columns ) );
-		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- column names come from AddressView, $rows holds placeholders only.
-		$sql = $this->wpdb->prepare( "REPLACE INTO %i ({$names}) VALUES " . implode( ', ', $rows ), Schema::table( 'order_addresses' ), ...$args );
-		if ( $this->wpdb->query( $sql ) === false ) {
-			throw QueryFailed::from_wpdb( $this->wpdb );
+		$names = implode( ', ', array_fill( 0, count( $columns ), '%i' ) );
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- $names and $rows hold placeholders only.
+		$sql = $wpdb->prepare( "REPLACE INTO %i ({$names}) VALUES " . implode( ', ', $rows ), Schema::table( 'order_addresses' ), ...$columns, ...$args );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- prepared above; WPCS cannot follow the variable.
+		if ( $wpdb->query( $sql ) === false ) {
+			throw QueryFailed::from_wpdb( $wpdb );
 		}
 	}
 
@@ -359,11 +378,12 @@ final class OrderRepository {
 
 	/** @param array<string,mixed> $data `meta` as an array is stored as JSON */
 	public function update_item( int $item_id, array $data ): void {
+		$wpdb = $this->wpdb;
 		if ( isset( $data['meta'] ) && is_array( $data['meta'] ) ) {
 			$data['meta'] = (string) wp_json_encode( $data['meta'] === [] ? new \stdClass() : $data['meta'], self::JSON_FLAGS );
 		}
-		if ( $this->wpdb->update( Schema::table( 'order_items' ), $data, [ 'id' => $item_id ] ) === false ) {
-			throw QueryFailed::from_wpdb( $this->wpdb );
+		if ( $wpdb->update( Schema::table( 'order_items' ), $data, [ 'id' => $item_id ] ) === false ) {
+			throw QueryFailed::from_wpdb( $wpdb );
 		}
 	}
 
@@ -374,6 +394,7 @@ final class OrderRepository {
 	 * @param array<int,int> $quantities item id => units now held
 	 */
 	public function set_stock_reduced( array $quantities ): void {
+		$wpdb = $this->wpdb;
 		if ( $quantities === [] ) {
 			return;
 		}
@@ -385,22 +406,25 @@ final class OrderRepository {
 			$args[]  = $qty;
 		}
 		$ids = implode( ',', array_fill( 0, count( $quantities ), '%d' ) );
-		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- $cases and $ids are placeholders only.
-		$sql = $this->wpdb->prepare( 'UPDATE %i SET stock_reduced_qty = CASE id ' . implode( ' ', $cases ) . " END WHERE id IN ({$ids})", ...[ ...$args, ...array_keys( $quantities ) ] );
-		if ( $this->wpdb->query( $sql ) === false ) {
-			throw QueryFailed::from_wpdb( $this->wpdb );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $cases and $ids are placeholders only.
+		$sql = $wpdb->prepare( 'UPDATE %i SET stock_reduced_qty = CASE id ' . implode( ' ', $cases ) . " END WHERE id IN ({$ids})", ...[ ...$args, ...array_keys( $quantities ) ] );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- prepared above; WPCS cannot follow the variable.
+		if ( $wpdb->query( $sql ) === false ) {
+			throw QueryFailed::from_wpdb( $wpdb );
 		}
 	}
 
 	/** @param array<string,int|string|null> $data */
 	public function update( int $order_id, array $data ): void {
-		if ( $this->wpdb->update( Schema::table( 'orders' ), $data, [ 'id' => $order_id ] ) === false ) {
-			throw QueryFailed::from_wpdb( $this->wpdb );
+		$wpdb = $this->wpdb;
+		if ( $wpdb->update( Schema::table( 'orders' ), $data, [ 'id' => $order_id ] ) === false ) {
+			throw QueryFailed::from_wpdb( $wpdb );
 		}
 	}
 
 	/** Replace personal data in place (privacy eraser). */
 	public function anonymize( int $order_id, string $now ): void {
+		$wpdb = $this->wpdb;
 		$this->update(
 			$order_id,
 			[
@@ -420,10 +444,10 @@ final class OrderRepository {
 		$this->delete_meta( $order_id, OrderFields::META );
 		$blank = array_fill_keys( self::ADDRESS_FIELDS, '' );
 		unset( $blank['country'] );
-		$this->wpdb->update( Schema::table( 'order_addresses' ), $blank, [ 'order_id' => $order_id ] );
+		$wpdb->update( Schema::table( 'order_addresses' ), $blank, [ 'order_id' => $order_id ] );
 		// Notes and email rows may name the customer; customer-visible rows were written for them.
-		$this->wpdb->query(
-			$this->wpdb->prepare(
+		$wpdb->query(
+			$wpdb->prepare(
 				'UPDATE %i SET message = NULL, context = NULL WHERE order_id = %d AND ( type IN (%s, %s) OR customer_visible = 1 )',
 				Schema::table( 'order_history' ),
 				$order_id,
@@ -435,8 +459,9 @@ final class OrderRepository {
 
 	/** @return list<int> order ids for a customer email or user id, newest first */
 	public function ids_for_customer( string $email, int $user_id, int $limit, int $offset ): array {
-		$ids = $this->wpdb->get_col(
-			$this->wpdb->prepare(
+		$wpdb = $this->wpdb;
+		$ids  = $wpdb->get_col(
+			$wpdb->prepare(
 				'SELECT id FROM %i WHERE ( ( %s <> %s AND customer_email = %s ) OR ( %d > 0 AND customer_id = %d ) ) AND deleted_at IS NULL ORDER BY id DESC LIMIT %d OFFSET %d',
 				Schema::table( 'orders' ),
 				$email,
@@ -460,11 +485,12 @@ final class OrderRepository {
 	 * @return list<array{id:int,order_number:string}> oldest first
 	 */
 	public function unanonymized_for_customer( string $email, int $user_id, array $statuses, bool $in, int $limit ): array {
+		$wpdb     = $this->wpdb;
 		$statuses = $statuses !== [] ? $statuses : [ '' ];
 		$list     = implode( ', ', array_fill( 0, count( $statuses ), '%s' ) );
 		$sql      = 'SELECT id, order_number FROM %i WHERE ( ( %s <> %s AND customer_email = %s ) OR ( %d > 0 AND customer_id = %d ) ) AND anonymized_at IS NULL AND status ' . ( $in ? 'IN' : 'NOT IN' ) . " ( {$list} ) ORDER BY id ASC LIMIT %d";
-		$rows     = $this->wpdb->get_results(
-			$this->wpdb->prepare( $sql, Schema::table( 'orders' ), $email, '', $email, $user_id, $user_id, ...$statuses, ...[ $limit ] ), // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- placeholders only.
+		$rows     = $wpdb->get_results(
+			$wpdb->prepare( $sql, Schema::table( 'orders' ), $email, '', $email, $user_id, $user_id, ...$statuses, ...[ $limit ] ), // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- placeholders only.
 			ARRAY_A
 		);
 		$out      = [];
@@ -478,22 +504,24 @@ final class OrderRepository {
 	}
 
 	public function get_meta( int $order_id, string $key ): ?string {
-		$value = $this->wpdb->get_var(
-			$this->wpdb->prepare( 'SELECT meta_value FROM %i WHERE order_id = %d AND meta_key = %s ORDER BY id LIMIT 1', Schema::table( 'order_meta' ), $order_id, $key )
+		$wpdb  = $this->wpdb;
+		$value = $wpdb->get_var(
+			$wpdb->prepare( 'SELECT meta_value FROM %i WHERE order_id = %d AND meta_key = %s ORDER BY id LIMIT 1', Schema::table( 'order_meta' ), $order_id, $key )
 		);
 		return $value === null ? null : (string) $value;
 	}
 
 	public function set_meta( int $order_id, string $key, string $value ): void {
+		$wpdb    = $this->wpdb;
 		$table   = Schema::table( 'order_meta' );
-		$updated = $this->wpdb->query(
-			$this->wpdb->prepare( 'UPDATE %i SET meta_value = %s WHERE order_id = %d AND meta_key = %s', $table, $value, $order_id, $key )
+		$updated = $wpdb->query(
+			$wpdb->prepare( 'UPDATE %i SET meta_value = %s WHERE order_id = %d AND meta_key = %s', $table, $value, $order_id, $key )
 		);
 		if ( $updated === false ) {
-			throw QueryFailed::from_wpdb( $this->wpdb );
+			throw QueryFailed::from_wpdb( $wpdb );
 		}
 		if ( $updated === 0 && $this->get_meta( $order_id, $key ) === null ) {
-			$this->wpdb->insert(
+			$wpdb->insert(
 				$table,
 				[
 					'order_id'   => $order_id,
@@ -506,7 +534,8 @@ final class OrderRepository {
 	}
 
 	public function delete_meta( int $order_id, string $key ): void {
-		$this->wpdb->delete(
+		$wpdb = $this->wpdb;
+		$wpdb->delete(
 			Schema::table( 'order_meta' ),
 			[
 				'order_id' => $order_id,
@@ -518,13 +547,14 @@ final class OrderRepository {
 
 	/** @param array<string,mixed> $row */
 	private function hydrate( array $row ): Order {
+		$wpdb      = $this->wpdb;
 		$order_id  = (int) $row['id'];
-		$items     = $this->wpdb->get_results(
-			$this->wpdb->prepare( 'SELECT * FROM %i WHERE order_id = %d ORDER BY position, id', Schema::table( 'order_items' ), $order_id ),
+		$items     = $wpdb->get_results(
+			$wpdb->prepare( 'SELECT * FROM %i WHERE order_id = %d ORDER BY position, id', Schema::table( 'order_items' ), $order_id ),
 			ARRAY_A
 		);
-		$rows      = $this->wpdb->get_results(
-			$this->wpdb->prepare( 'SELECT * FROM %i WHERE order_id = %d', Schema::table( 'order_addresses' ), $order_id ),
+		$rows      = $wpdb->get_results(
+			$wpdb->prepare( 'SELECT * FROM %i WHERE order_id = %d', Schema::table( 'order_addresses' ), $order_id ),
 			ARRAY_A
 		);
 		$addresses = [];

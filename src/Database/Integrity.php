@@ -18,17 +18,18 @@ final class Integrity {
 	 * @return array<string,array{label:string,count:int}>
 	 */
 	public function orphans(): array {
-		$posts  = $this->wpdb->posts;
-		$q      = fn ( string $child, string $column, string $parent ): int => (int) $this->wpdb->get_var(
-			$this->wpdb->prepare(
+		$wpdb   = $this->wpdb;
+		$posts  = $wpdb->posts;
+		$q      = fn ( string $child, string $column, string $parent ): int => (int) $wpdb->get_var(
+			$wpdb->prepare(
 				'SELECT COUNT(*) FROM %i c LEFT JOIN %i p ON p.ID = c.%i WHERE p.ID IS NULL',
 				Schema::table( $child ),
 				$parent,
 				$column
 			)
 		);
-		$orders = fn ( string $child ): int => (int) $this->wpdb->get_var(
-			$this->wpdb->prepare(
+		$orders = fn ( string $child ): int => (int) $wpdb->get_var(
+			$wpdb->prepare(
 				'SELECT COUNT(*) FROM %i c LEFT JOIN %i o ON o.id = c.order_id WHERE o.id IS NULL',
 				Schema::table( $child ),
 				Schema::table( 'orders' )

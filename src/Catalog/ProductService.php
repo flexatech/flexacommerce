@@ -16,7 +16,7 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Save rules for product data (doc 03 §3, doc 02 §7.2). The post itself
  * (title, content, status) is saved by WordPress; this service owns the
- * `_fxc_*` meta and the product's rows in fxc_variants.
+ * `_fxcm_*` meta and the product's rows in fxcm_variants.
  */
 final class ProductService {
 	public const MAX_VARIANTS = 1000;
@@ -389,7 +389,7 @@ final class ProductService {
 		return new VariantGenerationResult( $created, $skipped, $limited, $this->get( $product_id ) );
 	}
 
-	/** Gives a new product its base row and type (hooked on `save_post_fxc_product`). */
+	/** Gives a new product its base row and type (hooked on `save_post_fxcm_product`). */
 	public function ensure_base( int $product_id ): void {
 		if ( $this->variants->for_product( $product_id ) !== [] ) {
 			// Published, drafted or trashed: the grouped products listing it show it or not (ADR-062),
@@ -462,7 +462,7 @@ final class ProductService {
 					set_post_thumbnail( $copy_id, $thumbnail );
 				}
 
-				// wp_insert_post() fired save_post_fxc_product, which created an empty base row.
+				// wp_insert_post() fired save_post_fxcm_product, which created an empty base row.
 				$this->variants->delete_for_product( $copy_id );
 				foreach ( $source->rows() as $row ) {
 					$this->variants->insert(

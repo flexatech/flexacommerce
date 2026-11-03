@@ -284,7 +284,7 @@ final class MigrationsEndpoint extends Endpoint {
 			return self::migration_error( $e );
 		}
 		if ( function_exists( 'set_time_limit' ) ) {
-			@set_time_limit( 300 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- reading a large file once; disabled on some hosts.
+			@set_time_limit( 300 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, Squiz.PHP.DiscouragedFunctions.Discouraged -- reading a large file once; disabled on some hosts.
 		}
 		$options['file_name'] = $file['name'];
 		try {

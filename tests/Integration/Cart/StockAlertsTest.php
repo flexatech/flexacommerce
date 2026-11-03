@@ -109,7 +109,7 @@ final class StockAlertsTest extends CartTestCase {
 		$mail = array_values( array_filter( $this->mails(), static fn ( array $m ): bool => $m['to'] === 'ada@example.com' ) );
 		self::assertCount( 1, $mail );
 		self::assertStringContainsString( get_the_title( $id ) . ' – S', $mail[0]['subject'] );
-		self::assertStringContainsString( 'fxc_pick', $mail[0]['body'] );
+		self::assertStringContainsString( 'fxcm_pick', $mail[0]['body'] );
 		self::assertSame( StockAlert::SENT, $this->alerts()->repository()->find( $alert->id )?->status );
 	}
 
@@ -263,7 +263,7 @@ final class StockAlertsTest extends CartTestCase {
 		$sold = $this->simple( 1000, 0 );
 		$html = do_shortcode( '[flexacommerce_add_to_cart id="' . $sold . '"]' );
 		self::assertStringContainsString( 'Out of stock', $html );
-		self::assertStringContainsString( 'name="fxc_op" value="stock_alert"', $html );
+		self::assertStringContainsString( 'name="fxcm_op" value="stock_alert"', $html );
 		self::assertStringContainsString( 'type="email" name="email" required', $html );
 
 		wp_set_current_user( self::factory()->user->create() );

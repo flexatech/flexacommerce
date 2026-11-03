@@ -380,7 +380,7 @@ final class Privacy {
 		}
 		$cart = sprintf(
 			/* translators: 1: hours a guest cart is kept, 2: days a signed-in customer's cart is kept. */
-			__( 'While you shop we keep your cart in a cookie named fxc_session and in our database, for %1$d hours for guests and %2$d days for signed-in customers. A second cookie, fxc_cart_count, holds only the number of items in the cart.', 'flexacommerce' ),
+			__( 'While you shop we keep your cart in a cookie named fxcm_session and in our database, for %1$d hours for guests and %2$d days for signed-in customers. A second cookie, fxcm_cart_count, holds only the number of items in the cart.', 'flexacommerce' ),
 			Settings::int( 'guest_session_hours' ),
 			Settings::int( 'user_session_days' )
 		);
@@ -390,7 +390,7 @@ final class Privacy {
 			. '<p>' . esc_html( $cart ) . '</p>'
 			. '<p>' . esc_html__( 'If you are signed in, or typed your email at checkout, and leave items in your cart without ordering, we may email you up to three reminders about it. Each email has a link to stop them. We keep the record of a left cart for up to 90 days.', 'flexacommerce' ) . '</p>'
 			. '<p>' . esc_html__( 'If you ask to hear when a product is back in stock, we keep your email address and the product until we send that one email, or until you use the link in it to stop. We delete the record 90 days after it is sent or stopped.', 'flexacommerce' ) . '</p>'
-			. '<p>' . esc_html__( 'When you save products to a wishlist we keep the list in our database. For guests it is found by a cookie named fxc_wishlist and deleted 90 days after its last change; a second cookie, fxc_wishlist_ids, holds only the product numbers in the list. A signed-in customer\'s list stays with the account until the account is deleted. The share link shows the products only, never your name.', 'flexacommerce' ) . '</p>'
+			. '<p>' . esc_html__( 'When you save products to a wishlist we keep the list in our database. For guests it is found by a cookie named fxcm_wishlist and deleted 90 days after its last change; a second cookie, fxcm_wishlist_ids, holds only the product numbers in the list. A signed-in customer\'s list stays with the account until the account is deleted. The share link shows the products only, never your name.', 'flexacommerce' ) . '</p>'
 			. '<h2>' . esc_html__( 'How long we keep it', 'flexacommerce' ) . '</h2>'
 			. '<p>' . esc_html__( 'We keep order records for as long as tax and accounting rules require. If you ask us to erase your data, we remove your name, addresses, email, phone, IP address and order notes from your orders and keep the amounts and products for our accounts. Orders that are still being processed are erased once they are completed or cancelled.', 'flexacommerce' ) . '</p>'
 			. '<h2>' . esc_html__( 'Who we share it with', 'flexacommerce' ) . '</h2>'

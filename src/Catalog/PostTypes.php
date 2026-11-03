@@ -19,13 +19,13 @@ defined( 'ABSPATH' ) || exit;
 final class PostTypes {
 	use HasInstance;
 
-	public const PRODUCT   = 'fxc_product';
-	public const CATEGORY  = 'fxc_product_cat';
-	public const TAG       = 'fxc_product_tag';
-	public const ATTRIBUTE = 'fxc_attribute';
+	public const PRODUCT   = 'fxcm_product';
+	public const CATEGORY  = 'fxcm_product_cat';
+	public const TAG       = 'fxcm_product_tag';
+	public const ATTRIBUTE = 'fxcm_attribute';
 
 	/** Category term meta: the attachment id of the category image. */
-	public const CATEGORY_THUMBNAIL = '_fxc_thumbnail_id';
+	public const CATEGORY_THUMBNAIL = '_fxcm_thumbnail_id';
 
 	/**
 	 * Account sub-pages (doc 02 §6.3): query var => URL slug, rewrite
@@ -34,15 +34,15 @@ final class PostTypes {
 	 * do not meet WooCommerce's while both plugins run during a migration.
 	 */
 	public const ACCOUNT_ENDPOINTS = [
-		'fxc_orders'            => 'orders',
-		'fxc_view_order'        => 'view-order',
-		'fxc_downloads'         => 'downloads',
-		'fxc_edit_address'      => 'edit-address',
-		'fxc_edit_account'      => 'edit-account',
-		'fxc_wishlist'          => 'wishlist',
-		'fxc_store_credit'      => 'store-credit',
-		'fxc_subscriptions'     => 'subscriptions',
-		'fxc_view_subscription' => 'view-subscription',
+		'fxcm_orders'            => 'orders',
+		'fxcm_view_order'        => 'view-order',
+		'fxcm_downloads'         => 'downloads',
+		'fxcm_edit_address'      => 'edit-address',
+		'fxcm_edit_account'      => 'edit-account',
+		'fxcm_wishlist'          => 'wishlist',
+		'fxcm_store_credit'      => 'store-credit',
+		'fxcm_subscriptions'     => 'subscriptions',
+		'fxcm_view_subscription' => 'view-subscription',
 	];
 
 	/** Exists only on a site where another plugin owns our archive URL; see maybe_flush(). */
@@ -91,7 +91,7 @@ final class PostTypes {
 	 */
 	private static function has_endpoints( array $rules, string $root ): bool {
 		// The newest endpoint (ADR-073): rules stored before it existed get flushed once.
-		return isset( $rules[ $root . '(.?.+?)/' . self::ACCOUNT_ENDPOINTS['fxc_view_subscription'] . '(/(.*))?/?$' ] );
+		return isset( $rules[ $root . '(.?.+?)/' . self::ACCOUNT_ENDPOINTS['fxcm_view_subscription'] . '(/(.*))?/?$' ] );
 	}
 
 	/**
@@ -148,7 +148,7 @@ final class PostTypes {
 					'slug'       => $bases['product'],
 					'with_front' => false,
 				],
-				'capability_type' => [ 'fxc_product', 'fxc_products' ],
+				'capability_type' => [ 'fxcm_product', 'fxcm_products' ],
 				'map_meta_cap'    => true,
 				'supports'        => [ 'title', 'editor', 'excerpt', 'thumbnail', 'custom-fields', 'revisions', 'author' ],
 				'taxonomies'      => [ self::CATEGORY, self::TAG ],

@@ -7,15 +7,15 @@ namespace Flexa\Commerce\Wishlist;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * The wishlist cookies (ADR-066). `fxc_wishlist` holds a guest's token:
- * HttpOnly, SameSite=Lax, like `fxc_session`. `fxc_wishlist_ids` is
+ * The wishlist cookies (ADR-066). `fxcm_wishlist` holds a guest's token:
+ * HttpOnly, SameSite=Lax, like `fxcm_session`. `fxcm_wishlist_ids` is
  * readable by scripts and holds the user id the list belongs to and the
  * product ids in it ("5:12.34", "0:" for an empty guest list), so a cached
  * product page can show a filled heart without a request.
  */
 final class WishlistCookies {
-	public const TOKEN = 'fxc_wishlist';
-	public const IDS   = 'fxc_wishlist_ids';
+	public const TOKEN = 'fxcm_wishlist';
+	public const IDS   = 'fxcm_wishlist_ids';
 
 	public const LIFETIME = 90 * DAY_IN_SECONDS;
 

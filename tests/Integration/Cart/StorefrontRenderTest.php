@@ -43,7 +43,7 @@ final class StorefrontRenderTest extends CartTestCase {
 		$id   = $this->simple( 900, 3 );
 		$html = do_shortcode( '[flexacommerce_add_to_cart id="' . $id . '"]' );
 		self::assertStringContainsString( 'name="product_id" value="' . $id . '"', $html );
-		self::assertStringContainsString( 'fxc_nonce', $html );
+		self::assertStringContainsString( 'fxcm_nonce', $html );
 		self::assertStringContainsString( 'fxc-price', $html );
 
 		self::assertSame( '', do_shortcode( '[flexacommerce_add_to_cart id="999999"]' ) );
@@ -64,7 +64,7 @@ final class StorefrontRenderTest extends CartTestCase {
 	public function test_block_templates_for_block_themes(): void {
 		Storefront::instance()->register_templates();
 		$registry = \WP_Block_Templates_Registry::get_instance();
-		foreach ( [ 'single-fxc_product', 'archive-fxc_product' ] as $slug ) {
+		foreach ( [ 'single-fxcm_product', 'archive-fxcm_product' ] as $slug ) {
 			self::assertTrue( $registry->is_registered( 'flexacommerce//' . $slug ), $slug );
 		}
 	}

@@ -328,7 +328,7 @@ final class FxcCatalogReader {
 	}
 
 	/**
-	 * The `_fxc_import` meta an earlier import left behind.
+	 * The `_fxcm_import` meta an earlier import left behind.
 	 *
 	 * @return array<string,mixed>
 	 */

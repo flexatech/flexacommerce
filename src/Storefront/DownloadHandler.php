@@ -13,7 +13,7 @@ use Flexa\Commerce\Support\Settings;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Serves `?fxc_download=<token>` (ADR-058). The token is the secret, so the
+ * Serves `?fxcm_download=<token>` (ADR-058). The token is the secret, so the
  * link works from an email without signing in unless a site asks for it
  * with `flexacommerce.downloads.require_login`. Local files go through PHP
  * in chunks, or to the web server with X-Sendfile and its relatives; remote
@@ -24,7 +24,7 @@ final class DownloadHandler {
 	use HasInstance;
 
 	/** Literal in Plugin::boot(), which must not load this class on other requests. */
-	public const PARAM = 'fxc_download';
+	public const PARAM = 'fxcm_download';
 
 	/** Uploads subfolder for files uploaded from the product editor. */
 	public const FOLDER = 'flexacommerce_uploads';

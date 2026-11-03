@@ -6,8 +6,8 @@
       "_search-Bvo5hlEM.js"
     ]
   },
-  "_SearchBox-DpPOFuXY.js": {
-    "file": "assets/SearchBox-DpPOFuXY.js",
+  "_SearchBox-Dv2rPS9D.js": {
+    "file": "assets/SearchBox-Dv2rPS9D.js",
     "name": "SearchBox",
     "imports": [
       "_search-Bvo5hlEM.js"
@@ -17,48 +17,48 @@
     "file": "assets/search-Bvo5hlEM.js",
     "name": "search"
   },
-  "_sortable.esm-COKi0-P0.js": {
-    "file": "assets/sortable.esm-COKi0-P0.js",
+  "_sortable.esm-BzTLcIcm.js": {
+    "file": "assets/sortable.esm-BzTLcIcm.js",
     "name": "sortable.esm",
     "imports": [
       "_search-Bvo5hlEM.js",
-      "_SearchBox-DpPOFuXY.js"
+      "_SearchBox-Dv2rPS9D.js"
     ]
   },
   "admin/features/checkout/CheckoutBuilderPage.tsx": {
-    "file": "assets/CheckoutBuilderPage-oRVtFw5t.js",
+    "file": "assets/CheckoutBuilderPage-B0IpDeL8.js",
     "name": "CheckoutBuilderPage",
     "src": "admin/features/checkout/CheckoutBuilderPage.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_search-Bvo5hlEM.js",
-      "_sortable.esm-COKi0-P0.js",
-      "_SearchBox-DpPOFuXY.js",
+      "_sortable.esm-BzTLcIcm.js",
+      "_SearchBox-Dv2rPS9D.js",
       "admin/main.tsx",
       "_Header-KNbM_bCd.js"
     ]
   },
   "admin/features/emails/EmailDesignPage.tsx": {
-    "file": "assets/EmailDesignPage-02Qxfbbb.js",
+    "file": "assets/EmailDesignPage-BkVsYTS6.js",
     "name": "EmailDesignPage",
     "src": "admin/features/emails/EmailDesignPage.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_search-Bvo5hlEM.js",
-      "_sortable.esm-COKi0-P0.js",
-      "_SearchBox-DpPOFuXY.js",
+      "_sortable.esm-BzTLcIcm.js",
+      "_SearchBox-Dv2rPS9D.js",
       "admin/main.tsx",
       "_Header-KNbM_bCd.js"
     ]
   },
   "admin/main.tsx": {
-    "file": "assets/admin-BPa6_26N.js",
+    "file": "assets/admin-D5v73wXU.js",
     "name": "admin",
     "src": "admin/main.tsx",
     "isEntry": true,
     "imports": [
       "_search-Bvo5hlEM.js",
-      "_SearchBox-DpPOFuXY.js",
+      "_SearchBox-Dv2rPS9D.js",
       "_Header-KNbM_bCd.js"
     ],
     "dynamicImports": [
@@ -83,13 +83,13 @@
     ]
   },
   "admin/product-editor.tsx": {
-    "file": "assets/product-editor-DjLK_NQ9.js",
+    "file": "assets/product-editor-CQbPDlhC.js",
     "name": "product-editor",
     "src": "admin/product-editor.tsx",
     "isEntry": true,
     "imports": [
       "_search-Bvo5hlEM.js",
-      "_SearchBox-DpPOFuXY.js"
+      "_SearchBox-Dv2rPS9D.js"
     ],
     "css": [
       "assets/product-editor-CQe19EjF.css"

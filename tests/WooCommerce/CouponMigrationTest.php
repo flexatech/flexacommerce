@@ -55,7 +55,7 @@ final class CouponMigrationTest extends \WP_UnitTestCase {
 		$this->assertContains( $job->status, JobStatus::FINISHED, (string) wp_json_encode( $this->service->log( $job->id ) ) );
 		$this->assertSame( 3, $job->counter( 'coupons', 'created' ) );
 
-		$coupon = $this->fxc_coupon( 'summer' );
+		$coupon = $this->fxcm_coupon( 'summer' );
 		$this->assertSame( $this->local_id( 'coupon', $summer ), $coupon->id );
 		$this->assertSame( 'summer', $coupon->code, 'WooCommerce keeps codes in lower case.' );
 		$this->assertSame( Coupon::FIXED_CART, $coupon->type );
@@ -74,11 +74,11 @@ final class CouponMigrationTest extends \WP_UnitTestCase {
 		$this->assertSame( [ $this->local_id( 'term', $this->store->terms['shirts'] ) ], $coupon->category_ids );
 		$this->assertSame( [ '*@example.com' ], $coupon->emails );
 
-		$old = $this->fxc_coupon( 'old' );
+		$old = $this->fxcm_coupon( 'old' );
 		$this->assertSame( 1250, $old->amount, 'A percentage is kept in hundredths.' );
 		$this->assertSame( Coupon::DISABLED, $old->status, 'A draft is imported disabled.' );
 
-		$save10 = $this->fxc_coupon( 'save10' );
+		$save10 = $this->fxcm_coupon( 'save10' );
 		$this->assertSame( 1000, $save10->amount );
 		$this->assertSame( 1, $this->coupons->uses_by( $save10->id, $this->store->customer, 'ana@example.com' ), 'The imported order counts toward the per-customer limit.' );
 	}
@@ -90,7 +90,7 @@ final class CouponMigrationTest extends \WP_UnitTestCase {
 		self::wc_coupon( 'bundle', 'percent', '5', fn ( \WC_Coupon $c ) => $c->set_product_ids( [ $this->store->products['bundle'] ] ) );
 		self::wc_coupon( 'cart', 'fixed_cart', '33.333' );
 		self::wc_coupon( 'taken', 'percent', '5' );
-		$this->fxc_editor()->save(
+		$this->fxcm_editor()->save(
 			[
 				'code'   => 'TAKEN',
 				'type'   => Coupon::PERCENT,
@@ -101,16 +101,16 @@ final class CouponMigrationTest extends \WP_UnitTestCase {
 		$job = $this->run_job( Direction::WC_TO_FXC );
 		$this->assertSame( JobStatus::COMPLETED_WITH_WARNINGS, $job->status );
 		$this->assertSame( 1, $job->counter( 'coupons', 'rejected' ) );
-		$this->assertSame( [ 0, true ], [ $this->fxc_coupon( 'shipfree' )->amount, $this->fxc_coupon( 'shipfree' )->free_shipping ], 'Free shipping alone is imported.' );
-		$this->assertSame( 700, $this->fxc_coupon( 'taken' )->amount, 'The coupon made in FlexaCommerce is kept.' );
+		$this->assertSame( [ 0, true ], [ $this->fxcm_coupon( 'shipfree' )->amount, $this->fxcm_coupon( 'shipfree' )->free_shipping ], 'Free shipping alone is imported.' );
+		$this->assertSame( 700, $this->fxcm_coupon( 'taken' )->amount, 'The coupon made in FlexaCommerce is kept.' );
 
-		$this->assertSame( Coupon::ACTIVE, $this->fxc_coupon( 'shipplus' )->status );
-		$this->assertSame( 400, $this->fxc_coupon( 'shipplus' )->amount );
-		$this->assertTrue( $this->fxc_coupon( 'shipplus' )->free_shipping );
-		$this->assertSame( [ Coupon::ACTIVE, 2 ], [ $this->fxc_coupon( 'twoitems' )->status, $this->fxc_coupon( 'twoitems' )->item_limit ], 'An item limit is kept.' );
-		$this->assertSame( Coupon::DISABLED, $this->fxc_coupon( 'bundle' )->status );
-		$this->assertSame( [], $this->fxc_coupon( 'bundle' )->product_ids );
-		$this->assertSame( 3333, $this->fxc_coupon( 'cart' )->amount );
+		$this->assertSame( Coupon::ACTIVE, $this->fxcm_coupon( 'shipplus' )->status );
+		$this->assertSame( 400, $this->fxcm_coupon( 'shipplus' )->amount );
+		$this->assertTrue( $this->fxcm_coupon( 'shipplus' )->free_shipping );
+		$this->assertSame( [ Coupon::ACTIVE, 2 ], [ $this->fxcm_coupon( 'twoitems' )->status, $this->fxcm_coupon( 'twoitems' )->item_limit ], 'An item limit is kept.' );
+		$this->assertSame( Coupon::DISABLED, $this->fxcm_coupon( 'bundle' )->status );
+		$this->assertSame( [], $this->fxcm_coupon( 'bundle' )->product_ids );
+		$this->assertSame( 3333, $this->fxcm_coupon( 'cart' )->amount );
 
 		$codes = array_count_values( array_column( $this->service->log( $job->id )['rows'], 'code' ) );
 		foreach ( [ 'coupon_rules_lost', 'coupon_product_missing', 'coupon_rounded', 'duplicate_code' ] as $code ) {
@@ -123,7 +123,7 @@ final class CouponMigrationTest extends \WP_UnitTestCase {
 	public function test_a_second_run_updates_the_same_coupon(): void {
 		$id  = self::wc_coupon( 'later', 'percent', '5' );
 		$job = $this->run_job( Direction::WC_TO_FXC );
-		$fxc = $this->fxc_coupon( 'later' );
+		$fxc = $this->fxcm_coupon( 'later' );
 
 		$coupon = new \WC_Coupon( $id );
 		$coupon->set_amount( '7' );
@@ -131,14 +131,14 @@ final class CouponMigrationTest extends \WP_UnitTestCase {
 		$this->service->start( $job->id );
 		$again = $this->service->run( $job->id );
 		$this->assertSame( 1, $again->counter( 'coupons', 'updated' ) );
-		$this->assertSame( $fxc->id, $this->fxc_coupon( 'later' )->id );
-		$this->assertSame( 700, $this->fxc_coupon( 'later' )->amount );
+		$this->assertSame( $fxc->id, $this->fxcm_coupon( 'later' )->id );
+		$this->assertSame( 700, $this->fxcm_coupon( 'later' )->amount );
 	}
 
 	public function test_coupons_go_back_to_woocommerce(): void {
 		$this->run_job( Direction::WC_TO_FXC );
 		$tee    = $this->local_id( 'product', $this->store->products['tee'] );
-		$spring = $this->fxc_editor()->save(
+		$spring = $this->fxcm_editor()->save(
 			[
 				'code'        => 'spring',
 				'type'        => Coupon::FIXED_PRODUCT,
@@ -151,7 +151,7 @@ final class CouponMigrationTest extends \WP_UnitTestCase {
 				'emails'      => [ 'ana@example.com' ],
 			]
 		);
-		$ship   = $this->fxc_editor()->save(
+		$ship   = $this->fxcm_editor()->save(
 			[
 				'code'          => 'shiponly',
 				'type'          => Coupon::FIXED_CART,
@@ -159,8 +159,8 @@ final class CouponMigrationTest extends \WP_UnitTestCase {
 				'free_shipping' => true,
 			]
 		);
-		$save10 = $this->fxc_coupon( 'save10' );
-		$this->fxc_editor()->save( [ 'amount' => 1500 ], $save10->id );
+		$save10 = $this->fxcm_coupon( 'save10' );
+		$this->fxcm_editor()->save( [ 'amount' => 1500 ], $save10->id );
 		$this->edited_later( $save10->id );
 
 		$job = $this->run_job( Direction::FXC_TO_WC );
@@ -193,7 +193,7 @@ final class CouponMigrationTest extends \WP_UnitTestCase {
 
 	public function test_a_buy_x_get_y_coupon_stays_in_flexacommerce(): void {
 		$this->run_job( Direction::WC_TO_FXC );
-		$this->fxc_editor()->save(
+		$this->fxcm_editor()->save(
 			[
 				'code'    => 'b2g1',
 				'type'    => Coupon::BUY_X_GET_Y,
@@ -212,7 +212,7 @@ final class CouponMigrationTest extends \WP_UnitTestCase {
 
 	public function test_an_automatic_discount_stays_in_flexacommerce(): void {
 		$this->run_job( Direction::WC_TO_FXC );
-		$this->fxc_editor()->save(
+		$this->fxcm_editor()->save(
 			[
 				'code'      => 'Spring sale',
 				'type'      => Coupon::PERCENT,
@@ -239,12 +239,12 @@ final class CouponMigrationTest extends \WP_UnitTestCase {
 		return $coupon->save();
 	}
 
-	private function fxc_coupon( string $code ): ?Coupon {
+	private function fxcm_coupon( string $code ): ?Coupon {
 		global $wpdb;
 		return ( new CouponRepository( $wpdb ) )->by_codes( [ $code ] )[ $code ];
 	}
 
-	private function fxc_editor(): CouponEditor {
+	private function fxcm_editor(): CouponEditor {
 		return new CouponEditor( $this->coupons, Plugin::instance()->services()->clock() );
 	}
 

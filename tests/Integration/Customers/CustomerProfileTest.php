@@ -40,8 +40,8 @@ final class CustomerProfileTest extends \WP_UnitTestCase {
 	public function test_addresses_are_kept_per_site(): void {
 		global $wpdb;
 		$this->profile->save( $this->user, $this->billing() );
-		self::assertNotSame( '', (string) get_user_meta( $this->user, $wpdb->get_blog_prefix() . 'fxc_billing', true ) );
-		self::assertSame( '', (string) get_user_meta( $this->user, 'fxc_billing', true ) );
+		self::assertNotSame( '', (string) get_user_meta( $this->user, $wpdb->get_blog_prefix() . 'fxcm_billing', true ) );
+		self::assertSame( '', (string) get_user_meta( $this->user, 'fxcm_billing', true ) );
 	}
 
 	public function test_the_eraser_drops_every_address_of_the_site(): void {

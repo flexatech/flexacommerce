@@ -145,7 +145,7 @@ final class InvoicesTest extends OrderTestCase {
 		$admin = self::factory()->user->create( [ 'role' => 'administrator' ] );
 		wp_set_current_user( $admin );
 		self::assertSame( $pending->id, $handler->allowed( $pending->id, '', $admin )?->id );
-		self::assertStringContainsString( 'fxc_invoice=' . $paid->id . '&key=' . $paid->order_key, $this->invoices()->customer_url( $paid ) );
+		self::assertStringContainsString( 'fxcm_invoice=' . $paid->id . '&key=' . $paid->order_key, $this->invoices()->customer_url( $paid ) );
 	}
 
 	public function test_a_credit_note_is_numbered_when_first_made_and_gives_the_order_its_invoice(): void {

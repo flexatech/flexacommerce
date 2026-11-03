@@ -9,18 +9,18 @@ use Flexa\Commerce\Contracts\Exceptions\InvalidAttribute;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Global attributes are top-level `fxc_attribute` terms and their values
- * are child terms (ADR-006). Order is kept in the `_fxc_position` term meta.
+ * Global attributes are top-level `fxcm_attribute` terms and their values
+ * are child terms (ADR-006). Order is kept in the `_fxcm_position` term meta.
  * Everything goes through the terms API, so no SQL lives here.
  *
  * Swatches (ADR-022): an attribute term keeps how the product page shows it
- * in `_fxc_swatch`, and a value term its colour or image.
+ * in `_fxcm_swatch`, and a value term its colour or image.
  */
 final class AttributeRepository {
-	public const POSITION_META = '_fxc_position';
-	public const SWATCH_META   = '_fxc_swatch';
-	public const COLOR_META    = '_fxc_color';
-	public const IMAGE_META    = '_fxc_image_id';
+	public const POSITION_META = '_fxcm_position';
+	public const SWATCH_META   = '_fxcm_swatch';
+	public const COLOR_META    = '_fxcm_color';
+	public const IMAGE_META    = '_fxcm_image_id';
 
 	/** How an attribute is shown on the product page; '' is the dropdown. */
 	public const DROPDOWN = '';

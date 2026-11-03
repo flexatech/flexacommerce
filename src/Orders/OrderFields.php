@@ -8,14 +8,14 @@ defined( 'ABSPATH' ) || exit;
 
 /**
  * The answers to the merchant's own checkout fields on one order (ADR-031).
- * Each answer is in order meta under `_{type}_{id}`; `_fxc_fields` keeps the
+ * Each answer is in order meta under `_{type}_{id}`; `_fxcm_fields` keeps the
  * list with the label and the shown value of the time of the order, so
  * renaming or deleting a field later does not change old orders.
  *
  * @phpstan-type Answer array{key:string,label:string,value:string,email:bool}
  */
 final class OrderFields {
-	public const META = '_fxc_fields';
+	public const META = '_fxcm_fields';
 
 	/** @return list<Answer> */
 	public static function parse( ?string $raw ): array {

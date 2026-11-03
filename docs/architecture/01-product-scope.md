@@ -26,8 +26,8 @@ Date: 2026-10-24.
 | REST namespace | `flexacommerce/v1` | |
 | Hook prefix | `flexacommerce.` (dot-separated, newest generation) | e.g. `flexacommerce.order.status_changed` |
 | Option prefix | `flexacommerce_` | |
-| DB table prefix | `{$wpdb->prefix}fxc_` | Short prefix keeps index names readable. |
-| Post type / taxonomies | `fxc_product`, `fxc_product_cat`, `fxc_product_tag`, `fxc_attribute` | Must not collide with WooCommerce's `product`, `product_variation`, `product_cat`, `product_tag`, `pa_*`, because both plugins run side by side during migration. |
+| DB table prefix | `{$wpdb->prefix}fxcm_` | Short prefix keeps index names readable. |
+| Post type / taxonomies | `fxcm_product`, `fxcm_product_cat`, `fxcm_product_tag`, `fxcm_attribute` | Must not collide with WooCommerce's `product`, `product_variation`, `product_cat`, `product_tag`, `pa_*`, because both plugins run side by side during migration. |
 | Blocks / shortcodes | `flexacommerce/*`, `[flexacommerce_*]` | |
 | JS global / admin mount id / Tailwind prefix | `flexaCommerce`, `flexacommerce-admin-root`, `fxc` | |
 
@@ -57,7 +57,7 @@ Legend: **MVP** = required for MVP. **FND** = architectural foundation in MVP, u
 |---|---|---|
 | Simple products | MVP | One purchasable variant row (doc 03 §3). |
 | Variable products | MVP | Up to 250 variants per product supported in the UI. Beyond that the admin editor paginates. |
-| Global attributes (shared, e.g. Color) | MVP | Stored in the `fxc_attribute` taxonomy (ADR-006). Needed for WooCommerce `pa_*` parity and storefront filtering. |
+| Global attributes (shared, e.g. Color) | MVP | Stored in the `fxcm_attribute` taxonomy (ADR-006). Needed for WooCommerce `pa_*` parity and storefront filtering. |
 | Local (per-product) attributes | MVP | Stored in product meta. WooCommerce has the same concept. |
 | Variation combinations, including "any value" wildcards | MVP | Wildcards are needed because many WooCommerce stores use "Any Size" variations. The UI generates explicit combinations by default. |
 | SKU, uniqueness | MVP | Unique across all variants of all products, enforced by a DB unique index. Empty SKU is allowed and stored as `NULL`. |
@@ -81,9 +81,9 @@ Legend: **MVP** = required for MVP. **FND** = architectural foundation in MVP, u
 
 | Feature | Class | Notes |
 |---|---|---|
-| Shop archive | MVP | `fxc_product` post type archive, works with core Query Loop. |
+| Shop archive | MVP | `fxcm_product` post type archive, works with core Query Loop. |
 | Product detail page | MVP | Block template for block themes. PHP template for classic themes. |
-| Product search and pagination | MVP | WordPress search scoped to `fxc_product`, plus SKU search (exact match). |
+| Product search and pagination | MVP | WordPress search scoped to `fxcm_product`, plus SKU search (exact match). |
 | Category/tag archives | MVP | |
 | Attribute filtering, price filtering | POST | The product filters block filters by category, price, attribute and stock, with counts and active-filter links (ADR-055). |
 | Variation selection | MVP | Interactivity API store, server-provided variant matrix, server validation on add to cart. |

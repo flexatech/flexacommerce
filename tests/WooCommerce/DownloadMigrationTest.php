@@ -77,17 +77,17 @@ final class DownloadMigrationTest extends \WP_UnitTestCase {
 		$this->assertSame( 'Ebook (PDF)', $variant->downloads->files[0]['name'] );
 		$this->assertSame( [ 3, 30 ], [ $variant->downloads->limit, $variant->downloads->expiry_days ] );
 
-		$fxc_order   = $this->local_id( 'order', $order_id );
-		$permissions = ( new PermissionRepository( $wpdb ) )->for_order( $fxc_order );
+		$fxcm_order  = $this->local_id( 'order', $order_id );
+		$permissions = ( new PermissionRepository( $wpdb ) )->for_order( $fxcm_order );
 		$this->assertCount( 1, $permissions );
 		$this->assertSame( [ 'ebook-pdf', 4, 2, 'ana@example.com' ], [ $permissions[0]->file_id, $permissions[0]->downloads_remaining, $permissions[0]->download_count, $permissions[0]->email ] );
 		$this->assertNotNull( $permissions[0]->access_expires );
-		$item = Plugin::instance()->orders()->orders()->find( $fxc_order )?->items[0] ?? null;
+		$item = Plugin::instance()->orders()->orders()->find( $fxcm_order )?->items[0] ?? null;
 		$this->assertTrue( ! empty( $item?->meta['downloadable'] ) && ! empty( $item->meta['virtual'] ), 'The line is marked so the order page looks for links.' );
 
 		// Back to WooCommerce: the order keeps its counts and is not granted again.
-		$wpdb->query( $wpdb->prepare( 'UPDATE %i SET downloads_remaining = 1 WHERE order_id = %d', Schema::table( 'downloads' ), $fxc_order ) );
-		$wpdb->query( $wpdb->prepare( 'UPDATE %i SET updated_at = DATE_ADD(updated_at, INTERVAL 1 HOUR) WHERE id = %d', Schema::table( 'orders' ), $fxc_order ) );
+		$wpdb->query( $wpdb->prepare( 'UPDATE %i SET downloads_remaining = 1 WHERE order_id = %d', Schema::table( 'downloads' ), $fxcm_order ) );
+		$wpdb->query( $wpdb->prepare( 'UPDATE %i SET updated_at = DATE_ADD(updated_at, INTERVAL 1 HOUR) WHERE id = %d', Schema::table( 'orders' ), $fxcm_order ) );
 		$back = $this->run_job( Direction::FXC_TO_WC );
 		$this->assertContains( $back->status, JobStatus::FINISHED, (string) wp_json_encode( $this->service->log( $back->id ) ) );
 

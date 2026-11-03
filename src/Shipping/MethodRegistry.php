@@ -33,7 +33,7 @@ final class MethodRegistry implements ShippingMethodRegistry {
 		if ( preg_match( '/^[a-z0-9_]{1,64}$/', $type ) !== 1 ) {
 			throw new \InvalidArgumentException( sprintf( 'Invalid shipping method type "%s".', $type ) );
 		}
-		if ( in_array( $type, self::CORE, true ) || str_starts_with( $type, 'fxc_' ) ) {
+		if ( in_array( $type, self::CORE, true ) || str_starts_with( $type, 'fxcm_' ) ) {
 			throw new DuplicateRegistration( sprintf( 'The shipping method type "%s" is reserved.', $type ) );
 		}
 		if ( isset( $this->factories[ $type ] ) ) {

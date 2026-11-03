@@ -115,7 +115,7 @@ final class CouponRoutesTest extends CouponTestCase {
 		self::assertStringContainsString( '<input id="fxc-checkout-coupon-code" type="text" name="coupon_code" form="fxc-checkout-coupon"', $html, 'the code joins the coupon form, not the order' );
 		self::assertStringContainsString( 'Coupon: TEN <button type="submit" class="fxc-checkout__remove-coupon" form="fxc-checkout-coupon" name="remove_coupon" value="ten" aria-label="Remove coupon ten">&times;</button>', $html );
 		self::assertStringContainsString( 'Discount: Welcome</th>', $html, 'an automatic discount cannot be removed' );
-		self::assertMatchesRegularExpression( '#</form><form id="fxc-checkout-coupon" method="post" action="[^"]+admin-post\.php" hidden data-fxc-coupon-form><input type="hidden" name="action" value="flexacommerce_cart"><input type="hidden" name="fxc_op" value="coupon">#', $html, 'after the order form, since forms do not nest' );
+		self::assertMatchesRegularExpression( '#</form><form id="fxc-checkout-coupon" method="post" action="[^"]+admin-post\.php" hidden data-fxc-coupon-form><input type="hidden" name="action" value="flexacommerce_cart"><input type="hidden" name="fxcm_op" value="coupon">#', $html, 'after the order form, since forms do not nest' );
 
 		self::assertSame( 'coupon_removed', $this->form( [ 'remove_coupon' => 'ten' ] ) );
 		self::assertStringNotContainsString( 'open><summary>Have a coupon or gift card?', do_shortcode( '[flexacommerce_checkout]' ), 'closed on a plain visit' );
@@ -208,7 +208,7 @@ final class CouponRoutesTest extends CouponTestCase {
 		$cart  = Plugin::instance()->cart();
 		$_POST = [
 			'action'           => FormHandler::ACTION,
-			'fxc_op'           => 'coupon',
+			'fxcm_op'          => 'coupon',
 			FormHandler::FIELD => $cart->nonce()->create( 0, '', $cart->sessions()->token() ),
 		] + $fields;
 		$this->next_request();

@@ -31,7 +31,7 @@ defined( 'ABSPATH' ) || exit;
  * one card per unit, worth what the unit cost, and emails the code to the
  * recipient now or on the chosen day. A code entered in the cart pays part
  * or all of the total: at submit each card is locked and debited, and the
- * order gets a `fxc_gift_card` payment per card, so refunds go back to the
+ * order gets a `fxcm_gift_card` payment per card, so refunds go back to the
  * card through the gift card gateway. A cancelled order gets its gift card
  * payments back, and the cards it sold stop working.
  *
@@ -41,9 +41,9 @@ defined( 'ABSPATH' ) || exit;
  * of a customer who never had credit reads no table.
  */
 final class GiftCardService {
-	public const GATEWAY = 'fxc_gift_card';
+	public const GATEWAY = 'fxcm_gift_card';
 
-	public const CREDIT_META = '_fxc_store_credit';
+	public const CREDIT_META = '_fxcm_store_credit';
 
 	/** The code the cart rows and buttons use for store credit; the real code is never sent. */
 	public const CREDIT_CODE = 'store-credit';

@@ -1,8 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
 import { expectAccessible, store } from './store';
 
-/** The own wishlist; `?fxc_wishlist=1` works with and without pretty permalinks. */
-const wishlist = (): string => `${ store.account }${ store.account.includes( '?' ) ? '&' : '?' }fxc_wishlist=1`;
+/** The own wishlist; `?fxcm_wishlist=1` works with and without pretty permalinks. */
+const wishlist = (): string => `${ store.account }${ store.account.includes( '?' ) ? '&' : '?' }fxcm_wishlist=1`;
 
 function heart( page: Page ) {
 	return page.locator( 'form.fxc-wishlist-button--single' ).getByRole( 'button', { name: 'Save to wishlist' } );

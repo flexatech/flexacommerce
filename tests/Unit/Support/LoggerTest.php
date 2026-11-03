@@ -60,7 +60,7 @@ final class LoggerTest extends TestCase {
 		}
 
 		self::assertCount( 1, $db->inserted );
-		self::assertSame( 'wp_fxc_logs', $db->inserted[0]['table'] );
+		self::assertSame( 'wp_fxcm_logs', $db->inserted[0]['table'] );
 		$row = $db->inserted[0]['data'];
 		self::assertSame( 'error', $row['level'] );
 		self::assertSame( 'payments', $row['channel'] );

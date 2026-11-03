@@ -8,7 +8,7 @@ defined( 'ABSPATH' ) || exit;
 
 /**
  * Read-only order lookups for extensions (doc 04 §5.3). Extension metadata
- * lives in fxc_order_meta; keys starting with `_fxc_` are reserved and
+ * lives in fxcm_order_meta; keys starting with `_fxcm_` are reserved and
  * rejected with InvalidArgumentException.
  *
  * @api

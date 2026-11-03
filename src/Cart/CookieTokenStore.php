@@ -7,15 +7,15 @@ namespace Flexa\Commerce\Cart;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * The `fxc_session` cookie (doc 06 §2): HttpOnly, SameSite=Lax, Secure on
+ * The `fxcm_session` cookie (doc 06 §2): HttpOnly, SameSite=Lax, Secure on
  * HTTPS, path COOKIEPATH. A token set during this request is visible to
- * later reads in the same request. `fxc_cart_count` is readable by scripts
+ * later reads in the same request. `fxcm_cart_count` is readable by scripts
  * and holds only the item count.
  */
 final class CookieTokenStore implements TokenStore {
-	public const COOKIE = 'fxc_session';
+	public const COOKIE = 'fxcm_session';
 
-	public const COUNT_COOKIE = 'fxc_cart_count';
+	public const COUNT_COOKIE = 'fxcm_cart_count';
 
 	private ?int $count = null;
 

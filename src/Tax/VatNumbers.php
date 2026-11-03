@@ -21,7 +21,7 @@ defined( 'ABSPATH' ) || exit;
 final class VatNumbers {
 	public const VIES_URL = 'https://ec.europa.eu/taxation_customs/vies/rest-api/ms/%s/vat/%s';
 
-	private const CACHE   = 'fxc_vat_';
+	private const CACHE   = 'fxcm_vat_';
 	private const TIMEOUT = 6;
 	private const TTL     = [
 		VatCheck::VALID      => WEEK_IN_SECONDS,

@@ -6,7 +6,7 @@ namespace Flexa\Commerce\Migration;
 
 defined( 'ABSPATH' ) || exit;
 
-/** One fxc_id_map row. `remote_id` is the WooCommerce id, `local_id` the FlexaCommerce id. */
+/** One fxcm_id_map row. `remote_id` is the WooCommerce id, `local_id` the FlexaCommerce id. */
 final class IdMapRow {
 	public function __construct(
 		public readonly int $id,

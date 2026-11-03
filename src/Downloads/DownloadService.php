@@ -171,7 +171,7 @@ final class DownloadService {
 	}
 
 	public static function url( Permission $permission ): string {
-		return add_query_arg( 'fxc_download', $permission->token, home_url( '/' ) );
+		return add_query_arg( 'fxcm_download', $permission->token, home_url( '/' ) );
 	}
 
 	/**

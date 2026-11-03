@@ -35,7 +35,7 @@ do {
 		]
 	);
 	foreach ( $ids as $id ) {
-		$entry = $woo ? wc_entry( (int) $id, $slugs, $money ) : fxc_entry( (int) $id, $slugs );
+		$entry = $woo ? wc_entry( (int) $id, $slugs, $money ) : fxcm_entry( (int) $id, $slugs );
 		$products[ $entry['sku'] ] = $entry;
 	}
 	wp_cache_flush();
@@ -43,7 +43,7 @@ do {
 ksort( $products );
 
 /** @return array<string,mixed> */
-function fxc_entry( int $id, callable $slugs ): array {
+function fxcm_entry( int $id, callable $slugs ): array {
 	$product = Plugin::instance()->catalog()->product_service()->get( $id );
 	$term    = static fn ( int $term_id ): string => (string) get_term( $term_id )->slug;
 	$attrs   = [];

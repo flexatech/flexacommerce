@@ -100,8 +100,8 @@ final class WooCommerceMappingSpikeTest extends CatalogTestCase {
 		// WooCommerce stored menu_order 0 for every row; the import keeps its id order explicitly.
 		$this->assertSame( range( 0, 23 ), array_map( static fn ( Variant $v ): int => $v->menu_order, $product->variations ) );
 
-		$min = get_post_meta( $product->id, '_fxc_price_min', true );
-		$max = get_post_meta( $product->id, '_fxc_price_max', true );
+		$min = get_post_meta( $product->id, '_fxcm_price_min', true );
+		$max = get_post_meta( $product->id, '_fxcm_price_max', true );
 		$this->assertSame( '3800', (string) $min );
 		$this->assertSame( '12700', (string) $max );
 	}

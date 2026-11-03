@@ -10,7 +10,7 @@ use Flexa\Commerce\Database\Schema;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Storage for fxc_stock_alerts (ADR-065). An address has one waiting row
+ * Storage for fxcm_stock_alerts (ADR-065). An address has one waiting row
  * per product and variant. Sent and cancelled rows stay for a while so the
  * list shows what went out.
  */
@@ -19,12 +19,14 @@ final class StockAlertRepository {
 	public function __construct( private readonly \wpdb $wpdb ) {}
 
 	public function find( int $id ): ?StockAlert {
-		return $this->one( $this->wpdb->prepare( 'SELECT * FROM %i WHERE id = %d', Schema::table( 'stock_alerts' ), $id ) );
+		$wpdb = $this->wpdb;
+		return $this->one( $wpdb->prepare( 'SELECT * FROM %i WHERE id = %d', Schema::table( 'stock_alerts' ), $id ) );
 	}
 
 	public function waiting_for( string $email, int $product_id, int $variant_id ): ?StockAlert {
+		$wpdb = $this->wpdb;
 		return $this->one(
-			$this->wpdb->prepare(
+			$wpdb->prepare(
 				'SELECT * FROM %i WHERE email = %s AND product_id = %d AND variant_id = %d AND status = %s LIMIT 1',
 				Schema::table( 'stock_alerts' ),
 				$email,
@@ -36,8 +38,9 @@ final class StockAlertRepository {
 	}
 
 	public function insert( int $product_id, int $variant_id, ?int $user_id, string $email, string $locale, string $now ): int {
-		$ok = $this->wpdb->query(
-			$this->wpdb->prepare(
+		$wpdb = $this->wpdb;
+		$ok   = $wpdb->query(
+			$wpdb->prepare(
 				'INSERT INTO %i (product_id, variant_id, user_id, email, locale, status, due, token, created_at, updated_at) VALUES (%d, %d, NULLIF(%d, 0), %s, %s, %s, 0, %s, %s, %s)',
 				Schema::table( 'stock_alerts' ),
 				$product_id,
@@ -52,22 +55,24 @@ final class StockAlertRepository {
 			)
 		);
 		if ( $ok === false ) {
-			throw QueryFailed::from_wpdb( $this->wpdb );
+			throw QueryFailed::from_wpdb( $wpdb );
 		}
-		return (int) $this->wpdb->insert_id;
+		return (int) $wpdb->insert_id;
 	}
 
 	/** The stock of a product may be back: its waiting rows get looked at. */
 	public function mark_product( int $product_id ): int {
-		return (int) $this->wpdb->query(
-			$this->wpdb->prepare( 'UPDATE %i SET due = 1 WHERE product_id = %d AND status = %s AND due = 0', Schema::table( 'stock_alerts' ), $product_id, StockAlert::WAITING )
+		$wpdb = $this->wpdb;
+		return (int) $wpdb->query(
+			$wpdb->prepare( 'UPDATE %i SET due = 1 WHERE product_id = %d AND status = %s AND due = 0', Schema::table( 'stock_alerts' ), $product_id, StockAlert::WAITING )
 		);
 	}
 
 	/** As mark_product(), for the product a variant belongs to; a shared stock moves every variant. */
 	public function mark_variant( int $variant_id ): int {
-		return (int) $this->wpdb->query(
-			$this->wpdb->prepare(
+		$wpdb = $this->wpdb;
+		return (int) $wpdb->query(
+			$wpdb->prepare(
 				'UPDATE %i a JOIN %i v ON v.product_id = a.product_id SET a.due = 1 WHERE v.id = %d AND a.status = %s AND a.due = 0',
 				Schema::table( 'stock_alerts' ),
 				Schema::table( 'variants' ),
@@ -78,53 +83,61 @@ final class StockAlertRepository {
 	}
 
 	public function mark_all(): int {
-		return (int) $this->wpdb->query(
-			$this->wpdb->prepare( 'UPDATE %i SET due = 1 WHERE status = %s AND due = 0', Schema::table( 'stock_alerts' ), StockAlert::WAITING )
+		$wpdb = $this->wpdb;
+		return (int) $wpdb->query(
+			$wpdb->prepare( 'UPDATE %i SET due = 1 WHERE status = %s AND due = 0', Schema::table( 'stock_alerts' ), StockAlert::WAITING )
 		);
 	}
 
 	public function has_due(): bool {
-		return $this->wpdb->get_var(
-			$this->wpdb->prepare( 'SELECT 1 FROM %i WHERE status = %s AND due = 1 LIMIT 1', Schema::table( 'stock_alerts' ), StockAlert::WAITING )
+		$wpdb = $this->wpdb;
+		return $wpdb->get_var(
+			$wpdb->prepare( 'SELECT 1 FROM %i WHERE status = %s AND due = 1 LIMIT 1', Schema::table( 'stock_alerts' ), StockAlert::WAITING )
 		) !== null;
 	}
 
 	/** @return list<StockAlert> */
 	public function due( int $limit ): array {
+		$wpdb = $this->wpdb;
 		return $this->many(
-			$this->wpdb->prepare( 'SELECT * FROM %i WHERE status = %s AND due = 1 ORDER BY id LIMIT %d', Schema::table( 'stock_alerts' ), StockAlert::WAITING, $limit )
+			$wpdb->prepare( 'SELECT * FROM %i WHERE status = %s AND due = 1 ORDER BY id LIMIT %d', Schema::table( 'stock_alerts' ), StockAlert::WAITING, $limit )
 		);
 	}
 
 	/** Looked at, still nothing to send. */
 	public function checked( int $id ): void {
-		$this->wpdb->query( $this->wpdb->prepare( 'UPDATE %i SET due = 0 WHERE id = %d', Schema::table( 'stock_alerts' ), $id ) );
+		$wpdb = $this->wpdb;
+		$wpdb->query( $wpdb->prepare( 'UPDATE %i SET due = 0 WHERE id = %d', Schema::table( 'stock_alerts' ), $id ) );
 	}
 
 	public function sent( int $id, string $now ): void {
-		$this->wpdb->query(
-			$this->wpdb->prepare( 'UPDATE %i SET status = %s, due = 0, sent_at = %s, updated_at = %s WHERE id = %d', Schema::table( 'stock_alerts' ), StockAlert::SENT, $now, $now, $id )
+		$wpdb = $this->wpdb;
+		$wpdb->query(
+			$wpdb->prepare( 'UPDATE %i SET status = %s, due = 0, sent_at = %s, updated_at = %s WHERE id = %d', Schema::table( 'stock_alerts' ), StockAlert::SENT, $now, $now, $id )
 		);
 	}
 
 	/** Every waiting row of the address stops. */
 	public function cancel_email( string $email, string $now ): int {
-		return (int) $this->wpdb->query(
-			$this->wpdb->prepare( 'UPDATE %i SET status = %s, due = 0, updated_at = %s WHERE email = %s AND status = %s', Schema::table( 'stock_alerts' ), StockAlert::CANCELLED, $now, $email, StockAlert::WAITING )
+		$wpdb = $this->wpdb;
+		return (int) $wpdb->query(
+			$wpdb->prepare( 'UPDATE %i SET status = %s, due = 0, updated_at = %s WHERE email = %s AND status = %s', Schema::table( 'stock_alerts' ), StockAlert::CANCELLED, $now, $email, StockAlert::WAITING )
 		);
 	}
 
 	public function delete( int $id ): bool {
-		return (int) $this->wpdb->query( $this->wpdb->prepare( 'DELETE FROM %i WHERE id = %d', Schema::table( 'stock_alerts' ), $id ) ) > 0;
+		$wpdb = $this->wpdb;
+		return (int) $wpdb->query( $wpdb->prepare( 'DELETE FROM %i WHERE id = %d', Schema::table( 'stock_alerts' ), $id ) ) > 0;
 	}
 
 	/** Settled rows older than `$before` go, and rows of products that are gone. */
 	public function purge( string $before, int $limit = 1000 ): int {
-		$old  = (int) $this->wpdb->query(
-			$this->wpdb->prepare( 'DELETE FROM %i WHERE status <> %s AND updated_at < %s ORDER BY id LIMIT %d', Schema::table( 'stock_alerts' ), StockAlert::WAITING, $before, $limit )
+		$wpdb = $this->wpdb;
+		$old  = (int) $wpdb->query(
+			$wpdb->prepare( 'DELETE FROM %i WHERE status <> %s AND updated_at < %s ORDER BY id LIMIT %d', Schema::table( 'stock_alerts' ), StockAlert::WAITING, $before, $limit )
 		);
-		$gone = (int) $this->wpdb->query(
-			$this->wpdb->prepare( 'DELETE a FROM %i a LEFT JOIN %i p ON p.ID = a.product_id WHERE p.ID IS NULL', Schema::table( 'stock_alerts' ), $this->wpdb->posts )
+		$gone = (int) $wpdb->query(
+			$wpdb->prepare( 'DELETE a FROM %i a LEFT JOIN %i p ON p.ID = a.product_id WHERE p.ID IS NULL', Schema::table( 'stock_alerts' ), $wpdb->posts )
 		);
 		return $old + $gone;
 	}
@@ -133,21 +146,22 @@ final class StockAlertRepository {
 	 * @return array{rows:list<StockAlert>,total:int}
 	 */
 	public function page( string $status, int $product_id, int $page, int $per_page ): array {
+		$wpdb  = $this->wpdb;
 		$where = [];
 		if ( $status !== '' ) {
-			$where[] = $this->wpdb->prepare( 'status = %s', $status );
+			$where[] = $wpdb->prepare( 'status = %s', $status );
 		}
 		if ( $product_id > 0 ) {
-			$where[] = $this->wpdb->prepare( 'product_id = %d', $product_id );
+			$where[] = $wpdb->prepare( 'product_id = %d', $product_id );
 		}
 		$sql   = $where !== [] ? 'WHERE ' . implode( ' AND ', $where ) : '';
 		$table = Schema::table( 'stock_alerts' );
-		$total = (int) $this->wpdb->get_var(
+		$total = (int) $wpdb->get_var(
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $sql is prepared above.
-			$this->wpdb->prepare( "SELECT COUNT(*) FROM %i {$sql}", $table )
+			$wpdb->prepare( "SELECT COUNT(*) FROM %i {$sql}", $table )
 		);
 		$rows = $this->many(
-			$this->wpdb->prepare(
+			$wpdb->prepare(
 				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $sql is prepared above.
 				"SELECT * FROM %i {$sql} ORDER BY id DESC LIMIT %d OFFSET %d",
 				$table,
@@ -167,8 +181,9 @@ final class StockAlertRepository {
 	 * @return list<array{product_id:int,waiting:int}>
 	 */
 	public function wanted( int $limit ): array {
-		$result = $this->wpdb->get_results(
-			$this->wpdb->prepare(
+		$wpdb   = $this->wpdb;
+		$result = $wpdb->get_results(
+			$wpdb->prepare(
 				'SELECT product_id, COUNT(*) AS waiting FROM %i WHERE status = %s GROUP BY product_id ORDER BY waiting DESC, product_id LIMIT %d',
 				Schema::table( 'stock_alerts' ),
 				StockAlert::WAITING,
@@ -188,30 +203,35 @@ final class StockAlertRepository {
 
 	/** @return array{waiting:int,sent:int} rows by status, sent ones since `$since` */
 	public function counts( string $since ): array {
+		$wpdb  = $this->wpdb;
 		$table = Schema::table( 'stock_alerts' );
 		return [
-			'waiting' => (int) $this->wpdb->get_var( $this->wpdb->prepare( 'SELECT COUNT(*) FROM %i WHERE status = %s', $table, StockAlert::WAITING ) ),
-			'sent'    => (int) $this->wpdb->get_var( $this->wpdb->prepare( 'SELECT COUNT(*) FROM %i WHERE status = %s AND sent_at >= %s', $table, StockAlert::SENT, $since ) ),
+			'waiting' => (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM %i WHERE status = %s', $table, StockAlert::WAITING ) ),
+			'sent'    => (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM %i WHERE status = %s AND sent_at >= %s', $table, StockAlert::SENT, $since ) ),
 		];
 	}
 
 	/** @return list<StockAlert> */
 	public function for_email( string $email ): array {
-		return $this->many( $this->wpdb->prepare( 'SELECT * FROM %i WHERE email = %s ORDER BY id', Schema::table( 'stock_alerts' ), $email ) );
+		$wpdb = $this->wpdb;
+		return $this->many( $wpdb->prepare( 'SELECT * FROM %i WHERE email = %s ORDER BY id', Schema::table( 'stock_alerts' ), $email ) );
 	}
 
 	public function erase_email( string $email ): int {
-		return (int) $this->wpdb->query( $this->wpdb->prepare( 'DELETE FROM %i WHERE email = %s', Schema::table( 'stock_alerts' ), $email ) );
+		$wpdb = $this->wpdb;
+		return (int) $wpdb->query( $wpdb->prepare( 'DELETE FROM %i WHERE email = %s', Schema::table( 'stock_alerts' ), $email ) );
 	}
 
 	private function one( string $sql ): ?StockAlert {
-		$row = $this->wpdb->get_row( $sql, ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- prepared by the caller.
+		$wpdb = $this->wpdb;
+		$row  = $wpdb->get_row( $sql, ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- prepared by the caller.
 		return is_array( $row ) ? StockAlert::from_row( $row ) : null;
 	}
 
 	/** @return list<StockAlert> */
 	private function many( string $sql ): array {
-		$rows = $this->wpdb->get_results( $sql, ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- prepared by the caller.
+		$wpdb = $this->wpdb;
+		$rows = $wpdb->get_results( $sql, ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- prepared by the caller.
 		return array_map( static fn ( array $row ): StockAlert => StockAlert::from_row( $row ), is_array( $rows ) ? $rows : [] );
 	}
 }

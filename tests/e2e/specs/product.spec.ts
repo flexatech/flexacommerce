@@ -15,8 +15,8 @@ test( 'simple product: add to cart updates the mini cart and the cookies', async
 	await expect( page.locator( '.fxc-mini-cart__count' ).first() ).toHaveText( /2/ );
 
 	const cookies = Object.fromEntries( ( await context.cookies() ).map( ( c ) => [ c.name, c ] ) );
-	expect( cookies.fxc_session?.httpOnly ).toBe( true );
-	expect( cookies.fxc_cart_count?.value ).toBe( '2' );
+	expect( cookies.fxcm_session?.httpOnly ).toBe( true );
+	expect( cookies.fxcm_cart_count?.value ).toBe( '2' );
 	await expectAccessible( page, info, 'simple product after add' );
 } );
 
@@ -48,7 +48,7 @@ test( 'variable product: adding without a choice asks for the option', async ( {
 	const first = form.locator( 'select[data-attribute]' ).first();
 	expect( await first.evaluate( ( select: HTMLSelectElement ) => select.validationMessage ) ).not.toBe( '' );
 	await expect( page.locator( '.fxc-mini-cart__count' ).first() ).not.toHaveText( /[1-9]/ );
-	expect( ( await page.context().cookies() ).find( ( c ) => c.name === 'fxc_cart_count' )?.value ?? '0' ).toBe( '0' );
+	expect( ( await page.context().cookies() ).find( ( c ) => c.name === 'fxcm_cart_count' )?.value ?? '0' ).toBe( '0' );
 } );
 
 test( 'option formula: the price follows what the customer types', async ( { page }, info ) => {
