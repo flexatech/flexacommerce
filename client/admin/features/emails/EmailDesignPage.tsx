@@ -467,7 +467,7 @@ function BlockRow({ block, text, onSelect }: { block: DesignBlock; text: string;
     );
 }
 
-const PICK = "#2563eb";
+const PICK = "#3858e9";
 
 /**
  * The email in a sandboxed frame without scripts. Clicking a block selects it;
