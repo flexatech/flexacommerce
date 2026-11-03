@@ -4,6 +4,7 @@ import { showToast } from "@/shared/components/showToast";
 import { Button } from "@/shared/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/components/ui/dialog";
 import { Input } from "@/shared/components/ui/input";
+import { DatePicker } from "@/shared/components/ui/date-picker";
 import { Label } from "@/shared/components/ui/label";
 import { Select } from "@/shared/components/ui/select";
 import { Textarea } from "@/shared/components/ui/textarea";
@@ -445,10 +446,10 @@ export function CouponDialog({ open, coupon, automatic = false, preset, onOpenCh
                             }
                         </Field>
                         <Field label={__("Starts")} help={__("Empty: from now.")} error={errors.starts_at}>
-                            {(id) => <Input id={id} type="datetime-local" value={draft.starts_at} onChange={(e) => set("starts_at", e.target.value)} />}
+                            {(id) => <DatePicker id={id} withTime value={draft.starts_at} onChange={(value) => set("starts_at", value)} />}
                         </Field>
                         <Field label={__("Expires")} help={__("Empty: never.")} error={errors.expires_at}>
-                            {(id) => <Input id={id} type="datetime-local" value={draft.expires_at} onChange={(e) => set("expires_at", e.target.value)} />}
+                            {(id) => <DatePicker id={id} withTime value={draft.expires_at} onChange={(value) => set("expires_at", value)} />}
                         </Field>
                         <Field label={__("Minimum spend")} help={__("Items subtotal before coupons. Empty: none.")} error={errors.min_subtotal}>
                             {(id) => (

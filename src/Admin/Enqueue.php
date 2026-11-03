@@ -95,6 +95,11 @@ final class Enqueue {
 					'weight'    => Settings::string( 'weight_unit' ),
 					'dimension' => Settings::string( 'dimension_unit' ),
 				],
+				'dates'     => [
+					'format'     => (string) get_option( 'date_format', 'F j, Y' ),
+					'timeFormat' => (string) get_option( 'time_format', 'g:i a' ),
+					'weekStart'  => (int) get_option( 'start_of_week', 0 ),
+				],
 			]
 		);
 		return true;

@@ -123,11 +123,11 @@ export function CouponsPanel({ template, onTemplates, onTemplateUsed }: Template
                     {__("Add coupon")}
                 </Button>
             </div>
-            <p className="fxc:text-muted-foreground fxc:text-sm">
+            <div className="fxc:text-muted-foreground fxc:text-sm">
                 {__(
                     "Discount codes shoppers enter in the cart, and automatic discounts that apply by themselves. Codes apply in the order they are added, each to what the earlier ones left; automatic discounts come after them.",
                 )}
-            </p>
+            </div>
 
             <Card className="fxc:overflow-x-auto">
                 {list.isPending ? (

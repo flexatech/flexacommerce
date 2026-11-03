@@ -479,7 +479,7 @@ function OffersPreview({ draft }: { draft: Draft }) {
     }
     return (
         <div aria-hidden className="fxc:space-y-3">
-            <p className="fxc:text-muted-foreground fxc:text-xs fxc:font-medium fxc:uppercase">{__("Preview")}</p>
+            <div className="fxc:text-muted-foreground fxc:text-xs fxc:font-medium fxc:uppercase">{__("Preview")}</div>
             {draft.countdown_days > 0 && (
                 <div className="fxc:flex fxc:flex-wrap fxc:items-center fxc:gap-1.5 fxc:text-sm">
                     <span className="fxc:mr-1 fxc:font-semibold">{__("Offer ends in")}</span>
@@ -560,7 +560,7 @@ function GalleryPreview({ draft }: { draft: Draft }) {
         );
     return (
         <div aria-hidden className="fxc:space-y-3">
-            <p className="fxc:text-muted-foreground fxc:text-xs fxc:font-medium fxc:uppercase">{__("Preview")}</p>
+            <div className="fxc:text-muted-foreground fxc:text-xs fxc:font-medium fxc:uppercase">{__("Preview")}</div>
             <div className={cn("fxc:max-w-xs", left ? "fxc:flex fxc:items-start fxc:gap-1.5" : "fxc:space-y-1.5")}>
                 {left && thumbs}
                 <div
@@ -602,13 +602,13 @@ function SwatchPreview({ draft }: { draft: Draft }) {
     const round = draft.swatch_shape === "round";
     const rows = draft.swatch_unavailable === "hide" ? SAMPLE.filter((s) => !s.out) : SAMPLE;
     return (
-        <div aria-hidden className="fxc:space-y-3">
-            <p className="fxc:text-muted-foreground fxc:text-xs fxc:font-medium fxc:uppercase">{__("Preview")}</p>
-            <p className="fxc:text-sm">
+        <div aria-hidden className="fxc:space-y-4">
+            <div className="fxc:text-muted-foreground fxc:text-xs fxc:font-medium fxc:uppercase">{__("Preview")}</div>
+            <div className="fxc:text-sm">
                 {__("Color")}
                 {draft.swatch_show_choice && <span className="fxc:font-semibold">: {SAMPLE[0].name}</span>}
-            </p>
-            <div className="fxc:flex fxc:flex-wrap fxc:gap-2">
+            </div>
+            <div className="fxc:flex fxc:flex-wrap fxc:gap-3">
                 {rows.map((swatch, i) => (
                     <span
                         key={swatch.name}
@@ -629,7 +629,7 @@ function SwatchPreview({ draft }: { draft: Draft }) {
                     />
                 ))}
             </div>
-            <div className="fxc:flex fxc:flex-wrap fxc:gap-2">
+            <div className="fxc:flex fxc:flex-wrap fxc:gap-3">
                 {["S", "M", "L"].map((label, i) => (
                     <span
                         key={label}

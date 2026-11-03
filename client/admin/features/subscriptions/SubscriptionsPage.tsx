@@ -7,6 +7,7 @@ import { Button } from "@/shared/components/ui/button";
 import { Card } from "@/shared/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/components/ui/dialog";
 import { Input } from "@/shared/components/ui/input";
+import { DatePicker } from "@/shared/components/ui/date-picker";
 import { Label } from "@/shared/components/ui/label";
 import { getPluginGlobal } from "@/shared/lib/api";
 import { __, _n, sprintf } from "@/shared/lib/i18n";
@@ -276,7 +277,7 @@ function SubscriptionView({ row, onClose }: { row: SubscriptionDetail; onClose: 
                             {__("Move the next payment")}
                         </Label>
                         <div className="fxc:flex fxc:flex-wrap fxc:items-center fxc:gap-3">
-                            <Input id="fxc-sub-next" type="date" min={tomorrow()} className="fxc:w-48" value={day} onChange={(e) => setDay(e.target.value)} />
+                            <DatePicker id="fxc-sub-next" min={tomorrow()} className="fxc:w-48" value={day} onChange={(value) => setDay(value)} />
                             <Button
                                 variant="outline"
                                 disabled={busy || day === "" || day === row.next_payment_on}
@@ -471,7 +472,7 @@ export function SubscriptionsPage() {
                     type="search"
                     aria-label={__("Search subscriptions")}
                     placeholder={__("Email, name, product or number")}
-                    className="fxc:pl-9"
+                    className="fxc:pl-9!"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                 />

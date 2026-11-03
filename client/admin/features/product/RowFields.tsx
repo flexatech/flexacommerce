@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
+import { DatePicker } from "@/shared/components/ui/date-picker";
 import { Select } from "@/shared/components/ui/select";
 import { __ } from "@/shared/lib/i18n";
 import { localInputToUtc, utcToLocalInput } from "@/shared/lib/units";
@@ -50,21 +51,21 @@ export function PricingFields({ row, onChange, errors, path }: { row: VariantRow
                 <div className={GRID}>
                     <Field label={__("Sale starts")} error={errors[`${path}.sale_from`]}>
                         {(id) => (
-                            <Input
+                            <DatePicker
                                 id={id}
-                                type="datetime-local"
+                                withTime
                                 value={utcToLocalInput(row.sale_from)}
-                                onChange={(event) => onChange({ sale_from: localInputToUtc(event.target.value) })}
+                                onChange={(value) => onChange({ sale_from: localInputToUtc(value) })}
                             />
                         )}
                     </Field>
                     <Field label={__("Sale ends")} error={errors[`${path}.sale_to`]}>
                         {(id) => (
-                            <Input
+                            <DatePicker
                                 id={id}
-                                type="datetime-local"
+                                withTime
                                 value={utcToLocalInput(row.sale_to)}
-                                onChange={(event) => onChange({ sale_to: localInputToUtc(event.target.value) })}
+                                onChange={(value) => onChange({ sale_to: localInputToUtc(value) })}
                             />
                         )}
                     </Field>

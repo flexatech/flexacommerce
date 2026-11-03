@@ -68,9 +68,9 @@ export function PaymentsPanel() {
 
     return (
         <div className="fxc:space-y-3">
-            <p className="fxc:text-muted-foreground fxc:text-sm">
+            <div className="fxc:text-muted-foreground fxc:text-sm">
                 {__("Shoppers see the enabled methods at checkout, in this order.")}
-            </p>
+            </div>
             {gateways.data.map((gateway) => (
                 <GatewayCard
                     key={gateway.id}

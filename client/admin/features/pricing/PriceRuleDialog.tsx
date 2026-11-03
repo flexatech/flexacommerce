@@ -5,6 +5,7 @@ import { showToast } from "@/shared/components/showToast";
 import { Button } from "@/shared/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/components/ui/dialog";
 import { Input } from "@/shared/components/ui/input";
+import { DatePicker } from "@/shared/components/ui/date-picker";
 import { Label } from "@/shared/components/ui/label";
 import { Select } from "@/shared/components/ui/select";
 import { ApiError, getPluginGlobal } from "@/shared/lib/api";
@@ -813,7 +814,7 @@ export function PriceRuleDialog({ open, rule, preset, roles, onOpenChange }: Pro
                             )}
                             <div className="fxc:grid fxc:gap-4 fxc:sm:grid-cols-2">
                                 <Field label={__("Starts")} help={__("Empty: right away.")} error={errors.starts_at}>
-                                    {(id) => <Input id={id} type="datetime-local" value={draft.starts_at} onChange={(e) => set("starts_at", e.target.value)} />}
+                                    {(id) => <DatePicker id={id} withTime value={draft.starts_at} onChange={(value) => set("starts_at", value)} />}
                                 </Field>
                                 <Field
                                     label={__("Ends")}
@@ -824,7 +825,7 @@ export function PriceRuleDialog({ open, rule, preset, roles, onOpenChange }: Pro
                                     }
                                     error={errors.ends_at}
                                 >
-                                    {(id) => <Input id={id} type="datetime-local" value={draft.ends_at} onChange={(e) => set("ends_at", e.target.value)} />}
+                                    {(id) => <DatePicker id={id} withTime value={draft.ends_at} onChange={(value) => set("ends_at", value)} />}
                                 </Field>
                             </div>
                         </section>

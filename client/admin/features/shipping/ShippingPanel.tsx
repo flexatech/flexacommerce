@@ -117,10 +117,12 @@ export function ShippingPanel() {
                 />
             ))}
 
-            <Button variant="outline" onClick={add}>
-                <Plus aria-hidden />
-                {__("Add zone")}
-            </Button>
+            <div>
+                <Button variant="outline" onClick={add}>
+                    <Plus aria-hidden />
+                    {__("Add zone")}
+                </Button>
+            </div>
 
             <ZoneCard
                 zone={rest}

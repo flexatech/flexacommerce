@@ -1,4 +1,4 @@
-import{c as Gt,r as l,d as I}from"./search-Bvo5hlEM.js";import{r as Ne}from"./SearchBox-CXalZmco.js";/**
+import{c as Gt,r as l,d as I}from"./search-Bvo5hlEM.js";import{r as Ne}from"./SearchBox-h4DLsdSg.js";/**
  * @license lucide-react v0.469.0 - ISC
  *
  * This source code is licensed under the ISC license.

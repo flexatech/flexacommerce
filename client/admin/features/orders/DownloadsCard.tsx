@@ -5,6 +5,7 @@ import { showToast } from "@/shared/components/showToast";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { Input } from "@/shared/components/ui/input";
+import { DatePicker } from "@/shared/components/ui/date-picker";
 import { Label } from "@/shared/components/ui/label";
 import { __, sprintf } from "@/shared/lib/i18n";
 import { formatDate } from "./format";
@@ -160,7 +161,7 @@ function DownloadRow({ order, download }: { order: OrderDetail; download: OrderD
                         <Label htmlFor={`fxc-download-expires-${download.id}`} className="fxc:mb-2 fxc:block">
                             {__("Access until")}
                         </Label>
-                        <Input id={`fxc-download-expires-${download.id}`} type="date" value={expires} onChange={(e) => setExpires(e.target.value)} />
+                        <DatePicker id={`fxc-download-expires-${download.id}`} value={expires} onChange={(value) => setExpires(value)} />
                     </div>
                     <div className="fxc:flex fxc:gap-2">
                         <Button size="sm" disabled={update.isPending} onClick={save}>

@@ -9,7 +9,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/shared/components/ui/dialog";
-import { Input } from "@/shared/components/ui/input";
+import { DatePicker } from "@/shared/components/ui/date-picker";
 import { Label } from "@/shared/components/ui/label";
 import { Select } from "@/shared/components/ui/select";
 import { __, sprintf } from "@/shared/lib/i18n";
@@ -281,13 +281,13 @@ export function NewJobDialog({ open, onOpenChange, index, onCreated }: Props) {
                                 <Label htmlFor="fxc-migration-from" className="fxc:mb-2 fxc:block">
                                     {__("Orders from (UTC)")}
                                 </Label>
-                                <Input id="fxc-migration-from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+                                <DatePicker id="fxc-migration-from" value={from} onChange={(value) => setFrom(value)} />
                             </div>
                             <div>
                                 <Label htmlFor="fxc-migration-to" className="fxc:mb-2 fxc:block">
                                     {__("Orders to (UTC)")}
                                 </Label>
-                                <Input id="fxc-migration-to" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+                                <DatePicker id="fxc-migration-to" value={to} onChange={(value) => setTo(value)} />
                             </div>
                         </div>
                     )}

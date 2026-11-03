@@ -7,6 +7,7 @@ import { Button } from "@/shared/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/components/ui/dialog";
 import { Input } from "@/shared/components/ui/input";
+import { DatePicker } from "@/shared/components/ui/date-picker";
 import { Label } from "@/shared/components/ui/label";
 import { Select } from "@/shared/components/ui/select";
 import { __, sprintf } from "@/shared/lib/i18n";
@@ -257,7 +258,7 @@ function ShipmentDialog({ order, open, onOpenChange }: DialogProps) {
                         <Label htmlFor="fxc-shipment-date" className="fxc:mb-2 fxc:block">
                             {__("Shipped on")}
                         </Label>
-                        <Input id="fxc-shipment-date" type="date" max={today()} value={date} onChange={(e) => setDate(e.target.value)} />
+                        <DatePicker id="fxc-shipment-date" max={today()} value={date} onChange={(value) => setDate(value)} />
                     </div>
                     <fieldset className="fxc:space-y-2">
                         <legend className="fxc:text-foreground fxc:mb-2 fxc:text-sm fxc:font-medium">{__("In this package")}</legend>

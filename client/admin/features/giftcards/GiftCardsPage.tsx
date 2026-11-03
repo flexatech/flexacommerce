@@ -7,6 +7,7 @@ import { Button } from "@/shared/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/components/ui/dialog";
 import { Input } from "@/shared/components/ui/input";
+import { DatePicker } from "@/shared/components/ui/date-picker";
 import { Label } from "@/shared/components/ui/label";
 import { Select } from "@/shared/components/ui/select";
 import { Switch } from "@/shared/components/ui/switch";
@@ -150,14 +151,14 @@ function NewCardDialog({ open, onClose, onCreated, expiryMonths }: { open: boole
                             <Input id="fxc-gc-sender" maxLength={200} placeholder={__("The store name")} value={sender} onChange={(e) => setSender(e.target.value)} />
                         </Field>
                         <Field id="fxc-gc-deliver" label={__("Send on")} help={__("Empty sends it now.")}>
-                            <Input id="fxc-gc-deliver" type="date" min={today()} value={deliverOn} onChange={(e) => setDeliverOn(e.target.value)} />
+                            <DatePicker id="fxc-gc-deliver" min={today()} value={deliverOn} onChange={(value) => setDeliverOn(value)} />
                         </Field>
                     </div>
                     <Field id="fxc-gc-message" label={__("Message")}>
                         <Textarea id="fxc-gc-message" rows={3} maxLength={1000} value={message} onChange={(e) => setMessage(e.target.value)} />
                     </Field>
                     <Field id="fxc-gc-expires" label={__("Expires after")} help={expiresOn === null || expiresOn === "" ? defaultExpiry : undefined}>
-                        <Input id="fxc-gc-expires" type="date" min={today()} className="fxc:w-48" value={expiresOn ?? ""} onChange={(e) => setExpiresOn(e.target.value)} />
+                        <DatePicker id="fxc-gc-expires" min={today()} className="fxc:w-48" value={expiresOn ?? ""} onChange={(value) => setExpiresOn(value)} />
                     </Field>
                     <Field id="fxc-gc-note" label={__("Private note")} help={__("Shown in the card history, never to the customer.")}>
                         <Input id="fxc-gc-note" maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} />
@@ -310,7 +311,7 @@ function CardEditor({ card, onClose }: { card: GiftCardDetail; onClose: () => vo
                         <Input id="fxc-gc-edit-name" maxLength={200} value={name} onChange={(e) => setName(e.target.value)} />
                     </Field>
                     <Field id="fxc-gc-edit-expires" label={__("Expires after")} help={expiresOn === "" ? __("Never expires.") : undefined}>
-                        <Input id="fxc-gc-edit-expires" type="date" value={expiresOn} onChange={(e) => setExpiresOn(e.target.value)} />
+                        <DatePicker id="fxc-gc-edit-expires" value={expiresOn} onChange={(value) => setExpiresOn(value)} />
                     </Field>
                 </div>
                 <div className="fxc:flex fxc:flex-wrap fxc:items-center fxc:justify-between fxc:gap-3">
@@ -414,7 +415,7 @@ function CardsPanel() {
                         type="search"
                         aria-label={__("Search gift cards")}
                         placeholder={__("Code, email, name or order number")}
-                        className="fxc:pl-9"
+                        className="fxc:pl-9!"
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                     />

@@ -5,6 +5,7 @@ import { showToast } from "@/shared/components/showToast";
 import { Button } from "@/shared/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/components/ui/dialog";
 import { Input } from "@/shared/components/ui/input";
+import { DatePicker } from "@/shared/components/ui/date-picker";
 import { Label } from "@/shared/components/ui/label";
 import { Select } from "@/shared/components/ui/select";
 import { ApiError } from "@/shared/lib/api";
@@ -226,7 +227,7 @@ const CORNER_CLASS: Record<BadgePosition, string> = {
 function Preview({ draft }: { draft: Draft }) {
     return (
         <div aria-hidden className="fxc:space-y-2">
-            <p className="fxc:text-muted-foreground fxc:text-xs fxc:font-medium fxc:uppercase">{__("Preview")}</p>
+            <div className="fxc:text-muted-foreground fxc:text-xs fxc:font-medium fxc:uppercase">{__("Preview")}</div>
             <div className="fxc:bg-muted fxc:relative fxc:flex fxc:aspect-square fxc:items-center fxc:justify-center fxc:rounded-md">
                 <Image className="fxc:text-muted-foreground/40 fxc:size-12" />
                 <BadgeChip badge={draft} className={cn("fxc:absolute", CORNER_CLASS[draft.position])} />
@@ -521,10 +522,10 @@ export function BadgeDialog({ open, badge, preset, onOpenChange }: Props) {
                             )}
                             <div className="fxc:grid fxc:gap-4 fxc:sm:grid-cols-2">
                                 <Field label={__("Starts")} help={__("Empty: right away.")} error={errors.starts_at}>
-                                    {(id) => <Input id={id} type="datetime-local" value={draft.starts_at} onChange={(e) => set("starts_at", e.target.value)} />}
+                                    {(id) => <DatePicker id={id} withTime value={draft.starts_at} onChange={(value) => set("starts_at", value)} />}
                                 </Field>
                                 <Field label={__("Ends")} help={__("Empty: never.")} error={errors.ends_at}>
-                                    {(id) => <Input id={id} type="datetime-local" value={draft.ends_at} onChange={(e) => set("ends_at", e.target.value)} />}
+                                    {(id) => <DatePicker id={id} withTime value={draft.ends_at} onChange={(value) => set("ends_at", value)} />}
                                 </Field>
                             </div>
                         </section>

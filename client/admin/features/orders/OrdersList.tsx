@@ -5,6 +5,7 @@ import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { Card } from "@/shared/components/ui/card";
 import { Input } from "@/shared/components/ui/input";
+import { DatePicker } from "@/shared/components/ui/date-picker";
 import { __, sprintf } from "@/shared/lib/i18n";
 import { useDebounced } from "@/shared/lib/useDebounced";
 import { EmptyState } from "../../components/EmptyState";
@@ -100,24 +101,22 @@ export function OrdersList({ params, onParams, onOpen }: Props) {
                 <Tabs value={filter} onChange={setFilter} items={tabs} />
                 <div className="fxc:flex fxc:flex-wrap fxc:items-center fxc:gap-2">
                     <div className="fxc:flex fxc:items-center fxc:gap-1.5 fxc:text-sm">
-                        <Input
-                            type="date"
+                        <DatePicker
                             aria-label={__("Orders from")}
-                            className="fxc:w-40"
+                            className="fxc:w-48"
                             value={params.date_from}
                             max={params.date_to || undefined}
-                            onChange={(e) => onParams({ ...params, date_from: e.target.value, page: 1 })}
+                            onChange={(value) => onParams({ ...params, date_from: value, page: 1 })}
                         />
                         <span className="fxc:text-muted-foreground" aria-hidden>
                             –
                         </span>
-                        <Input
-                            type="date"
+                        <DatePicker
                             aria-label={__("Orders to")}
-                            className="fxc:w-40"
+                            className="fxc:w-48"
                             value={params.date_to}
                             min={params.date_from || undefined}
-                            onChange={(e) => onParams({ ...params, date_to: e.target.value, page: 1 })}
+                            onChange={(value) => onParams({ ...params, date_to: value, page: 1 })}
                         />
                         {(params.date_from !== "" || params.date_to !== "") && (
                             <Button variant="ghost" size="sm" onClick={() => onParams({ ...params, date_from: "", date_to: "", page: 1 })}>

@@ -6,8 +6,8 @@
       "_search-Bvo5hlEM.js"
     ]
   },
-  "_SearchBox-CXalZmco.js": {
-    "file": "assets/SearchBox-CXalZmco.js",
+  "_SearchBox-h4DLsdSg.js": {
+    "file": "assets/SearchBox-h4DLsdSg.js",
     "name": "SearchBox",
     "imports": [
       "_search-Bvo5hlEM.js"
@@ -17,48 +17,48 @@
     "file": "assets/search-Bvo5hlEM.js",
     "name": "search"
   },
-  "_sortable.esm-Cb9jJkiG.js": {
-    "file": "assets/sortable.esm-Cb9jJkiG.js",
+  "_sortable.esm-CtdA6gjK.js": {
+    "file": "assets/sortable.esm-CtdA6gjK.js",
     "name": "sortable.esm",
     "imports": [
       "_search-Bvo5hlEM.js",
-      "_SearchBox-CXalZmco.js"
+      "_SearchBox-h4DLsdSg.js"
     ]
   },
   "admin/features/checkout/CheckoutBuilderPage.tsx": {
-    "file": "assets/CheckoutBuilderPage--lfmplPE.js",
+    "file": "assets/CheckoutBuilderPage-D-WKJIn2.js",
     "name": "CheckoutBuilderPage",
     "src": "admin/features/checkout/CheckoutBuilderPage.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_search-Bvo5hlEM.js",
-      "_sortable.esm-Cb9jJkiG.js",
-      "_SearchBox-CXalZmco.js",
+      "_sortable.esm-CtdA6gjK.js",
+      "_SearchBox-h4DLsdSg.js",
       "admin/main.tsx",
       "_Header-KNbM_bCd.js"
     ]
   },
   "admin/features/emails/EmailDesignPage.tsx": {
-    "file": "assets/EmailDesignPage-B19qhe8j.js",
+    "file": "assets/EmailDesignPage-BCGKGvKc.js",
     "name": "EmailDesignPage",
     "src": "admin/features/emails/EmailDesignPage.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_search-Bvo5hlEM.js",
-      "_sortable.esm-Cb9jJkiG.js",
-      "_SearchBox-CXalZmco.js",
+      "_sortable.esm-CtdA6gjK.js",
+      "_SearchBox-h4DLsdSg.js",
       "admin/main.tsx",
       "_Header-KNbM_bCd.js"
     ]
   },
   "admin/main.tsx": {
-    "file": "assets/admin-CzoT9cie.js",
+    "file": "assets/admin-SUH8iGlm.js",
     "name": "admin",
     "src": "admin/main.tsx",
     "isEntry": true,
     "imports": [
       "_search-Bvo5hlEM.js",
-      "_SearchBox-CXalZmco.js",
+      "_SearchBox-h4DLsdSg.js",
       "_Header-KNbM_bCd.js"
     ],
     "dynamicImports": [
@@ -66,11 +66,11 @@
       "admin/features/emails/EmailDesignPage.tsx"
     ],
     "css": [
-      "assets/admin-BmqR21FZ.css"
+      "assets/admin-DAIfLBWm.css"
     ]
   },
   "admin/nav.tsx": {
-    "file": "assets/nav-DkZf7Dng.js",
+    "file": "assets/nav-BYeJZBuz.js",
     "name": "nav",
     "src": "admin/nav.tsx",
     "isEntry": true,
@@ -79,20 +79,20 @@
       "_Header-KNbM_bCd.js"
     ],
     "css": [
-      "assets/nav-CPeY4-ze.css"
+      "assets/nav-DGGrddBM.css"
     ]
   },
   "admin/product-editor.tsx": {
-    "file": "assets/product-editor-CzbTbn_1.js",
+    "file": "assets/product-editor-C8cT75hD.js",
     "name": "product-editor",
     "src": "admin/product-editor.tsx",
     "isEntry": true,
     "imports": [
       "_search-Bvo5hlEM.js",
-      "_SearchBox-CXalZmco.js"
+      "_SearchBox-h4DLsdSg.js"
     ],
     "css": [
-      "assets/product-editor-DEt3hUsr.css"
+      "assets/product-editor-DcY-JrMJ.css"
     ]
   }
 }

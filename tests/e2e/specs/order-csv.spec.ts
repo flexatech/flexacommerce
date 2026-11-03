@@ -33,7 +33,11 @@ test( 'the order list exports to CSV in both layouts and keeps its date filter',
 	await expect( dialog ).toBeHidden();
 
 	// A day no order has: the file is only its header (the first toast may say the same on an empty bench).
-	await page.getByLabel( 'Orders from' ).fill( '2099-01-01' );
+	await page.getByRole( 'button', { name: /^Orders from/ } ).click();
+	const calendar = page.getByRole( 'dialog', { name: 'Choose date' } );
+	await calendar.getByRole( 'button', { name: 'Next month' } ).click();
+	await calendar.getByRole( 'gridcell' ).first().click();
+	await expect( calendar ).toBeHidden();
 	await page.getByRole( 'button', { name: 'Export CSV' } ).click();
 	await expect( dialog.getByText( 'match the tab, search and dates', { exact: false } ) ).toBeVisible();
 	await dialog.getByLabel( 'One row per product' ).check();

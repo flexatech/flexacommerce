@@ -50,6 +50,8 @@ export interface FlexaCommerceGlobal {
         weight: "kg" | "g" | "lb" | "oz";
         dimension: "cm" | "mm" | "m" | "in" | "yd";
     };
+    /** The site's date_format, time_format (PHP date() formats) and start_of_week (0 = Sunday). */
+    dates: { format: string; timeFormat: string; weekStart: number };
     /** Product editor screen only. */
     productId?: number;
     canManageTerms?: boolean;

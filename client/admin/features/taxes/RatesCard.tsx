@@ -216,7 +216,7 @@ export function RatesCard({ overview }: { overview: TaxOverview }) {
                     <Input
                         aria-label={__("Search rates")}
                         placeholder={__("Country, state, postcode or name")}
-                        className="fxc:w-full fxc:pl-9"
+                        className="fxc:w-full fxc:pl-9!"
                         value={search}
                         onChange={(e) => {
                             if (!dirty || window.confirm(__("Discard the unsaved rate changes?"))) {
