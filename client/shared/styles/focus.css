@@ -1,0 +1,10 @@
+/*
+ * WP admin draws a focus box-shadow and a transparent outline on a:focus and
+ * button:focus without a layer, which beats every utility. Drop both on the
+ * links and buttons the app renders, also inside dialog portals.
+ */
+:is(a, button)[class*="fxc:"]:focus,
+:is(a, button)[class*="fxc:"]:focus-visible {
+    box-shadow: none !important;
+    outline: none !important;
+}

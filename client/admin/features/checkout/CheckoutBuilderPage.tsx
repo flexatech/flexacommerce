@@ -167,7 +167,7 @@ function FieldSketch({ entry, label }: { entry: LayoutEntry; label: string }) {
     );
 }
 
-const focusRing = "fxc:outline-none fxc:focus-visible:ring-2 fxc:focus-visible:ring-primary-accent";
+const focusRing = "fxc:outline-none";
 
 const Grip = forwardRef<HTMLButtonElement, { label: string } & ComponentPropsWithoutRef<"button">>(function Grip({ label, ...props }, ref) {
     return (

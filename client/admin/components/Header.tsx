@@ -65,7 +65,7 @@ export function Header() {
                                 aria-current={active && item.pages.length === 1 ? "page" : active ? "true" : undefined}
                                 className={cn(
                                     "fxc:text-muted-foreground fxc:flex fxc:h-9 fxc:shrink-0 fxc:items-center fxc:gap-2 fxc:rounded-md fxc:px-3 fxc:text-sm fxc:font-medium fxc:whitespace-nowrap fxc:no-underline fxc:transition-colors fxc:outline-none",
-                                    "fxc:hover:bg-muted fxc:hover:text-foreground fxc:focus-visible:ring-2 fxc:focus-visible:ring-primary-accent",
+                                    "fxc:hover:bg-muted fxc:hover:text-foreground",
                                     active && "fxc:bg-primary/10 fxc:text-primary fxc:hover:bg-primary/10 fxc:hover:text-primary",
                                 )}
                             >
@@ -78,7 +78,7 @@ export function Header() {
                 <button
                     type="button"
                     onClick={openPalette}
-                    className="fxc:border-input fxc:bg-muted/40 fxc:text-muted-foreground fxc:flex fxc:h-9 fxc:shrink-0 fxc:cursor-pointer fxc:items-center fxc:gap-2 fxc:rounded-md fxc:border fxc:px-2.5 fxc:text-sm fxc:outline-none fxc:transition-colors fxc:hover:bg-muted fxc:hover:text-foreground fxc:focus-visible:ring-2 fxc:focus-visible:ring-primary-accent fxc:md:w-56"
+                    className="fxc:border-input fxc:bg-muted/40 fxc:text-muted-foreground fxc:flex fxc:h-9 fxc:shrink-0 fxc:cursor-pointer fxc:items-center fxc:gap-2 fxc:rounded-md fxc:border fxc:px-2.5 fxc:text-sm fxc:outline-none fxc:transition-colors fxc:hover:bg-muted fxc:hover:text-foreground fxc:md:w-56"
                 >
                     <Search aria-hidden className="fxc:size-4" />
                     <span className="fxc:hidden fxc:flex-1 fxc:text-left fxc:md:inline">{__("Search pages…")}</span>
@@ -90,7 +90,7 @@ export function Header() {
                         href={nav.storeUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="fxc:text-muted-foreground fxc:hidden fxc:h-9 fxc:shrink-0 fxc:items-center fxc:gap-1.5 fxc:rounded-md fxc:px-2.5 fxc:text-sm fxc:font-medium fxc:no-underline fxc:outline-none fxc:hover:bg-muted fxc:hover:text-foreground fxc:focus-visible:ring-2 fxc:focus-visible:ring-primary-accent fxc:xl:flex"
+                        className="fxc:text-muted-foreground fxc:hidden fxc:h-9 fxc:shrink-0 fxc:items-center fxc:gap-1.5 fxc:rounded-md fxc:px-2.5 fxc:text-sm fxc:font-medium fxc:no-underline fxc:outline-none fxc:hover:bg-muted fxc:hover:text-foreground fxc:xl:flex"
                     >
                         <ExternalLink aria-hidden className="fxc:size-4" />
                         {__("View store")}
@@ -105,7 +105,7 @@ export function Header() {
                             href={page.url}
                             aria-current={page.slug === slug ? "page" : undefined}
                             className={cn(
-                                "fxc:text-muted-foreground fxc:-mb-px fxc:flex fxc:shrink-0 fxc:items-center fxc:border-b-2 fxc:border-transparent fxc:text-sm fxc:font-medium fxc:whitespace-nowrap fxc:no-underline fxc:outline-none fxc:hover:text-foreground fxc:focus-visible:ring-2 fxc:focus-visible:ring-primary-accent",
+                                "fxc:text-muted-foreground fxc:-mb-px fxc:flex fxc:shrink-0 fxc:items-center fxc:border-b-2 fxc:border-transparent fxc:text-sm fxc:font-medium fxc:whitespace-nowrap fxc:no-underline fxc:outline-none fxc:hover:text-foreground",
                                 page.slug === slug && "fxc:border-primary fxc:text-foreground",
                             )}
                         >

@@ -292,7 +292,7 @@ function SwatchButton({ swatch, term, onClick }: { swatch: SwatchType; term: Att
             onClick={onClick}
             aria-label={sprintf(color ? __("Colour of %s") : __("Image of %s"), term.name)}
             className={cn(
-                "fxc:flex fxc:size-7 fxc:shrink-0 fxc:items-center fxc:justify-center fxc:overflow-hidden fxc:border fxc:outline-none fxc:focus-visible:ring-2 fxc:focus-visible:ring-primary-accent",
+                "fxc:flex fxc:size-7 fxc:shrink-0 fxc:items-center fxc:justify-center fxc:overflow-hidden fxc:border fxc:outline-none",
                 color ? "fxc:rounded-full" : "fxc:rounded",
                 empty ? "fxc:border-muted-foreground/50 fxc:text-muted-foreground fxc:bg-background fxc:border-dashed" : "fxc:border-black/20",
             )}

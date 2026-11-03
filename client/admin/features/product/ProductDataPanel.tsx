@@ -154,7 +154,7 @@ export function ProductDataPanel({ editor }: { editor: ProductDraftState }) {
                                     aria-current={visibleTab === id ? "true" : undefined}
                                     onClick={() => setTab(id)}
                                     className={cn(
-                                        "fxc:flex fxc:cursor-pointer fxc:items-center fxc:gap-2 fxc:bg-transparent fxc:px-4 fxc:py-2.5 fxc:text-left fxc:text-sm fxc:outline-none fxc:hover:text-primary fxc:focus-visible:ring-2 fxc:focus-visible:ring-primary-accent",
+                                        "fxc:flex fxc:cursor-pointer fxc:items-center fxc:gap-2 fxc:bg-transparent fxc:px-4 fxc:py-2.5 fxc:text-left fxc:text-sm fxc:outline-none fxc:hover:text-primary",
                                         visibleTab === id && "fxc:bg-background fxc:text-primary fxc:font-semibold",
                                     )}
                                 >

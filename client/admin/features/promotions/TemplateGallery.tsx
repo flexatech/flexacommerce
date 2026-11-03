@@ -46,7 +46,7 @@ export function TemplateGallery({ open, onOpenChange, onPick }: Props) {
             type="button"
             aria-pressed={goal === value}
             className={cn(
-                "fxc:rounded-full fxc:border fxc:px-3 fxc:py-1 fxc:text-sm fxc:outline-none fxc:focus-visible:ring-2 fxc:focus-visible:ring-primary-accent",
+                "fxc:rounded-full fxc:border fxc:px-3 fxc:py-1 fxc:text-sm fxc:outline-none",
                 goal === value ? "fxc:border-foreground fxc:bg-foreground fxc:text-background" : "fxc:hover:bg-muted",
             )}
             onClick={() => setGoal(value)}
@@ -83,7 +83,7 @@ export function TemplateGallery({ open, onOpenChange, onPick }: Props) {
                                         <li key={t.key}>
                                             <button
                                                 type="button"
-                                                className="fxc:hover:bg-muted fxc:flex fxc:h-full fxc:w-full fxc:items-start fxc:gap-3 fxc:rounded-md fxc:border fxc:px-3 fxc:py-2 fxc:text-start fxc:text-sm fxc:outline-none fxc:focus-visible:ring-2 fxc:focus-visible:ring-primary-accent"
+                                                className="fxc:hover:bg-muted fxc:flex fxc:h-full fxc:w-full fxc:items-start fxc:gap-3 fxc:rounded-md fxc:border fxc:px-3 fxc:py-2 fxc:text-start fxc:text-sm fxc:outline-none"
                                                 onClick={() => onPick(t)}
                                             >
                                                 <TemplateIcon template={t} />

@@ -553,7 +553,7 @@ export function PriceRuleDialog({ open, rule, preset, roles, onOpenChange }: Pro
                                             type="button"
                                             aria-pressed={chosen === p.key}
                                             className={cn(
-                                                "fxc:rounded-full fxc:border fxc:px-3 fxc:py-1 fxc:text-sm fxc:outline-none fxc:focus-visible:ring-2 fxc:focus-visible:ring-primary-accent",
+                                                "fxc:rounded-full fxc:border fxc:px-3 fxc:py-1 fxc:text-sm fxc:outline-none",
                                                 chosen === p.key ? "fxc:border-foreground fxc:bg-foreground fxc:text-background" : "fxc:hover:bg-muted",
                                             )}
                                             onClick={() => applyPreset(p)}

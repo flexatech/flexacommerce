@@ -10,6 +10,7 @@
 @import 'tailwindcss/theme.css' layer(theme) prefix(fxc);
 @import './theme.css';
 @import './header-frame.css';
+@import './focus.css';
 
 @layer base {
     /* The parts of Tailwind's preflight that the utilities rely on. */

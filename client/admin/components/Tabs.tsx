@@ -17,7 +17,7 @@ export function Tabs<T extends string>({ value, onChange, items }: TabsProps<T>)
                     aria-selected={item.value === value}
                     onClick={() => onChange(item.value)}
                     className={cn(
-                        "fxc:-mb-px fxc:cursor-pointer fxc:border-b-2 fxc:border-transparent fxc:bg-transparent fxc:px-3 fxc:py-2 fxc:text-sm fxc:font-medium fxc:text-muted-foreground fxc:outline-none fxc:hover:text-foreground fxc:focus-visible:ring-2 fxc:focus-visible:ring-primary-accent",
+                        "fxc:-mb-px fxc:cursor-pointer fxc:border-b-2 fxc:border-transparent fxc:bg-transparent fxc:px-3 fxc:py-2 fxc:text-sm fxc:font-medium fxc:text-muted-foreground fxc:outline-none fxc:hover:text-foreground",
                         item.value === value && "fxc:border-primary fxc:text-primary",
                     )}
                 >

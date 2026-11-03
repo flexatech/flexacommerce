@@ -106,7 +106,7 @@ function GatewayCard({ gateway, open, onToggle }: { gateway: Gateway; open: bool
                 type="button"
                 aria-expanded={open}
                 onClick={onToggle}
-                className="fxc:hover:bg-muted/50 fxc:flex fxc:w-full fxc:cursor-pointer fxc:items-center fxc:gap-3 fxc:bg-transparent fxc:px-5 fxc:py-4 fxc:text-left fxc:outline-none fxc:focus-visible:ring-2 fxc:focus-visible:ring-primary-accent"
+                className="fxc:hover:bg-muted/50 fxc:flex fxc:w-full fxc:cursor-pointer fxc:items-center fxc:gap-3 fxc:bg-transparent fxc:px-5 fxc:py-4 fxc:text-left fxc:outline-none"
             >
                 <div className="fxc:bg-muted fxc:text-primary fxc:flex fxc:h-9 fxc:w-9 fxc:shrink-0 fxc:items-center fxc:justify-center fxc:rounded-lg">
                     <CreditCard aria-hidden className="fxc:size-4" />

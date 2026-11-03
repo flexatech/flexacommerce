@@ -62,7 +62,7 @@ export function JobsPanel() {
                                         <button
                                             type="button"
                                             onClick={() => setSelected(job.id)}
-                                            className="fxc:text-primary fxc:cursor-pointer fxc:bg-transparent fxc:p-0 fxc:font-medium fxc:hover:underline fxc:focus-visible:ring-2 fxc:focus-visible:ring-primary-accent fxc:outline-none"
+                                            className="fxc:text-primary fxc:cursor-pointer fxc:bg-transparent fxc:p-0 fxc:font-medium fxc:hover:underline fxc:outline-none"
                                         >
                                             {sprintf(__("#%d"), job.id)}
                                         </button>

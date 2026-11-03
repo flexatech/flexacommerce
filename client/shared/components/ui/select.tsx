@@ -18,7 +18,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
                 ref={ref}
                 className={cn(
                     "flexacommerce-control fxc:border-input fxc:bg-background fxc:text-foreground fxc:h-9 fxc:rounded-md fxc:border fxc:px-3 fxc:text-sm fxc:shadow-sm fxc:outline-none fxc:transition-colors",
-                    "fxc:focus-visible:border-primary fxc:focus-visible:ring-2 fxc:focus-visible:ring-primary-accent",
+                    "fxc:focus-visible:border-primary",
                     className,
                 )}
                 {...props}

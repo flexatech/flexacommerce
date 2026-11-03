@@ -1,13 +1,13 @@
 {
-  "_Header-DYHzuPtc.js": {
-    "file": "assets/Header-DYHzuPtc.js",
+  "_Header-KNbM_bCd.js": {
+    "file": "assets/Header-KNbM_bCd.js",
     "name": "Header",
     "imports": [
       "_search-Bvo5hlEM.js"
     ]
   },
-  "_SearchBox-CSumGFhz.js": {
-    "file": "assets/SearchBox-CSumGFhz.js",
+  "_SearchBox-BQh9heIT.js": {
+    "file": "assets/SearchBox-BQh9heIT.js",
     "name": "SearchBox",
     "imports": [
       "_search-Bvo5hlEM.js"
@@ -18,58 +18,58 @@
     "name": "search"
   },
   "admin/features/checkout/CheckoutBuilderPage.tsx": {
-    "file": "assets/CheckoutBuilderPage-CyHxe3dz.js",
+    "file": "assets/CheckoutBuilderPage-BbX52MKY.js",
     "name": "CheckoutBuilderPage",
     "src": "admin/features/checkout/CheckoutBuilderPage.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_search-Bvo5hlEM.js",
-      "_SearchBox-CSumGFhz.js",
+      "_SearchBox-BQh9heIT.js",
       "admin/main.tsx",
-      "_Header-DYHzuPtc.js"
+      "_Header-KNbM_bCd.js"
     ]
   },
   "admin/main.tsx": {
-    "file": "assets/admin-DLJOxOE-.js",
+    "file": "assets/admin-CCsf6YqA.js",
     "name": "admin",
     "src": "admin/main.tsx",
     "isEntry": true,
     "imports": [
       "_search-Bvo5hlEM.js",
-      "_SearchBox-CSumGFhz.js",
-      "_Header-DYHzuPtc.js"
+      "_SearchBox-BQh9heIT.js",
+      "_Header-KNbM_bCd.js"
     ],
     "dynamicImports": [
       "admin/features/checkout/CheckoutBuilderPage.tsx"
     ],
     "css": [
-      "assets/admin-Ri97vN5a.css"
+      "assets/admin-BQJQEC3p.css"
     ]
   },
   "admin/nav.tsx": {
-    "file": "assets/nav-8VzeFaT9.js",
+    "file": "assets/nav-DUPZQF1V.js",
     "name": "nav",
     "src": "admin/nav.tsx",
     "isEntry": true,
     "imports": [
       "_search-Bvo5hlEM.js",
-      "_Header-DYHzuPtc.js"
+      "_Header-KNbM_bCd.js"
     ],
     "css": [
-      "assets/nav-D-RN6DEC.css"
+      "assets/nav-D1ZNzf-D.css"
     ]
   },
   "admin/product-editor.tsx": {
-    "file": "assets/product-editor-CtLrgaqU.js",
+    "file": "assets/product-editor-BZ2m2_O1.js",
     "name": "product-editor",
     "src": "admin/product-editor.tsx",
     "isEntry": true,
     "imports": [
       "_search-Bvo5hlEM.js",
-      "_SearchBox-CSumGFhz.js"
+      "_SearchBox-BQh9heIT.js"
     ],
     "css": [
-      "assets/product-editor-BKHpPgFp.css"
+      "assets/product-editor-an3mmpOk.css"
     ]
   }
 }

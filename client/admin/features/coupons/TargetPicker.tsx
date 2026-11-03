@@ -133,7 +133,7 @@ export function TargetPicker({ id, kind, value, onChange, placeholder, described
                         <span className="fxc:truncate">{label(pick)}</span>
                         <button
                             type="button"
-                            className="fxc:text-muted-foreground fxc:hover:text-foreground fxc:rounded fxc:p-0.5 fxc:focus-visible:ring-2 fxc:focus-visible:ring-primary-accent fxc:outline-none"
+                            className="fxc:text-muted-foreground fxc:hover:text-foreground fxc:rounded fxc:p-0.5 fxc:outline-none"
                             aria-label={sprintf(__("Remove %s"), label(pick))}
                             onClick={(e) => {
                                 e.stopPropagation();

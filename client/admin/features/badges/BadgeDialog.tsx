@@ -204,7 +204,7 @@ function CornerPicker({ value, onChange }: { value: BadgePosition; onChange: (v:
                         aria-label={corner.label}
                         title={corner.label}
                         className={cn(
-                            "fxc:rounded fxc:border fxc:outline-none fxc:focus-visible:ring-2 fxc:focus-visible:ring-primary-accent",
+                            "fxc:rounded fxc:border fxc:outline-none",
                             value === corner.value ? "fxc:border-foreground fxc:bg-foreground" : "fxc:bg-background fxc:hover:border-foreground/50",
                         )}
                         onClick={() => onChange(corner.value)}
@@ -324,7 +324,7 @@ export function BadgeDialog({ open, badge, preset, onOpenChange }: Props) {
                                             type="button"
                                             aria-pressed={chosen === p.key}
                                             className={cn(
-                                                "fxc:rounded-full fxc:border fxc:px-3 fxc:py-1 fxc:text-sm fxc:outline-none fxc:focus-visible:ring-2 fxc:focus-visible:ring-primary-accent",
+                                                "fxc:rounded-full fxc:border fxc:px-3 fxc:py-1 fxc:text-sm fxc:outline-none",
                                                 chosen === p.key ? "fxc:border-foreground fxc:bg-foreground fxc:text-background" : "fxc:hover:bg-muted",
                                             )}
                                             onClick={() => applyPreset(p)}

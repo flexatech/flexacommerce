@@ -1,1 +1,0 @@
-import{e as r,j as e,d as a}from"./search-Bvo5hlEM.js";import{H as d}from"./Header-DYHzuPtc.js";const t=document.getElementById("flexacommerce-nav-root");var o;t&&(((o=window.flexaCommerceNav)==null?void 0:o.theme)==="dark"&&document.body.classList.add("dark"),r.createRoot(t).render(e.jsx(a.StrictMode,{children:e.jsx(d,{})})));

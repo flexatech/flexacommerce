@@ -111,7 +111,7 @@ export function BadgesPanel() {
                                 <button
                                     key={preset.key}
                                     type="button"
-                                    className="fxc:hover:bg-muted fxc:flex fxc:items-center fxc:gap-2 fxc:rounded-md fxc:border fxc:px-3 fxc:py-2 fxc:text-sm fxc:outline-none fxc:focus-visible:ring-2 fxc:focus-visible:ring-primary-accent"
+                                    className="fxc:hover:bg-muted fxc:flex fxc:items-center fxc:gap-2 fxc:rounded-md fxc:border fxc:px-3 fxc:py-2 fxc:text-sm fxc:outline-none"
                                     onClick={() => setEditing({ badge: null, preset })}
                                 >
                                     <BadgeChip badge={{ shape: "rounded", ...preset.values }} />

@@ -619,7 +619,7 @@ function FieldCard({ field, index, count, above, fields, open, error, onToggle, 
                 <button
                     type="button"
                     aria-expanded={open}
-                    className="fxc:flex fxc:min-w-0 fxc:flex-1 fxc:items-center fxc:gap-3 fxc:rounded fxc:text-start fxc:outline-none fxc:focus-visible:ring-2 fxc:focus-visible:ring-primary-accent"
+                    className="fxc:flex fxc:min-w-0 fxc:flex-1 fxc:items-center fxc:gap-3 fxc:rounded fxc:text-start fxc:outline-none"
                     onClick={onToggle}
                 >
                     <span className="fxc:bg-muted fxc:text-muted-foreground fxc:flex fxc:size-8 fxc:shrink-0 fxc:items-center fxc:justify-center fxc:rounded-md">
@@ -938,7 +938,7 @@ export function OptionSetDialog({ open, set: stored, preset, onOpenChange }: Pro
                                         type="button"
                                         aria-pressed={chosen === p.key}
                                         className={cn(
-                                            "fxc:rounded-full fxc:border fxc:px-3 fxc:py-1 fxc:text-sm fxc:outline-none fxc:focus-visible:ring-2 fxc:focus-visible:ring-primary-accent",
+                                            "fxc:rounded-full fxc:border fxc:px-3 fxc:py-1 fxc:text-sm fxc:outline-none",
                                             chosen === p.key ? "fxc:border-foreground fxc:bg-foreground fxc:text-background" : "fxc:hover:bg-muted",
                                         )}
                                         onClick={() => applyPreset(p)}

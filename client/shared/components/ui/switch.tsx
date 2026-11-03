@@ -10,7 +10,7 @@ const Switch = React.forwardRef<
     <SwitchPrimitive.Root
         ref={ref}
         className={cn(
-            "fxc:peer fxc:inline-flex fxc:h-5 fxc:w-9 fxc:shrink-0 fxc:cursor-pointer fxc:items-center fxc:rounded-full fxc:border-2 fxc:border-transparent fxc:transition-colors fxc:outline-none fxc:focus-visible:ring-2 fxc:focus-visible:ring-primary-accent fxc:disabled:cursor-not-allowed fxc:disabled:opacity-50",
+            "fxc:peer fxc:inline-flex fxc:h-5 fxc:w-9 fxc:shrink-0 fxc:cursor-pointer fxc:items-center fxc:rounded-full fxc:border-2 fxc:border-transparent fxc:transition-colors fxc:outline-none fxc:disabled:cursor-not-allowed fxc:disabled:opacity-50",
             "fxc:data-[state=checked]:bg-primary fxc:data-[state=unchecked]:bg-input",
             className,
         )}

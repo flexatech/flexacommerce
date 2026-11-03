@@ -104,7 +104,7 @@ export function OptionSetsPage() {
                                 <button
                                     key={preset.key}
                                     type="button"
-                                    className="fxc:hover:bg-muted fxc:flex fxc:max-w-60 fxc:items-start fxc:gap-3 fxc:rounded-md fxc:border fxc:px-3 fxc:py-2 fxc:text-start fxc:text-sm fxc:outline-none fxc:focus-visible:ring-2 fxc:focus-visible:ring-primary-accent"
+                                    className="fxc:hover:bg-muted fxc:flex fxc:max-w-60 fxc:items-start fxc:gap-3 fxc:rounded-md fxc:border fxc:px-3 fxc:py-2 fxc:text-start fxc:text-sm fxc:outline-none"
                                     onClick={() => setEditing({ set: null, preset })}
                                 >
                                     <span className="fxc:bg-muted fxc:text-muted-foreground fxc:flex fxc:size-9 fxc:shrink-0 fxc:items-center fxc:justify-center fxc:rounded-md">
