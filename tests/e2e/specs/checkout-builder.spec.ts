@@ -124,7 +124,8 @@ test( 'a field shown for one country follows the country the shopper picks', asy
 	const settings = page.getByLabel( 'Settings', { exact: true } );
 	await settings.getByLabel( 'Label', { exact: true } ).fill( 'VAT number' );
 	await settings.getByRole( 'radio', { name: 'Required', exact: true } ).check();
-	await settings.getByLabel( 'Only for these countries' ).selectOption( 'DE' );
+	await settings.getByRole( 'combobox', { name: 'Only for these countries' } ).fill( 'germ' );
+	await settings.getByRole( 'option', { name: 'Germany' } ).click();
 	await expect( settings.getByRole( 'button', { name: 'Remove Germany' } ) ).toBeVisible();
 	await expect( page.getByText( 'Conditional', { exact: true } ) ).toBeVisible();
 	await page.getByRole( 'button', { name: 'Save changes' } ).click();

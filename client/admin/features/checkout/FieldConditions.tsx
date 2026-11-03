@@ -4,6 +4,7 @@ import { X } from "lucide-react";
 import { Label } from "@/shared/components/ui/label";
 import { Select } from "@/shared/components/ui/select";
 import { __, sprintf } from "@/shared/lib/i18n";
+import { ListSearch } from "../../components/ListSearch";
 import { TargetPicker } from "../coupons/TargetPicker";
 import { ALWAYS, MAX_TARGETS, type CartShipping, type Section, type When } from "./useCheckoutLayout";
 
@@ -53,22 +54,16 @@ export function FieldConditions({ when = ALWAYS, section, countries, error, onCh
                         ))}
                     </ul>
                 )}
-                <select
+                <ListSearch
                     id={`${id}-country`}
-                    className="flexacommerce-control fxc:border-input fxc:bg-background fxc:text-foreground fxc:h-9 fxc:w-full fxc:rounded-md fxc:border fxc:px-3 fxc:text-sm"
-                    value=""
+                    label={__("Only for these countries")}
+                    placeholder={__("Search a country…")}
+                    choices={countries.filter((c) => !when.countries.includes(c.code)).map((c) => ({ key: c.code, label: c.name, hint: "" }))}
+                    onPick={(code) => set({ countries: [...when.countries, code] })}
                     disabled={when.countries.length >= MAX_TARGETS}
-                    aria-invalid={error ? true : undefined}
-                    aria-describedby={`${id}-country-hint`}
-                    onChange={(e) => e.target.value && set({ countries: [...when.countries, e.target.value] })}
-                >
-                    <option value="">{__("Add a country…")}</option>
-                    {countries.map((c) => (
-                        <option key={c.code} value={c.code} disabled={when.countries.includes(c.code)}>
-                            {c.name}
-                        </option>
-                    ))}
-                </select>
+                    invalid={!!error}
+                    describedBy={`${id}-country-hint`}
+                />
                 <p id={`${id}-country-hint`} className={error ? "fxc:text-destructive fxc:text-xs" : "fxc:text-muted-foreground fxc:text-xs"}>
                     {error ?? (when.countries.length > 0 ? FOLLOWS[section] : __("Every country."))}
                 </p>

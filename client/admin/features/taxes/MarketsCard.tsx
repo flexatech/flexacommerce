@@ -8,6 +8,7 @@ import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { Select } from "@/shared/components/ui/select";
 import { __, sprintf } from "@/shared/lib/i18n";
+import { ListSearch } from "../../components/ListSearch";
 import type { Country } from "../shipping/useShipping";
 import type { TaxMarket } from "./useTaxes";
 
@@ -108,7 +109,7 @@ export function MarketsCard({ markets, countries, onChange }: { markets: TaxMark
     };
 
     return (
-        <Card>
+        <Card className="fxc:overflow-visible">
             <CardHeader>
                 <CardTitle>{__("Markets")}</CardTitle>
                 <CardDescription>{__("Optional. Use a market when a group of countries needs different tax display or sourcing than the store default.")}</CardDescription>
@@ -200,15 +201,15 @@ function MarketRow({
                             </button>
                         </Badge>
                     ))}
-                    <Select
-                        id={`${id}-country`}
-                        value=""
-                        onChange={(e) => e.target.value !== "" && onChange({ countries: [...market.countries, e.target.value] })}
-                        options={[
-                            { value: "", label: __("Add a country…") },
-                            ...countries.filter((c) => !market.countries.includes(c.code)).map((c) => ({ value: c.code, label: c.name })),
-                        ]}
-                    />
+                    <div className="fxc:w-64">
+                        <ListSearch
+                            id={`${id}-country`}
+                            label={__("Countries")}
+                            placeholder={__("Search a country…")}
+                            choices={countries.filter((c) => !market.countries.includes(c.code)).map((c) => ({ key: c.code, label: c.name, hint: "" }))}
+                            onPick={(code) => onChange({ countries: [...market.countries, code] })}
+                        />
+                    </div>
                 </div>
             </div>
 

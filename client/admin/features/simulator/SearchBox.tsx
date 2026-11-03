@@ -22,10 +22,13 @@ interface Props {
     onPick: (row: Row) => void;
     open: boolean;
     onOpen: (open: boolean) => void;
+    disabled?: boolean;
+    invalid?: boolean;
+    describedBy?: string;
 }
 
 /** A search field whose results list picks one row at a time; the field clears after a pick. */
-export function SearchBox({ id, label, placeholder, text, onText, rows, fetching, onPick, open, onOpen }: Props) {
+export function SearchBox({ id, label, placeholder, text, onText, rows, fetching, onPick, open, onOpen, disabled, invalid, describedBy }: Props) {
     const [active, setActive] = useState(0);
     const listId = `${id}-list`;
     useEffect(() => setActive(0), [rows]);
@@ -74,6 +77,9 @@ export function SearchBox({ id, label, placeholder, text, onText, rows, fetching
                     aria-autocomplete="list"
                     aria-activedescendant={open && rows[active] ? `${listId}-${active}` : undefined}
                     autoComplete="off"
+                    disabled={disabled}
+                    aria-invalid={invalid || undefined}
+                    aria-describedby={describedBy}
                     className="flexacommerce-bare-input fxc:text-foreground fxc:placeholder:text-muted-foreground fxc:h-7 fxc:min-w-0 fxc:flex-1 fxc:text-sm"
                     placeholder={placeholder}
                     value={text}
@@ -85,7 +91,7 @@ export function SearchBox({ id, label, placeholder, text, onText, rows, fetching
                     onKeyDown={onKeyDown}
                 />
             </div>
-            {open && (
+            {open && !disabled && (
                 <div className="fxc:border-border fxc:bg-background fxc:absolute fxc:inset-x-0 fxc:top-full fxc:z-10 fxc:mt-1 fxc:rounded-md fxc:border fxc:shadow-md">
                     <ul id={listId} role="listbox" className="fxc:max-h-60 fxc:overflow-y-auto fxc:py-1">
                         {rows.map((row, i) => (

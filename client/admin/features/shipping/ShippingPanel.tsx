@@ -13,6 +13,7 @@ import { ApiError } from "@/shared/lib/api";
 import { cn } from "@/shared/lib/cn";
 import { __, sprintf } from "@/shared/lib/i18n";
 import { FieldRow, type FieldValues } from "../../components/FieldControl";
+import { ListSearch, type Row } from "../../components/ListSearch";
 import { ClassCostsField, RateTableField } from "./RateFields";
 import { ShippingClassesCard } from "./ShippingClassesCard";
 import { useSaveZones, useShipping, type Country, type MethodInstance, type MethodType, type Zone } from "./useShipping";
@@ -170,6 +171,14 @@ function ZoneCard({ zone, rest = false, types, countries, error, onChange, onRem
         }
     };
 
+    const regionChoices = useMemo<Row[]>(
+        () => [
+            ...countries.map((c) => ({ key: `country:${c.code}`, label: c.name, hint: "" })),
+            ...countries.flatMap((c) => c.states.map((st) => ({ key: `state:${c.code}:${st.code}`, label: st.name, hint: c.name }))),
+        ].filter((row) => !zone.regions.includes(row.key)),
+        [countries, zone.regions],
+    );
+
     const addMethod = (type: string) => {
         const def = types.find((t) => t.type === type);
         if (def) {
@@ -182,7 +191,8 @@ function ZoneCard({ zone, rest = false, types, countries, error, onChange, onRem
         onChange({ methods: zone.methods.map((m, i) => (i === index ? { ...m, ...patch } : m)) });
 
     return (
-        <Card className={cn(error !== "" && "fxc:border-destructive")}>
+        // Visible overflow lets the region list open past the card's edge.
+        <Card className={cn("fxc:overflow-visible", error !== "" && "fxc:border-destructive")}>
             <div className="fxc:flex fxc:items-center fxc:gap-3 fxc:border-b fxc:px-5 fxc:py-3">
                 <div className="fxc:bg-muted fxc:text-primary fxc:flex fxc:h-9 fxc:w-9 fxc:shrink-0 fxc:items-center fxc:justify-center fxc:rounded-lg">
                     {rest ? <Globe aria-hidden className="fxc:size-4" /> : <MapPin aria-hidden className="fxc:size-4" />}
@@ -245,36 +255,13 @@ function ZoneCard({ zone, rest = false, types, countries, error, onChange, onRem
                                 ))}
                             </ul>
                         )}
-                        <select
+                        <ListSearch
                             id={`${id}-region`}
-                            className="flexacommerce-control fxc:border-input fxc:bg-background fxc:text-foreground fxc:h-9 fxc:w-full fxc:rounded-md fxc:border fxc:px-3 fxc:text-sm"
-                            value=""
-                            onChange={(e) => addRegion(e.target.value)}
-                        >
-                            <option value="">{__("Add a country or state…")}</option>
-                            <optgroup label={__("Countries")}>
-                                {countries.map((c) => (
-                                    <option key={c.code} value={`country:${c.code}`} disabled={zone.regions.includes(`country:${c.code}`)}>
-                                        {c.name}
-                                    </option>
-                                ))}
-                            </optgroup>
-                            {countries
-                                .filter((c) => c.states.length > 0)
-                                .map((c) => (
-                                    <optgroup key={c.code} label={c.name}>
-                                        {c.states.map((s) => (
-                                            <option
-                                                key={s.code}
-                                                value={`state:${c.code}:${s.code}`}
-                                                disabled={zone.regions.includes(`state:${c.code}:${s.code}`)}
-                                            >
-                                                {s.name}
-                                            </option>
-                                        ))}
-                                    </optgroup>
-                                ))}
-                        </select>
+                            label={__("Regions")}
+                            placeholder={__("Search a country or state…")}
+                            choices={regionChoices}
+                            onPick={addRegion}
+                        />
                     </div>
                     <div className="fxc:space-y-2">
                         <Label htmlFor={`${id}-postcodes`} className="fxc:block">
